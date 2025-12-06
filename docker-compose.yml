@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  # Oracle Database
+  oracle-db:
+    image: gvenzl/oracle-free:23.5-slim
+    container_name: rental-oracle
+    environment:
+      ORACLE_PASSWORD: siva         # SYS/SYSTEM password
+      APP_USER: siva                # optional: application user
+      APP_USER_PASSWORD: siva       # optional: application user password
+    ports:
+      - "1521:1521"                 # Oracle listener
+    networks:
+      - rental-network
+    healthcheck:
+      test: ["CMD-SHELL", "echo 'SELECT 1 FROM DUAL;' | sqlplus -s SYSTEM/siva@localhost:1521/FREEPDB1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+
+  # Zookeeper (required for Kafka)
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: rental-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - rental-network
+
+  # Kafka Message Broker
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: rental-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    networks:
+      - rental-network
+
+networks:
+  rental-network:
+    driver: bridge
