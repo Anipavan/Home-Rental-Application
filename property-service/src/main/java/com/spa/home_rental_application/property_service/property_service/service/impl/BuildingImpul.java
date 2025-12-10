@@ -1,6 +1,7 @@
 package com.spa.home_rental_application.property_service.property_service.service.impl;
 
 import com.spa.home_rental_application.property_service.property_service.Entities.Building;
+import com.spa.home_rental_application.property_service.property_service.ExceptionClass.RecordNotFoundException;
 import com.spa.home_rental_application.property_service.property_service.repository.BuildingRepo;
 import com.spa.home_rental_application.property_service.property_service.service.BuildingService;
 import lombok.extern.slf4j.Slf4j;
@@ -20,8 +21,7 @@ public class BuildingImpul implements BuildingService {
 
     @Override
     public List<Building> getBuildings() {
-        List<Building> buildings = building_repo.findAll();
-        return buildings;
+        return  building_repo.findAll();
     }
 
     @Override
@@ -42,5 +42,17 @@ public class BuildingImpul implements BuildingService {
         building.setUpdatedDt(now);
 
         return building_repo.save(building);
+    }
+    @Override
+    public Building getBuildingById(String buildId)
+    {
+       return building_repo.findById(buildId).orElseThrow(()-> new RecordNotFoundException("No Record found with the given id :"+buildId));
+    }
+
+    @Override
+    public String deleteBuildingById(String buildId)
+    {
+         building_repo.deleteById(buildId);
+         return "Successfully deleted";
     }
 }

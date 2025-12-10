@@ -184,11 +184,11 @@ property_images (
 
 **Building Management:**
 ```
-GET    /api/properties/buildings              - Get all buildings
-GET    /api/properties/buildings/{id}         - Get building by ID
-POST   /api/properties/buildings              - Create new building
-PUT    /api/properties/buildings/{id}         - Update building
-DELETE /api/properties/buildings/{id}         - Delete building
+GET    /api/properties/buildings              - Get all buildings - done
+GET    /api/properties/buildings/{id}         - Get building by ID - done
+POST   /api/properties/buildings              - Create new building - done
+PUT    /api/properties/buildings/{id}         - Update building - done
+DELETE /api/properties/buildings/{id}         - Delete building - done
 GET    /api/properties/buildings/owner/{id}   - Get buildings by owner
 ```
 

@@ -2,7 +2,6 @@ package com.spa.home_rental_application.property_service.property_service.contro
 
 import com.spa.home_rental_application.property_service.property_service.Entities.Building;
 import com.spa.home_rental_application.property_service.property_service.service.BuildingService;
-import jakarta.ws.rs.Produces;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -10,10 +9,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-@RestController
-@RequestMapping(value = "/properties",
-        produces = MediaType.APPLICATION_JSON_VALUE
-)
+@RestController @RequestMapping(value = "/properties", produces = MediaType.APPLICATION_JSON_VALUE)
 @Slf4j
 public class BuildingsController {
     @Autowired
@@ -26,12 +22,23 @@ public class BuildingsController {
     }
 
     @PostMapping(
-            value = "/create/building",
+            value = "/buildings/create/building",
             consumes = MediaType.APPLICATION_JSON_VALUE,
-            produces = MediaType.APPLICATION_JSON_VALUE
-    )
+            produces = MediaType.APPLICATION_JSON_VALUE)
     public Building createBuilding(@RequestBody Building building) {
         log.info("Request recieved for creating building.{}",building);
         return building_service.createBuilding(building);
+    }
+
+    @GetMapping("/buildings/{buildId}")
+    public Building getBuildingById(@PathVariable String buildId) {
+        return building_service.getBuildingById(buildId);
+
+    }
+
+    @DeleteMapping("/buildings/{buildId}")
+    public String deleteBuilding(@PathVariable String buildId) {
+        return building_service.deleteBuildingById(buildId);
+
     }
 }

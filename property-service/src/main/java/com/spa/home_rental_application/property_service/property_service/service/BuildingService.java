@@ -8,4 +8,7 @@ public interface BuildingService {
 
       List<Building> getBuildings();
       Building createBuilding(Building building);
+      Building getBuildingById(String buildId);
+      String deleteBuildingById(String buildId);
+
 }
