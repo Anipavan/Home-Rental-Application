@@ -5,6 +5,7 @@ import com.spa.home_rental_application.property_service.property_service.service
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -33,12 +34,15 @@ public class BuildingsController {
     @GetMapping("/buildings/{buildId}")
     public Building getBuildingById(@PathVariable String buildId) {
         return building_service.getBuildingById(buildId);
-
+    }
+    @GetMapping("/buildings/owner/{id}")
+    public List<Building> getBuildingsByOwnerId(@PathVariable String ownerId) {
+        return building_service.getBuildingsByOwnerId(ownerId);
     }
 
     @DeleteMapping("/buildings/{buildId}")
-    public String deleteBuilding(@PathVariable String buildId) {
-        return building_service.deleteBuildingById(buildId);
-
+    public ResponseEntity<String> deleteBuilding(@PathVariable String buildId) {
+        String message = building_service.deleteBuildingById(buildId);
+        return ResponseEntity.ok(message);
     }
 }

@@ -187,22 +187,22 @@ property_images (
 GET    /api/properties/buildings              - Get all buildings - done
 GET    /api/properties/buildings/{id}         - Get building by ID - done
 POST   /api/properties/buildings              - Create new building - done
-PUT    /api/properties/buildings/{id}         - Update building - done
+PUT    /api/properties/buildings/{id}         - Update building 
 DELETE /api/properties/buildings/{id}         - Delete building - done
 GET    /api/properties/buildings/owner/{id}   - Get buildings by owner
 ```
 
 **Flat Management:**
 ```
-GET    /api/properties/flats                  - Get all flats
-GET    /api/properties/flats/{id}             - Get flat by ID
-POST   /api/properties/flats                  - Create new flat
+GET    /api/properties/flats                  - Get all flats - done
+GET    /api/properties/flats/{id}             - Get flat by ID - done
+POST   /api/properties/flats                  - Create new flat - done
 PUT    /api/properties/flats/{id}             - Update flat
-DELETE /api/properties/flats/{id}             - Delete flat
-GET    /api/properties/flats/building/{id}    - Get flats by building
-GET    /api/properties/flats/vacant           - Get all vacant flats
+DELETE /api/properties/flats/{id}             - Delete flat - done
+GET    /api/properties/flats/building/{id}    - Get flats by building -done
+GET    /api/properties/flats/vacant           - Get all vacant flats -  done
 POST   /api/properties/flats/{id}/assign      - Assign tenant to flat
-POST   /api/properties/flats/{id}/vacate      - Mark flat as vacant
+POST   /api/properties/flats/{id}/vacate      - Mark flat as vacant - done
 ```
 
 #### **Kafka Events Published:**

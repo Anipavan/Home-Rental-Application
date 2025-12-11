@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -52,7 +53,17 @@ public class BuildingImpul implements BuildingService {
     @Override
     public String deleteBuildingById(String buildId)
     {
+         building_repo.findById(buildId).orElseThrow(() -> new RecordNotFoundException("No record found with the given id: " + buildId));
          building_repo.deleteById(buildId);
-         return "Successfully deleted";
+        return "Record with id " + buildId + " has been deleted successfully.";
+    }
+
+    public  List<Building>getBuildingsByOwnerId(String ownerId){
+        List<Building> ownerBuildings = building_repo.findByOwnerId(ownerId);
+        if (ownerBuildings.isEmpty()) {
+            throw new RecordNotFoundException(
+                    "No buildings found for owner with id: " + ownerId);
+        }
+    return ownerBuildings;
     }
 }

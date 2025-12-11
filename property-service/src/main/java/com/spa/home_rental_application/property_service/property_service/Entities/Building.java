@@ -14,6 +14,7 @@ public class Building {
     @Id
     String buildingId;
     String buildingName;
+    String ownerId;
     String buildingAddress;
     String buildingCity;
     String buildingState;
@@ -23,12 +24,12 @@ public class Building {
     String createdDt;
     String updatedDt;
 
-
     @Override
     public String toString() {
         return "Building{" +
                 "buildingId='" + buildingId + '\'' +
                 ", buildingName='" + buildingName + '\'' +
+                ", ownerId='" + ownerId + '\'' +
                 ", buildingAddress='" + buildingAddress + '\'' +
                 ", buildingCity='" + buildingCity + '\'' +
                 ", buildingState='" + buildingState + '\'' +
