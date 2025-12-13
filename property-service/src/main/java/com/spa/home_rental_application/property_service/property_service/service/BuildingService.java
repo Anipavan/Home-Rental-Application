@@ -10,6 +10,7 @@ public interface BuildingService {
       Building createBuilding(Building building);
       Building getBuildingById(String buildId);
       String deleteBuildingById(String buildId);
+      Building updateBuilding(String buildId,Building building);
       List<Building> getBuildingsByOwnerId(String ownerId);
 
 }

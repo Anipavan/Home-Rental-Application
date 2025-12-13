@@ -77,4 +77,9 @@ public class FlatServiceImpul implements FlatService {
             return "Flat vacent";
         return "Could not update the flat to vacent";
     }
+
+    @Override
+    public Flat updateFlat(String flstId, Flat flat) {
+        return flatRepo.save(flat);
+    }
 }

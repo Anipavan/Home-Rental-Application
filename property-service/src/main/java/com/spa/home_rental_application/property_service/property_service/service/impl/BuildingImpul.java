@@ -58,6 +58,11 @@ public class BuildingImpul implements BuildingService {
         return "Record with id " + buildId + " has been deleted successfully.";
     }
 
+    @Override
+    public Building updateBuilding(String buildId,Building building) {
+        return building_repo.save(building);
+    }
+
     public  List<Building>getBuildingsByOwnerId(String ownerId){
         List<Building> ownerBuildings = building_repo.findByOwnerId(ownerId);
         if (ownerBuildings.isEmpty()) {

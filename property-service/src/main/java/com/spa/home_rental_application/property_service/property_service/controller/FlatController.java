@@ -56,4 +56,9 @@ public class FlatController {
         String message=flatService.makeFlatVacate(flatId);
         return  ResponseEntity.ok(message);
     }
+
+    @PutMapping("/flats/{id}/flat")
+    public Flat updateFlat(String flatId,Flat flat){
+        return flatService.updateFlat(flatId,flat);
+    }
 }

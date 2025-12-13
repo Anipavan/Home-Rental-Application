@@ -45,4 +45,9 @@ public class BuildingsController {
         String message = building_service.deleteBuildingById(buildId);
         return ResponseEntity.ok(message);
     }
+
+    @PutMapping("/buildings/{id}/building")
+    public Building updateBuilding(@PathVariable String buildId,Building building){
+        return  building_service.updateBuilding(buildId,building);
+    }
 }
