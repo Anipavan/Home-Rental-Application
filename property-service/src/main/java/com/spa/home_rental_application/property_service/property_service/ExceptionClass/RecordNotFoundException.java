@@ -4,7 +4,6 @@ package com.spa.home_rental_application.property_service.property_service.Except
 import lombok.Getter;
 
 public class RecordNotFoundException extends RuntimeException {
-    private String message;
     @Getter
     private final String errorCode;
     public RecordNotFoundException(String message){

@@ -35,7 +35,7 @@ public class BuildingsController {
     public Building getBuildingById(@PathVariable String buildId) {
         return building_service.getBuildingById(buildId);
     }
-    @GetMapping("/buildings/owner/{id}")
+    @GetMapping("/buildings/owner/{ownerId}")
     public List<Building> getBuildingsByOwnerId(@PathVariable String ownerId) {
         return building_service.getBuildingsByOwnerId(ownerId);
     }

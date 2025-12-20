@@ -6,15 +6,15 @@ services:
     image: gvenzl/oracle-free:23.5-slim
     container_name: rental-oracle
     environment:
-      ORACLE_PASSWORD: siva         # SYS/SYSTEM password
-      APP_USER: siva                # optional: application user
-      APP_USER_PASSWORD: siva       # optional: application user password
+      ORACLE_PASSWORD: siva
+      APP_USER: siva
+      APP_USER_PASSWORD: siva
     ports:
-      - "1521:1521"                 # Oracle listener
+      - "1522:1521"
     networks:
       - rental-network
     healthcheck:
-      test: ["CMD-SHELL", "echo 'SELECT 1 FROM DUAL;' | sqlplus -s SYSTEM/siva@localhost:1521/FREEPDB1"]
+      test: ["CMD-SHELL", "echo 'SELECT 1 FROM DUAL;' | sqlplus -s SYSTEM/siva@localhost:1522/FREEPDB1"]
       interval: 30s
       timeout: 10s
       retries: 10
@@ -38,15 +38,17 @@ services:
     depends_on:
       - zookeeper
     ports:
-      - "9092:9092"
+      - "9093:9093"   # host:container, SAME port
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9093
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
     networks:
       - rental-network
+
 
 networks:
   rental-network:
