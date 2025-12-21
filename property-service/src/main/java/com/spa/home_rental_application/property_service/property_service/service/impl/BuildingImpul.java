@@ -121,7 +121,12 @@ public class BuildingImpul implements BuildingService {
                         .ownerId(saved.getOwnerId())
                         .timestamp(Instant.now())
                         .build());
-
+        eventProducer.sendPropertyUpdated(PropertyUpdatedEvent.builder()
+                        .eventType("Property-Updated")
+                        .propertyId(saved.getBuildingId())
+                        .ownerId(saved.getOwnerId())
+                        .timestamp(Instant.now())
+                        .build());
         return saved;
     }
 
