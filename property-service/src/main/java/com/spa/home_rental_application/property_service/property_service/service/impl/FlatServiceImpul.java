@@ -1,6 +1,5 @@
 package com.spa.home_rental_application.property_service.property_service.service.impl;
 
-import com.spa.home_rental_application.property_service.property_service.Entities.Building;
 import com.spa.home_rental_application.property_service.property_service.Entities.Flat;
 import com.spa.home_rental_application.property_service.property_service.ExceptionClass.RecordNotFoundException;
 import com.spa.home_rental_application.property_service.property_service.repository.FlatRepo;
@@ -8,12 +7,10 @@ import com.spa.home_rental_application.property_service.property_service.service
 import com.spa.home_rental_application.property_service.property_service.utils.PropertyEventProducer;
 import com.spa.home_rental_application.property_service.property_service.utils.kafkaEvents.FlatVacatedEvent;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.UUID;
 @Service
@@ -30,13 +27,16 @@ public class FlatServiceImpul implements FlatService {
 
     @Override
     public List<Flat> getAllFlats() {
-        return flatRepo.findAll();
+        List<Flat> allFlats=flatRepo.findAll();
+        if(allFlats!=null)
+            return allFlats;
+        throw new RecordNotFoundException("No Records available");
     }
 
     @Override
     public Flat getflatById(String flatId) {
-        Flat flat= flatRepo.findById(flatId).orElseThrow
-                (()-> new RecordNotFoundException("Flat with the requested Id is not found."+flatId));
+        Flat flat= flatRepo.findById(flatId).orElseThrow(
+                ()-> new RecordNotFoundException("Flat with the requested Id is not found."+flatId));
         return flat;
     }
 
@@ -58,7 +58,8 @@ public class FlatServiceImpul implements FlatService {
 
     @Override
     public String deleteFlatById(String flatId) {
-        flatRepo.findById(flatId).orElseThrow(() -> new RecordNotFoundException("No record found with the given id: " + flatId));
+        flatRepo.findById(flatId).orElseThrow(
+                () -> new RecordNotFoundException("No record found with the given id: " + flatId));
         flatRepo.deleteById(flatId);
         return "Record with id " + flatId + " has been deleted successfully.";
     }
@@ -75,6 +76,7 @@ public class FlatServiceImpul implements FlatService {
 
     @Override
     public List<Flat> getAllVacentFlats() {
+
         return flatRepo.findByIsOccupiedFalse();
     }
 
@@ -102,6 +104,21 @@ public class FlatServiceImpul implements FlatService {
 
     @Override
     public Flat updateFlat(String flstId, Flat flat) {
-        return flatRepo.save(flat);
+
+        Flat flatFound=flatRepo.findById(flstId).orElseThrow(
+                ()->new RecordNotFoundException("Flat with given Id is not present:"+flstId));
+        flatFound.setBuildingId(flat.getBuildingId());
+        flatFound.setFlatNumber(flat.getFlatNumber());
+        flatFound.setBathrooms(flat.getBathrooms());
+        flatFound.setAreaSqft(flat.getAreaSqft());
+        flatFound.setBedrooms(flat.getBedrooms());
+        flatFound.setFloor(flat.getFloor());
+        flatFound.setIsOccupied(flat.getIsOccupied());
+        flatFound.setLeaseEndDate(flat.getLeaseEndDate());
+        flatFound.setLeaseStartDate(flat.getLeaseStartDate());
+        flatFound.setRentAmount(flat.getRentAmount());
+        flatFound.setTenantId(flat.getTenantId());
+        flatFound.setUpdatedAt(LocalDateTime.now());
+        return flatRepo.save(flatFound);
     }
 }

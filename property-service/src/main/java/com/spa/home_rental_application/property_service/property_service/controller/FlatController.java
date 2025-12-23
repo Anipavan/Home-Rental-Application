@@ -19,11 +19,13 @@ public class FlatController {
     FlatService flatService;
     @GetMapping("/flats")
     public List<Flat> getAllFlats() {
+
         return flatService.getAllFlats();
     }
 
     @GetMapping("/flats/{flatId}")
     public Flat getflatById(@PathVariable String flatId) {
+
         return flatService.getflatById(flatId);
     }
     @PostMapping(
@@ -49,6 +51,7 @@ public class FlatController {
 
     @GetMapping("/flats/vacant")
     public List<Flat> getVacentFlats(){
+
         return flatService.getAllVacentFlats();
     }
     @PostMapping("/flats/{id}/vacate")

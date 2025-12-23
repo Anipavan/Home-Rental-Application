@@ -13,12 +13,18 @@ import java.util.List;
 @RestController @RequestMapping(value = "/properties", produces = MediaType.APPLICATION_JSON_VALUE)
 @Slf4j
 public class BuildingsController {
-    @Autowired
-    BuildingService building_service;
+
+   private final BuildingService building_service;
+
+
+    private BuildingsController(BuildingService service)
+    {
+        this.building_service=service;
+    }
 
     @GetMapping("/buildings")
     public List<Building> getAllBuildings() {
-        log.info("Fetch all buildings");
+        log.info("Request received to fetch all Buildings");
         return building_service.getBuildings();
     }
 
@@ -27,12 +33,13 @@ public class BuildingsController {
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
     public Building createBuilding(@RequestBody Building building) {
-        log.info("Request recieved for creating building.{}",building);
+        log.info("Request received for creating building.{}",building);
         return building_service.createBuilding(building);
     }
 
     @GetMapping("/buildings/{buildId}")
     public Building getBuildingById(@PathVariable String buildId) {
+        log.info("Request received to fetch building by ID : {}",buildId);
         return building_service.getBuildingById(buildId);
     }
     @GetMapping("/buildings/owner/{ownerId}")

@@ -207,10 +207,10 @@ POST   /api/properties/flats/{id}/vacate      - Mark flat as vacant - done
 
 #### **Kafka Events Published:**
 ```
-- property.created (propertyId, ownerId, timestamp)
-- property.updated (propertyId, changes, timestamp)
+- property.created (propertyId, ownerId, timestamp) -  done
+- property.updated (propertyId, changes, timestamp) - done
 - flat.occupied (flatId, tenantId, rentAmount, startDate)
-- flat.vacated (flatId, tenantId, endDate)
+- flat.vacated (flatId, tenantId, endDate) - done
 ```
 
 #### **Kafka Events Consumed:**
@@ -272,7 +272,7 @@ GET    /api/users/role/{role}        - Get users by role (TENANT/OWNER)
 GET    /api/users/owners             - Get all owners - done
 GET    /api/users/owners/{id}        - Get owner by ID - done
 POST   /api/users/owners             - Create owner profile - done
-PUT    /api/users/owners/{id}        - Update owner -  dome
+PUT    /api/users/owners/{id}        - Update owner -  done
 GET    /api/users/owners/{id}/tenants - Get all tenants for an owner - done
 ```
 

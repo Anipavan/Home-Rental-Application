@@ -1,6 +1,7 @@
 package com.spa.home_rental_application.user_service.user_service.service.impul;
 
 import com.spa.home_rental_application.user_service.user_service.Entities.User;
+import com.spa.home_rental_application.user_service.user_service.Exceptionclass.RecordNotFound;
 import com.spa.home_rental_application.user_service.user_service.repositry.UserRepo;
 import com.spa.home_rental_application.user_service.user_service.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,7 +25,7 @@ public class UserServiceImpul implements UserService {
 
     @Override
     public User getUserById(String userId) {
-        return userRepo.findById(userId).orElse(null);
+        return userRepo.findById(userId).orElseThrow(()->new RecordNotFound("User with the given Id is not present :"+userId));
     }
 
     @Override

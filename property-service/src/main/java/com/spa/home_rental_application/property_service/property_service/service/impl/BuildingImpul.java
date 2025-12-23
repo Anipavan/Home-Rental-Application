@@ -9,13 +9,11 @@ import com.spa.home_rental_application.property_service.property_service.utils.P
 import com.spa.home_rental_application.property_service.property_service.utils.kafkaEvents.PropertyCreatedEvent;
 import com.spa.home_rental_application.property_service.property_service.utils.kafkaEvents.PropertyUpdatedEvent;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -63,7 +61,9 @@ public class BuildingImpul implements BuildingService {
     @Override
     public Building getBuildingById(String buildId)
     {
-       return building_repo.findById(buildId).orElseThrow(()-> new RecordNotFoundException("No Record found with the given id :"+buildId));
+        Building building=building_repo.findById(buildId).orElseThrow(
+                ()-> new RecordNotFoundException("No Record found with the given id :"+buildId));
+       return building;
     }
 
     @Override
@@ -114,13 +114,6 @@ public class BuildingImpul implements BuildingService {
 
         Building saved = building_repo.save(matchedBuilding);
 
-        eventProducer.sendPropertyUpdated(
-                PropertyUpdatedEvent.builder()
-                        .eventType("property.updated")
-                        .propertyId(saved.getBuildingId())
-                        .ownerId(saved.getOwnerId())
-                        .timestamp(Instant.now())
-                        .build());
         eventProducer.sendPropertyUpdated(PropertyUpdatedEvent.builder()
                         .eventType("Property-Updated")
                         .propertyId(saved.getBuildingId())
