@@ -33,12 +33,12 @@ public class OwnerController {
     public Owners getOwnerById(@PathVariable String ownerId){
         return ownerService.getOwnerById(ownerId);
     }
-    @GetMapping("/owners/{id}/tenants")
-    public List<Owners> getTenentsByOwnerId(@PathVariable String ownerId){
+    @GetMapping("/owners/{ownerId}/tenants")
+    public List<User> getTenentsByOwnerId(@PathVariable String ownerId){
         return ownerService.getTenentsByOwnerId(ownerId);
     }
 
-    @PutMapping("/owners/{id}")
+    @PutMapping("/owners/{ownerId}")
     public Owners updateOwner(@PathVariable String ownerId,Owners owner)
     {
         return ownerService.updateOwner(ownerId,owner);

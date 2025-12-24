@@ -2,7 +2,6 @@ package com.spa.home_rental_application.user_service.user_service.Entities;
 
 import jakarta.persistence.*;
 import lombok.*;
-import org.springframework.data.annotation.Id;
 
 @Entity
 @Table(name = "emergency_contacts")

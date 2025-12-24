@@ -1,6 +1,7 @@
 package com.spa.home_rental_application.user_service.user_service.service;
 
 import com.spa.home_rental_application.user_service.user_service.Entities.Owners;
+import com.spa.home_rental_application.user_service.user_service.Entities.User;
 
 import java.util.List;
 
@@ -9,5 +10,5 @@ public interface OwnerService {
     Owners getOwnerById(String ownerId);
     Owners updateOwner(String ownerId,Owners owner);
     List<Owners> getAllOwners();
-    List<Owners> getTenentsByOwnerId(String ownerId);
+    List<User> getTenentsByOwnerId(String ownerId);
 }

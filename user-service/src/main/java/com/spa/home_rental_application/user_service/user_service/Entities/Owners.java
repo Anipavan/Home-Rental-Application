@@ -39,4 +39,22 @@ public class Owners {
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
+    @Column(name = "updated_at", nullable = false, updatable = false)
+    private LocalDateTime updated_at;
+
+    @Override
+    public String toString() {
+        return "Owners{" +
+                "id='" + id + '\'' +
+                ", userId='" + userId + '\'' +
+                ", businessName='" + businessName + '\'' +
+                ", gstNumber='" + gstNumber + '\'' +
+                ", panNumber='" + panNumber + '\'' +
+                ", bankAccountNumber='" + bankAccountNumber + '\'' +
+                ", ifscCode='" + ifscCode + '\'' +
+                ", totalProperties=" + totalProperties +
+                ", createdAt=" + createdAt +
+                ", updated_at=" + updated_at +
+                '}';
+    }
 }

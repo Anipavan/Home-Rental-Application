@@ -1,8 +1,7 @@
 package com.spa.home_rental_application.user_service.user_service.Entities;
 
 import jakarta.persistence.*;
-import lombok.*;
-import org.springframework.data.annotation.Id;
+import lombok.*;;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -39,7 +38,8 @@ public class User {
     @Column(name = "gender")
     private String gender;
 
-    @Column(name = "address", columnDefinition = "TEXT")
+    @Column(name = "address")
+    @Lob
     private String address;
 
     @Column(name = "profile_picture_url")

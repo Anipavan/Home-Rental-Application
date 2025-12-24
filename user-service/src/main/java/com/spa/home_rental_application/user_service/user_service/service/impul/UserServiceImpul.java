@@ -7,6 +7,8 @@ import com.spa.home_rental_application.user_service.user_service.service.UserSer
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
@@ -15,6 +17,8 @@ public class UserServiceImpul implements UserService {
     UserRepo userRepo;
     @Override
     public User createUser(User user) {
+        user.setCreatedAt(LocalDateTime.now());
+        user.setUpdatedAt(LocalDateTime.now());
         return userRepo.save(user);
     }
 
