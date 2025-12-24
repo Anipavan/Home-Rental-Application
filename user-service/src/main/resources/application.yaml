@@ -3,7 +3,7 @@ server:
 
 spring:
   application:
-    name: user-service
+    name: HRA-user-service
 
   datasource:
     url: jdbc:oracle:thin:@//localhost:1521/orcl

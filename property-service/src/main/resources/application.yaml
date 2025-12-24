@@ -3,7 +3,7 @@ server:
 
 spring:
   application:
-    name: property-service
+    name: HRA-property-service
 
   kafka:
     bootstrap-servers: localhost:9093
