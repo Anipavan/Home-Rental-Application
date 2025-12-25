@@ -1,12 +1,16 @@
 package com.spa.home_rental_application.user_service.user_service.controller;
 
+import com.spa.home_rental_application.user_service.user_service.DTO.OwnerRequestDto;
+import com.spa.home_rental_application.user_service.user_service.DTO.OwnerResponseDto;
+import com.spa.home_rental_application.user_service.user_service.DTO.UserResponseDto;
 import com.spa.home_rental_application.user_service.user_service.Entities.Owners;
 import com.spa.home_rental_application.user_service.user_service.Entities.User;
 import com.spa.home_rental_application.user_service.user_service.service.OwnerService;
-import com.spa.home_rental_application.user_service.user_service.service.UserService;
+import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -16,31 +20,35 @@ import java.util.List;
 @Slf4j
 public class OwnerController {
 
-    @Autowired
-    OwnerService ownerService;
+    private final OwnerService ownerService;
+    public  OwnerController(OwnerService ownerService){
+        this.ownerService=ownerService;
+    }
 
     @PostMapping(value = "/owners", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
-    public Owners createOwner(@RequestBody Owners owner) {
-        log.info("Request recieved for creating owner.{}",owner);
-        return ownerService.createOwner(owner);
+    public ResponseEntity<OwnerResponseDto>  createOwner(@Valid  @RequestBody OwnerRequestDto ownerRequest) {
+        log.info("Request recieved for creating owner.{}",ownerRequest);
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(ownerService.createOwner(ownerRequest));
     }
 
     @GetMapping("/owners")
-    public List<Owners> getAllOwners(){
+    public List<OwnerResponseDto> getAllOwners(){
         return ownerService.getAllOwners();
     }
     @GetMapping("/owners/{ownerId}")
-    public Owners getOwnerById(@PathVariable String ownerId){
-        return ownerService.getOwnerById(ownerId);
+    public ResponseEntity<OwnerResponseDto> getOwnerById(@PathVariable String ownerId){
+        return ResponseEntity.status(HttpStatus.FOUND).body(ownerService.getOwnerById(ownerId));
     }
     @GetMapping("/owners/{ownerId}/tenants")
-    public List<User> getTenentsByOwnerId(@PathVariable String ownerId){
-        return ownerService.getTenentsByOwnerId(ownerId);
+    public ResponseEntity<List<UserResponseDto>> getTenentsByOwnerId(@PathVariable String ownerId){
+        return ResponseEntity.ok().body(ownerService.getTenentsByOwnerId(ownerId));
     }
 
     @PutMapping("/owners/{ownerId}")
-    public Owners updateOwner(@PathVariable String ownerId,Owners owner)
+    public ResponseEntity<OwnerResponseDto> updateOwner(@PathVariable String ownerId,@Valid @RequestBody OwnerRequestDto ownerRequest)
     {
-        return ownerService.updateOwner(ownerId,owner);
+        return ResponseEntity.ok().body(ownerService.updateOwner(ownerId,ownerRequest));
     }
+
 }
