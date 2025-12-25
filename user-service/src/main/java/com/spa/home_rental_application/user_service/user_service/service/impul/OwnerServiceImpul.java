@@ -26,7 +26,7 @@ public class OwnerServiceImpul implements OwnerService {
 
         Owners owner= OwnerMapper.toEntity(ownerRequest);
         owner.setCreatedAt(LocalDateTime.now());
-        owner.setUpdated_at(LocalDateTime.now());
+        owner.setUpdatedAt(LocalDateTime.now());
         return OwnerMapper.toDto(ownerRepo.save(owner));
     }
 
@@ -64,7 +64,7 @@ public class OwnerServiceImpul implements OwnerService {
         if (owner.getTotalProperties() != null) {
             foundOwner.setTotalProperties(owner.getTotalProperties());
         }
-        foundOwner.setUpdated_at(LocalDateTime.now());
+        foundOwner.setUpdatedAt(LocalDateTime.now());
         return OwnerMapper.toDto(ownerRepo.save(foundOwner));
     }
 

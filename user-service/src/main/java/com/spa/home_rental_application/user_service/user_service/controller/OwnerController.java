@@ -3,8 +3,6 @@ package com.spa.home_rental_application.user_service.user_service.controller;
 import com.spa.home_rental_application.user_service.user_service.DTO.OwnerRequestDto;
 import com.spa.home_rental_application.user_service.user_service.DTO.OwnerResponseDto;
 import com.spa.home_rental_application.user_service.user_service.DTO.UserResponseDto;
-import com.spa.home_rental_application.user_service.user_service.Entities.Owners;
-import com.spa.home_rental_application.user_service.user_service.Entities.User;
 import com.spa.home_rental_application.user_service.user_service.service.OwnerService;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
@@ -38,7 +36,7 @@ public class OwnerController {
     }
     @GetMapping("/owners/{ownerId}")
     public ResponseEntity<OwnerResponseDto> getOwnerById(@PathVariable String ownerId){
-        return ResponseEntity.status(HttpStatus.FOUND).body(ownerService.getOwnerById(ownerId));
+        return ResponseEntity.ok().body(ownerService.getOwnerById(ownerId));
     }
     @GetMapping("/owners/{ownerId}/tenants")
     public ResponseEntity<List<UserResponseDto>> getTenentsByOwnerId(@PathVariable String ownerId){

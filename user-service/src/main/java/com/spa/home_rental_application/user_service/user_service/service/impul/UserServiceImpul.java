@@ -47,7 +47,11 @@ public class UserServiceImpul implements UserService {
 
     @Override
     public UserResponseDto getUserByEmail(String email) {
-        return UserMapper.toDto(userRepo.findByEmail(email));
+        User user = userRepo.findByEmail(email);
+        if (user == null) {
+            throw new RecordNotFound("User with the given email is not present: " + email);
+        }
+        return UserMapper.toDto(user);
     }
 
     @Override

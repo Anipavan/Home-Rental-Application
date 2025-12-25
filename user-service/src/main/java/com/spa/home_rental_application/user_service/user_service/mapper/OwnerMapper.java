@@ -21,7 +21,7 @@ public class OwnerMapper {
                 owner.getIfscCode(),
                 owner.getTotalProperties(),
                 owner.getCreatedAt(),
-                owner.getUpdated_at()
+                owner.getUpdatedAt()
         );
     }
 

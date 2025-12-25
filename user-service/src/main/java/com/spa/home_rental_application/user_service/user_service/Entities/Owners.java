@@ -39,8 +39,8 @@ public class Owners {
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
-    @Column(name = "updated_at", nullable = false, updatable = false)
-    private LocalDateTime updated_at;
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
 
     @Override
     public String toString() {
@@ -54,7 +54,7 @@ public class Owners {
                 ", ifscCode='" + ifscCode + '\'' +
                 ", totalProperties=" + totalProperties +
                 ", createdAt=" + createdAt +
-                ", updated_at=" + updated_at +
+                ", updated_at=" + updatedAt +
                 '}';
     }
 }

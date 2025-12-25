@@ -36,7 +36,7 @@ public class UserController {
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
-    @GetMapping("/users")
+    @GetMapping("")
     public ResponseEntity<List<UserResponseDto>> getAllUsers(){
         return ResponseEntity.ok().body( userService.getAllUsers());
     }
@@ -44,13 +44,13 @@ public class UserController {
     @GetMapping("/user/{userId}")
     public  ResponseEntity<UserResponseDto>  getUserById(@PathVariable String userId)
     {
-        return ResponseEntity.status(HttpStatus.FOUND).body(userService.getUserById(userId));
+        return ResponseEntity.ok().body(userService.getUserById(userId));
     }
 
     @GetMapping("/email/{email}")
     public   ResponseEntity<UserResponseDto> getUserByEmail(@PathVariable String email)
     {
-        return ResponseEntity.status(HttpStatus.FOUND).body(userService.getUserByEmail(email));
+        return ResponseEntity.ok().body(userService.getUserByEmail(email));
     }
 
     @DeleteMapping("/{id}")

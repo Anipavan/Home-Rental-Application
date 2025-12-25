@@ -10,13 +10,14 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-@ControllerAdvice
+@RestControllerAdvice
 public class HandleException {
 
     @ExceptionHandler(RecordNotFound.class)
@@ -26,7 +27,7 @@ public class HandleException {
                 .message(ex.getMessage())
                 .errorCode(ex.getErrorCode())
                 .build();
-        return  new ResponseEntity<>(error, HttpStatus.IM_USED);
+        return  new ResponseEntity<>(error, HttpStatus.NOT_FOUND);
 
     }
     @ExceptionHandler(MethodArgumentNotValidException.class)
