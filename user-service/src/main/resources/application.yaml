@@ -1,9 +1,9 @@
 server:
-  port: 8089   # or any free port
+  port: 8089
 
 spring:
   application:
-    name: user-service
+    name: HRA-user-service
 
   datasource:
     url: jdbc:oracle:thin:@//localhost:1521/orcl
@@ -13,14 +13,17 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update       # or validate/create/update as you prefer
+      ddl-auto: update
     show-sql: true
     properties:
       hibernate:
         dialect: org.hibernate.dialect.OracleDialect
 
 eureka:
+  instance:
+    prefer-ip-address: true
   client:
-    enabled: false
-    register-with-eureka: false
-    fetch-registry: false
+    register-with-eureka: true
+    fetch-registry: true
+    service-url:
+      default-zone: http://localhost:8761/eureka

@@ -184,33 +184,33 @@ property_images (
 
 **Building Management:**
 ```
-GET    /api/properties/buildings              - Get all buildings
-GET    /api/properties/buildings/{id}         - Get building by ID
-POST   /api/properties/buildings              - Create new building
-PUT    /api/properties/buildings/{id}         - Update building
-DELETE /api/properties/buildings/{id}         - Delete building
+GET    /api/properties/buildings              - Get all buildings - done
+GET    /api/properties/buildings/{id}         - Get building by ID - done
+POST   /api/properties/buildings              - Create new building - done
+PUT    /api/properties/buildings/{id}         - Update building -done
+DELETE /api/properties/buildings/{id}         - Delete building - done
 GET    /api/properties/buildings/owner/{id}   - Get buildings by owner
 ```
 
 **Flat Management:**
 ```
-GET    /api/properties/flats                  - Get all flats
-GET    /api/properties/flats/{id}             - Get flat by ID
-POST   /api/properties/flats                  - Create new flat
-PUT    /api/properties/flats/{id}             - Update flat
-DELETE /api/properties/flats/{id}             - Delete flat
-GET    /api/properties/flats/building/{id}    - Get flats by building
-GET    /api/properties/flats/vacant           - Get all vacant flats
+GET    /api/properties/flats                  - Get all flats - done
+GET    /api/properties/flats/{id}             - Get flat by ID - done
+POST   /api/properties/flats                  - Create new flat - done
+PUT    /api/properties/flats/{id}             - Update flat - done
+DELETE /api/properties/flats/{id}             - Delete flat - done
+GET    /api/properties/flats/building/{id}    - Get flats by building -done
+GET    /api/properties/flats/vacant           - Get all vacant flats -  done
 POST   /api/properties/flats/{id}/assign      - Assign tenant to flat
-POST   /api/properties/flats/{id}/vacate      - Mark flat as vacant
+POST   /api/properties/flats/{id}/vacate      - Mark flat as vacant - done
 ```
 
 #### **Kafka Events Published:**
 ```
-- property.created (propertyId, ownerId, timestamp)
-- property.updated (propertyId, changes, timestamp)
+- property.created (propertyId, ownerId, timestamp) -  done
+- property.updated (propertyId, changes, timestamp) - done
 - flat.occupied (flatId, tenantId, rentAmount, startDate)
-- flat.vacated (flatId, tenantId, endDate)
+- flat.vacated (flatId, tenantId, endDate) - done
 ```
 
 #### **Kafka Events Consumed:**
@@ -258,22 +258,22 @@ emergency_contacts (
 
 **User Management:**
 ```
-GET    /api/users                    - Get all users
-GET    /api/users/{id}               - Get user by ID
-POST   /api/users                    - Create new user
-PUT    /api/users/{id}               - Update user
-DELETE /api/users/{id}               - Delete user
-GET    /api/users/email/{email}      - Get user by email
+GET    /api/users                    - Get all users - done
+GET    /api/users/{id}               - Get user by ID - done
+POST   /api/users                    - Create new user - done
+PUT    /api/users/{id}               - Update user - done
+DELETE /api/users/{id}               - Delete user - done
+GET    /api/users/email/{email}      - Get user by email - done
 GET    /api/users/role/{role}        - Get users by role (TENANT/OWNER)
 ```
 
 **Owner Management:**
 ```
-GET    /api/users/owners             - Get all owners
-GET    /api/users/owners/{id}        - Get owner by ID
-POST   /api/users/owners             - Create owner profile
-PUT    /api/users/owners/{id}        - Update owner
-GET    /api/users/owners/{id}/tenants - Get all tenants for an owner
+GET    /api/users/owners             - Get all owners - done
+GET    /api/users/owners/{id}        - Get owner by ID - done
+POST   /api/users/owners             - Create owner profile - done
+PUT    /api/users/owners/{id}        - Update owner -  done
+GET    /api/users/owners/{id}/tenants - Get all tenants for an owner - done
 ```
 
 #### **Kafka Events Published:**
