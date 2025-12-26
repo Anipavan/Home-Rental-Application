@@ -1,10 +1,15 @@
 package com.spa.home_rental_application.user_service.user_service.service.impul;
 
+import com.spa.home_rental_application.user_service.user_service.DTO.EmergencyContactRequestDto;
+import com.spa.home_rental_application.user_service.user_service.DTO.EmergencyContactResponseDto;
 import com.spa.home_rental_application.user_service.user_service.DTO.UserRequestDto;
 import com.spa.home_rental_application.user_service.user_service.DTO.UserResponseDto;
+import com.spa.home_rental_application.user_service.user_service.Entities.EmergencyContacts;
 import com.spa.home_rental_application.user_service.user_service.Entities.User;
 import com.spa.home_rental_application.user_service.user_service.Exceptionclass.RecordNotFound;
+import com.spa.home_rental_application.user_service.user_service.mapper.EmergencyContactMapper;
 import com.spa.home_rental_application.user_service.user_service.mapper.UserMapper;
+import com.spa.home_rental_application.user_service.user_service.repositry.EmergencyContactRepo;
 import com.spa.home_rental_application.user_service.user_service.repositry.UserRepo;
 import com.spa.home_rental_application.user_service.user_service.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,8 +22,13 @@ import java.util.stream.Collectors;
 
 @Service
 public class UserServiceImpul implements UserService {
-    @Autowired
-    UserRepo userRepo;
+    private final UserRepo userRepo;
+    private final EmergencyContactRepo econtactRepo;
+    public  UserServiceImpul(UserRepo userRepo, EmergencyContactRepo econtactRepo){
+        this.userRepo=userRepo;
+        this.econtactRepo=econtactRepo;
+    }
+
     @Override
     public UserResponseDto createUser(UserRequestDto userRequest) {
         User user = UserMapper.toEntity(userRequest);
@@ -105,5 +115,24 @@ public class UserServiceImpul implements UserService {
         user.setUpdatedAt(LocalDateTime.now());
         User userSaved = userRepo.save(user);
         return UserMapper.toDto(userSaved);
+    }
+
+    @Override
+    public EmergencyContactResponseDto saveContact(EmergencyContactRequestDto emergencyContactsRequest) {
+
+        EmergencyContacts contact= EmergencyContactMapper.toEntity(emergencyContactsRequest);
+        contact.setCreatedAt(LocalDateTime.now());
+        contact.setUpdatedAt(LocalDateTime.now());
+        return  EmergencyContactMapper.toDto(econtactRepo.save(contact));
+    }
+
+    @Override
+    public EmergencyContactResponseDto getContactByUserId(String userId) {
+        EmergencyContacts contact=econtactRepo.findByUserId(userId);
+        if(contact==null)
+        {
+            throw new RecordNotFound("Contact with given userId is not prest : "+userId);
+        }
+        return EmergencyContactMapper.toDto(contact);
     }
 }
