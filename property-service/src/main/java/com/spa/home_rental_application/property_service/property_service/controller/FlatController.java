@@ -64,4 +64,10 @@ public class FlatController {
     public Flat updateFlat(String flatId,Flat flat){
         return flatService.updateFlat(flatId,flat);
     }
+
+    @PostMapping("/flats/{id}/assign")
+    public ResponseEntity<Flat> assignFlat(@PathVariable("id") String userId){
+        Flat flatDetails=flatService.assignFlat(userId);
+        return  ResponseEntity.ok().body(flatDetails);
+    }
 }

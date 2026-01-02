@@ -54,7 +54,7 @@ public class BuildingsController {
     }
 
     @PutMapping("/buildings/{id}/building")
-    public Building updateBuilding(@PathVariable String buildId,Building building){
+    public Building updateBuilding(@PathVariable("id") String buildId,@RequestBody Building building){
         return  building_service.updateBuilding(buildId,building);
     }
 }

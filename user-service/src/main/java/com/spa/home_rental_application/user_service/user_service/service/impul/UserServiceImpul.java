@@ -12,6 +12,9 @@ import com.spa.home_rental_application.user_service.user_service.mapper.UserMapp
 import com.spa.home_rental_application.user_service.user_service.repositry.EmergencyContactRepo;
 import com.spa.home_rental_application.user_service.user_service.repositry.UserRepo;
 import com.spa.home_rental_application.user_service.user_service.service.UserService;
+import com.spa.home_rental_application.user_service.user_service.utils.events.UserProfileCreatedEvent;
+import com.spa.home_rental_application.user_service.user_service.utils.events.UserProfileUpdatedEvent;
+import com.spa.home_rental_application.user_service.user_service.utils.userEventProducer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -24,9 +27,11 @@ import java.util.stream.Collectors;
 public class UserServiceImpul implements UserService {
     private final UserRepo userRepo;
     private final EmergencyContactRepo econtactRepo;
-    public  UserServiceImpul(UserRepo userRepo, EmergencyContactRepo econtactRepo){
+    private final userEventProducer eventProducer;
+    public  UserServiceImpul(UserRepo userRepo, EmergencyContactRepo econtactRepo, userEventProducer eventProducer){
         this.userRepo=userRepo;
         this.econtactRepo=econtactRepo;
+        this.eventProducer=eventProducer;
     }
 
     @Override
@@ -35,6 +40,13 @@ public class UserServiceImpul implements UserService {
         user.setCreatedAt(LocalDateTime.now());
         user.setUpdatedAt(LocalDateTime.now());
         User saved = userRepo.save(user);
+        eventProducer.sendUserProfileCreated(UserProfileCreatedEvent.builder().eventType("User-Profile-Created")
+
+                .role("user")
+                .userId(saved.getId())
+                .timestamp(Instant.from(saved.getCreatedAt()))
+                .build()
+        );
         return UserMapper.toDto(saved);
     }
 
@@ -114,6 +126,13 @@ public class UserServiceImpul implements UserService {
 
         user.setUpdatedAt(LocalDateTime.now());
         User userSaved = userRepo.save(user);
+
+        eventProducer.sendUserProfileUpdated(UserProfileUpdatedEvent.builder()
+                        .changes("changed user profile")
+                        .userId(userSaved.getId())
+                        .eventType("User-Updated-Event")
+                        .timestamp(Instant.from(userSaved.getUpdatedAt()))
+                .build());
         return UserMapper.toDto(userSaved);
     }
 

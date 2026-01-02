@@ -1,13 +1,16 @@
 package com.spa.home_rental_application.property_service.property_service.service.impl;
 
+/*import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyCreatedEvent;
+import com.spa.home_rental_application.KafkaEvents.Producers.PropertyEvent;
+import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyUpdatedEvent;*/
+import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyCreatedEvent;
+import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyUpdatedEvent;
+import com.spa.home_rental_application.KafkaEvents.Producers.PropertyEvent;
 import com.spa.home_rental_application.property_service.property_service.Entities.Building;
 import com.spa.home_rental_application.property_service.property_service.ExceptionClass.BuildingHasFlatsException;
 import com.spa.home_rental_application.property_service.property_service.ExceptionClass.RecordNotFoundException;
 import com.spa.home_rental_application.property_service.property_service.repository.BuildingRepo;
 import com.spa.home_rental_application.property_service.property_service.service.BuildingService;
-import com.spa.home_rental_application.property_service.property_service.utils.PropertyEventProducer;
-import com.spa.home_rental_application.property_service.property_service.utils.kafkaEvents.PropertyCreatedEvent;
-import com.spa.home_rental_application.property_service.property_service.utils.kafkaEvents.PropertyUpdatedEvent;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -21,11 +24,12 @@ import java.util.UUID;
 @Slf4j
 public class BuildingImpul implements BuildingService {
     private final BuildingRepo building_repo;
-    private final PropertyEventProducer eventProducer;
+    private final PropertyEvent eventProducer;
 
-    public BuildingImpul(BuildingRepo building_repo, PropertyEventProducer eventProducer) {
+    public BuildingImpul(BuildingRepo building_repo,PropertyEvent event) {
+
         this.building_repo = building_repo;
-        this.eventProducer = eventProducer;
+        this.eventProducer=event;
     }
     @Override
     public List<Building> getBuildings() {

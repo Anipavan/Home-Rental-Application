@@ -62,7 +62,7 @@ public class Flat {
     @Override
     public String toString() {
         return "Flat{" +
-                "id=" + id +
+                "flatId=" + id +
                 ", buildingId='" + buildingId + '\'' +
                 ", flatNumber='" + flatNumber + '\'' +
                 ", floor=" + floor +

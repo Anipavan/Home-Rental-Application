@@ -13,5 +13,6 @@ public interface FlatService {
     List<Flat>getflatsByBuildingId(String buildId);
     List<Flat>getAllVacentFlats();
     String makeFlatVacate(String flatId);
-    Flat updateFlat(String flstId,Flat flat);
+    Flat updateFlat(String flatId,Flat flat);
+    Flat assignFlat(String flstId);
 }

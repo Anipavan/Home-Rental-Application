@@ -4,8 +4,6 @@ import com.spa.home_rental_application.property_service.property_service.Entitie
 import com.spa.home_rental_application.property_service.property_service.ExceptionClass.RecordNotFoundException;
 import com.spa.home_rental_application.property_service.property_service.repository.FlatRepo;
 import com.spa.home_rental_application.property_service.property_service.service.FlatService;
-import com.spa.home_rental_application.property_service.property_service.utils.PropertyEventProducer;
-import com.spa.home_rental_application.property_service.property_service.utils.kafkaEvents.FlatVacatedEvent;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -13,16 +11,15 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
+
 @Service
 @Slf4j
 public class FlatServiceImpul implements FlatService {
     private final FlatRepo flatRepo;
-    private final PropertyEventProducer eventProducer;
 
-    public FlatServiceImpul(FlatRepo flatRepo,
-                            PropertyEventProducer eventProducer) {
+    public FlatServiceImpul(FlatRepo flatRepo){
         this.flatRepo = flatRepo;
-        this.eventProducer = eventProducer;
     }
 
     @Override
@@ -87,26 +84,14 @@ public class FlatServiceImpul implements FlatService {
                         "Flat with the requested Id is not found." + flatId));
 
         int result = flatRepo.markFlatVacant(flatId);
-        if (result == 1) {
-            eventProducer.sendFlatVacated(
-                    FlatVacatedEvent.builder()
-                            .eventType("flat.vacated")
-                            .flatId(flatId)
-                            .tenantId(flat.getTenantId())
-                            .endDate(flat.getLeaseEndDate() != null ? flat.getLeaseEndDate().toString() : null)
-                            .timestamp(Instant.now())
-                            .build()
-            );
-            return "Flat vacent";
-        }
         return "Could not update the flat to vacent";
     }
 
     @Override
-    public Flat updateFlat(String flstId, Flat flat) {
+    public Flat updateFlat(String flatId, Flat flat) {
 
-        Flat flatFound=flatRepo.findById(flstId).orElseThrow(
-                ()->new RecordNotFoundException("Flat with given Id is not present:"+flstId));
+        Flat flatFound=flatRepo.findById(flatId).orElseThrow(
+                ()->new RecordNotFoundException("Flat with given Id is not present:"+flatId));
         flatFound.setBuildingId(flat.getBuildingId());
         flatFound.setFlatNumber(flat.getFlatNumber());
         flatFound.setBathrooms(flat.getBathrooms());
@@ -121,4 +106,19 @@ public class FlatServiceImpul implements FlatService {
         flatFound.setUpdatedAt(LocalDateTime.now());
         return flatRepo.save(flatFound);
     }
+
+    @Override
+    public Flat assignFlat(String userId) {
+        Flat vacantFlat = getAllVacentFlats().stream()
+                .findFirst()
+                .orElse(null);
+
+        if (vacantFlat == null) {
+            return null;
+        }
+
+        vacantFlat.setTenantId(userId);
+        return flatRepo.save(vacantFlat);
+    }
+
 }

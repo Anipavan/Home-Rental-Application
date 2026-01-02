@@ -201,7 +201,7 @@ PUT    /api/properties/flats/{id}             - Update flat - done
 DELETE /api/properties/flats/{id}             - Delete flat - done
 GET    /api/properties/flats/building/{id}    - Get flats by building -done
 GET    /api/properties/flats/vacant           - Get all vacant flats -  done
-POST   /api/properties/flats/{id}/assign      - Assign tenant to flat
+POST   /api/properties/flats/{id}/assign      - Assign tenant to flat - done
 POST   /api/properties/flats/{id}/vacate      - Mark flat as vacant - done
 ```
 
@@ -210,7 +210,7 @@ POST   /api/properties/flats/{id}/vacate      - Mark flat as vacant - done
 - property.created (propertyId, ownerId, timestamp) -  done
 - property.updated (propertyId, changes, timestamp) - done
 - flat.occupied (flatId, tenantId, rentAmount, startDate)
-- flat.vacated (flatId, tenantId, endDate) - done
+- flat.vacated (flatId, tenantId, endDate) 
 ```
 
 #### **Kafka Events Consumed:**
@@ -278,9 +278,9 @@ GET    /api/users/owners/{id}/tenants - Get all tenants for an owner - done
 
 #### **Kafka Events Published:**
 ```
-- user.profile.created (userId, role, timestamp)
-- user.profile.updated (userId, changes, timestamp)
-- owner.registered (ownerId, businessName, timestamp)
+- user.profile.created (userId, role, timestamp) -  done
+- user.profile.updated (userId, changes, timestamp) -  done
+- owner.registered (ownerId, businessName, timestamp) 
 ```
 
 #### **Kafka Events Consumed:**
