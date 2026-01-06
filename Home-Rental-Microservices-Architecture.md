@@ -430,15 +430,15 @@ maintenance_requests {
 
 **Request Management:**
 ```
-GET    /api/maintenance/requests                     - Get all requests
-GET    /api/maintenance/requests/{id}                - Get request by ID
-POST   /api/maintenance/requests                     - Create new request
-PUT    /api/maintenance/requests/{id}                - Update request
-DELETE /api/maintenance/requests/{id}                - Delete request
+GET    /api/maintenance/requests                     - Get all requests - done
+GET    /api/maintenance/requests/{id}                - Get request by ID - done
+POST   /api/maintenance/requests                     - Create new request - done
+PUT    /api/maintenance/requests/{id}                - Update request - done
+DELETE /api/maintenance/requests/{id}                - Delete request - done
 GET    /api/maintenance/requests/tenant/{id}         - Get tenant's requests
 GET    /api/maintenance/requests/owner/{id}          - Get owner's requests
-GET    /api/maintenance/requests/status/{status}     - Get by status
-GET    /api/maintenance/requests/priority/{priority} - Get by priority
+GET    /api/maintenance/requests/status/{status}     - Get by status - done
+GET    /api/maintenance/requests/priority/{priority} - Get by priority - done
 ```
 
 **Request Actions:**
@@ -452,9 +452,9 @@ GET    /api/maintenance/requests/{id}/history     - Get update history
 
 **Analytics:**
 ```
-GET    /api/maintenance/stats/category            - Requests by category
+GET    /api/maintenance/stats/category            - Requests by category -  done
 GET    /api/maintenance/stats/resolution-time     - Avg resolution time
-GET    /api/maintenance/stats/pending             - Pending requests count
+GET    /api/maintenance/stats/pending             - Pending requests count - done
 ```
 
 #### **Kafka Events Published:**
