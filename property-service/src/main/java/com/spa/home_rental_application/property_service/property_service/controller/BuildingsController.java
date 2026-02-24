@@ -1,13 +1,19 @@
 package com.spa.home_rental_application.property_service.property_service.controller;
 
+import com.spa.home_rental_application.property_service.property_service.DTO.Request.BuildingRequestDTO;
+import com.spa.home_rental_application.property_service.property_service.DTO.Response.BuildingResponseDTO;
 import com.spa.home_rental_application.property_service.property_service.Entities.Building;
 import com.spa.home_rental_application.property_service.property_service.service.BuildingService;
+import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 
 @RestController @RequestMapping(value = "/properties", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -23,38 +29,38 @@ public class BuildingsController {
     }
 
     @GetMapping("/buildings")
-    public List<Building> getAllBuildings() {
+    public ResponseEntity<List<BuildingResponseDTO> >getAllBuildings() {
         log.info("Request received to fetch all Buildings");
-        return building_service.getBuildings();
+        return ResponseEntity.ok().body(building_service.getBuildings());
     }
 
     @PostMapping(
             value = "/buildings/create/building",
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
-    public Building createBuilding(@RequestBody Building building) {
-        log.info("Request received for creating building.{}",building);
-        return building_service.createBuilding(building);
+    public ResponseEntity<BuildingResponseDTO>  createBuilding(@RequestBody @Valid BuildingRequestDTO buildingRequestDTO) {
+        log.info("Request received for creating building.{}",buildingRequestDTO);
+       return ResponseEntity.status(HttpStatus.CREATED).body(building_service.createBuilding(buildingRequestDTO));
     }
 
     @GetMapping("/buildings/{buildId}")
-    public Building getBuildingById(@PathVariable String buildId) {
+    public ResponseEntity<BuildingResponseDTO >getBuildingById(@PathVariable String buildId) {
         log.info("Request received to fetch building by ID : {}",buildId);
-        return building_service.getBuildingById(buildId);
+        return ResponseEntity.ok().body( building_service.getBuildingById(buildId));
     }
     @GetMapping("/buildings/owner/{ownerId}")
-    public List<Building> getBuildingsByOwnerId(@PathVariable String ownerId) {
-        return building_service.getBuildingsByOwnerId(ownerId);
+    public ResponseEntity<List<BuildingResponseDTO>> getBuildingsByOwnerId(@PathVariable String ownerId) {
+        return ResponseEntity.ok().body(building_service.getBuildingsByOwnerId(ownerId));
     }
 
     @DeleteMapping("/buildings/{buildId}")
-    public ResponseEntity<String> deleteBuilding(@PathVariable String buildId) {
-        String message = building_service.deleteBuildingById(buildId);
-        return ResponseEntity.ok(message);
+    public ResponseEntity<BuildingResponseDTO> deleteBuilding(@PathVariable String buildId) {
+
+        return ResponseEntity.ok().body(building_service.deleteBuildingById(buildId));
     }
 
     @PutMapping("/buildings/{id}/building")
-    public Building updateBuilding(@PathVariable String buildId,Building building){
-        return  building_service.updateBuilding(buildId,building);
+    public ResponseEntity< BuildingResponseDTO > updateBuilding(@PathVariable("id") String buildId,@RequestBody @Valid BuildingRequestDTO buildingRequestDTO){
+        return   ResponseEntity.ok().body(building_service.updateBuilding(buildId,buildingRequestDTO));
     }
 }

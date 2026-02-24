@@ -1,17 +1,19 @@
 package com.spa.home_rental_application.property_service.property_service.service;
 
+import com.spa.home_rental_application.property_service.property_service.DTO.Request.FlatRequestDTO;
+import com.spa.home_rental_application.property_service.property_service.DTO.Response.FlatResponseDTO;
 import com.spa.home_rental_application.property_service.property_service.Entities.Flat;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 
 public interface FlatService {
-    List<Flat>getAllFlats();
-    Flat getflatById(String flatId);
-    Flat createFlat(Flat flat);
+    List<FlatResponseDTO>getAllFlats();
+    FlatResponseDTO getflatById(String flatId);
+    FlatResponseDTO createFlat(FlatRequestDTO flatRequestDTO);
     String deleteFlatById(String flatId);
-    List<Flat>getflatsByBuildingId(String buildId);
-    List<Flat>getAllVacentFlats();
-    String makeFlatVacate(String flatId);
-    Flat updateFlat(String flstId,Flat flat);
+    List<FlatResponseDTO>getflatsByBuildingId(String buildId);
+    List<FlatResponseDTO>getAllVacentFlats();
+    FlatResponseDTO makeFlatVacate(String flatId);
+    FlatResponseDTO updateFlat(String flstId,FlatRequestDTO flatRequestDTO);
 }

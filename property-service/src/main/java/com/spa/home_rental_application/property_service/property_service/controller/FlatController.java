@@ -1,8 +1,11 @@
 package com.spa.home_rental_application.property_service.property_service.controller;
 
+import com.spa.home_rental_application.property_service.property_service.DTO.Request.FlatRequestDTO;
+import com.spa.home_rental_application.property_service.property_service.DTO.Response.FlatResponseDTO;
 import com.spa.home_rental_application.property_service.property_service.Entities.Building;
 import com.spa.home_rental_application.property_service.property_service.Entities.Flat;
 import com.spa.home_rental_application.property_service.property_service.service.FlatService;
+import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -18,23 +21,24 @@ public class FlatController {
     @Autowired
     FlatService flatService;
     @GetMapping("/flats")
-    public List<Flat> getAllFlats() {
+    public ResponseEntity<List<FlatResponseDTO>> getAllFlats() {
 
-        return flatService.getAllFlats();
+        return ResponseEntity.ok().body(flatService.getAllFlats());
     }
 
     @GetMapping("/flats/{flatId}")
-    public Flat getflatById(@PathVariable String flatId) {
+    public ResponseEntity<FlatResponseDTO> getflatById(@PathVariable String flatId) {
 
-        return flatService.getflatById(flatId);
+        return ResponseEntity.ok().body(flatService.getflatById(flatId));
     }
     @PostMapping(
             value = "/flats/create/flat",
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
-    public Flat createFlat(@RequestBody Flat flat) {
-        log.info("Request recieved for creating flat.{}",flat);
-        return flatService.createFlat(flat);
+    public  ResponseEntity<FlatResponseDTO> createFlat(@RequestBody @Valid FlatRequestDTO flatRequestDTO) {
+
+        log.info("Request recieved for creating flat.{}",flatRequestDTO);
+        return ResponseEntity.ok().body(flatService.createFlat(flatRequestDTO));
     }
 
     @DeleteMapping("/flats/{flatId}")
@@ -44,24 +48,24 @@ public class FlatController {
     }
 
     @GetMapping("/flats/building/{buildId}")
-    public List<Flat> getflatsByBuildingId(@PathVariable String buildId){
-       List<Flat> flats= flatService.getflatsByBuildingId(buildId);
-       return flats;
+    public ResponseEntity<List<FlatResponseDTO>> getflatsByBuildingId(@PathVariable String buildId){
+       return ResponseEntity.ok().body( flatService.getflatsByBuildingId(buildId));
+
     }
 
     @GetMapping("/flats/vacant")
-    public List<Flat> getVacentFlats(){
+    public ResponseEntity<List<FlatResponseDTO> >getVacentFlats(){
 
-        return flatService.getAllVacentFlats();
+        return ResponseEntity.ok().body(flatService.getAllVacentFlats());
     }
     @PostMapping("/flats/{id}/vacate")
-    public ResponseEntity<String> makeFlatVacate(@PathVariable String flatId){
-        String message=flatService.makeFlatVacate(flatId);
-        return  ResponseEntity.ok(message);
+    public ResponseEntity<FlatResponseDTO> makeFlatVacate(@PathVariable String flatId){
+
+        return  ResponseEntity.ok().body(flatService.makeFlatVacate(flatId));
     }
 
     @PutMapping("/flats/{id}/flat")
-    public Flat updateFlat(String flatId,Flat flat){
-        return flatService.updateFlat(flatId,flat);
+    public ResponseEntity<FlatResponseDTO> updateFlat(String flatId,@RequestBody @Valid FlatRequestDTO flatRequestDTO){
+        return ResponseEntity.ok().body(flatService.updateFlat(flatId,flatRequestDTO));
     }
 }

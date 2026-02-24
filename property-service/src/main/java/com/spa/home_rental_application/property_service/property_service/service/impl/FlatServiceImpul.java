@@ -1,5 +1,8 @@
 package com.spa.home_rental_application.property_service.property_service.service.impl;
 
+import com.spa.home_rental_application.property_service.property_service.DTO.FlatMapper;
+import com.spa.home_rental_application.property_service.property_service.DTO.Request.FlatRequestDTO;
+import com.spa.home_rental_application.property_service.property_service.DTO.Response.FlatResponseDTO;
 import com.spa.home_rental_application.property_service.property_service.Entities.Flat;
 import com.spa.home_rental_application.property_service.property_service.ExceptionClass.RecordNotFoundException;
 import com.spa.home_rental_application.property_service.property_service.repository.FlatRepo;
@@ -13,35 +16,40 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
+
 @Service
 @Slf4j
 public class FlatServiceImpul implements FlatService {
     private final FlatRepo flatRepo;
     private final PropertyEventProducer eventProducer;
+    private final FlatMapper flatMapper;
 
     public FlatServiceImpul(FlatRepo flatRepo,
-                            PropertyEventProducer eventProducer) {
+                            PropertyEventProducer eventProducer, FlatMapper flatMapper) {
         this.flatRepo = flatRepo;
         this.eventProducer = eventProducer;
+        this.flatMapper=flatMapper;
     }
 
     @Override
-    public List<Flat> getAllFlats() {
+    public List<FlatResponseDTO> getAllFlats() {
         List<Flat> allFlats=flatRepo.findAll();
         if(allFlats!=null)
-            return allFlats;
+            return allFlats.stream().map(flat->flatMapper.toResponseDTO(flat)).collect(Collectors.toList());
         throw new RecordNotFoundException("No Records available");
     }
 
     @Override
-    public Flat getflatById(String flatId) {
+    public FlatResponseDTO getflatById(String flatId) {
         Flat flat= flatRepo.findById(flatId).orElseThrow(
                 ()-> new RecordNotFoundException("Flat with the requested Id is not found."+flatId));
-        return flat;
+        return flatMapper.toResponseDTO(flat);
     }
 
     @Override
-    public Flat createFlat(Flat flat) {
+    public FlatResponseDTO createFlat(FlatRequestDTO flatRequestDTO) {
+        Flat flat=flatMapper.toEntity(flatRequestDTO);
         if (flat.getId() == null || flat.getId().isBlank()) {
             String fid= String.valueOf(UUID.randomUUID());
             log.info("Flat Id is found null, hence setting up the id to ID: {}",fid);
@@ -53,7 +61,7 @@ public class FlatServiceImpul implements FlatService {
             flat.setCreatedAt(now);
         }
        flat.setUpdatedAt(now);
-        return flatRepo.save(flat);
+        return flatMapper.toResponseDTO(flatRepo.save(flat));
     }
 
     @Override
@@ -65,29 +73,33 @@ public class FlatServiceImpul implements FlatService {
     }
 
     @Override
-    public List<Flat> getflatsByBuildingId(String buildId) {
+    public List<FlatResponseDTO> getflatsByBuildingId(String buildId) {
         List<Flat> flats = flatRepo.findByBuildingId(buildId);
         if (flats.isEmpty()) {
             throw new RecordNotFoundException(
                     "No buildings found for building with id: " + buildId);
         }
-        return flats;
+        return flats.stream().map(flat->flatMapper.toResponseDTO(flat)).collect(Collectors.toList());
     }
 
     @Override
-    public List<Flat> getAllVacentFlats() {
+    public List<FlatResponseDTO> getAllVacentFlats() {
 
-        return flatRepo.findByIsOccupiedFalse();
+        return flatRepo.findByIsOccupiedFalse()
+                .stream().map(flat -> flatMapper.toResponseDTO(flat))
+                .collect(Collectors.toList());
     }
 
     @Override
-    public String makeFlatVacate(String flatId) {
+    public FlatResponseDTO makeFlatVacate(String flatId) {
         Flat flat = flatRepo.findById(flatId)
                 .orElseThrow(() -> new RecordNotFoundException(
                         "Flat with the requested Id is not found." + flatId));
 
         int result = flatRepo.markFlatVacant(flatId);
-        if (result == 1) {
+
+        if(result!=0)
+        {
             eventProducer.sendFlatVacated(
                     FlatVacatedEvent.builder()
                             .eventType("flat.vacated")
@@ -97,13 +109,15 @@ public class FlatServiceImpul implements FlatService {
                             .timestamp(Instant.now())
                             .build()
             );
-            return "Flat vacent";
+            return flatMapper.toResponseDTO(flat);
         }
-        return "Could not update the flat to vacent";
+          return flatMapper.toResponseDTO(flat);
     }
 
     @Override
-    public Flat updateFlat(String flstId, Flat flat) {
+    public FlatResponseDTO updateFlat(String flstId, FlatRequestDTO flatRequestDTO) {
+
+        Flat flat=flatMapper.toEntity(flatRequestDTO);
 
         Flat flatFound=flatRepo.findById(flstId).orElseThrow(
                 ()->new RecordNotFoundException("Flat with given Id is not present:"+flstId));
@@ -119,6 +133,6 @@ public class FlatServiceImpul implements FlatService {
         flatFound.setRentAmount(flat.getRentAmount());
         flatFound.setTenantId(flat.getTenantId());
         flatFound.setUpdatedAt(LocalDateTime.now());
-        return flatRepo.save(flatFound);
+        return flatMapper.toResponseDTO(flatRepo.save(flatFound));
     }
 }

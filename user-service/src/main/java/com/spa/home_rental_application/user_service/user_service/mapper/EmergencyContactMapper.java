@@ -1,7 +1,7 @@
 package com.spa.home_rental_application.user_service.user_service.mapper;
 
-import com.spa.home_rental_application.user_service.user_service.DTO.EmergencyContactRequestDto;
-import com.spa.home_rental_application.user_service.user_service.DTO.EmergencyContactResponseDto;
+import com.spa.home_rental_application.user_service.user_service.DTO.Request.EmergencyContactRequestDto;
+import com.spa.home_rental_application.user_service.user_service.DTO.Response.EmergencyContactResponseDto;
 import com.spa.home_rental_application.user_service.user_service.Entities.EmergencyContacts;
 
 public class EmergencyContactMapper {

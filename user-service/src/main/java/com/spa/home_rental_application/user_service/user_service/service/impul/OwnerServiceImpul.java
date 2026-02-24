@@ -1,8 +1,8 @@
 package com.spa.home_rental_application.user_service.user_service.service.impul;
 
-import com.spa.home_rental_application.user_service.user_service.DTO.OwnerRequestDto;
-import com.spa.home_rental_application.user_service.user_service.DTO.OwnerResponseDto;
-import com.spa.home_rental_application.user_service.user_service.DTO.UserResponseDto;
+import com.spa.home_rental_application.user_service.user_service.DTO.Request.OwnerRequestDto;
+import com.spa.home_rental_application.user_service.user_service.DTO.Response.OwnerResponseDto;
+import com.spa.home_rental_application.user_service.user_service.DTO.Response.UserResponseDto;
 import com.spa.home_rental_application.user_service.user_service.Entities.Owners;
 import com.spa.home_rental_application.user_service.user_service.Entities.User;
 import com.spa.home_rental_application.user_service.user_service.Exceptionclass.RecordNotFound;

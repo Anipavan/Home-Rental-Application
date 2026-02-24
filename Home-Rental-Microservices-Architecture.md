@@ -152,8 +152,8 @@ GET    /api/auth/validate          - Validate JWT token
 **Database:** PostgreSQL
 
 #### **What it does:**
-- Manage buildings (add, update, delete, view)
-- Manage flats/apartments within buildings
+- Manage buildings (add, update, delete, view) -  done
+- Manage flats/apartments within buildings -  done
 - Track occupancy status
 - Link properties to owners
 - Assign tenants to flats
@@ -930,3 +930,8 @@ CI/CD: Jenkins / GitHub Actions
 This is your complete blueprint for building a production-ready Home Rental Application with Microservices Architecture. Each service is independent, scalable, and follows best practices.
 
 Good luck with your implementation! 🚀
+
+
+AI intigration chatt:
+
+https://chatgpt.com/share/699bcb73-4bac-8007-828b-8a5c3bce8530
