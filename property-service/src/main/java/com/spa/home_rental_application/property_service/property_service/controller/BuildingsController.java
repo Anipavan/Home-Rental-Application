@@ -5,6 +5,9 @@ import com.spa.home_rental_application.property_service.property_service.DTO.Res
 import com.spa.home_rental_application.property_service.property_service.service.BuildingService;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -23,9 +26,10 @@ public class BuildingsController {
     }
 
     @GetMapping("/buildings")
-    public ResponseEntity<List<BuildingResponseDTO>> getAllBuildings() {
+    public ResponseEntity<Page<BuildingResponseDTO>> getAllBuildings(  @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "10") int size) {
         log.info("Request received to fetch all Buildings");
-        return ResponseEntity.ok().body(building_service.getBuildings());
+        Pageable pageable= PageRequest.of(page, size);
+        return ResponseEntity.ok().body(building_service.getBuildings(pageable));
     }
 
     @PostMapping(

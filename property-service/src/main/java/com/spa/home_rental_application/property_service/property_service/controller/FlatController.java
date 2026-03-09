@@ -8,6 +8,9 @@ import com.spa.home_rental_application.property_service.property_service.service
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -21,9 +24,11 @@ public class FlatController {
     @Autowired
     FlatService flatService;
     @GetMapping("/flats")
-    public ResponseEntity<List<FlatResponseDTO>> getAllFlats() {
+    public ResponseEntity<Page<FlatResponseDTO>> getAllFlats(@RequestParam(defaultValue = "0") int pagenum,@RequestParam(defaultValue = "10") int pagesize) {
 
-        return ResponseEntity.ok().body(flatService.getAllFlats());
+       Pageable pageable= PageRequest.of(pagenum,pagesize);
+
+        return ResponseEntity.ok().body(flatService.getAllFlats(pageable));
     }
 
     @GetMapping("/flats/{flatId}")
@@ -71,7 +76,8 @@ public class FlatController {
 
     @PostMapping("/flats/{id}/assign")
     public ResponseEntity<Flat> assignFlat(@PathVariable("id") String userId){
-        Flat flatDetails=flatService.assignFlat(userId);
-        return  ResponseEntity.ok().body(flatDetails);
+        //Flat flatDetails=flatService.assignFlat(userId);
+       // return  ResponseEntity.ok().body(flatDetails);
+        return null;
     }
 }
