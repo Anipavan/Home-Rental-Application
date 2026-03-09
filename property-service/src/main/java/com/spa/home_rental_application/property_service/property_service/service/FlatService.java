@@ -13,7 +13,7 @@ public interface FlatService {
     Page<FlatResponseDTO> getAllFlats(Pageable pageable);
     FlatResponseDTO getflatById(String flatId);
     FlatResponseDTO createFlat(FlatRequestDTO flatRequestDTO);
-    String deleteFlatById(String flatId);
+    Flat deleteFlatById(String flatId);
     List<FlatResponseDTO>getflatsByBuildingId(String buildId);
     List<FlatResponseDTO>getAllVacentFlats();
     FlatResponseDTO makeFlatVacate(String flatId);

@@ -44,6 +44,8 @@ public class Flat {
     @Column(name = "is_occupied",nullable = false)
     @Builder.Default
     private Boolean isOccupied=false;
+    @Builder.Default
+    private boolean isDeleted=false;
 
     @Column(name = "tenant_id")
     private String tenantId;

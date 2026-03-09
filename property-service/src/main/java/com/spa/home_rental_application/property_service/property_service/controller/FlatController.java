@@ -47,9 +47,9 @@ public class FlatController {
     }
 
     @DeleteMapping("/flats/{flatId}")
-    public ResponseEntity<String> deleteBuilding(@PathVariable String flatId) {
-        String message = flatService.deleteFlatById(flatId);
-        return ResponseEntity.ok(message);
+    public ResponseEntity<Flat> deleteBuilding(@PathVariable String flatId) {
+        Flat flat = flatService.deleteFlatById(flatId);
+        return ResponseEntity.ok(flat);
     }
 
     @GetMapping("/flats/building/{buildId}")

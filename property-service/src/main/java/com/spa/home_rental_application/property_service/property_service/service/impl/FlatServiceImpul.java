@@ -67,11 +67,14 @@ public class FlatServiceImpul implements FlatService {
     }
 
     @Override
-    public String deleteFlatById(String flatId) {
-        flatRepo.findById(flatId).orElseThrow(
+    public Flat deleteFlatById(String flatId) {
+        Flat flat =flatRepo.findById(flatId).orElseThrow(
                 () -> new RecordNotFoundException("No record found with the given id: " + flatId));
-        flatRepo.deleteById(flatId);
-        return "Record with id " + flatId + " has been deleted successfully.";
+
+        flat.setDeleted(true);
+
+
+        return flatRepo.save(flat);
     }
 
     @Override
