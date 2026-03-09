@@ -1,5 +1,7 @@
 package com.spa.home_rental_application.property_service.property_service.service.impl;
 
+import com.spa.home_rental_application.KafkaEvents.Producers.DTO.FlatVacatedEvent;
+import com.spa.home_rental_application.KafkaEvents.Producers.PropertyEvent;
 import com.spa.home_rental_application.property_service.property_service.DTO.FlatMapper;
 import com.spa.home_rental_application.property_service.property_service.DTO.Request.FlatRequestDTO;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.FlatResponseDTO;
@@ -7,14 +9,15 @@ import com.spa.home_rental_application.property_service.property_service.Entitie
 import com.spa.home_rental_application.property_service.property_service.ExceptionClass.RecordNotFoundException;
 import com.spa.home_rental_application.property_service.property_service.repository.FlatRepo;
 import com.spa.home_rental_application.property_service.property_service.service.FlatService;
-import com.spa.home_rental_application.property_service.property_service.utils.PropertyEventProducer;
-import com.spa.home_rental_application.property_service.property_service.utils.kafkaEvents.FlatVacatedEvent;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -22,21 +25,21 @@ import java.util.stream.Collectors;
 @Slf4j
 public class FlatServiceImpul implements FlatService {
     private final FlatRepo flatRepo;
-    private final PropertyEventProducer eventProducer;
+    private final PropertyEvent eventProducer;
     private final FlatMapper flatMapper;
 
     public FlatServiceImpul(FlatRepo flatRepo,
-                            PropertyEventProducer eventProducer, FlatMapper flatMapper) {
+                            PropertyEvent eventProducer, FlatMapper flatMapper) {
         this.flatRepo = flatRepo;
         this.eventProducer = eventProducer;
         this.flatMapper=flatMapper;
     }
 
     @Override
-    public List<FlatResponseDTO> getAllFlats() {
-        List<Flat> allFlats=flatRepo.findAll();
+    public Page<FlatResponseDTO> getAllFlats(Pageable pageable) {
+        Page<Flat> allFlats=flatRepo.getActiveFlats(pageable);
         if(allFlats!=null)
-            return allFlats.stream().map(flat->flatMapper.toResponseDTO(flat)).collect(Collectors.toList());
+            allFlats.map(flatMapper::toResponseDTO);
         throw new RecordNotFoundException("No Records available");
     }
 
@@ -65,11 +68,13 @@ public class FlatServiceImpul implements FlatService {
     }
 
     @Override
-    public String deleteFlatById(String flatId) {
-        flatRepo.findById(flatId).orElseThrow(
+    public Flat deleteFlatById(String flatId) {
+        Flat flat =flatRepo.findById(flatId).orElseThrow(
                 () -> new RecordNotFoundException("No record found with the given id: " + flatId));
-        flatRepo.deleteById(flatId);
-        return "Record with id " + flatId + " has been deleted successfully.";
+
+        flat.setDeleted(true);
+        flatRepo.save(flat);
+        return flatRepo.save(flat);
     }
 
     @Override
@@ -134,5 +139,14 @@ public class FlatServiceImpul implements FlatService {
         flatFound.setTenantId(flat.getTenantId());
         flatFound.setUpdatedAt(LocalDateTime.now());
         return flatMapper.toResponseDTO(flatRepo.save(flatFound));
+    }
+
+    @Override
+    public Flat assignFlat(String userId) {
+
+       List<Flat> getVacatedFlat=flatRepo.findByIsOccupiedFalse().stream().toList();
+        Flat flat=getVacatedFlat.getFirst();
+        flat.setTenantId(userId);
+        return flatRepo.save(flat);
     }
 }

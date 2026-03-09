@@ -17,7 +17,7 @@ public class PropertyImage {
     private String id;
 
     @Column(name = "property_id", nullable = false)
-    private String propertyId;   // can be buildingId or flatId based on your design
+    private String propertyId;
 
     @Column(name = "image_url", nullable = false)
     private String imageUrl;

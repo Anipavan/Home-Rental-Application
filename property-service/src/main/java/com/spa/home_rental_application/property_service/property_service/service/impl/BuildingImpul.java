@@ -1,5 +1,8 @@
 package com.spa.home_rental_application.property_service.property_service.service.impl;
 
+import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyCreatedEvent;
+import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyUpdatedEvent;
+import com.spa.home_rental_application.KafkaEvents.Producers.PropertyEvent;
 import com.spa.home_rental_application.property_service.property_service.DTO.BuildingMapper;
 import com.spa.home_rental_application.property_service.property_service.DTO.Request.BuildingRequestDTO;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.BuildingResponseDTO;
@@ -8,10 +11,9 @@ import com.spa.home_rental_application.property_service.property_service.Excepti
 import com.spa.home_rental_application.property_service.property_service.ExceptionClass.RecordNotFoundException;
 import com.spa.home_rental_application.property_service.property_service.repository.BuildingRepo;
 import com.spa.home_rental_application.property_service.property_service.service.BuildingService;
-import com.spa.home_rental_application.property_service.property_service.utils.PropertyEventProducer;
-import com.spa.home_rental_application.property_service.property_service.utils.kafkaEvents.PropertyCreatedEvent;
-import com.spa.home_rental_application.property_service.property_service.utils.kafkaEvents.PropertyUpdatedEvent;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -19,24 +21,23 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.UUID;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
 @Slf4j
 public class BuildingImpul implements BuildingService {
     private final BuildingRepo building_repo;
-    private final PropertyEventProducer eventProducer;
+    private final PropertyEvent eventProducer;
 
-    public BuildingImpul(BuildingRepo building_repo, PropertyEventProducer eventProducer) {
+    public BuildingImpul(BuildingRepo building_repo, PropertyEvent eventProducer) {
         this.building_repo = building_repo;
         this.eventProducer = eventProducer;
     }
     @Override
-    public List<BuildingResponseDTO> getBuildings() {
-        List<Building> buildings=building_repo.findAll();
+    public Page<BuildingResponseDTO> getBuildings(Pageable pageable) {
+        Page<Building> buildings=building_repo.getActiveBuildings(pageable);
 
-        return  buildings.stream().map(building->BuildingMapper.toDTO(building)).collect(Collectors.toList());
+        return  buildings.map(BuildingMapper::toDTO);
     }
 
     @Override
@@ -76,14 +77,26 @@ public class BuildingImpul implements BuildingService {
     }
 
     @Override
-    public BuildingResponseDTO deleteBuildingById(String buildId)
-    {
-        Building building=building_repo.findById(buildId).orElseThrow(() -> new RecordNotFoundException("No record found with the given id: " + buildId));
-        if(building.getBuildingTotalFlats().isBlank()|| building.getBuildingTotalFlats().isEmpty() || building.getBuildingTotalFlats()==null){
-            building_repo.deleteById(buildId);
+    public BuildingResponseDTO deleteBuildingById(String buildId) {
+
+        Building building = building_repo.findById(buildId)
+                .orElseThrow(() ->
+                        new RecordNotFoundException("No record found with id: " + buildId));
+
+        String flats = building.getBuildingTotalFlats();
+
+        if (flats == null || flats.isBlank()) {
+
+            building.setDeleted(true);
+
+            building_repo.save(building);
+
+        } else {
+
+            throw new BuildingHasFlatsException(
+                    "Building with active flats cannot be deleted.");
         }
-        else{
-            throw new BuildingHasFlatsException("Building with active flats cannot be deleted.");}
+
         return BuildingMapper.toDTO(building);
     }
 
