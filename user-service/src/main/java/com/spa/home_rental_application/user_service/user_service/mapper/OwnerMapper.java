@@ -1,7 +1,7 @@
 package com.spa.home_rental_application.user_service.user_service.mapper;
 
-import com.spa.home_rental_application.user_service.user_service.DTO.OwnerRequestDto;
-import com.spa.home_rental_application.user_service.user_service.DTO.OwnerResponseDto;
+import com.spa.home_rental_application.user_service.user_service.DTO.Request.OwnerRequestDto;
+import com.spa.home_rental_application.user_service.user_service.DTO.Response.OwnerResponseDto;
 import com.spa.home_rental_application.user_service.user_service.Entities.Owners;
 
 public class OwnerMapper {

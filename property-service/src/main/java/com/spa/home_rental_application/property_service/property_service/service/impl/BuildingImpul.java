@@ -1,5 +1,8 @@
 package com.spa.home_rental_application.property_service.property_service.service.impl;
 
+import com.spa.home_rental_application.property_service.property_service.DTO.BuildingMapper;
+import com.spa.home_rental_application.property_service.property_service.DTO.Request.BuildingRequestDTO;
+import com.spa.home_rental_application.property_service.property_service.DTO.Response.BuildingResponseDTO;
 import com.spa.home_rental_application.property_service.property_service.Entities.Building;
 import com.spa.home_rental_application.property_service.property_service.ExceptionClass.BuildingHasFlatsException;
 import com.spa.home_rental_application.property_service.property_service.ExceptionClass.RecordNotFoundException;
@@ -16,6 +19,8 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -28,13 +33,17 @@ public class BuildingImpul implements BuildingService {
         this.eventProducer = eventProducer;
     }
     @Override
-    public List<Building> getBuildings() {
-        return  building_repo.findAll();
+    public List<BuildingResponseDTO> getBuildings() {
+        List<Building> buildings=building_repo.findAll();
+
+        return  buildings.stream().map(building->BuildingMapper.toDTO(building)).collect(Collectors.toList());
     }
 
     @Override
-    public Building createBuilding(Building building) {
+    public BuildingResponseDTO createBuilding(BuildingRequestDTO buildingRequestDTO) {
         log.info("Implimentation of building request.");
+
+     Building building= BuildingMapper.toEntity(buildingRequestDTO);
 
         if (building.getBuildingId() == null || building.getBuildingId().isBlank()) {
             String bid= String.valueOf(UUID.randomUUID());
@@ -56,29 +65,31 @@ public class BuildingImpul implements BuildingService {
                 .ownerId(saved.getOwnerId())
                 .timestamp(Instant.now())
                 .build());
-        return saved;
+        return BuildingMapper.toDTO(saved);
     }
     @Override
-    public Building getBuildingById(String buildId)
+    public BuildingResponseDTO getBuildingById(String buildId)
     {
         Building building=building_repo.findById(buildId).orElseThrow(
                 ()-> new RecordNotFoundException("No Record found with the given id :"+buildId));
-       return building;
+       return BuildingMapper.toDTO(building);
     }
 
     @Override
-    public String deleteBuildingById(String buildId)
+    public BuildingResponseDTO deleteBuildingById(String buildId)
     {
          Building building=building_repo.findById(buildId).orElseThrow(() -> new RecordNotFoundException("No record found with the given id: " + buildId));
          if(building.getBuildingTotalFlats().isBlank()|| building.getBuildingTotalFlats().isEmpty() || building.getBuildingTotalFlats()==null){
-             building_repo.deleteById(buildId);}
+             building_repo.deleteById(buildId);
+         }
          else{
              throw new BuildingHasFlatsException("Building with active flats cannot be deleted.");}
-        return "Record with id " + buildId + " has been deleted successfully.";
+        return BuildingMapper.toDTO(building);
     }
 
     @Override
-    public Building updateBuilding(String buildId, Building building) {
+    public BuildingResponseDTO updateBuilding(String buildId, BuildingRequestDTO buildingRequestDTO) {
+        Building building=BuildingMapper.toEntity(buildingRequestDTO);
 
         Building matchedBuilding = building_repo.findById(buildId)
                 .orElseThrow(() -> new RecordNotFoundException(
@@ -120,16 +131,16 @@ public class BuildingImpul implements BuildingService {
                         .ownerId(saved.getOwnerId())
                         .timestamp(Instant.now())
                         .build());
-        return saved;
+        return BuildingMapper.toDTO(saved);
     }
 
     @Override
-    public  List<Building>getBuildingsByOwnerId(String ownerId){
+    public  List<BuildingResponseDTO>getBuildingsByOwnerId(String ownerId){
         List<Building> ownerBuildings = building_repo.findByOwnerId(ownerId);
         if (ownerBuildings.isEmpty()) {
             throw new RecordNotFoundException(
                     "No buildings found for owner with id: " + ownerId);
         }
-    return ownerBuildings;
+    return ownerBuildings.stream().map(build->BuildingMapper.toDTO(build)).collect(Collectors.toList());
     }
 }

@@ -1,12 +1,10 @@
 package com.spa.home_rental_application.user_service.user_service.controller;
 
-import com.spa.home_rental_application.user_service.user_service.DTO.UserRequestDto;
-import com.spa.home_rental_application.user_service.user_service.DTO.UserResponseDto;
-import com.spa.home_rental_application.user_service.user_service.Entities.User;
+import com.spa.home_rental_application.user_service.user_service.DTO.Request.UserRequestDto;
+import com.spa.home_rental_application.user_service.user_service.DTO.Response.UserResponseDto;
 import com.spa.home_rental_application.user_service.user_service.service.UserService;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;

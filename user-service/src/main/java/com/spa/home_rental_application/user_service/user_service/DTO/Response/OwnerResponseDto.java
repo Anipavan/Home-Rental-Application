@@ -1,4 +1,4 @@
-package com.spa.home_rental_application.user_service.user_service.DTO;
+package com.spa.home_rental_application.user_service.user_service.DTO.Response;
 
 import java.time.LocalDateTime;
 

@@ -1,11 +1,9 @@
 package com.spa.home_rental_application.user_service.user_service.service;
 
-import com.spa.home_rental_application.user_service.user_service.DTO.EmergencyContactRequestDto;
-import com.spa.home_rental_application.user_service.user_service.DTO.EmergencyContactResponseDto;
-import com.spa.home_rental_application.user_service.user_service.DTO.UserRequestDto;
-import com.spa.home_rental_application.user_service.user_service.DTO.UserResponseDto;
-import com.spa.home_rental_application.user_service.user_service.Entities.EmergencyContacts;
-import com.spa.home_rental_application.user_service.user_service.Entities.User;
+import com.spa.home_rental_application.user_service.user_service.DTO.Request.EmergencyContactRequestDto;
+import com.spa.home_rental_application.user_service.user_service.DTO.Response.EmergencyContactResponseDto;
+import com.spa.home_rental_application.user_service.user_service.DTO.Request.UserRequestDto;
+import com.spa.home_rental_application.user_service.user_service.DTO.Response.UserResponseDto;
 
 import java.util.List;
 

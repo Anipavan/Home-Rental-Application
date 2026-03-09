@@ -1,7 +1,7 @@
 package com.spa.home_rental_application.user_service.user_service.mapper;
 
-import com.spa.home_rental_application.user_service.user_service.DTO.UserRequestDto;
-import com.spa.home_rental_application.user_service.user_service.DTO.UserResponseDto;
+import com.spa.home_rental_application.user_service.user_service.DTO.Request.UserRequestDto;
+import com.spa.home_rental_application.user_service.user_service.DTO.Response.UserResponseDto;
 import com.spa.home_rental_application.user_service.user_service.Entities.User;
 
 public class UserMapper {

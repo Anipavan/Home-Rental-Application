@@ -152,8 +152,8 @@ GET    /api/auth/validate          - Validate JWT token
 **Database:** PostgreSQL
 
 #### **What it does:**
-- Manage buildings (add, update, delete, view)
-- Manage flats/apartments within buildings
+- Manage buildings (add, update, delete, view) -  done
+- Manage flats/apartments within buildings -  done
 - Track occupancy status
 - Link properties to owners
 - Assign tenants to flats
@@ -430,15 +430,15 @@ maintenance_requests {
 
 **Request Management:**
 ```
-GET    /api/maintenance/requests                     - Get all requests
-GET    /api/maintenance/requests/{id}                - Get request by ID
-POST   /api/maintenance/requests                     - Create new request
-PUT    /api/maintenance/requests/{id}                - Update request
-DELETE /api/maintenance/requests/{id}                - Delete request
+GET    /api/maintenance/requests                     - Get all requests - done
+GET    /api/maintenance/requests/{id}                - Get request by ID - done
+POST   /api/maintenance/requests                     - Create new request - done
+PUT    /api/maintenance/requests/{id}                - Update request - done
+DELETE /api/maintenance/requests/{id}                - Delete request - done
 GET    /api/maintenance/requests/tenant/{id}         - Get tenant's requests
 GET    /api/maintenance/requests/owner/{id}          - Get owner's requests
-GET    /api/maintenance/requests/status/{status}     - Get by status
-GET    /api/maintenance/requests/priority/{priority} - Get by priority
+GET    /api/maintenance/requests/status/{status}     - Get by status - done
+GET    /api/maintenance/requests/priority/{priority} - Get by priority - done
 ```
 
 **Request Actions:**
@@ -452,9 +452,9 @@ GET    /api/maintenance/requests/{id}/history     - Get update history
 
 **Analytics:**
 ```
-GET    /api/maintenance/stats/category            - Requests by category
+GET    /api/maintenance/stats/category            - Requests by category -  done
 GET    /api/maintenance/stats/resolution-time     - Avg resolution time
-GET    /api/maintenance/stats/pending             - Pending requests count
+GET    /api/maintenance/stats/pending             - Pending requests count - done
 ```
 
 #### **Kafka Events Published:**
@@ -930,3 +930,8 @@ CI/CD: Jenkins / GitHub Actions
 This is your complete blueprint for building a production-ready Home Rental Application with Microservices Architecture. Each service is independent, scalable, and follows best practices.
 
 Good luck with your implementation! 🚀
+
+
+AI intigration chatt:
+
+https://chatgpt.com/share/699bcb73-4bac-8007-828b-8a5c3bce8530

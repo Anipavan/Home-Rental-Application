@@ -1,9 +1,9 @@
 package com.spa.home_rental_application.user_service.user_service.service.impul;
 
-import com.spa.home_rental_application.user_service.user_service.DTO.EmergencyContactRequestDto;
-import com.spa.home_rental_application.user_service.user_service.DTO.EmergencyContactResponseDto;
-import com.spa.home_rental_application.user_service.user_service.DTO.UserRequestDto;
-import com.spa.home_rental_application.user_service.user_service.DTO.UserResponseDto;
+import com.spa.home_rental_application.user_service.user_service.DTO.Request.EmergencyContactRequestDto;
+import com.spa.home_rental_application.user_service.user_service.DTO.Response.EmergencyContactResponseDto;
+import com.spa.home_rental_application.user_service.user_service.DTO.Request.UserRequestDto;
+import com.spa.home_rental_application.user_service.user_service.DTO.Response.UserResponseDto;
 import com.spa.home_rental_application.user_service.user_service.Entities.EmergencyContacts;
 import com.spa.home_rental_application.user_service.user_service.Entities.User;
 import com.spa.home_rental_application.user_service.user_service.Exceptionclass.RecordNotFound;
@@ -12,10 +12,8 @@ import com.spa.home_rental_application.user_service.user_service.mapper.UserMapp
 import com.spa.home_rental_application.user_service.user_service.repositry.EmergencyContactRepo;
 import com.spa.home_rental_application.user_service.user_service.repositry.UserRepo;
 import com.spa.home_rental_application.user_service.user_service.service.UserService;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;

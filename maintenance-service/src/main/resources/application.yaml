@@ -1,23 +1,12 @@
 server:
-  port: 8082   # or any free port
+  port: 8082
 
 spring:
   application:
     name: maintenance-service
-
-  datasource:
-    url: jdbc:oracle:thin:@//localhost:1521/orcl
-    username: siva
-    password: siva
-    driver-class-name: oracle.jdbc.OracleDriver
-
-  jpa:
-    hibernate:
-      ddl-auto: update       # or validate/create/update as you prefer
-    show-sql: true
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.OracleDialect
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017/HomeRentalDB
 
 eureka:
   client:
