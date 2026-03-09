@@ -14,7 +14,6 @@ import jakarta.validation.constraints.Pattern;
 @AllArgsConstructor
 public class RegisterRequest {
 
-    // ======== AUTH SERVICE FIELDS ========
     @NotBlank(message = "Username is required")
     @Size(min = 3, max = 50, message = "Username must be between 3 and 50 characters")
     @Pattern(regexp = "^[a-zA-Z0-9_-]*$", message = "Username can only contain letters, numbers, underscore, and hyphen")
@@ -37,7 +36,6 @@ public class RegisterRequest {
     @Pattern(regexp = "^(TENANT|OWNER|ADMIN)$", message = "Role must be TENANT, OWNER, or ADMIN")
     private String role;
 
-    // ======== USER SERVICE FIELDS ========
     @NotBlank(message = "First name is required")
     @Size(min = 2, max = 50, message = "First name must be between 2 and 50 characters")
     private String firstName;

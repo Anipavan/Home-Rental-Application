@@ -23,7 +23,7 @@ public class BuildingsController {
    private final BuildingService building_service;
 
 
-    private BuildingsController(BuildingService service)
+    public BuildingsController(BuildingService service)
     {
         this.building_service=service;
     }

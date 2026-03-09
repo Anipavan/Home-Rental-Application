@@ -26,7 +26,7 @@ public class Securityconfig {
         http
 
                 .csrf(AbstractHttpConfigurer::disable)
-                .anonymous(withDefaults())
+                .httpBasic(withDefaults())
 
                 .authorizeHttpRequests(auth -> auth
 
@@ -49,7 +49,13 @@ public class Securityconfig {
         return  new BCryptPasswordEncoder();
     }
     @Bean
-    AuthenticationManager authenticationManager(UserDetailsService userDetailsService, PasswordEncoder passwordEncoder) {
+public UserDetailsService userDetailsService()
+{
+    return  new CustomUserDetailsService();
+}
+
+    @Bean
+   public AuthenticationManager authenticationManager( UserDetailsService userDetailsService, PasswordEncoder passwordEncoder) {
         DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
         provider.setUserDetailsService(userDetailsService);
         provider.setPasswordEncoder(passwordEncoder);
