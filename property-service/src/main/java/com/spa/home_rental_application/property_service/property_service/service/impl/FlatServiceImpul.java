@@ -60,7 +60,7 @@ public class FlatServiceImpul implements FlatService {
         if (flat.getCreatedAt() == null) {
             flat.setCreatedAt(now);
         }
-       flat.setUpdatedAt(now);
+        flat.setUpdatedAt(now);
         return flatMapper.toResponseDTO(flatRepo.save(flat));
     }
 
@@ -111,7 +111,7 @@ public class FlatServiceImpul implements FlatService {
             );
             return flatMapper.toResponseDTO(flat);
         }
-          return flatMapper.toResponseDTO(flat);
+        return flatMapper.toResponseDTO(flat);
     }
 
     @Override

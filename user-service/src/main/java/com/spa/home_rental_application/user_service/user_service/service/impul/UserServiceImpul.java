@@ -39,10 +39,10 @@ public class UserServiceImpul implements UserService {
     @Override
     public List<UserResponseDto> getAllUsers() {
 
-       List<UserResponseDto> allusers= userRepo.findAll().stream()
-               .map(user->UserMapper.toDto(user))
-               .collect(Collectors.toList());
-       return allusers;
+        List<UserResponseDto> allusers= userRepo.findAll().stream()
+                .map(user->UserMapper.toDto(user))
+                .collect(Collectors.toList());
+        return allusers;
     }
 
     @Override
@@ -50,7 +50,7 @@ public class UserServiceImpul implements UserService {
 
         User user= userRepo.findById(userId).orElseThrow(()->new RecordNotFound
                 ("User with the given Id is not present :"+userId));
-       return UserMapper.toDto(user);
+        return UserMapper.toDto(user);
     }
 
     @Override

@@ -43,7 +43,7 @@ public class BuildingImpul implements BuildingService {
     public BuildingResponseDTO createBuilding(BuildingRequestDTO buildingRequestDTO) {
         log.info("Implimentation of building request.");
 
-     Building building= BuildingMapper.toEntity(buildingRequestDTO);
+        Building building= BuildingMapper.toEntity(buildingRequestDTO);
 
         if (building.getBuildingId() == null || building.getBuildingId().isBlank()) {
             String bid= String.valueOf(UUID.randomUUID());
@@ -72,18 +72,18 @@ public class BuildingImpul implements BuildingService {
     {
         Building building=building_repo.findById(buildId).orElseThrow(
                 ()-> new RecordNotFoundException("No Record found with the given id :"+buildId));
-       return BuildingMapper.toDTO(building);
+        return BuildingMapper.toDTO(building);
     }
 
     @Override
     public BuildingResponseDTO deleteBuildingById(String buildId)
     {
-         Building building=building_repo.findById(buildId).orElseThrow(() -> new RecordNotFoundException("No record found with the given id: " + buildId));
-         if(building.getBuildingTotalFlats().isBlank()|| building.getBuildingTotalFlats().isEmpty() || building.getBuildingTotalFlats()==null){
-             building_repo.deleteById(buildId);
-         }
-         else{
-             throw new BuildingHasFlatsException("Building with active flats cannot be deleted.");}
+        Building building=building_repo.findById(buildId).orElseThrow(() -> new RecordNotFoundException("No record found with the given id: " + buildId));
+        if(building.getBuildingTotalFlats().isBlank()|| building.getBuildingTotalFlats().isEmpty() || building.getBuildingTotalFlats()==null){
+            building_repo.deleteById(buildId);
+        }
+        else{
+            throw new BuildingHasFlatsException("Building with active flats cannot be deleted.");}
         return BuildingMapper.toDTO(building);
     }
 
@@ -126,11 +126,11 @@ public class BuildingImpul implements BuildingService {
         Building saved = building_repo.save(matchedBuilding);
 
         eventProducer.sendPropertyUpdated(PropertyUpdatedEvent.builder()
-                        .eventType("Property-Updated")
-                        .propertyId(saved.getBuildingId())
-                        .ownerId(saved.getOwnerId())
-                        .timestamp(Instant.now())
-                        .build());
+                .eventType("Property-Updated")
+                .propertyId(saved.getBuildingId())
+                .ownerId(saved.getOwnerId())
+                .timestamp(Instant.now())
+                .build());
         return BuildingMapper.toDTO(saved);
     }
 
@@ -141,6 +141,6 @@ public class BuildingImpul implements BuildingService {
             throw new RecordNotFoundException(
                     "No buildings found for owner with id: " + ownerId);
         }
-    return ownerBuildings.stream().map(build->BuildingMapper.toDTO(build)).collect(Collectors.toList());
+        return ownerBuildings.stream().map(build->BuildingMapper.toDTO(build)).collect(Collectors.toList());
     }
 }

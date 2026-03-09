@@ -45,7 +45,7 @@ public class Owners {
     @Override
     public String toString() {
         return "Owners{" +
-                "id='" + id + '\'' +
+                "ownerId='" + id + '\'' +
                 ", userId='" + userId + '\'' +
                 ", businessName='" + businessName + '\'' +
                 ", gstNumber='" + gstNumber + '\'' +
