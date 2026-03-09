@@ -18,4 +18,5 @@ public interface FlatService {
     List<FlatResponseDTO>getAllVacentFlats();
     FlatResponseDTO makeFlatVacate(String flatId);
     FlatResponseDTO updateFlat(String flstId,FlatRequestDTO flatRequestDTO);
+    Flat assignFlat(String userId);
 }

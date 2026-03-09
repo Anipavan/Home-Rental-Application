@@ -75,8 +75,8 @@ public class FlatController {
 
     @PostMapping("/flats/{id}/assign")
     public ResponseEntity<Flat> assignFlat(@PathVariable("id") String userId){
-        //Flat flatDetails=flatService.assignFlat(userId);
-       // return  ResponseEntity.ok().body(flatDetails);
-        return null;
+        Flat flatDetails=flatService.assignFlat(userId);
+       return  ResponseEntity.ok().body(flatDetails);
+
     }
 }

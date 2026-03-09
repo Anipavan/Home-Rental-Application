@@ -77,16 +77,26 @@ public class BuildingImpul implements BuildingService {
     }
 
     @Override
-    public BuildingResponseDTO deleteBuildingById(String buildId)
-    {
-        Building building=building_repo.findById(buildId).orElseThrow(() -> new RecordNotFoundException("No record found with the given id: " + buildId));
-        if(building.getBuildingTotalFlats().isBlank()|| building.getBuildingTotalFlats().isEmpty() || building.getBuildingTotalFlats()==null){
-            Building building1=building_repo.findById(buildId).orElseThrow(()->new RecordNotFoundException("Record with the given ID is not Present : "+buildId));
-            building1.setDeleted(true);
-            building_repo.save(building1);
+    public BuildingResponseDTO deleteBuildingById(String buildId) {
+
+        Building building = building_repo.findById(buildId)
+                .orElseThrow(() ->
+                        new RecordNotFoundException("No record found with id: " + buildId));
+
+        String flats = building.getBuildingTotalFlats();
+
+        if (flats == null || flats.isBlank()) {
+
+            building.setDeleted(true);
+
+            building_repo.save(building);
+
+        } else {
+
+            throw new BuildingHasFlatsException(
+                    "Building with active flats cannot be deleted.");
         }
-        else{
-            throw new BuildingHasFlatsException("Building with active flats cannot be deleted.");}
+
         return BuildingMapper.toDTO(building);
     }
 
