@@ -2,7 +2,6 @@ package com.spa.home_rental_application.property_service.property_service.contro
 
 import com.spa.home_rental_application.property_service.property_service.DTO.Request.FlatRequestDTO;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.FlatResponseDTO;
-import com.spa.home_rental_application.property_service.property_service.Entities.Building;
 import com.spa.home_rental_application.property_service.property_service.Entities.Flat;
 import com.spa.home_rental_application.property_service.property_service.service.FlatService;
 import jakarta.validation.Valid;

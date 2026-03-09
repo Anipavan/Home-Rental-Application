@@ -36,7 +36,7 @@ public class FlatServiceImpul implements FlatService {
 
     @Override
     public Page<FlatResponseDTO> getAllFlats(Pageable pageable) {
-        Page<Flat> allFlats=flatRepo.findAll(pageable);
+        Page<Flat> allFlats=flatRepo.getActiveFlats(pageable);
         if(allFlats!=null)
             allFlats.map(flatMapper::toResponseDTO);
         throw new RecordNotFoundException("No Records available");
@@ -72,8 +72,7 @@ public class FlatServiceImpul implements FlatService {
                 () -> new RecordNotFoundException("No record found with the given id: " + flatId));
 
         flat.setDeleted(true);
-
-
+        flatRepo.save(flat);
         return flatRepo.save(flat);
     }
 

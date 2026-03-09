@@ -35,7 +35,7 @@ public class BuildingImpul implements BuildingService {
     }
     @Override
     public Page<BuildingResponseDTO> getBuildings(Pageable pageable) {
-        Page<Building> buildings=building_repo.findAll(pageable);
+        Page<Building> buildings=building_repo.getActiveBuildings(pageable);
 
         return  buildings.map(BuildingMapper::toDTO);
     }
