@@ -17,9 +17,16 @@ import com.spa.home_rental_application.user_service.user_service.service.UserSer
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.UUID;
 
 @Service
 public class UserServiceImpul implements UserService {
@@ -62,11 +69,11 @@ public class UserServiceImpul implements UserService {
 
     @Override
     public UserResponseDto getUserByEmail(String email) {
-        User user = userRepo.findByEmail(email);
+        List<User> user = userRepo.findByEmail(email);
         if (user == null) {
             throw new RecordNotFound("User with the given email is not present: " + email);
         }
-        return UserMapper.toDto(user);
+        return UserMapper.toDto(user.getFirst());
     }
 
     @Override
@@ -130,18 +137,53 @@ public class UserServiceImpul implements UserService {
     }
 
     @Override
-    public UserResponseDto searchUserByParam(String param) {
-        User user=null;
-        if(param.matches("^[0-9]]{10}"))
+    public List<UserResponseDto> searchUserByParam(String param) {
+        List <User> users;
+        if(param.matches("^[0-9]{10}$"))
         {
-            user=userRepo.findByPhone(param);
+            users=userRepo.findByPhone(param);
         } else if (param.contains("@")) {
-            user=userRepo.findByEmail(param);
+            users=userRepo.findByEmail(param);
 
         } else
         {
-            user=userRepo.findByFirstName(param);
+            users=userRepo.findByFirstName(param);
         }
-        return null;
+        return users.stream().map(user->UserMapper.toDto(user)).toList();
+    }
+
+
+    @Override
+    public UserResponseDto uploadUserDocument(String userId, MultipartFile file, String type) throws IOException {
+
+        User user = userRepo.findById(userId).orElseThrow(() ->
+                        new RecordNotFound("User not found: " + userId));
+
+        String fileName = UUID.randomUUID() + "_" + file.getOriginalFilename();
+        Path uploadDir = Paths.get("uploads/users");
+
+        if (!Files.exists(uploadDir)) {
+            Files.createDirectories(uploadDir);
+        }
+
+        Path filePath = uploadDir.resolve(fileName);
+
+        Files.write(filePath, file.getBytes());
+
+        if ("PROFILE".equalsIgnoreCase(type)) {
+            user.setProfilePictureUrl(filePath.toString());
+        }
+        else if ("ID_PROOF".equalsIgnoreCase(type)) {
+            user.setIdProofUrl(filePath.toString());
+        }
+        else {
+            throw new IllegalArgumentException("Invalid document type");
+        }
+
+        user.setUpdatedAt(LocalDateTime.now());
+
+        User saved = userRepo.save(user);
+
+        return UserMapper.toDto(saved);
     }
 }

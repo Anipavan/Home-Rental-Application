@@ -9,8 +9,8 @@ import java.util.List;
 
 public interface EmergencyContactService {
     EmergencyContactResponseDto saveUsersEmergencyContact(EmergencyContactRequestDto emergencyContactRequestDto);
-    EmergencyContactResponseDto UpdateEmergencyContact(EmergencyContactRequestDto emergencyContactRequestDto);
-    void DeleteEmergencyContact(String userId);
+    EmergencyContactResponseDto UpdateEmergencyContact(EmergencyContactRequestDto emergencyContactRequestDto, String contactId);
+    void DeleteEmergencyContact(String contactId);
     Page<EmergencyContactResponseDto> getAllContacts(Pageable pageable);
     List<EmergencyContactResponseDto> getAllContactsByUserId(String userId);
 }

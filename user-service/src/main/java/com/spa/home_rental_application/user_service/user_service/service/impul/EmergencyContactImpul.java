@@ -11,6 +11,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
@@ -29,17 +30,22 @@ public class EmergencyContactImpul implements EmergencyContactService {
     }
 
     @Override
-    public EmergencyContactResponseDto UpdateEmergencyContact(EmergencyContactRequestDto emergencyContactRequestDto) {
-        EmergencyContact contact=EmergencyContactMapper.toEntity(emergencyContactRequestDto);
+    public EmergencyContactResponseDto UpdateEmergencyContact(EmergencyContactRequestDto emergencyContactRequestDto, String contactId) {
 
+       EmergencyContact contact=emergencyContactRepo.findById(contactId).get();
+
+       EmergencyContact decriptedrequest=EmergencyContactMapper.toEntity(emergencyContactRequestDto);
+       contact.setName(decriptedrequest.getName());
+       contact.setPhone(decriptedrequest.getPhone());
+       contact.setRelation(decriptedrequest.getRelation());
+       contact.setUserId(decriptedrequest.getUserId());
+       contact.setUpdatedAt(LocalDateTime.now());
         return EmergencyContactMapper.toDto(emergencyContactRepo.save(contact));
     }
 
     @Override
-    public void DeleteEmergencyContact(String userId) {
-        List<EmergencyContact> emergencyContact=emergencyContactRepo.findByUserId(userId);
-        String id=emergencyContact.getFirst().getId();
-        emergencyContactRepo.deleteById(id);
+    public void DeleteEmergencyContact(String contactId) {
+        emergencyContactRepo.deleteById(contactId);
     }
 
     @Override

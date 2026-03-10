@@ -7,14 +7,13 @@ import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
 @RestController
-@RequestMapping(value = "/usersContacts", produces = MediaType.APPLICATION_JSON_VALUE)
+@RequestMapping("/users/contacts")
 public class EmergencyContactController {
     private final EmergencyContactService emergencyContactService;
     public EmergencyContactController(EmergencyContactService emergencyContactService)
@@ -44,16 +43,16 @@ public class EmergencyContactController {
 
 
 
-    @PutMapping("/UpdateContact")
-    public ResponseEntity<EmergencyContactResponseDto> UpdateEmergencyContact(@RequestBody @Valid EmergencyContactRequestDto emergencyContactRequestDto)
+    @PutMapping("/contacts/{contactId}")
+    public ResponseEntity<EmergencyContactResponseDto> UpdateEmergencyContact(@RequestBody @Valid EmergencyContactRequestDto emergencyContactRequestDto, @PathVariable("contactId") String contactId)
     {
-        return ResponseEntity.ok().body(emergencyContactService.UpdateEmergencyContact(emergencyContactRequestDto));
+        return ResponseEntity.ok().body(emergencyContactService.UpdateEmergencyContact(emergencyContactRequestDto,contactId));
     }
 
 
-    @DeleteMapping("/DelteContact/{userId}")
-    public void DeleteEmergencyContact(@PathVariable String userId)
+    @DeleteMapping("/DelteContact/{contactId}")
+    public void DeleteEmergencyContact(@PathVariable String contactId)
     {
-        emergencyContactService.DeleteEmergencyContact(userId);
+        emergencyContactService.DeleteEmergencyContact(contactId);
     }
 }
