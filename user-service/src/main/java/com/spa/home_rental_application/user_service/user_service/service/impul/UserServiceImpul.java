@@ -7,7 +7,6 @@ import com.spa.home_rental_application.user_service.user_service.DTO.Request.Eme
 import com.spa.home_rental_application.user_service.user_service.DTO.Response.EmergencyContactResponseDto;
 import com.spa.home_rental_application.user_service.user_service.DTO.Request.UserRequestDto;
 import com.spa.home_rental_application.user_service.user_service.DTO.Response.UserResponseDto;
-import com.spa.home_rental_application.user_service.user_service.Entities.EmergencyContacts;
 import com.spa.home_rental_application.user_service.user_service.Entities.User;
 import com.spa.home_rental_application.user_service.user_service.Exceptionclass.RecordNotFound;
 import com.spa.home_rental_application.user_service.user_service.mapper.EmergencyContactMapper;
@@ -21,8 +20,6 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.stream.Collectors;
 
 @Service
 public class UserServiceImpul implements UserService {
@@ -130,24 +127,5 @@ public class UserServiceImpul implements UserService {
                         .timestamp(Instant.now())
                 .build());
         return UserMapper.toDto(userSaved);
-    }
-
-    @Override
-    public EmergencyContactResponseDto saveContact(EmergencyContactRequestDto emergencyContactsRequest) {
-
-        EmergencyContacts contact= EmergencyContactMapper.toEntity(emergencyContactsRequest);
-        contact.setCreatedAt(LocalDateTime.now());
-        contact.setUpdatedAt(LocalDateTime.now());
-        return  EmergencyContactMapper.toDto(econtactRepo.save(contact));
-    }
-
-    @Override
-    public EmergencyContactResponseDto getContactByUserId(String userId) {
-        EmergencyContacts contact=econtactRepo.findByUserId(userId);
-        if(contact==null)
-        {
-            throw new RecordNotFound("Contact with given userId is not prest : "+userId);
-        }
-        return EmergencyContactMapper.toDto(contact);
     }
 }

@@ -2,16 +2,16 @@ package com.spa.home_rental_application.user_service.user_service.mapper;
 
 import com.spa.home_rental_application.user_service.user_service.DTO.Request.EmergencyContactRequestDto;
 import com.spa.home_rental_application.user_service.user_service.DTO.Response.EmergencyContactResponseDto;
-import com.spa.home_rental_application.user_service.user_service.Entities.EmergencyContacts;
+import com.spa.home_rental_application.user_service.user_service.Entities.EmergencyContact;
 
 public class EmergencyContactMapper {
 
-    public static EmergencyContacts toEntity(EmergencyContactRequestDto dto) {
+    public static EmergencyContact toEntity(EmergencyContactRequestDto dto) {
         if (dto == null) {
             return null;
         }
 
-        return EmergencyContacts.builder()
+        return EmergencyContact.builder()
                 .userId(dto.userId())
                 .name(dto.name())
                 .relation(dto.relation())
@@ -19,7 +19,7 @@ public class EmergencyContactMapper {
                 .build();
     }
 
-    public static EmergencyContactResponseDto toDto(EmergencyContacts entity) {
+    public static EmergencyContactResponseDto toDto(EmergencyContact entity) {
         if (entity == null) {
             return null;
         }
