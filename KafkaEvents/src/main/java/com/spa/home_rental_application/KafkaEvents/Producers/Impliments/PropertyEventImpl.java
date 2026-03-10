@@ -1,14 +1,17 @@
-package com.spa.home_rental_application.KafkaEvents.Producers;
+package com.spa.home_rental_application.KafkaEvents.Producers.Impliments;
 
-import com.spa.home_rental_application.KafkaEvents.Producers.PropertyEvent;
-import com.spa.home_rental_application.KafkaEvents.Producers.DTO.*;
+import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyServiceEvents.FlatOccupiedEvent;
+import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyServiceEvents.FlatVacatedEvent;
+import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyServiceEvents.PropertyCreatedEvent;
+import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyServiceEvents.PropertyUpdatedEvent;
+import com.spa.home_rental_application.KafkaEvents.Producers.Events.PropertyServiceEvents;
 import lombok.RequiredArgsConstructor;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
 @Service
 @RequiredArgsConstructor
-public class PropertyEventImpl implements PropertyEvent {
+public class PropertyEventImpl implements PropertyServiceEvents {
 
     private final KafkaTemplate<String, Object> kafkaTemplate;
 

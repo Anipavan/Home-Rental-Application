@@ -6,6 +6,9 @@ import com.spa.home_rental_application.user_service.user_service.DTO.Response.Us
 import com.spa.home_rental_application.user_service.user_service.service.OwnerService;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -31,8 +34,11 @@ public class OwnerController {
     }
 
     @GetMapping("/owners")
-    public List<OwnerResponseDto> getAllOwners(){
-        return ownerService.getAllOwners();
+    public Page<OwnerResponseDto> getAllOwners(@RequestParam(defaultValue = "0") int pagenum, @RequestParam(defaultValue = "10") int size){
+
+        Pageable pageable= PageRequest.of(pagenum, size);
+
+        return ownerService.getAllOwners(pageable);
     }
     @GetMapping("/owners/{ownerId}")
     public ResponseEntity<OwnerResponseDto> getOwnerById(@PathVariable String ownerId){

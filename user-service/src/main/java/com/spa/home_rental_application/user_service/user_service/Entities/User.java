@@ -1,7 +1,7 @@
 package com.spa.home_rental_application.user_service.user_service.Entities;
 
 import jakarta.persistence.*;
-import lombok.*;;
+import lombok.*;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;

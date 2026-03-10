@@ -1,4 +1,4 @@
-package com.spa.home_rental_application.KafkaEvents.Producers.DTO;
+package com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyServiceEvents;
 
 import lombok.*;
 

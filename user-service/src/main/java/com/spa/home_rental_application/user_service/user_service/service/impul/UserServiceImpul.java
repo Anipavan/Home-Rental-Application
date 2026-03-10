@@ -1,10 +1,12 @@
 package com.spa.home_rental_application.user_service.user_service.service.impul;
 
+import com.spa.home_rental_application.KafkaEvents.Producers.DTO.UserServiceEvents.UserProfileCreatedEvent;
+import com.spa.home_rental_application.KafkaEvents.Producers.DTO.UserServiceEvents.UserProfileUpdatedEvent;
+import com.spa.home_rental_application.KafkaEvents.Producers.Events.UserServiceEvents;
 import com.spa.home_rental_application.user_service.user_service.DTO.Request.EmergencyContactRequestDto;
 import com.spa.home_rental_application.user_service.user_service.DTO.Response.EmergencyContactResponseDto;
 import com.spa.home_rental_application.user_service.user_service.DTO.Request.UserRequestDto;
 import com.spa.home_rental_application.user_service.user_service.DTO.Response.UserResponseDto;
-import com.spa.home_rental_application.user_service.user_service.Entities.EmergencyContacts;
 import com.spa.home_rental_application.user_service.user_service.Entities.User;
 import com.spa.home_rental_application.user_service.user_service.Exceptionclass.RecordNotFound;
 import com.spa.home_rental_application.user_service.user_service.mapper.EmergencyContactMapper;
@@ -12,19 +14,29 @@ import com.spa.home_rental_application.user_service.user_service.mapper.UserMapp
 import com.spa.home_rental_application.user_service.user_service.repositry.EmergencyContactRepo;
 import com.spa.home_rental_application.user_service.user_service.repositry.UserRepo;
 import com.spa.home_rental_application.user_service.user_service.service.UserService;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.UUID;
 
 @Service
 public class UserServiceImpul implements UserService {
     private final UserRepo userRepo;
     private final EmergencyContactRepo econtactRepo;
-    public  UserServiceImpul(UserRepo userRepo, EmergencyContactRepo econtactRepo){
+    private final UserServiceEvents userServiceEvent;
+    public  UserServiceImpul(UserRepo userRepo, EmergencyContactRepo econtactRepo, UserServiceEvents userServiceEvents){
         this.userRepo=userRepo;
         this.econtactRepo=econtactRepo;
+        this.userServiceEvent = userServiceEvents;
     }
 
     @Override
@@ -33,15 +45,17 @@ public class UserServiceImpul implements UserService {
         user.setCreatedAt(LocalDateTime.now());
         user.setUpdatedAt(LocalDateTime.now());
         User saved = userRepo.save(user);
+
+        userServiceEvent.sendUserProfileCreated(UserProfileCreatedEvent.builder()
+                .eventType("User-Profile Created").userId(saved.getId())
+                .role("roles").timestamp(LocalDateTime.now()).build());
         return UserMapper.toDto(saved);
     }
 
     @Override
-    public List<UserResponseDto> getAllUsers() {
+    public Page<UserResponseDto> getAllUsers(Pageable pageable) {
 
-        List<UserResponseDto> allusers= userRepo.findAll().stream()
-                .map(user->UserMapper.toDto(user))
-                .collect(Collectors.toList());
+        Page<UserResponseDto> allusers= userRepo.findAll(pageable).map(UserMapper::toDto);
         return allusers;
     }
 
@@ -55,11 +69,11 @@ public class UserServiceImpul implements UserService {
 
     @Override
     public UserResponseDto getUserByEmail(String email) {
-        User user = userRepo.findByEmail(email);
+        List<User> user = userRepo.findByEmail(email);
         if (user == null) {
             throw new RecordNotFound("User with the given email is not present: " + email);
         }
-        return UserMapper.toDto(user);
+        return UserMapper.toDto(user.getFirst());
     }
 
     @Override
@@ -112,25 +126,64 @@ public class UserServiceImpul implements UserService {
 
         user.setUpdatedAt(LocalDateTime.now());
         User userSaved = userRepo.save(user);
+
+        userServiceEvent.sendUserProfileUpdated(UserProfileUpdatedEvent.builder()
+                        .changes("Changed user data")
+                        .eventType("UserUpdatedEvent")
+                        .userId(userSaved.getId())
+                        .timestamp(Instant.now())
+                .build());
         return UserMapper.toDto(userSaved);
     }
 
     @Override
-    public EmergencyContactResponseDto saveContact(EmergencyContactRequestDto emergencyContactsRequest) {
+    public List<UserResponseDto> searchUserByParam(String param) {
+        List <User> users;
+        if(param.matches("^[0-9]{10}$"))
+        {
+            users=userRepo.findByPhone(param);
+        } else if (param.contains("@")) {
+            users=userRepo.findByEmail(param);
 
-        EmergencyContacts contact= EmergencyContactMapper.toEntity(emergencyContactsRequest);
-        contact.setCreatedAt(LocalDateTime.now());
-        contact.setUpdatedAt(LocalDateTime.now());
-        return  EmergencyContactMapper.toDto(econtactRepo.save(contact));
+        } else
+        {
+            users=userRepo.findByFirstName(param);
+        }
+        return users.stream().map(user->UserMapper.toDto(user)).toList();
     }
 
+
     @Override
-    public EmergencyContactResponseDto getContactByUserId(String userId) {
-        EmergencyContacts contact=econtactRepo.findByUserId(userId);
-        if(contact==null)
-        {
-            throw new RecordNotFound("Contact with given userId is not prest : "+userId);
+    public UserResponseDto uploadUserDocument(String userId, MultipartFile file, String type) throws IOException {
+
+        User user = userRepo.findById(userId).orElseThrow(() ->
+                        new RecordNotFound("User not found: " + userId));
+
+        String fileName = UUID.randomUUID() + "_" + file.getOriginalFilename();
+        Path uploadDir = Paths.get("uploads/users");
+
+        if (!Files.exists(uploadDir)) {
+            Files.createDirectories(uploadDir);
         }
-        return EmergencyContactMapper.toDto(contact);
+
+        Path filePath = uploadDir.resolve(fileName);
+
+        Files.write(filePath, file.getBytes());
+
+        if ("PROFILE".equalsIgnoreCase(type)) {
+            user.setProfilePictureUrl(filePath.toString());
+        }
+        else if ("ID_PROOF".equalsIgnoreCase(type)) {
+            user.setIdProofUrl(filePath.toString());
+        }
+        else {
+            throw new IllegalArgumentException("Invalid document type");
+        }
+
+        user.setUpdatedAt(LocalDateTime.now());
+
+        User saved = userRepo.save(user);
+
+        return UserMapper.toDto(saved);
     }
 }

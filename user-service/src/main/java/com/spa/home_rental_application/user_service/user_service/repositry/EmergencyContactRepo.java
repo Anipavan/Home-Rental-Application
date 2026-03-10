@@ -1,8 +1,10 @@
 package com.spa.home_rental_application.user_service.user_service.repositry;
 
-import com.spa.home_rental_application.user_service.user_service.Entities.EmergencyContacts;
+import com.spa.home_rental_application.user_service.user_service.Entities.EmergencyContact;
 import org.springframework.data.jpa.repository.JpaRepository;
 
-public interface EmergencyContactRepo extends JpaRepository<EmergencyContacts,String> {
-    EmergencyContacts findByUserId(String userId);
+import java.util.List;
+
+public interface EmergencyContactRepo extends JpaRepository<EmergencyContact,String> {
+    List<EmergencyContact> findByUserId(String userId);
 }

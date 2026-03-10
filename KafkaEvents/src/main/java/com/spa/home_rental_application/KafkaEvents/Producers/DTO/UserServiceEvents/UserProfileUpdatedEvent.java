@@ -1,4 +1,4 @@
-package com.spa.home_rental_application.user_service.user_service.utils.events;
+package com.spa.home_rental_application.KafkaEvents.Producers.DTO.UserServiceEvents;
 
 import lombok.*;
 
