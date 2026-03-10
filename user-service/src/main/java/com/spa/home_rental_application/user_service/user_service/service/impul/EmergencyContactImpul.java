@@ -3,6 +3,7 @@ package com.spa.home_rental_application.user_service.user_service.service.impul;
 import com.spa.home_rental_application.user_service.user_service.DTO.Request.EmergencyContactRequestDto;
 import com.spa.home_rental_application.user_service.user_service.DTO.Response.EmergencyContactResponseDto;
 import com.spa.home_rental_application.user_service.user_service.Entities.EmergencyContact;
+import com.spa.home_rental_application.user_service.user_service.Entities.User;
 import com.spa.home_rental_application.user_service.user_service.mapper.EmergencyContactMapper;
 import com.spa.home_rental_application.user_service.user_service.repositry.EmergencyContactRepo;
 import com.spa.home_rental_application.user_service.user_service.service.EmergencyContactService;

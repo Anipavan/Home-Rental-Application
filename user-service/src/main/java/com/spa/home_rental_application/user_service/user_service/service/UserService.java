@@ -16,4 +16,5 @@ public interface UserService {
     UserResponseDto getUserByEmail(String email);
     UserResponseDto deleteUserById(String userId);
     UserResponseDto updateUser(UserRequestDto userRequest,String userId);
+    UserResponseDto searchUserByParam(String param);
 }

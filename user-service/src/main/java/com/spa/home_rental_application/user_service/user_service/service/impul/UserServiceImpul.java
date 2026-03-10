@@ -128,4 +128,20 @@ public class UserServiceImpul implements UserService {
                 .build());
         return UserMapper.toDto(userSaved);
     }
+
+    @Override
+    public UserResponseDto searchUserByParam(String param) {
+        User user=null;
+        if(param.matches("^[0-9]]{10}"))
+        {
+            user=userRepo.findByPhone(param);
+        } else if (param.contains("@")) {
+            user=userRepo.findByEmail(param);
+
+        } else
+        {
+            user=userRepo.findByFirstName(param);
+        }
+        return null;
+    }
 }

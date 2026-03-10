@@ -66,4 +66,10 @@ public class UserController {
 
         return ResponseEntity.ok().body(userService.updateUser(userRequest,uid));
     }
+
+    @GetMapping("/search/{searchParam}")
+    public ResponseEntity<UserResponseDto> searchUserByParam(@RequestParam String param)
+    {
+       return ResponseEntity.ok().body( userService.searchUserByParam(param));
+    }
 }
