@@ -1,5 +1,8 @@
 package com.spa.home_rental_application.user_service.user_service.service.impul;
 
+import com.spa.home_rental_application.KafkaEvents.Producers.DTO.UserServiceEvents.UserProfileCreatedEvent;
+import com.spa.home_rental_application.KafkaEvents.Producers.DTO.UserServiceEvents.UserProfileUpdatedEvent;
+import com.spa.home_rental_application.KafkaEvents.Producers.Events.UserServiceEvents;
 import com.spa.home_rental_application.user_service.user_service.DTO.Request.EmergencyContactRequestDto;
 import com.spa.home_rental_application.user_service.user_service.DTO.Response.EmergencyContactResponseDto;
 import com.spa.home_rental_application.user_service.user_service.DTO.Request.UserRequestDto;
@@ -12,8 +15,11 @@ import com.spa.home_rental_application.user_service.user_service.mapper.UserMapp
 import com.spa.home_rental_application.user_service.user_service.repositry.EmergencyContactRepo;
 import com.spa.home_rental_application.user_service.user_service.repositry.UserRepo;
 import com.spa.home_rental_application.user_service.user_service.service.UserService;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -22,9 +28,11 @@ import java.util.stream.Collectors;
 public class UserServiceImpul implements UserService {
     private final UserRepo userRepo;
     private final EmergencyContactRepo econtactRepo;
-    public  UserServiceImpul(UserRepo userRepo, EmergencyContactRepo econtactRepo){
+    private final UserServiceEvents userServiceEvent;
+    public  UserServiceImpul(UserRepo userRepo, EmergencyContactRepo econtactRepo, UserServiceEvents userServiceEvents){
         this.userRepo=userRepo;
         this.econtactRepo=econtactRepo;
+        this.userServiceEvent = userServiceEvents;
     }
 
     @Override
@@ -33,15 +41,17 @@ public class UserServiceImpul implements UserService {
         user.setCreatedAt(LocalDateTime.now());
         user.setUpdatedAt(LocalDateTime.now());
         User saved = userRepo.save(user);
+
+        userServiceEvent.sendUserProfileCreated(UserProfileCreatedEvent.builder()
+                .eventType("User-Profile Created").userId(saved.getId())
+                .role("roles").timestamp(LocalDateTime.now()).build());
         return UserMapper.toDto(saved);
     }
 
     @Override
-    public List<UserResponseDto> getAllUsers() {
+    public Page<UserResponseDto> getAllUsers(Pageable pageable) {
 
-        List<UserResponseDto> allusers= userRepo.findAll().stream()
-                .map(user->UserMapper.toDto(user))
-                .collect(Collectors.toList());
+        Page<UserResponseDto> allusers= userRepo.findAll(pageable).map(UserMapper::toDto);
         return allusers;
     }
 
@@ -112,6 +122,13 @@ public class UserServiceImpul implements UserService {
 
         user.setUpdatedAt(LocalDateTime.now());
         User userSaved = userRepo.save(user);
+
+        userServiceEvent.sendUserProfileUpdated(UserProfileUpdatedEvent.builder()
+                        .changes("Changed user data")
+                        .eventType("UserUpdatedEvent")
+                        .userId(userSaved.getId())
+                        .timestamp(Instant.now())
+                .build());
         return UserMapper.toDto(userSaved);
     }
 

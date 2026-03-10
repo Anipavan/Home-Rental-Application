@@ -1,7 +1,7 @@
 package com.spa.home_rental_application.property_service.property_service.service.impl;
 
-import com.spa.home_rental_application.KafkaEvents.Producers.DTO.FlatVacatedEvent;
-import com.spa.home_rental_application.KafkaEvents.Producers.PropertyEvent;
+import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyServiceEvents.FlatVacatedEvent;
+import com.spa.home_rental_application.KafkaEvents.Producers.Events.PropertyServiceEvents;
 import com.spa.home_rental_application.property_service.property_service.DTO.FlatMapper;
 import com.spa.home_rental_application.property_service.property_service.DTO.Request.FlatRequestDTO;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.FlatResponseDTO;
@@ -17,7 +17,6 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -25,11 +24,11 @@ import java.util.stream.Collectors;
 @Slf4j
 public class FlatServiceImpul implements FlatService {
     private final FlatRepo flatRepo;
-    private final PropertyEvent eventProducer;
+    private final PropertyServiceEvents eventProducer;
     private final FlatMapper flatMapper;
 
     public FlatServiceImpul(FlatRepo flatRepo,
-                            PropertyEvent eventProducer, FlatMapper flatMapper) {
+                            PropertyServiceEvents eventProducer, FlatMapper flatMapper) {
         this.flatRepo = flatRepo;
         this.eventProducer = eventProducer;
         this.flatMapper=flatMapper;

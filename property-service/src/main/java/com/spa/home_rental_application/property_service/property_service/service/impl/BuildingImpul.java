@@ -1,8 +1,8 @@
 package com.spa.home_rental_application.property_service.property_service.service.impl;
 
-import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyCreatedEvent;
-import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyUpdatedEvent;
-import com.spa.home_rental_application.KafkaEvents.Producers.PropertyEvent;
+import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyServiceEvents.PropertyCreatedEvent;
+import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyServiceEvents.PropertyUpdatedEvent;
+import com.spa.home_rental_application.KafkaEvents.Producers.Events.PropertyServiceEvents;
 import com.spa.home_rental_application.property_service.property_service.DTO.BuildingMapper;
 import com.spa.home_rental_application.property_service.property_service.DTO.Request.BuildingRequestDTO;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.BuildingResponseDTO;
@@ -27,9 +27,9 @@ import java.util.stream.Collectors;
 @Slf4j
 public class BuildingImpul implements BuildingService {
     private final BuildingRepo building_repo;
-    private final PropertyEvent eventProducer;
+    private final PropertyServiceEvents eventProducer;
 
-    public BuildingImpul(BuildingRepo building_repo, PropertyEvent eventProducer) {
+    public BuildingImpul(BuildingRepo building_repo, PropertyServiceEvents eventProducer) {
         this.building_repo = building_repo;
         this.eventProducer = eventProducer;
     }

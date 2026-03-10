@@ -1,5 +1,7 @@
 package com.spa.home_rental_application.user_service.user_service.service.impul;
 
+import com.spa.home_rental_application.KafkaEvents.Producers.DTO.UserServiceEvents.OwnerRegisteredEvent;
+import com.spa.home_rental_application.KafkaEvents.Producers.Events.UserServiceEvents;
 import com.spa.home_rental_application.user_service.user_service.DTO.Request.OwnerRequestDto;
 import com.spa.home_rental_application.user_service.user_service.DTO.Response.OwnerResponseDto;
 import com.spa.home_rental_application.user_service.user_service.DTO.Response.UserResponseDto;
@@ -11,8 +13,11 @@ import com.spa.home_rental_application.user_service.user_service.mapper.UserMapp
 import com.spa.home_rental_application.user_service.user_service.repositry.OwnerRepo;
 import com.spa.home_rental_application.user_service.user_service.service.OwnerService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -21,13 +26,22 @@ import java.util.stream.Collectors;
 public class OwnerServiceImpul implements OwnerService {
     @Autowired
     OwnerRepo ownerRepo;
+    @Autowired
+    UserServiceEvents userServiceEvent;
     @Override
     public OwnerResponseDto createOwner(OwnerRequestDto ownerRequest) {
 
         Owners owner= OwnerMapper.toEntity(ownerRequest);
         owner.setCreatedAt(LocalDateTime.now());
         owner.setUpdatedAt(LocalDateTime.now());
-        return OwnerMapper.toDto(ownerRepo.save(owner));
+        Owners savedOwner=ownerRepo.save(owner);
+
+        userServiceEvent.sendOwnerRegistered(OwnerRegisteredEvent.builder()
+                        .eventType("Owner-Registered")
+                        .ownerId(savedOwner.getId())
+                        .timestamp(Instant.now())
+                .build());
+        return OwnerMapper.toDto(savedOwner);
     }
 
     @Override
@@ -70,10 +84,10 @@ public class OwnerServiceImpul implements OwnerService {
 
 
     @Override
-    public List<OwnerResponseDto> getAllOwners() {
-        return ownerRepo.findAll().stream()
-                .map(OwnerMapper::toDto)
-                .collect(Collectors.toList());
+    public Page<OwnerResponseDto> getAllOwners(Pageable pageable) {
+       Page<Owners> owners=ownerRepo.findAll(pageable);
+
+        return owners.map(OwnerMapper::toDto);
     }
 
     @Override
