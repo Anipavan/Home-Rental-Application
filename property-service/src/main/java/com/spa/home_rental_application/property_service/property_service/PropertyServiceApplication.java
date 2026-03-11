@@ -3,7 +3,7 @@ package com.spa.home_rental_application.property_service.property_service;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
-@SpringBootApplication
+@SpringBootApplication(scanBasePackages = "com.spa.home_rental_application")
 public class PropertyServiceApplication {
 
 	public static void main(String[] args) {

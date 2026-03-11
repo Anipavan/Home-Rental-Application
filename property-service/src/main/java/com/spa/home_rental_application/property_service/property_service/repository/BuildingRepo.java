@@ -10,6 +10,6 @@ import java.util.List;
 
 public interface BuildingRepo extends JpaRepository<Building, String> {
     List<Building> findByOwnerId(String ownerId);
-    @Query("SELECT b FROM registeredBuildings b WHERE b.isDeleted = false")
+    @Query("SELECT b FROM Building b WHERE b.isDeleted = false")
     Page<Building> getActiveBuildings(Pageable pageable);
 }

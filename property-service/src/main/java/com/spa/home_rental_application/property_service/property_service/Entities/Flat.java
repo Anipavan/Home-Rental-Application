@@ -1,8 +1,12 @@
 package com.spa.home_rental_application.property_service.property_service.Entities;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.*;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import lombok.*;
+import org.hibernate.annotations.SQLDelete;
+import org.hibernate.annotations.Where;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -15,6 +19,8 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
+@SQLDelete(sql = "UPDATE flats SET is_deleted = 1 WHERE id=?")
+@Where(clause = "is_deleted = 0")
 public class Flat {
 
     @Id
@@ -26,13 +32,10 @@ public class Flat {
     @Column(name = "flat_number", nullable = false)
     private String flatNumber;
 
-    @Column(name = "floor")
     private Integer floor;
 
-    @Column(name = "bedrooms")
     private Integer bedrooms;
 
-    @Column(name = "bathrooms")
     private Integer bathrooms;
 
     @Column(name = "area_sqft")
@@ -41,11 +44,12 @@ public class Flat {
     @Column(name = "rent_amount")
     private BigDecimal rentAmount;
 
-    @Column(name = "is_occupied",nullable = false)
+    @Column(name = "is_occupied", nullable = false)
     @Builder.Default
-    private Boolean isOccupied=false;
-    @Builder.Default
-    private boolean isDeleted=false;
+    private Boolean isOccupied = false;
+
+    @Column(name = "is_deleted")
+    private boolean isDeleted = false;
 
     @Column(name = "tenant_id")
     private String tenantId;
@@ -61,23 +65,4 @@ public class Flat {
 
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
-    @Override
-    public String toString() {
-        return "Flat{" +
-                "flatId=" + id +
-                ", buildingId='" + buildingId + '\'' +
-                ", flatNumber='" + flatNumber + '\'' +
-                ", floor=" + floor +
-                ", bedrooms=" + bedrooms +
-                ", bathrooms=" + bathrooms +
-                ", areaSqft=" + areaSqft +
-                ", rentAmount=" + rentAmount +
-                ", isOccupied=" + isOccupied +
-                ", tenantId='" + tenantId + '\'' +
-                ", leaseStartDate=" + leaseStartDate +
-                ", leaseEndDate=" + leaseEndDate +
-                ", createdAt=" + createdAt +
-                ", updatedAt=" + updatedAt +
-                '}';
-    }
 }

@@ -3,6 +3,7 @@ package com.spa.home_rental_application.property_service.property_service.servic
 import com.spa.home_rental_application.property_service.property_service.Entities.PropertyImage;
 import com.spa.home_rental_application.property_service.property_service.repository.PropertyImageRepo;
 import com.spa.home_rental_application.property_service.property_service.service.PropertyImageService;
+import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -11,6 +12,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 import java.util.UUID;
+@Service
 
 public class PropertyImageServiceImpul implements PropertyImageService {
     private final PropertyImageRepo repo;
