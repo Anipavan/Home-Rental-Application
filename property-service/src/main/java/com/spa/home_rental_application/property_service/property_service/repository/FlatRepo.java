@@ -1,5 +1,6 @@
 package com.spa.home_rental_application.property_service.property_service.repository;
 
+import com.spa.home_rental_application.property_service.property_service.Entities.Building;
 import com.spa.home_rental_application.property_service.property_service.Entities.Flat;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -19,7 +20,6 @@ public interface FlatRepo extends JpaRepository<Flat,String> {
     @Query("UPDATE Flat f SET f.isOccupied = false, f.tenantId = null " +
             "WHERE f.id = :flatId")
     int markFlatVacant(@Param("flatId") String flatId);
-
-    @Query("SELECT f FROM Flat f WHERE f.isDeleted = false")
+    @Query("SELECT f FROM Flat f WHERE f.isDeleted = false OR f.isDeleted IS NULL")
     Page<Flat> getActiveFlats(Pageable pageable);
 }

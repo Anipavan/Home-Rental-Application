@@ -19,8 +19,6 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-@SQLDelete(sql = "UPDATE flats SET is_deleted = 1 WHERE id=?")
-@Where(clause = "is_deleted = 0")
 public class Flat {
 
     @Id
@@ -48,8 +46,9 @@ public class Flat {
     @Builder.Default
     private Boolean isOccupied = false;
 
-    @Column(name = "is_deleted")
-    private boolean isDeleted = false;
+    @Column(name = "is_deleted", nullable = false)
+    @Builder.Default
+    private Boolean isDeleted = false;
 
     @Column(name = "tenant_id")
     private String tenantId;

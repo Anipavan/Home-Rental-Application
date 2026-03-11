@@ -87,7 +87,7 @@ public class BuildingImpul implements BuildingService {
 
         if (flats == null || flats.isBlank()) {
 
-            building.setDeleted(true);
+            building.setIsDeleted(true);
 
             building_repo.save(building);
 

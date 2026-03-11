@@ -26,8 +26,9 @@
         String amenities;
         String createdDt;
         String updatedDt;
-        @Column(name = "is_deleted")
-        private boolean isDeleted = false;
+        @Column(name = "is_deleted", nullable = false)
+        @Builder.Default
+        private Boolean isDeleted = false;
 
         @Override
         public String toString() {

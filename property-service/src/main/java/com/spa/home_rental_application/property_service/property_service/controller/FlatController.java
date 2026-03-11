@@ -24,7 +24,7 @@ public class FlatController {
     FlatService flatService;
     @GetMapping("/flats")
     public ResponseEntity<Page<FlatResponseDTO>> getAllFlats(@RequestParam(defaultValue = "0") int pagenum,@RequestParam(defaultValue = "10") int pagesize) {
-
+        log.info("Calling function getAllFlats() ");
        Pageable pageable= PageRequest.of(pagenum,pagesize);
 
         return ResponseEntity.ok().body(flatService.getAllFlats(pageable));
