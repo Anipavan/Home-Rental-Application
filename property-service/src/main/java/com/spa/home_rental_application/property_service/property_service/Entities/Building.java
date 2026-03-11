@@ -26,7 +26,7 @@
         String amenities;
         String createdDt;
         String updatedDt;
-        @Column(columnDefinition = "boolean default false")
+        @Column(name = "is_deleted")
         private boolean isDeleted = false;
 
         @Override

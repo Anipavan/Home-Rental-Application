@@ -28,6 +28,8 @@ spring:
 app:
   kafka:
     property-topic: property-events
+    user-topic: user-events
+    notification-topic: notification-events
 
 eureka:
   instance:
@@ -36,4 +38,4 @@ eureka:
     register-with-eureka: true
     fetch-registry: true
     service-url:
-      default-zone: http://localhost:8761/eureka
+      defaultZone: http://localhost:8761/eureka
