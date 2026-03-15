@@ -1,4 +1,4 @@
-package com.spa.home_rental_application.auth_service.auth_service.entity;
+package com.spa.home_rental_application.auth_service.auth_service.Entity;
 
 import jakarta.persistence.*;
 

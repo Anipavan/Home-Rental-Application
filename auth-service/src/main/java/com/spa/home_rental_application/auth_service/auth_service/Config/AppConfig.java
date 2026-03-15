@@ -1,9 +1,11 @@
-package com.spa.home_rental_application.auth_service.auth_service.config;
+package com.spa.home_rental_application.auth_service.auth_service.Config;
 
-import com.spa.home_rental_application.auth_service.auth_service.service.CustomUserDetailsService;
-import jakarta.ws.rs.HttpMethod;
+import com.spa.home_rental_application.auth_service.auth_service.Service.CustomUserDetails;
+
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+
+import org.springframework.http.HttpMethod;  // ← CHANGE TO THIS
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -20,46 +22,41 @@ import static org.springframework.security.config.Customizer.withDefaults;
 
 @Configuration
 @EnableWebSecurity
-public class Securityconfig {
+public class AppConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-
                 .csrf(AbstractHttpConfigurer::disable)
                 .httpBasic(withDefaults())
-
                 .authorizeHttpRequests(auth -> auth
-
-                        .requestMatchers(HttpMethod.POST, "/auth/register").permitAll()
-
-                        .requestMatchers("/auth/**").permitAll()
-
+                        .requestMatchers(HttpMethod.POST, "/auth/register").permitAll()  // ✅ Now works
                         .anyRequest().authenticated()
                 )
-
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 );
-
         return http.build();
     }
     @Bean
-    PasswordEncoder passwordEncoder()
+    PasswordEncoder encoder()
     {
-        return  new BCryptPasswordEncoder();
+        return new BCryptPasswordEncoder();
     }
     @Bean
-public UserDetailsService userDetailsService()
-{
-    return  new CustomUserDetailsService();
-}
+    UserDetailsService userDetailsService()
+    {
+        return new CustomUserDetails();
+    }
 
     @Bean
-   public AuthenticationManager authenticationManager( UserDetailsService userDetailsService, PasswordEncoder passwordEncoder) {
-        DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
-        provider.setUserDetailsService(userDetailsService);
-        provider.setPasswordEncoder(passwordEncoder);
-        return new ProviderManager(provider);
+    AuthenticationManager authenticationManager(UserDetailsService userDetailsService,PasswordEncoder encoder)
+    {
+        DaoAuthenticationProvider daoAuthenticationProvider=new DaoAuthenticationProvider();
+        daoAuthenticationProvider.setUserDetailsService(userDetailsService);
+        daoAuthenticationProvider.setPasswordEncoder(encoder);
+
+        ProviderManager providerManager=new ProviderManager(daoAuthenticationProvider);
+        return providerManager;
     }
 
 }
