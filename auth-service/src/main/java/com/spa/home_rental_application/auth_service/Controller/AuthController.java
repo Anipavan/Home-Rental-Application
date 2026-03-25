@@ -27,7 +27,6 @@ public class AuthController {
     @PostMapping("/register")
     public UserDetails registerUser(@RequestBody UserDetails userRequest)
     {
-
         return service.registerUser(userRequest);
     }
 

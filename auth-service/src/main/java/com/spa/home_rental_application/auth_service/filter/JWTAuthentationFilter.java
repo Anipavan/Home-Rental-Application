@@ -1,3 +1,4 @@
+/*
 package com.spa.home_rental_application.auth_service.filter;
 
 import com.spa.home_rental_application.auth_service.Utils.CustomuserdetailsService;
@@ -15,15 +16,12 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.Date;
 @Component
 public class JWTAuthentationFilter extends OncePerRequestFilter {
     @Autowired
     private JWTUtil jwtUtil;
     @Autowired
     private CustomuserdetailsService customuserdetailsService;
-
-    private String token=null;
 
 
     @Override
@@ -33,7 +31,7 @@ public class JWTAuthentationFilter extends OncePerRequestFilter {
     }
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
-
+         String token=null;
         String authorization=request.getHeader("Authorization");
         if(authorization!=null && authorization.startsWith("Bearer "))
         {
@@ -55,3 +53,4 @@ public class JWTAuthentationFilter extends OncePerRequestFilter {
         filterChain.doFilter(request,response);
     }
 }
+*/
