@@ -1,8 +1,6 @@
 package com.spa.home_rental_application.auth_service.Config;
 
 import com.spa.home_rental_application.auth_service.Utils.CustomuserdetailsService;
-import com.spa.home_rental_application.auth_service.filter.JWTAuthentationFilter;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -22,8 +20,6 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @Configuration
 @EnableWebSecurity
 public class Securityconfig {
-    @Autowired
-    private JWTAuthentationFilter jwtAuthentationFilter;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -43,7 +39,6 @@ public class Securityconfig {
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 );
-        http.addFilterBefore(jwtAuthentationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
     @Bean
