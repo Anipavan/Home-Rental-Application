@@ -1,0 +1,4 @@
+$kind: http-request
+url: http://localhost:8089/users/user/cab2b65c-6376-4cae-975c-8a35102fc0df
+method: GET
+order: 3000

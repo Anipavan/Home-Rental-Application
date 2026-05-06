@@ -1,0 +1,4 @@
+$kind: http-request
+url: http://localhost:8089/users/getContcat/7d1a176d-3ff3-407d-afe0-cf16f27cd3ea
+method: GET
+order: 6000

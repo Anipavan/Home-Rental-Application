@@ -1,0 +1,4 @@
+$kind: http-request
+url: http://localhost:8089/users/owners/97629847-2b7a-4dc6-95c4-77988fed4a3e/tenants
+method: GET
+order: 5000

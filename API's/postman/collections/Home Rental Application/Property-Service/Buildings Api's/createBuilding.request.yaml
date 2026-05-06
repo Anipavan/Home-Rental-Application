@@ -1,0 +1,23 @@
+$kind: http-request
+url: http://localhost:8088/properties/buildings/create/building
+method: POST
+body:
+  type: json
+  content: "{\r
+
+    \  \"buildingName\": \"Sunrise Residency3Test4\",\r
+
+    \  \"buildingAddress\": \"123 MG Road, Sector 9\",\r
+
+    \  \"buildingCity\": \"Bangalore\",\r
+
+    \  \"buildingState\": \"Karnataka\",\r
+
+    \  \"buildingTotalFloors\": \"10\",\r
+
+    \  \"buildingTotalFlats\": \"80\",\r
+
+    \  \"amenities\": \"Gym,Swimming Pool,Parking,Security\"\r
+
+    }"
+order: 1000

@@ -1,0 +1,29 @@
+$kind: http-request
+url: http://localhost:9090/auth/register
+method: POST
+body:
+  type: json
+  content: "{\r
+
+    \  \"username\": \"pavan_Anirudh\",\r
+
+    \  \"email\": \"pavan.anirudh@example.com\",\r
+
+    \  \"password\": \"Pavan@123\",\r
+
+    \  \"role\": \"OWNER\",\r
+
+    \  \"firstName\": \"Pavan\",\r
+
+    \  \"lastName\": \"Anirudh\",\r
+
+    \  \"phone\": \"+919108201223\",\r
+
+    \  \"dateOfBirth\": \"1998-10-03\",\r
+
+    \  \"gender\": \"MALE\",\r
+
+    \  \"address\": \"Bangalore, Karnataka, India\"\r
+
+    }"
+order: 1000

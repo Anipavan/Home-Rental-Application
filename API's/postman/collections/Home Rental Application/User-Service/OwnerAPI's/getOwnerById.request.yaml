@@ -1,0 +1,7 @@
+$kind: http-request
+url: http://localhost:8089/users/owners/3cd29df8-fcbb-451a-8267-4172dd792319
+method: GET
+body:
+  type: json
+  content: ""
+order: 3000

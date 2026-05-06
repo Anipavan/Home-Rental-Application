@@ -1,0 +1,11 @@
+$kind: http-request
+url: http://localhost:8089/users/owners/be668315-959e-4324-957b-e028fae76123
+method: PUT
+body:
+  type: json
+  content: "{\r
+
+    \    \"userId\": \"112b07a3-0da8-4843-ae18-0e68cd39e2eb\"\r
+
+    }"
+order: 4000

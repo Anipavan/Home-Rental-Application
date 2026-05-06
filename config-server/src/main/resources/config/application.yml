@@ -1,0 +1,46 @@
+# =====================================================================
+# Common configuration applied to EVERY service that fetches from this
+# Config Server. Per-service files override these values.
+# =====================================================================
+
+# Shared internal-auth secret — every service uses the same value to
+# verify gateway HMAC signatures, and the gateway uses it to sign.
+app:
+  internal-auth:
+    enabled: true
+    secret: ${INTERNAL_AUTH_SECRET:Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+    allowed-clock-skew-seconds: 60
+
+  # Centralised Kafka topic names — bound by KafkaTopicProperties in the
+  # KafkaEvents shared library.
+  kafka:
+    property-topic: property-events
+    user-topic: user-events
+    payment-topic: payment-events
+    maintenance-topic: maintenance-events
+    notification-topic: notification-events
+    auth-topic: auth-events
+
+# Common Eureka client config (each service overrides instance.* if needed)
+eureka:
+  instance:
+    prefer-ip-address: true
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
+  client:
+    register-with-eureka: true
+    fetch-registry: true
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka}
+
+# Common actuator profile
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,env,loggers
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true

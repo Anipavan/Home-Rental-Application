@@ -1,0 +1,29 @@
+$kind: http-request
+url: http://localhost:8089/users/user
+method: POST
+body:
+  type: json
+  content: "{\r
+
+    \  \"authUserId\": \"auth_corp_5678-90ab-cdef-0123-456789abcdef\",\r
+
+    \  \"firstName\": \"Kiran\",\r
+
+    \  \"lastName\": \"Reddy\",\r
+
+    \  \"email\": \"kiran.reddy@corporation.in\",\r
+
+    \  \"phone\": \"+91-9612345678\",\r
+
+    \  \"dateOfBirth\": \"1991-01-12\",\r
+
+    \  \"gender\": \"MALE\",\r
+
+    \  \"address\": \"Electronic City Phase 1, Bengaluru, Karnataka 560100\",\r
+
+    \  \"profilePictureUrl\": \"https://example.com/profile/kiran-reddy.jpg\",\r
+
+    \  \"idProofUrl\": \"https://example.com/idproof/kiran-employee-id.pdf\"\r
+
+    }\r\n"
+order: 1000

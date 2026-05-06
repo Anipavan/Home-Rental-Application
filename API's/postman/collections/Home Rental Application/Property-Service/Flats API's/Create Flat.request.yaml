@@ -1,0 +1,37 @@
+$kind: http-request
+url: http://localhost:8088/properties/flats/create/flat
+method: POST
+body:
+  type: json
+  content: "{\r
+
+    \  \"buildingId\": \"BLD-42ba20ef-583d-4c7c-aacc-476054f96657\",\r
+
+    \  \"flatNumber\": \"101\",\r
+
+    \  \"floor\": 1,\r
+
+    \  \"bedrooms\": 2,\r
+
+    \  \"bathrooms\": 2,\r
+
+    \  \"areaSqft\": 950.0,\r
+
+    \  \"rentAmount\": 22000.00,\r
+
+    \  \"isOccupied\": false,\r
+
+    \  \"tenantId\": null,\r
+
+    \  \"leaseStartDate\": \"2026-01-01\",\r
+
+    \  \"leaseEndDate\": \"2026-12-31\",\r
+
+    \  \"createdAt\": \"2025-12-11T09:15:00\",\r
+
+    \  \"updatedAt\": \"2025-12-11T09:15:00\"\r
+
+    }\r
+
+    \r\n"
+order: 1000

@@ -11,3 +11,9 @@ mvnw*
 # OS
 .DS_Store
 Thumbs.db
+# Claude Code harness state (worktrees, settings, hooks)
+.claude/
+# Node
+node_modules/
+dist/
+*.tsbuildinfo

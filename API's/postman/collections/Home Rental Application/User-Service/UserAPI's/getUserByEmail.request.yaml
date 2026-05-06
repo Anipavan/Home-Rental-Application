@@ -1,0 +1,4 @@
+$kind: http-request
+url: http://localhost:8089/users/email/john.doe@example.com
+method: GET
+order: 4000
