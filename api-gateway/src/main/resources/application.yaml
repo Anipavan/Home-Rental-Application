@@ -1,31 +1,361 @@
 server:
-  port: 8086
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
 
 spring:
   application:
-    name: HRA-API-Gateway-service
+    name: HRA-api-gateway
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+
   cloud:
+    loadbalancer:
+      retry:
+        enabled: true
+        retryable-status-codes: 502,503,504
+        max-retries-on-same-service-instance: 0
+        max-retries-on-next-service-instance: 1
+        retry-on-all-operations: false
+      health-check:
+        initial-delay: 5s
+        interval: 15s
+      cache:
+        ttl: 30s
+        capacity: 256
     gateway:
+      discovery:
+        locator:
+          enabled: false
+      httpclient:
+        connect-timeout: 2000
+        response-timeout: 10s
+      default-filters:
+        - AddResponseHeader=X-API-Version, v1
       routes:
-        - id: property-service
-          uri: http://localhost:8088
-          predicates:
-            - Path=/properties/**
+        # ===== v1 routes =====
+        - id: auth-service-v1
+          uri: lb://HRA-auth-service
+          predicates: [Path=/rentals/v1/auth/**]
+          filters:
+            - RewritePath=/rentals/v1/(?<segment>.*), /$\{segment}
+            - AddResponseHeader=X-API-Version, v1
+            - name: CircuitBreaker
+              args: {name: authServiceCircuitBreaker, fallbackUri: forward:/__cb/fallback/auth}
 
-        - id: user-service
-          uri: http://localhost:8087
-          predicates:
-            - Path=/users/**
+        - id: property-service-v1
+          uri: lb://HRA-property-service
+          predicates: [Path=/rentals/v1/properties/**]
+          filters:
+            - RewritePath=/rentals/v1/(?<segment>.*), /$\{segment}
+            - AddResponseHeader=X-API-Version, v1
+            - name: CircuitBreaker
+              args: {name: propertyServiceCircuitBreaker, fallbackUri: forward:/__cb/fallback/property}
 
-        - id: auth-service
-          uri: http://localhost:9090
-          predicates:
-            - Path=/auth/**
+        - id: user-service-v1
+          uri: lb://HRA-user-service
+          predicates: [Path=/rentals/v1/users/**]
+          filters:
+            - RewritePath=/rentals/v1/(?<segment>.*), /$\{segment}
+            - AddResponseHeader=X-API-Version, v1
+            - name: CircuitBreaker
+              args: {name: userServiceCircuitBreaker, fallbackUri: forward:/__cb/fallback/user}
+
+        - id: payment-service-v1
+          uri: lb://HRA-payment-service
+          predicates: [Path=/rentals/v1/payments/**]
+          filters:
+            - RewritePath=/rentals/v1/(?<segment>.*), /$\{segment}
+            - AddResponseHeader=X-API-Version, v1
+            - name: CircuitBreaker
+              args: {name: paymentServiceCircuitBreaker, fallbackUri: forward:/__cb/fallback/payment}
+
+        - id: maintenance-service-v1
+          uri: lb://HRA-maintenance-service
+          predicates: [Path=/rentals/v1/maintenance/**]
+          filters:
+            - RewritePath=/rentals/v1/(?<segment>.*), /$\{segment}
+            - AddResponseHeader=X-API-Version, v1
+            - name: CircuitBreaker
+              args: {name: maintenanceServiceCircuitBreaker, fallbackUri: forward:/__cb/fallback/maintenance}
+
+        - id: notification-service-v1
+          uri: lb://HRA-notification-service
+          predicates: [Path=/rentals/v1/notifications/**]
+          filters:
+            - RewritePath=/rentals/v1/(?<segment>.*), /$\{segment}
+            - AddResponseHeader=X-API-Version, v1
+            - name: CircuitBreaker
+              args: {name: notificationServiceCircuitBreaker, fallbackUri: forward:/__cb/fallback/notification}
+
+        - id: analytics-service-v1
+          uri: lb://HRA-analytics-service
+          predicates: [Path=/rentals/v1/analytics/**]
+          filters:
+            - RewritePath=/rentals/v1/(?<segment>.*), /$\{segment}
+            - AddResponseHeader=X-API-Version, v1
+            - name: CircuitBreaker
+              args: {name: analyticsServiceCircuitBreaker, fallbackUri: forward:/__cb/fallback/analytics}
+
+        # ===== legacy routes (deprecated) =====
+        - id: auth-service-legacy
+          uri: lb://HRA-auth-service
+          predicates: [Path=/api/auth/**]
+          filters:
+            - StripPrefix=1
+            - AddResponseHeader=X-API-Version, legacy
+            - AddResponseHeader=X-Deprecation, "true"
+            - AddResponseHeader=X-Deprecation-Hint, "Use /rentals/v1/auth/** instead"
+            - name: CircuitBreaker
+              args: {name: authServiceCircuitBreaker, fallbackUri: forward:/__cb/fallback/auth}
+
+        - id: property-service-legacy
+          uri: lb://HRA-property-service
+          predicates: [Path=/api/properties/**]
+          filters:
+            - StripPrefix=1
+            - AddResponseHeader=X-API-Version, legacy
+            - AddResponseHeader=X-Deprecation, "true"
+            - AddResponseHeader=X-Deprecation-Hint, "Use /rentals/v1/properties/** instead"
+            - name: CircuitBreaker
+              args: {name: propertyServiceCircuitBreaker, fallbackUri: forward:/__cb/fallback/property}
+
+        - id: user-service-legacy
+          uri: lb://HRA-user-service
+          predicates: [Path=/api/users/**]
+          filters:
+            - StripPrefix=1
+            - AddResponseHeader=X-API-Version, legacy
+            - AddResponseHeader=X-Deprecation, "true"
+            - AddResponseHeader=X-Deprecation-Hint, "Use /rentals/v1/users/** instead"
+            - name: CircuitBreaker
+              args: {name: userServiceCircuitBreaker, fallbackUri: forward:/__cb/fallback/user}
+
+        - id: payment-service-legacy
+          uri: lb://HRA-payment-service
+          predicates: [Path=/api/payments/**]
+          filters:
+            - StripPrefix=1
+            - AddResponseHeader=X-API-Version, legacy
+            - AddResponseHeader=X-Deprecation, "true"
+            - AddResponseHeader=X-Deprecation-Hint, "Use /rentals/v1/payments/** instead"
+            - name: CircuitBreaker
+              args: {name: paymentServiceCircuitBreaker, fallbackUri: forward:/__cb/fallback/payment}
+
+        - id: maintenance-service-legacy
+          uri: lb://HRA-maintenance-service
+          predicates: [Path=/api/maintenance/**]
+          filters:
+            - StripPrefix=1
+            - AddResponseHeader=X-API-Version, legacy
+            - AddResponseHeader=X-Deprecation, "true"
+            - AddResponseHeader=X-Deprecation-Hint, "Use /rentals/v1/maintenance/** instead"
+            - name: CircuitBreaker
+              args: {name: maintenanceServiceCircuitBreaker, fallbackUri: forward:/__cb/fallback/maintenance}
+
+        - id: notification-service-legacy
+          uri: lb://HRA-notification-service
+          predicates: [Path=/api/notifications/**]
+          filters:
+            - StripPrefix=1
+            - AddResponseHeader=X-API-Version, legacy
+            - AddResponseHeader=X-Deprecation, "true"
+            - AddResponseHeader=X-Deprecation-Hint, "Use /rentals/v1/notifications/** instead"
+            - name: CircuitBreaker
+              args: {name: notificationServiceCircuitBreaker, fallbackUri: forward:/__cb/fallback/notification}
+
+        - id: analytics-service-legacy
+          uri: lb://HRA-analytics-service
+          predicates: [Path=/api/analytics/**]
+          filters:
+            - StripPrefix=1
+            - AddResponseHeader=X-API-Version, legacy
+            - AddResponseHeader=X-Deprecation, "true"
+            - AddResponseHeader=X-Deprecation-Hint, "Use /rentals/v1/analytics/** instead"
+            - name: CircuitBreaker
+              args: {name: analyticsServiceCircuitBreaker, fallbackUri: forward:/__cb/fallback/analytics}
+
+        # ===== Swagger aggregation routes =====
+        # Springdoc cold spec generation can take 15-30s; bump per-route timeout to 60s.
+        - id: aggregate-auth-docs
+          uri: lb://HRA-auth-service
+          predicates: [Path=/aggregate/auth-service/v3/api-docs/**]
+          filters: [StripPrefix=2]
+          metadata: {response-timeout: 60000, connect-timeout: 5000}
+
+        - id: aggregate-property-docs
+          uri: lb://HRA-property-service
+          predicates: [Path=/aggregate/property-service/v3/api-docs/**]
+          filters: [StripPrefix=2]
+          metadata: {response-timeout: 60000, connect-timeout: 5000}
+
+        - id: aggregate-user-docs
+          uri: lb://HRA-user-service
+          predicates: [Path=/aggregate/user-service/v3/api-docs/**]
+          filters: [StripPrefix=2]
+          metadata: {response-timeout: 60000, connect-timeout: 5000}
+
+        - id: aggregate-payment-docs
+          uri: lb://HRA-payment-service
+          predicates: [Path=/aggregate/payment-service/v3/api-docs/**]
+          filters: [StripPrefix=2]
+          metadata: {response-timeout: 60000, connect-timeout: 5000}
+
+        - id: aggregate-maintenance-docs
+          uri: lb://HRA-maintenance-service
+          predicates: [Path=/aggregate/maintenance-service/v3/api-docs/**]
+          filters: [StripPrefix=2]
+          metadata: {response-timeout: 60000, connect-timeout: 5000}
+
+        - id: aggregate-notification-docs
+          uri: lb://HRA-notification-service
+          predicates: [Path=/aggregate/notification-service/v3/api-docs/**]
+          filters: [StripPrefix=2]
+          metadata: {response-timeout: 60000, connect-timeout: 5000}
+
+        - id: aggregate-analytics-docs
+          uri: lb://HRA-analytics-service
+          predicates: [Path=/aggregate/analytics-service/v3/api-docs/**]
+          filters: [StripPrefix=2]
+          metadata: {response-timeout: 60000, connect-timeout: 5000}
+
+# ---------- App-specific config ----------
+app:
+  jwt:
+    secret: ${JWT_SECRET:U3VwZXJTZWNyZXRLZXlGb3JKV1RUb2tlbkdlbmVyYXRpb24xMjM0NTY3ODkwIQ==}
+    issuer: ${JWT_ISSUER:home-rental-auth}
+  internal-auth:
+    secret: ${INTERNAL_AUTH_SECRET:Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+    allowed-clock-skew-seconds: 60
+  gateway:
+    cors:
+      allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200}
+      allowed-methods: GET,POST,PUT,PATCH,DELETE,OPTIONS
+      allowed-headers: Authorization,Content-Type,Accept,X-Requested-With
+      max-age-seconds: 3600
+    public-paths:
+      - /rentals/v1/auth/login
+      - /rentals/v1/auth/register
+      - /rentals/v1/auth/refresh
+      - /rentals/v1/auth/forgot-password
+      - /rentals/v1/auth/reset-password
+      - /api/auth/login
+      - /api/auth/register
+      - /api/auth/refresh
+      - /api/auth/forgot-password
+      - /api/auth/reset-password
+      - /actuator/**
+      - /v3/api-docs/**
+      - /swagger-ui/**
+      - /swagger-ui.html
+      - /webjars/**
+      - /aggregate/**
+      - /__cb/**
+
+# ---------- Resilience4j ----------
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 20
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+        slowCallRateThreshold: 50
+        slowCallDurationThreshold: 5s
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        registerHealthIndicator: true
+    instances:
+      defaultCircuitBreaker:             { baseConfig: default }
+      authServiceCircuitBreaker:         { baseConfig: default }
+      propertyServiceCircuitBreaker:     { baseConfig: default }
+      userServiceCircuitBreaker:         { baseConfig: default }
+      paymentServiceCircuitBreaker:      { baseConfig: default }
+      maintenanceServiceCircuitBreaker:  { baseConfig: default }
+      notificationServiceCircuitBreaker: { baseConfig: default }
+      analyticsServiceCircuitBreaker:    { baseConfig: default }
+  timelimiter:
+    configs:
+      default:
+        timeoutDuration: 10s
+        cancelRunningFuture: true
+    instances:
+      authServiceCircuitBreaker:         { baseConfig: default }
+      propertyServiceCircuitBreaker:     { baseConfig: default }
+      userServiceCircuitBreaker:         { baseConfig: default }
+      paymentServiceCircuitBreaker:      { baseConfig: default }
+      maintenanceServiceCircuitBreaker:  { baseConfig: default }
+      notificationServiceCircuitBreaker: { baseConfig: default }
+      analyticsServiceCircuitBreaker:    { baseConfig: default }
+
+# ---------- Eureka ----------
 eureka:
   instance:
     prefer-ip-address: true
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
   client:
     register-with-eureka: true
     fetch-registry: true
     service-url:
-      default-zone: http://localhost:8761/eureka
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka}
+
+# ---------- Actuator ----------
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,gateway,env,loggers
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+    gateway:
+      access: read_only
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+# ---------- Springdoc / Swagger UI aggregation ----------
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+    config-url: /v3/api-docs/swagger-config
+    disable-swagger-default-url: true
+    use-root-path: true
+    operationsSorter: method
+    tagsSorter: alpha
+    urls:
+      - name: "1. Auth Service"
+        url:  /aggregate/auth-service/v3/api-docs
+      - name: "2. Property Service"
+        url:  /aggregate/property-service/v3/api-docs
+      - name: "3. User Service"
+        url:  /aggregate/user-service/v3/api-docs
+      - name: "4. Payment Service"
+        url:  /aggregate/payment-service/v3/api-docs
+      - name: "5. Maintenance Service"
+        url:  /aggregate/maintenance-service/v3/api-docs
+      - name: "6. Notification Service"
+        url:  /aggregate/notification-service/v3/api-docs
+      - name: "7. Analytics Service"
+        url:  /aggregate/analytics-service/v3/api-docs
+
+# ---------- Logging ----------
+logging:
+  level:
+    root: INFO
+    com.spa.home_rental_application: DEBUG
+    org.springframework.cloud.gateway: DEBUG
+    org.springframework.cloud.gateway.filter.NettyRoutingFilter: DEBUG
+    org.springframework.cloud.gateway.handler.RoutePredicateHandlerMapping: DEBUG
+    reactor.netty.http.client: INFO
+    reactor.netty: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{traceId:-},%X{spanId:-}] %logger{36} - %msg%n"

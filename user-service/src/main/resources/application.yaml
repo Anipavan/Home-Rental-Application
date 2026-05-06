@@ -1,39 +1,164 @@
 server:
   port: 8089
+  shutdown: graceful
 
 spring:
   application:
     name: HRA-user-service
 
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+
   datasource:
-    url: jdbc:oracle:thin:@//localhost:1521/orcl
-    username: siva
-    password: Pavan@123
+    url: ${DB_URL:jdbc:oracle:thin:@//localhost:1521/orcl}
+    username: ${DB_USERNAME:siva}
+    password: ${DB_PASSWORD:Pavan@123}
     driver-class-name: oracle.jdbc.OracleDriver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
 
   jpa:
     hibernate:
       ddl-auto: update
-    show-sql: true
+    show-sql: false
     properties:
       hibernate:
         dialect: org.hibernate.dialect.OracleDialect
-kafka:
-  bootstrap-servers: localhost:9093
-  producer:
-    key-serializer: org.apache.kafka.common.serialization.StringSerializer
-    value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
-  properties:
-    spring.json.add.type.headers: false
-app:
+        format_sql: true
+        jdbc:
+          batch_size: 25
+
   kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9093}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: 3
+      properties:
+        spring.json.add.type.headers: false
+    consumer:
+      group-id: hra-user-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.spa.home_rental_application.KafkaEvents.*"
+
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 10MB
+
+# Bound by KafkaTopicProperties (in KafkaEvents shared lib)
+app:
+  internal-auth:
+    enabled: ${INTERNAL_AUTH_ENABLED:true}
+    secret: ${INTERNAL_AUTH_SECRET:Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+    allowed-clock-skew-seconds: 60
+  kafka:
+    property-topic: property-events
     user-topic: user-events
+    payment-topic: payment-events
+    maintenance-topic: maintenance-events
+    notification-topic: notification-events
+    auth-topic: auth-events
+  uploads:
+    dir: ${USER_UPLOAD_DIR:uploads/users}
+
+# ---------- Feign + circuit breakers ----------
+# auth-service Feign client → CB instance "auth-service"
+# HRA-property-service Feign client → CB instance "HRA-property-service"
+feign:
+  circuitbreaker:
+    enabled: true
+    group:
+      enabled: false
+  client:
+    config:
+      default:
+        connectTimeout: 5000
+        readTimeout: 60000
+        retryer: feign.Retryer$NeverRetry
+        loggerLevel: BASIC
+
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 20
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+        slowCallRateThreshold: 50
+        slowCallDurationThreshold: 5s
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        registerHealthIndicator: true
+    instances:
+      auth-service:           { baseConfig: default }
+      HRA-property-service:   { baseConfig: default }
+  timelimiter:
+    configs:
+      default:
+        timeoutDuration: 6s
+        cancelRunningFuture: true
+    instances:
+      auth-service:           { baseConfig: default }
+      HRA-property-service:   { baseConfig: default }
+  retry:
+    configs:
+      default:
+        maxAttempts: 3
+        waitDuration: 500ms
+        enableExponentialBackoff: true
+        exponentialBackoffMultiplier: 2
+        retryExceptions:
+          - feign.RetryableException
+          - java.util.concurrent.TimeoutException
+          - java.io.IOException
+        ignoreExceptions:
+          - org.springframework.web.server.ResponseStatusException
 
 eureka:
   instance:
     prefer-ip-address: true
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
   client:
     register-with-eureka: true
     fetch-registry: true
     service-url:
-      default-zone: http://localhost:8761/eureka
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,env,loggers
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: method
+
+logging:
+  level:
+    root: INFO
+    com.spa.home_rental_application: DEBUG
+    org.hibernate.SQL: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{traceId:-},%X{spanId:-}] %logger{36} - %msg%n"

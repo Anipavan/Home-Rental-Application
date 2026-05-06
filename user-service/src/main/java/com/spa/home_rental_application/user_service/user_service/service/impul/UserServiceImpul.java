@@ -3,20 +3,24 @@ package com.spa.home_rental_application.user_service.user_service.service.impul;
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.UserServiceEvents.UserProfileCreatedEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.UserServiceEvents.UserProfileUpdatedEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.Events.UserServiceEvents;
-import com.spa.home_rental_application.user_service.user_service.DTO.Request.EmergencyContactRequestDto;
-import com.spa.home_rental_application.user_service.user_service.DTO.Response.EmergencyContactResponseDto;
 import com.spa.home_rental_application.user_service.user_service.DTO.Request.UserRequestDto;
+import com.spa.home_rental_application.user_service.user_service.DTO.Response.External.authResponseDto;
 import com.spa.home_rental_application.user_service.user_service.DTO.Response.UserResponseDto;
+import com.spa.home_rental_application.user_service.user_service.DTO.Response.usersByRoleDto;
 import com.spa.home_rental_application.user_service.user_service.Entities.User;
+import com.spa.home_rental_application.user_service.user_service.Exceptionclass.DuplicateUserException;
+import com.spa.home_rental_application.user_service.user_service.Exceptionclass.InvalidDocumentTypeException;
 import com.spa.home_rental_application.user_service.user_service.Exceptionclass.RecordNotFound;
-import com.spa.home_rental_application.user_service.user_service.mapper.EmergencyContactMapper;
 import com.spa.home_rental_application.user_service.user_service.mapper.UserMapper;
-import com.spa.home_rental_application.user_service.user_service.repositry.EmergencyContactRepo;
 import com.spa.home_rental_application.user_service.user_service.repositry.UserRepo;
+import com.spa.home_rental_application.user_service.user_service.service.External.AuthServiceFeig;
 import com.spa.home_rental_application.user_service.user_service.service.UserService;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -25,165 +29,252 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
+import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 public class UserServiceImpul implements UserService {
+
+    private static final Set<String> ALLOWED_DOCUMENT_TYPES = Set.of("PROFILE", "ID_PROOF");
+    private static final Set<String> ALLOWED_DOC_CONTENT_TYPES =
+            Set.of("image/jpeg", "image/png", "image/webp", "application/pdf");
+    private static final long MAX_DOC_BYTES = 5L * 1024 * 1024;
+
     private final UserRepo userRepo;
-    private final EmergencyContactRepo econtactRepo;
     private final UserServiceEvents userServiceEvent;
-    public  UserServiceImpul(UserRepo userRepo, EmergencyContactRepo econtactRepo, UserServiceEvents userServiceEvents){
-        this.userRepo=userRepo;
-        this.econtactRepo=econtactRepo;
+    private final AuthServiceFeig authServiceFeig;
+    private final String uploadDir;
+
+    public UserServiceImpul(UserRepo userRepo,
+                            UserServiceEvents userServiceEvents,
+                            AuthServiceFeig authServiceFeig,
+                            @Value("${app.uploads.dir:uploads/users}") String uploadDir) {
+        this.userRepo = userRepo;
         this.userServiceEvent = userServiceEvents;
+        this.authServiceFeig = authServiceFeig;
+        this.uploadDir = uploadDir;
     }
 
     @Override
+    @Transactional
     public UserResponseDto createUser(UserRequestDto userRequest) {
+        log.info("createUser email={} authUserId={}", userRequest.email(), userRequest.authUserId());
+
+        if (userRepo.existsByEmailIgnoreCaseAndIsDeletedFalse(userRequest.email())) {
+            throw new DuplicateUserException("A user already exists with email: " + userRequest.email());
+        }
+
         User user = UserMapper.toEntity(userRequest);
-        user.setCreatedAt(LocalDateTime.now());
-        user.setUpdatedAt(LocalDateTime.now());
+        LocalDateTime now = LocalDateTime.now();
+        user.setCreatedAt(now);
+        user.setUpdatedAt(now);
+        user.setIsDeleted(false);
         User saved = userRepo.save(user);
 
         userServiceEvent.sendUserProfileCreated(UserProfileCreatedEvent.builder()
-                .eventType("User-Profile Created").userId(saved.getId())
-                .role("roles").timestamp(LocalDateTime.now()).build());
+                .eventType("user.profile.created")
+                .userId(saved.getId())
+                .role(null)
+                .timestamp(LocalDateTime.now())
+                .build());
+
         return UserMapper.toDto(saved);
     }
 
     @Override
     public Page<UserResponseDto> getAllUsers(Pageable pageable) {
-
-        Page<UserResponseDto> allusers= userRepo.findAll(pageable).map(UserMapper::toDto);
-        return allusers;
+        return userRepo.findAllActive(pageable).map(UserMapper::toDto);
     }
 
     @Override
     public UserResponseDto getUserById(String userId) {
-
-        User user= userRepo.findById(userId).orElseThrow(()->new RecordNotFound
-                ("User with the given Id is not present :"+userId));
+        User user = userRepo.findActiveById(userId).orElseThrow(
+                () -> new RecordNotFound("User not found with id: " + userId));
         return UserMapper.toDto(user);
     }
 
     @Override
     public UserResponseDto getUserByEmail(String email) {
-        List<User> user = userRepo.findByEmail(email);
-        if (user == null) {
-            throw new RecordNotFound("User with the given email is not present: " + email);
-        }
-        return UserMapper.toDto(user.getFirst());
-    }
-
-    @Override
-    public UserResponseDto deleteUserById(String userId) {
-        User user= userRepo.findById(userId).orElseThrow(()->new RecordNotFound
-                ("User with the given Id is not present :"+userId));
-        userRepo.delete(user);
+        User user = userRepo.findFirstByEmailIgnoreCaseAndIsDeletedFalse(email).orElseThrow(
+                () -> new RecordNotFound("User not found with email: " + email));
         return UserMapper.toDto(user);
     }
 
     @Override
+    public UserResponseDto getUserByAuthUserId(String authUserId) {
+        User user = userRepo.findFirstByAuthUserIdAndIsDeletedFalse(authUserId).orElseThrow(
+                () -> new RecordNotFound("User not found for authUserId: " + authUserId));
+        return UserMapper.toDto(user);
+    }
+
+    @Override
+    @Transactional
+    public UserResponseDto deleteUserById(String userId) {
+        User user = userRepo.findActiveById(userId).orElseThrow(
+                () -> new RecordNotFound("User not found with id: " + userId));
+        LocalDateTime now = LocalDateTime.now();
+        user.setIsDeleted(true);
+        user.setDeletedAt(now);
+        user.setUpdatedAt(now);
+        userRepo.save(user);
+        log.info("Soft-deleted user id={}", userId);
+        return UserMapper.toDto(user);
+    }
+
+    @Override
+    @Transactional
     public UserResponseDto updateUser(UserRequestDto userRequest, String userId) {
-        User userRequestEntity = UserMapper.toEntity(userRequest);
+        User existing = userRepo.findActiveById(userId).orElseThrow(
+                () -> new RecordNotFound("User not found with id: " + userId));
 
-        User user = userRepo.findById(userId)
-                .orElseThrow(() -> new RecordNotFound("User with the given id is not present. " + userId));
+        // Capture an actual diff so the published event is meaningful.
+        Map<String, String> changes = new LinkedHashMap<>();
 
-
-        if (userRequestEntity.getFirstName() != null && !userRequestEntity.getFirstName().isBlank()) {
-            user.setFirstName(userRequestEntity.getFirstName());
+        if (notBlank(userRequest.firstName()) && !userRequest.firstName().equals(existing.getFirstName())) {
+            changes.put("firstName", existing.getFirstName() + " → " + userRequest.firstName());
+            existing.setFirstName(userRequest.firstName());
+        }
+        if (notBlank(userRequest.lastName()) && !userRequest.lastName().equals(existing.getLastName())) {
+            changes.put("lastName", existing.getLastName() + " → " + userRequest.lastName());
+            existing.setLastName(userRequest.lastName());
+        }
+        if (notBlank(userRequest.email()) && !userRequest.email().equalsIgnoreCase(existing.getEmail())) {
+            if (userRepo.existsByEmailIgnoreCaseAndIsDeletedFalse(userRequest.email())) {
+                throw new DuplicateUserException("Email already in use: " + userRequest.email());
+            }
+            changes.put("email", existing.getEmail() + " → " + userRequest.email());
+            existing.setEmail(userRequest.email());
+        }
+        if (notBlank(userRequest.phone()) && !userRequest.phone().equals(existing.getPhone())) {
+            changes.put("phone", "updated");
+            existing.setPhone(userRequest.phone());
+        }
+        if (userRequest.dateOfBirth() != null && !userRequest.dateOfBirth().equals(existing.getDateOfBirth())) {
+            changes.put("dateOfBirth", String.valueOf(userRequest.dateOfBirth()));
+            existing.setDateOfBirth(userRequest.dateOfBirth());
+        }
+        if (notBlank(userRequest.gender()) && !userRequest.gender().equals(existing.getGender())) {
+            changes.put("gender", existing.getGender() + " → " + userRequest.gender());
+            existing.setGender(userRequest.gender());
+        }
+        if (notBlank(userRequest.address()) && !userRequest.address().equals(existing.getAddress())) {
+            changes.put("address", "updated");
+            existing.setAddress(userRequest.address());
+        }
+        if (notBlank(userRequest.profilePictureUrl())) {
+            existing.setProfilePictureUrl(userRequest.profilePictureUrl());
+            changes.put("profilePictureUrl", "updated");
         }
 
-        if (userRequestEntity.getLastName() != null && !userRequestEntity.getLastName().isBlank()) {
-            user.setLastName(userRequestEntity.getLastName());
+        if (changes.isEmpty()) {
+            log.info("updateUser id={}: no-op (no fields changed)", userId);
+            return UserMapper.toDto(existing);
         }
 
-        if (userRequestEntity.getEmail() != null && !userRequestEntity.getEmail().isBlank()) {
-            user.setEmail(userRequestEntity.getEmail());
-        }
-
-        if (userRequestEntity.getPhone() != null && !userRequestEntity.getPhone().isBlank()) {
-            user.setPhone(userRequestEntity.getPhone());
-        }
-
-        if (userRequestEntity.getDateOfBirth() != null) {
-            user.setDateOfBirth(userRequestEntity.getDateOfBirth());
-        }
-
-        if (userRequestEntity.getGender() != null && !userRequestEntity.getGender().isBlank()) {
-            user.setGender(userRequestEntity.getGender());
-        }
-
-        if (userRequestEntity.getAddress() != null && !userRequestEntity.getAddress().isBlank()) {
-            user.setAddress(userRequestEntity.getAddress());
-        }
-
-        if (userRequestEntity.getProfilePictureUrl() != null && !userRequestEntity.getProfilePictureUrl().isBlank()) {
-            user.setProfilePictureUrl(userRequestEntity.getProfilePictureUrl());
-        }
-
-        user.setUpdatedAt(LocalDateTime.now());
-        User userSaved = userRepo.save(user);
+        existing.setUpdatedAt(LocalDateTime.now());
+        User saved = userRepo.save(existing);
 
         userServiceEvent.sendUserProfileUpdated(UserProfileUpdatedEvent.builder()
-                        .changes("Changed user data")
-                        .eventType("UserUpdatedEvent")
-                        .userId(userSaved.getId())
-                        .timestamp(Instant.now())
+                .eventType("user.profile.updated")
+                .userId(saved.getId())
+                .changes(changes.toString())
+                .timestamp(Instant.now())
                 .build());
-        return UserMapper.toDto(userSaved);
+
+        return UserMapper.toDto(saved);
     }
 
     @Override
     public List<UserResponseDto> searchUserByParam(String param) {
-        List <User> users;
-        if(param.matches("^[0-9]{10}$"))
-        {
-            users=userRepo.findByPhone(param);
+        if (param == null || param.isBlank()) return List.of();
+        List<User> users;
+        if (param.matches("^\\+?[0-9\\- ]{7,20}$")) {
+            users = userRepo.findByPhoneAndIsDeletedFalse(param);
         } else if (param.contains("@")) {
-            users=userRepo.findByEmail(param);
-
-        } else
-        {
-            users=userRepo.findByFirstName(param);
+            users = userRepo.findFirstByEmailIgnoreCaseAndIsDeletedFalse(param)
+                    .map(List::of).orElse(List.of());
+        } else {
+            users = userRepo.findByFirstNameContainingIgnoreCaseAndIsDeletedFalse(param);
         }
-        return users.stream().map(user->UserMapper.toDto(user)).toList();
+        return users.stream().map(UserMapper::toDto).toList();
     }
 
-
     @Override
+    @Transactional
     public UserResponseDto uploadUserDocument(String userId, MultipartFile file, String type) throws IOException {
-
-        User user = userRepo.findById(userId).orElseThrow(() ->
-                        new RecordNotFound("User not found: " + userId));
-
-        String fileName = UUID.randomUUID() + "_" + file.getOriginalFilename();
-        Path uploadDir = Paths.get("uploads/users");
-
-        if (!Files.exists(uploadDir)) {
-            Files.createDirectories(uploadDir);
+        if (type == null || !ALLOWED_DOCUMENT_TYPES.contains(type.toUpperCase(Locale.ROOT))) {
+            throw new InvalidDocumentTypeException(
+                    "Document type must be one of " + ALLOWED_DOCUMENT_TYPES + " but was: " + type);
+        }
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("Uploaded file must not be empty");
+        }
+        if (file.getSize() > MAX_DOC_BYTES) {
+            throw new IllegalArgumentException("Uploaded file exceeds 5 MB limit");
+        }
+        String ct = file.getContentType();
+        if (ct == null || !ALLOWED_DOC_CONTENT_TYPES.contains(ct)) {
+            throw new IllegalArgumentException("Unsupported document content-type: " + ct);
         }
 
-        Path filePath = uploadDir.resolve(fileName);
+        User user = userRepo.findActiveById(userId).orElseThrow(
+                () -> new RecordNotFound("User not found with id: " + userId));
 
-        Files.write(filePath, file.getBytes());
+        String safeOriginal = file.getOriginalFilename() == null
+                ? "doc" : file.getOriginalFilename().replaceAll("[^A-Za-z0-9._-]", "_");
+        String fileName = UUID.randomUUID() + "_" + safeOriginal;
+        Path dir = Paths.get(uploadDir);
+        Files.createDirectories(dir);
+        Path target = dir.resolve(fileName);
+        Files.write(target, file.getBytes());
 
         if ("PROFILE".equalsIgnoreCase(type)) {
-            user.setProfilePictureUrl(filePath.toString());
+            user.setProfilePictureUrl(target.toString());
+        } else { // ID_PROOF
+            user.setIdProofUrl(target.toString());
         }
-        else if ("ID_PROOF".equalsIgnoreCase(type)) {
-            user.setIdProofUrl(filePath.toString());
-        }
-        else {
-            throw new IllegalArgumentException("Invalid document type");
-        }
-
         user.setUpdatedAt(LocalDateTime.now());
-
         User saved = userRepo.save(user);
-
+        log.info("Uploaded {} document for user={} at {}", type, userId, target);
         return UserMapper.toDto(saved);
+    }
+
+    @Override
+    public List<usersByRoleDto> getUserByRole(String roleName) {
+        log.info("getUserByRole role={}", roleName);
+
+        List<authResponseDto> authUsers = authServiceFeig.getUserByRole(roleName);
+        if (authUsers == null || authUsers.isEmpty()) {
+            log.info("Auth service returned no users for role {}", roleName);
+            return List.of();
+        }
+
+        // Build a quick auth-id → auth-record index for in-memory join
+        Map<String, authResponseDto> authIndex = authUsers.stream()
+                .filter(a -> a.getId() != null)
+                .collect(Collectors.toMap(a -> a.getId().toString(), a -> a, (a, b) -> a));
+
+        return authIndex.keySet().stream()
+                .map(authId -> userRepo.findFirstByAuthUserIdAndIsDeletedFalse(authId).orElse(null))
+                .filter(Objects::nonNull)
+                .map(u -> {
+                    authResponseDto a = authIndex.get(u.getAuthUserId());
+                    return new usersByRoleDto(
+                            u.getFirstName(),
+                            u.getLastName(),
+                            u.getEmail(),
+                            u.getPhone(),
+                            u.getDateOfBirth(),
+                            u.getGender(),
+                            u.getAddress(),
+                            a != null ? a.getUserName() : null,
+                            a != null ? a.getUserRole() : null);
+                })
+                .toList();
+    }
+
+    private static boolean notBlank(String s) {
+        return s != null && !s.isBlank();
     }
 }

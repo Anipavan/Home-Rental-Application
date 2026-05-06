@@ -1,29 +1,168 @@
 server:
-  port: 9090
+  port: ${SERVER_PORT:9090}
+  shutdown: graceful
 
 spring:
   application:
-    name: auth-service
+    name: HRA-auth-service
+
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
 
   datasource:
-    url: jdbc:oracle:thin:@//localhost:1521/orcl
-    username: siva
-    password: Pavan@123
+    url: ${DB_URL:jdbc:oracle:thin:@//localhost:1521/orcl}
+    username: ${DB_USERNAME:siva}
+    password: ${DB_PASSWORD:Pavan@123}
     driver-class-name: oracle.jdbc.OracleDriver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
 
   jpa:
     hibernate:
       ddl-auto: update
-    show-sql: true
+    show-sql: false
     properties:
       hibernate:
         dialect: org.hibernate.dialect.OracleDialect
+        format_sql: true
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9093}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: 3
+      properties:
+        spring.json.add.type.headers: false
+
+# Bound by KafkaTopicProperties (in KafkaEvents shared lib)
+app:
+  kafka:
+    property-topic: property-events
+    user-topic: user-events
+    payment-topic: payment-events
+    maintenance-topic: maintenance-events
+    notification-topic: notification-events
+    auth-topic: auth-events
+  internal-auth:
+    enabled: ${INTERNAL_AUTH_ENABLED:true}
+    secret: ${INTERNAL_AUTH_SECRET:Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+    allowed-clock-skew-seconds: 60
+
+  jwt:
+    # Override in prod via JWT_SECRET env / Vault. Must be at least 256 bits.
+    secret: ${JWT_SECRET:U3VwZXJTZWNyZXRLZXlGb3JKV1RUb2tlbkdlbmVyYXRpb24xMjM0NTY3ODkwIQ==}
+    access-token-validity-seconds: ${JWT_ACCESS_TTL:3600}        # 1 hour
+    refresh-token-validity-seconds: ${JWT_REFRESH_TTL:2592000}   # 30 days
+    issuer: ${JWT_ISSUER:home-rental-auth}
+  password-reset:
+    token-validity-minutes: ${PASSWORD_RESET_TTL_MINUTES:15}
+
+feign:
+  # Wrap each Feign client in a Resilience4j CircuitBreaker. Combined with
+  # the per-client Resilience4j instance config below, this gives us per-
+  # downstream-service breakers + fallbacks (see *FallbackFactory classes).
+  circuitbreaker:
+    enabled: true
+    # Group all method calls per Feign client into one breaker named after
+    # the @FeignClient(name=...). Without this every method gets its own
+    # breaker, which makes failure-rate computation noisy on low-traffic
+    # endpoints.
+    group:
+      enabled: false
+  client:
+    config:
+      default:
+        connectTimeout: 5000
+        readTimeout: 60000
+        # We rely on Resilience4j retry below; keep Feign's own retryer as
+        # NeverRetry so we don't double-retry.
+        retryer: feign.Retryer$NeverRetry
+        loggerLevel: BASIC
+
+# ---------- Resilience4j (Feign-side) ----------
+# Names MUST match the @FeignClient(name=...) values: HRA-user-service.
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 20
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+        slowCallRateThreshold: 50
+        slowCallDurationThreshold: 5s
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        registerHealthIndicator: true
+    instances:
+      HRA-user-service:
+        baseConfig: default
+  timelimiter:
+    configs:
+      default:
+        timeoutDuration: 6s
+        cancelRunningFuture: true
+    instances:
+      HRA-user-service:
+        baseConfig: default
+  retry:
+    configs:
+      default:
+        maxAttempts: 3
+        waitDuration: 500ms
+        enableExponentialBackoff: true
+        exponentialBackoffMultiplier: 2
+        # Only retry on transient classes — never on application-level errors.
+        retryExceptions:
+          - feign.RetryableException
+          - java.util.concurrent.TimeoutException
+          - java.io.IOException
+        ignoreExceptions:
+          - org.springframework.web.server.ResponseStatusException
 
 eureka:
   instance:
     prefer-ip-address: true
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
   client:
     register-with-eureka: true
     fetch-registry: true
     service-url:
-      default-zone: http://localhost:8761/eureka
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,env,loggers
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: method
+
+logging:
+  level:
+    root: INFO
+    com.spa.home_rental_application: DEBUG
+    org.springframework.security: INFO
+    org.hibernate.SQL: WARN
+    feign: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{traceId:-},%X{spanId:-}] %logger{36} - %msg%n"

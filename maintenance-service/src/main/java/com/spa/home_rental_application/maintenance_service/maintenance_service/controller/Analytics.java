@@ -1,33 +1,45 @@
 package com.spa.home_rental_application.maintenance_service.maintenance_service.controller;
 
+import com.spa.home_rental_application.maintenance_service.maintenance_service.DTO.Response.CategoryStatsResponse;
+import com.spa.home_rental_application.maintenance_service.maintenance_service.DTO.Response.ResolutionTimeStatsResponse;
 import com.spa.home_rental_application.maintenance_service.maintenance_service.Service.RequestService;
-import com.spa.home_rental_application.maintenance_service.maintenance_service.entities.MaintenanceRequest;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
-@RequestMapping(value = "/maintenance", produces = MediaType.APPLICATION_JSON_VALUE)
-
+@RequestMapping(value = "/maintenance/stats", produces = MediaType.APPLICATION_JSON_VALUE)
+@Tag(name = "Maintenance Analytics", description = "Aggregate metrics over maintenance requests")
 public class Analytics {
-    private  RequestService requestService;
+
+    private final RequestService requestService;
+
     public Analytics(RequestService requestService) {
         this.requestService = requestService;
     }
 
-    @GetMapping("/stats/category/{category}")
-    public ResponseEntity<List<MaintenanceRequest>> getRequestByCategory(@PathVariable String category)
-    {
-        return  ResponseEntity.ok(requestService.getRequestByCategory(category));
+    @Operation(summary = "Count of pending requests (OPEN + IN_PROGRESS)")
+    @GetMapping("/pending")
+    public ResponseEntity<Map<String, Long>> getPendingCount() {
+        return ResponseEntity.ok(Map.of("pendingCount", requestService.getPendingRequestCount()));
     }
-    @GetMapping("/stats/pending")
-    public ResponseEntity<Integer> getPendingRequestCount()
-    {
-        return  ResponseEntity.ok(requestService.getPendingRequestCount());
+
+    @Operation(summary = "Count of requests grouped by category")
+    @GetMapping("/category")
+    public ResponseEntity<List<CategoryStatsResponse>> getCategoryStats() {
+        return ResponseEntity.ok(requestService.getCategoryStats());
+    }
+
+    @Operation(summary = "Average / min / max resolution time across resolved requests")
+    @GetMapping("/resolution-time")
+    public ResponseEntity<ResolutionTimeStatsResponse> getResolutionTimeStats() {
+        return ResponseEntity.ok(requestService.getResolutionTimeStats());
     }
 }

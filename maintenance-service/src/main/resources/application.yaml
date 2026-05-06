@@ -1,15 +1,99 @@
 server:
-  port: 8082
+  port: ${SERVER_PORT:8085}
+  shutdown: graceful
 
 spring:
   application:
-    name: maintenance-service
+    name: HRA-maintenance-service
+
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+
   data:
     mongodb:
-      uri: mongodb://localhost:27017/HomeRentalDB
+      uri: ${MONGO_URI:mongodb://localhost:27017/HomeRentalDB}
+      # Index creation runs at app startup and FAILS if existing data
+      # already violates a unique constraint. Keep this OFF after initial
+      # provisioning so legacy/test data can't block startup. Indexes
+      # should be created via migration scripts in production.
+      auto-index-creation: ${MONGO_AUTO_INDEX:false}
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9093}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: 3
+      properties:
+        spring.json.add.type.headers: false
+    consumer:
+      group-id: hra-maintenance-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.spa.home_rental_application.KafkaEvents.*"
+        spring.json.use.type.headers: false
+        spring.json.value.default.type: com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyServiceEvents.FlatVacatedEvent
+
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 10MB
+
+# Bound by KafkaTopicProperties (in KafkaEvents shared lib)
+app:
+  internal-auth:
+    enabled: ${INTERNAL_AUTH_ENABLED:true}
+    secret: ${INTERNAL_AUTH_SECRET:Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+    allowed-clock-skew-seconds: 60
+  kafka:
+    property-topic: property-events
+    user-topic: user-events
+    payment-topic: payment-events
+    maintenance-topic: maintenance-events
+    notification-topic: notification-events
+    auth-topic: auth-events
+  uploads:
+    dir: ${MAINTENANCE_UPLOAD_DIR:uploads/maintenance}
 
 eureka:
+  instance:
+    prefer-ip-address: true
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
   client:
-    enabled: false
-    register-with-eureka: false
-    fetch-registry: false
+    register-with-eureka: true
+    fetch-registry: true
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,env,loggers
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: method
+
+logging:
+  level:
+    root: INFO
+    com.spa.home_rental_application: DEBUG
+    org.mongodb.driver: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{traceId:-},%X{spanId:-}] %logger{36} - %msg%n"
