@@ -1,26 +1,121 @@
 server:
-  port: 8087   # or any free port
+  port: ${SERVER_PORT:8084}
+  shutdown: graceful
 
 spring:
   application:
-    name: payment-service
+    name: HRA-payment-service
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
 
   datasource:
-    url: jdbc:oracle:thin:@//localhost:1521/orcl
-    username: siva
-    password: Pavan@123
+    url: ${DB_URL:jdbc:oracle:thin:@//localhost:1521/orcl}
+    username: ${DB_USERNAME:siva}
+    password: ${DB_PASSWORD:Pavan@123}
     driver-class-name: oracle.jdbc.OracleDriver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
 
   jpa:
     hibernate:
-      ddl-auto: update       # or validate/create/update as you prefer
-    show-sql: true
+      ddl-auto: update
+    show-sql: false
     properties:
       hibernate:
         dialect: org.hibernate.dialect.OracleDialect
+        format_sql: true
+        jdbc:
+          batch_size: 25
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9093}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: 3
+      properties:
+        spring.json.add.type.headers: false
+    consumer:
+      group-id: hra-payment-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.spa.home_rental_application.KafkaEvents.*"
+        spring.json.use.type.headers: false
+
+# Bound by KafkaTopicProperties (in KafkaEvents shared lib)
+app:
+  internal-auth:
+    enabled: ${INTERNAL_AUTH_ENABLED:true}
+    secret: ${INTERNAL_AUTH_SECRET:Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+    allowed-clock-skew-seconds: 60
+
+  kafka:
+    property-topic: property-events
+    user-topic: user-events
+    payment-topic: payment-events
+    maintenance-topic: maintenance-events
+    notification-topic: notification-events
+    auth-topic: auth-events
+
+  payment:
+    # Active gateway implementation: mock (dev) | razorpay | stripe
+    gateway: ${PAYMENT_GATEWAY:mock}
+    # Late-fee policy
+    late-fee-percent-per-week: ${LATE_FEE_PCT:2.0}
+    max-late-fee-percent: ${MAX_LATE_FEE_PCT:10.0}
+    # Reminder schedule: send a reminder N days before due date
+    reminder-days-before-due: ${REMINDER_DAYS:3}
+
+  razorpay:
+    key-id: ${RAZORPAY_KEY_ID:rzp_test_xxxxxxxxxxxx}
+    key-secret: ${RAZORPAY_KEY_SECRET:secretsecretsecret}
+    webhook-secret: ${RAZORPAY_WEBHOOK_SECRET:webhooksecret}
+
+  stripe:
+    secret-key: ${STRIPE_SECRET:sk_test_xxxxxxxxxxxx}
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET:whsec_xxxxxxxxxxxx}
 
 eureka:
+  instance:
+    prefer-ip-address: true
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
   client:
-    enabled: false
-    register-with-eureka: false
-    fetch-registry: false
+    register-with-eureka: true
+    fetch-registry: true
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,env,loggers
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: method
+
+logging:
+  level:
+    root: INFO
+    com.spa.home_rental_application: DEBUG
+    org.hibernate.SQL: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{traceId:-},%X{spanId:-}] %logger{36} - %msg%n"

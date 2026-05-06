@@ -1,82 +1,116 @@
 package com.spa.home_rental_application.property_service.property_service.controller;
 
+import com.spa.home_rental_application.property_service.property_service.DTO.Request.AssignFlatRequest;
 import com.spa.home_rental_application.property_service.property_service.DTO.Request.FlatRequestDTO;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.FlatResponseDTO;
-import com.spa.home_rental_application.property_service.property_service.Entities.Flat;
 import com.spa.home_rental_application.property_service.property_service.service.FlatService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/**
+ * REST endpoints for Flat lifecycle management.
+ * All paths are mounted under /properties so the API Gateway can route
+ * /rentals/v1/properties/** (and the deprecated /api/properties/**) to
+ * this service after stripping the prefix.
+ */
 @RestController
 @RequestMapping(value = "/properties", produces = MediaType.APPLICATION_JSON_VALUE)
+@Validated
 @Slf4j
+@Tag(name = "Flats", description = "Flat lifecycle: create, query, assign, vacate")
 public class FlatController {
-    @Autowired
-    FlatService flatService;
+
+    private final FlatService flatService;
+
+    public FlatController(FlatService flatService) {
+        this.flatService = flatService;
+    }
+
+    @Operation(summary = "List active flats (paginated)")
     @GetMapping("/flats")
-    public ResponseEntity<Page<FlatResponseDTO>> getAllFlats(@RequestParam(defaultValue = "0") int pagenum,@RequestParam(defaultValue = "10") int pagesize) {
-        log.info("Calling function getAllFlats() ");
-       Pageable pageable= PageRequest.of(pagenum,pagesize);
-
-        return ResponseEntity.ok().body(flatService.getAllFlats(pageable));
+    public ResponseEntity<Page<FlatResponseDTO>> getAllFlats(
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "10") @Min(1) int size) {
+        log.info("GET /properties/flats page={} size={}", page, size);
+        Pageable pageable = PageRequest.of(page, size);
+        return ResponseEntity.ok(flatService.getAllFlats(pageable));
     }
 
+    @Operation(summary = "Get flat by ID")
     @GetMapping("/flats/{flatId}")
-    public ResponseEntity<FlatResponseDTO> getflatById(@PathVariable String flatId) {
-
-        return ResponseEntity.ok().body(flatService.getflatById(flatId));
+    public ResponseEntity<FlatResponseDTO> getFlatById(@PathVariable String flatId) {
+        log.info("GET /properties/flats/{}", flatId);
+        return ResponseEntity.ok(flatService.getflatById(flatId));
     }
+
+    @Operation(summary = "Create a new flat")
     @PostMapping(
             value = "/flats/create/flat",
-            consumes = MediaType.APPLICATION_JSON_VALUE,
-            produces = MediaType.APPLICATION_JSON_VALUE)
-    public  ResponseEntity<FlatResponseDTO> createFlat(@RequestBody @Valid FlatRequestDTO flatRequestDTO) {
-
-        log.info("Request recieved for creating flat.{}",flatRequestDTO);
-        return ResponseEntity.ok().body(flatService.createFlat(flatRequestDTO));
+            consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<FlatResponseDTO> createFlat(@RequestBody @Valid FlatRequestDTO flatRequestDTO) {
+        log.info("POST /properties/flats/create/flat body={}", flatRequestDTO);
+        return ResponseEntity.status(HttpStatus.CREATED).body(flatService.createFlat(flatRequestDTO));
     }
 
+    @Operation(summary = "Soft-delete a flat")
     @DeleteMapping("/flats/{flatId}")
-    public ResponseEntity<Flat> deleteBuilding(@PathVariable String flatId) {
-        Flat flat = flatService.deleteFlatById(flatId);
-        return ResponseEntity.ok(flat);
+    public ResponseEntity<FlatResponseDTO> deleteFlat(@PathVariable String flatId) {
+        log.info("DELETE /properties/flats/{}", flatId);
+        return ResponseEntity.ok(flatService.deleteFlatById(flatId));
     }
 
+    @Operation(summary = "Get all flats in a building")
     @GetMapping("/flats/building/{buildId}")
-    public ResponseEntity<List<FlatResponseDTO>> getflatsByBuildingId(@PathVariable String buildId){
-       return ResponseEntity.ok().body( flatService.getflatsByBuildingId(buildId));
-
+    public ResponseEntity<List<FlatResponseDTO>> getFlatsByBuildingId(@PathVariable String buildId) {
+        return ResponseEntity.ok(flatService.getflatsByBuildingId(buildId));
     }
 
+    @Operation(summary = "Get the flat(s) assigned to a tenant -- powers the tenant 'My flat' view")
+    @GetMapping("/flats/tenant/{tenantId}")
+    public ResponseEntity<List<FlatResponseDTO>> getFlatsByTenant(@PathVariable String tenantId) {
+        log.info("GET /properties/flats/tenant/{}", tenantId);
+        return ResponseEntity.ok(flatService.getflatsByTenantId(tenantId));
+    }
+
+    @Operation(summary = "List all currently vacant flats")
     @GetMapping("/flats/vacant")
-    public ResponseEntity<List<FlatResponseDTO> >getVacentFlats(){
-
-        return ResponseEntity.ok().body(flatService.getAllVacentFlats());
-    }
-    @PostMapping("/flats/{id}/vacate")
-    public ResponseEntity<FlatResponseDTO> makeFlatVacate(@PathVariable String flatId){
-
-        return  ResponseEntity.ok().body(flatService.makeFlatVacate(flatId));
+    public ResponseEntity<List<FlatResponseDTO>> getVacantFlats() {
+        return ResponseEntity.ok(flatService.getAllVacentFlats());
     }
 
-    @PutMapping("/flats/{id}/flat")
-    public ResponseEntity<FlatResponseDTO> updateFlat(String flatId,@RequestBody @Valid FlatRequestDTO flatRequestDTO){
-        return ResponseEntity.ok().body(flatService.updateFlat(flatId,flatRequestDTO));
+    @Operation(summary = "Mark a flat as vacant (publishes flat.vacated)")
+    @PostMapping("/flats/{flatId}/vacate")
+    public ResponseEntity<FlatResponseDTO> vacateFlat(@PathVariable String flatId) {
+        log.info("POST /properties/flats/{}/vacate", flatId);
+        return ResponseEntity.ok(flatService.makeFlatVacate(flatId));
     }
 
-    @PostMapping("/flats/{id}/assign")
-    public ResponseEntity<Flat> assignFlat(@PathVariable("id") String userId){
-        Flat flatDetails=flatService.assignFlat(userId);
-       return  ResponseEntity.ok().body(flatDetails);
+    @Operation(summary = "Update flat attributes")
+    @PutMapping("/flats/{flatId}")
+    public ResponseEntity<FlatResponseDTO> updateFlat(@PathVariable String flatId,
+                                                      @RequestBody @Valid FlatRequestDTO flatRequestDTO) {
+        log.info("PUT /properties/flats/{}", flatId);
+        return ResponseEntity.ok(flatService.updateFlat(flatId, flatRequestDTO));
+    }
 
+    @Operation(summary = "Assign a tenant to a flat (publishes flat.occupied)")
+    @PostMapping(value = "/flats/{flatId}/assign", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<FlatResponseDTO> assignFlat(@PathVariable String flatId,
+                                                      @RequestBody @Valid AssignFlatRequest body) {
+        log.info("POST /properties/flats/{}/assign tenant={}", flatId, body.tenantId());
+        return ResponseEntity.ok(flatService.assignFlat(flatId, body));
     }
 }

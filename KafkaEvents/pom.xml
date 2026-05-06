@@ -48,16 +48,18 @@
 
 	<build>
 		<plugins>
+			<!--
+				This module is a LIBRARY (event DTOs + producer beans), not a
+				runnable Spring Boot app. We must disable the repackage goal so
+				the produced jar stays a "thin" jar with classes at the root,
+				not under BOOT-INF/classes/. Otherwise downstream services
+				(auth-service, property-service, etc.) cannot resolve the types.
+			-->
 			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
 				<configuration>
-					<excludes>
-						<exclude>
-							<groupId>org.projectlombok</groupId>
-							<artifactId>lombok</artifactId>
-						</exclude>
-					</excludes>
+					<skip>true</skip>
 				</configuration>
 			</plugin>
 		</plugins>

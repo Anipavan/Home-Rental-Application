@@ -1,0 +1,39 @@
+import { api } from "./client";
+import type { Page, UserRequestDto, UserResponseDto } from "@/types/api";
+
+export const usersApi = {
+  list: (page = 0, size = 20) =>
+    api
+      .get<Page<UserResponseDto>>("/users", { params: { page, size } })
+      .then((r) => r.data),
+  getById: (id: number | string) =>
+    api.get<UserResponseDto>(`/users/user/${id}`).then((r) => r.data),
+  byAuthId: (authUserId: string) =>
+    api.get<UserResponseDto>(`/users/auth/${authUserId}`).then((r) => r.data),
+  byRole: (role: string) =>
+    api
+      .get<UserResponseDto[]>(`/users/role/${role}`)
+      .then((r) => r.data),
+  search: (q: string) =>
+    api.get<UserResponseDto[]>(`/users/search/${q}`).then((r) => r.data),
+  create: (body: UserRequestDto) =>
+    api.post<UserResponseDto>("/users/user", body).then((r) => r.data),
+  update: (id: number | string, body: UserRequestDto) =>
+    api.put<UserResponseDto>(`/users/user/${id}`, body).then((r) => r.data),
+  remove: (id: number | string) =>
+    api.delete<UserResponseDto>(`/users/${id}`).then((r) => r.data),
+  uploadDocument: (
+    userId: number | string,
+    file: File,
+    type: "PROFILE" | "ID_PROOF",
+  ) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return api
+      .put<UserResponseDto>(`/users/${userId}/documents`, fd, {
+        params: { type },
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+      .then((r) => r.data);
+  },
+};

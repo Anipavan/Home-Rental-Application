@@ -15,6 +15,12 @@ import java.util.List;
 public interface FlatRepo extends JpaRepository<Flat,String> {
     List<Flat> findByBuildingId(String buildingId);
     List<Flat> findByIsOccupiedFalse();
+
+    /** All non-deleted flats currently assigned to this tenant. */
+    @Query("SELECT f FROM Flat f " +
+           "WHERE f.tenantId = :tenantId " +
+           "AND (f.isDeleted = false OR f.isDeleted IS NULL)")
+    List<Flat> findActiveByTenantId(@Param("tenantId") String tenantId);
     @Modifying
     @Transactional
     @Query("UPDATE Flat f SET f.isOccupied = false, f.tenantId = null " +

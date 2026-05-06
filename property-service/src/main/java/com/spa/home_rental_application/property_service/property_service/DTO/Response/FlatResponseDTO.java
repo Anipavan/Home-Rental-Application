@@ -4,9 +4,18 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
-public record FlatResponseDTO (
+/**
+ * Response payload for a Flat. Embeds a small slice of the parent
+ * Building (name + address + city) so single-flat views don't need a
+ * second API call. The building* fields are nullable for the rare case
+ * where the parent has been hard-deleted.
+ */
+public record FlatResponseDTO(
         String id,
         String buildingId,
+        String buildingName,
+        String buildingAddress,
+        String buildingCity,
         String flatNumber,
         Integer floor,
         Integer bedrooms,

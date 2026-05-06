@@ -1,55 +1,277 @@
-version: '3.8'
+name: home-rental
+
+# Full-stack docker-compose for the Home Rental platform.
+#
+#   docker compose up -d                # start everything
+#   docker compose logs -f api-gateway  # follow a single service
+#   docker compose down -v              # tear down + drop volumes
+#
+# Services come up in dependency order:
+#   1. Infrastructure: oracle-db, mongodb, zookeeper, kafka
+#   2. Discovery + config: service-registry, config-server
+#   3. API Gateway, then domain services
+# Spring Boot's healthcheck-aware `depends_on` ensures each tier waits.
 
 services:
-  # Oracle Database
+
+  # ========================================================================
+  # INFRASTRUCTURE
+  # ========================================================================
+
   oracle-db:
     image: gvenzl/oracle-free:23.5-slim
-    container_name: rental-oracle
+    container_name: hra-oracle
     environment:
-      ORACLE_PASSWORD: siva
-      APP_USER: siva
-      APP_USER_PASSWORD: siva
-    ports:
-      - "1522:1521"
-    networks:
-      - rental-network
+      ORACLE_PASSWORD: ${ORACLE_PASSWORD:-Pavan@123}
+      APP_USER: ${ORACLE_APP_USER:-siva}
+      APP_USER_PASSWORD: ${ORACLE_APP_PASSWORD:-Pavan@123}
+    ports: ["1521:1521"]
+    volumes: ["oracle-data:/opt/oracle/oradata"]
+    networks: [hra-net]
     healthcheck:
-      test: ["CMD-SHELL", "echo 'SELECT 1 FROM DUAL;' | sqlplus -s SYSTEM/siva@localhost:1522/FREEPDB1"]
+      test: ["CMD", "healthcheck.sh"]
       interval: 30s
       timeout: 10s
+      retries: 20
+      start_period: 60s
+
+  mongodb:
+    image: mongo:7
+    container_name: hra-mongo
+    ports: ["27017:27017"]
+    volumes: ["mongo-data:/data/db"]
+    networks: [hra-net]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 15s
+      timeout: 5s
       retries: 10
 
-  # Zookeeper (required for Kafka)
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
-    container_name: rental-zookeeper
+    container_name: hra-zookeeper
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
-    ports:
-      - "2181:2181"
-    networks:
-      - rental-network
+    ports: ["2181:2181"]
+    networks: [hra-net]
 
-  # Kafka Message Broker
   kafka:
     image: confluentinc/cp-kafka:7.5.0
-    container_name: rental-kafka
-    depends_on:
-      - zookeeper
-    ports:
-      - "9093:9093"   # host:container, SAME port
+    container_name: hra-kafka
+    depends_on: [zookeeper]
+    ports: ["9093:9093"]
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9093,PLAINTEXT_INTERNAL://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9093,PLAINTEXT_INTERNAL://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-    networks:
-      - rental-network
+    volumes: ["kafka-data:/var/lib/kafka/data"]
+    networks: [hra-net]
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
 
+  # ========================================================================
+  # DISCOVERY + CONFIG (must be up before any domain service)
+  # ========================================================================
+
+  service-registry:
+    build: ./Service-Registry
+    container_name: hra-service-registry
+    ports: ["8761:8761"]
+    networks: [hra-net]
+    environment:
+      EUREKA_HOSTNAME: service-registry
+      EUREKA_REGISTER: "false"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8761/actuator/health/liveness"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  config-server:
+    build: ./config-server
+    container_name: hra-config-server
+    depends_on:
+      service-registry:
+        condition: service_healthy
+    ports: ["8888:8888"]
+    networks: [hra-net]
+    environment:
+      EUREKA_URL: http://service-registry:8761/eureka
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8888/actuator/health/liveness"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  # ========================================================================
+  # API GATEWAY
+  # ========================================================================
+
+  api-gateway:
+    build: ./api-gateway
+    container_name: hra-api-gateway
+    depends_on:
+      service-registry: {condition: service_healthy}
+      config-server:    {condition: service_healthy}
+    ports: ["8080:8080"]
+    networks: [hra-net]
+    environment:
+      EUREKA_URL: http://service-registry:8761/eureka
+      CONFIG_SERVER_URL: http://config-server:8888
+      JWT_SECRET: ${JWT_SECRET:-U3VwZXJTZWNyZXRLZXlGb3JKV1RUb2tlbkdlbmVyYXRpb24xMjM0NTY3ODkwIQ==}
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:4200}
+
+  # ========================================================================
+  # DOMAIN SERVICES
+  # ========================================================================
+
+  auth-service:
+    build: ./auth-service
+    container_name: hra-auth-service
+    depends_on:
+      oracle-db:        {condition: service_healthy}
+      kafka:            {condition: service_healthy}
+      service-registry: {condition: service_healthy}
+      config-server:    {condition: service_healthy}
+    ports: ["9090:9090"]
+    networks: [hra-net]
+    environment:
+      DB_URL: jdbc:oracle:thin:@//oracle-db:1521/FREEPDB1
+      DB_USERNAME: ${ORACLE_APP_USER:-siva}
+      DB_PASSWORD: ${ORACLE_APP_PASSWORD:-Pavan@123}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EUREKA_URL: http://service-registry:8761/eureka
+      CONFIG_SERVER_URL: http://config-server:8888
+      JWT_SECRET: ${JWT_SECRET:-U3VwZXJTZWNyZXRLZXlGb3JKV1RUb2tlbkdlbmVyYXRpb24xMjM0NTY3ODkwIQ==}
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+
+  property-service:
+    build: ./property-service
+    container_name: hra-property-service
+    depends_on:
+      oracle-db:        {condition: service_healthy}
+      kafka:            {condition: service_healthy}
+      service-registry: {condition: service_healthy}
+      config-server:    {condition: service_healthy}
+    ports: ["8088:8088"]
+    networks: [hra-net]
+    environment:
+      DB_URL: jdbc:oracle:thin:@//oracle-db:1521/FREEPDB1
+      DB_USERNAME: ${ORACLE_APP_USER:-siva}
+      DB_PASSWORD: ${ORACLE_APP_PASSWORD:-Pavan@123}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EUREKA_URL: http://service-registry:8761/eureka
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+
+  user-service:
+    build: ./user-service
+    container_name: hra-user-service
+    depends_on:
+      oracle-db:        {condition: service_healthy}
+      kafka:            {condition: service_healthy}
+      service-registry: {condition: service_healthy}
+      config-server:    {condition: service_healthy}
+    ports: ["8089:8089"]
+    networks: [hra-net]
+    environment:
+      DB_URL: jdbc:oracle:thin:@//oracle-db:1521/FREEPDB1
+      DB_USERNAME: ${ORACLE_APP_USER:-siva}
+      DB_PASSWORD: ${ORACLE_APP_PASSWORD:-Pavan@123}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EUREKA_URL: http://service-registry:8761/eureka
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+
+  payment-service:
+    build: ./payment-service
+    container_name: hra-payment-service
+    depends_on:
+      oracle-db:        {condition: service_healthy}
+      kafka:            {condition: service_healthy}
+      service-registry: {condition: service_healthy}
+      config-server:    {condition: service_healthy}
+    ports: ["8084:8084"]
+    networks: [hra-net]
+    environment:
+      DB_URL: jdbc:oracle:thin:@//oracle-db:1521/FREEPDB1
+      DB_USERNAME: ${ORACLE_APP_USER:-siva}
+      DB_PASSWORD: ${ORACLE_APP_PASSWORD:-Pavan@123}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EUREKA_URL: http://service-registry:8761/eureka
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+      PAYMENT_GATEWAY: ${PAYMENT_GATEWAY:-mock}
+
+  maintenance-service:
+    build: ./maintenance-service
+    container_name: hra-maintenance-service
+    depends_on:
+      mongodb:          {condition: service_healthy}
+      kafka:            {condition: service_healthy}
+      service-registry: {condition: service_healthy}
+      config-server:    {condition: service_healthy}
+    ports: ["8085:8085"]
+    networks: [hra-net]
+    environment:
+      MONGO_URI: mongodb://mongodb:27017/HomeRentalDB
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EUREKA_URL: http://service-registry:8761/eureka
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+
+  notification-service:
+    build: ./notification-service
+    container_name: hra-notification-service
+    depends_on:
+      mongodb:          {condition: service_healthy}
+      kafka:            {condition: service_healthy}
+      service-registry: {condition: service_healthy}
+      config-server:    {condition: service_healthy}
+    ports: ["8086:8086"]
+    networks: [hra-net]
+    environment:
+      MONGO_URI: mongodb://mongodb:27017/HomeRentalDB
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EUREKA_URL: http://service-registry:8761/eureka
+      CONFIG_SERVER_URL: http://config-server:8888
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+      NOTIFICATION_DELIVERY: "false"   # don't send real emails in dev compose
+
+  analytics-service:
+    build: ./analytics-service
+    container_name: hra-analytics-service
+    depends_on:
+      oracle-db:        {condition: service_healthy}
+      kafka:            {condition: service_healthy}
+      service-registry: {condition: service_healthy}
+      config-server:    {condition: service_healthy}
+    ports: ["8087:8087"]
+    networks: [hra-net]
+    environment:
+      DB_URL: jdbc:oracle:thin:@//oracle-db:1521/FREEPDB1
+      DB_USERNAME: ${ORACLE_APP_USER:-siva}
+      DB_PASSWORD: ${ORACLE_APP_PASSWORD:-Pavan@123}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EUREKA_URL: http://service-registry:8761/eureka
+      CONFIG_SERVER_URL: http://config-server:8888
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+
+# ============================================================================
+volumes:
+  oracle-data:
+  mongo-data:
+  kafka-data:
 
 networks:
-  rental-network:
+  hra-net:
     driver: bridge

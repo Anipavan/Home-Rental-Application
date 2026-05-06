@@ -1,19 +1,67 @@
 server:
-  port: 8888
+  port: ${SERVER_PORT:8888}
+  shutdown: graceful
 
 spring:
   application:
-    name: config-server
+    name: HRA-config-server
+
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+
+  # The "native" profile makes Config Server read configs from the local
+  # filesystem / classpath instead of Git. Faster + simpler for dev. Switch
+  # to a Git-backed profile in production by overriding spring.profiles.active
+  # and spring.cloud.config.server.git.uri via env vars.
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:native}
+
   cloud:
     config:
       server:
+        bootstrap: true
         native:
-          search-locations: classpath:/config
-  profiles:
-    active: native
+          # Where the per-service .yml files live. classpath:/config/ resolves
+          # to src/main/resources/config/ during local dev.
+          search-locations: ${CONFIG_SEARCH_LOCATIONS:classpath:/config/}
+        git:
+          # When SPRING_PROFILES_ACTIVE=git is set, point this at your repo.
+          uri: ${CONFIG_GIT_URI:https://github.com/your-org/home-rental-config.git}
+          default-label: ${CONFIG_GIT_BRANCH:main}
+          clone-on-start: false
+          force-pull: true
 
 eureka:
+  instance:
+    prefer-ip-address: true
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
   client:
-    enabled: false
-    register-with-eureka: false
-    fetch-registry: false
+    register-with-eureka: ${EUREKA_REGISTER:true}
+    fetch-registry: true
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka}
+
+# ---------- Operational endpoints ----------
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,env,loggers,refresh
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+# ---------- Logging ----------
+logging:
+  level:
+    root: INFO
+    com.spa.home_rental_application: DEBUG
+    org.springframework.cloud.config: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{traceId:-},%X{spanId:-}] %logger{36} - %msg%n"

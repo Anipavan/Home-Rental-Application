@@ -81,7 +81,7 @@
 - Circuit breaker pattern
 
 #### **Key Features:**
-```yaml
+```
 Routes:
   - /api/auth/**        → Auth Service (8081)
   - /api/properties/**  → Property Service (8082)
@@ -89,7 +89,10 @@ Routes:
   - /api/payments/**    → Payment Service (8084)
   - /api/maintenance/** → Maintenance Service (8085)
   - /api/analytics/**   → Analytics Service (8087)
+
+  GET    /api/auth/validate          - Validate JWT token - done
 ```
+
 
 #### **APIs:**
 ```
@@ -123,13 +126,12 @@ refresh_tokens (id, user_id, token, expiry_date)
 
 #### **APIs:**
 ```
-POST   /api/auth/register          - Register new user
-POST   /api/auth/login             - Login and get JWT token
+POST   /api/auth/register          - Register new user - done
+POST   /api/auth/login             - Login and get JWT token - done
 POST   /api/auth/refresh           - Refresh JWT token
 POST   /api/auth/logout            - Logout user
 POST   /api/auth/forgot-password   - Request password reset
 POST   /api/auth/reset-password    - Reset password with token
-GET    /api/auth/validate          - Validate JWT token
 ```
 
 #### **Roles:**
@@ -189,7 +191,7 @@ GET    /api/properties/buildings/{id}         - Get building by ID - done
 POST   /api/properties/buildings              - Create new building - done
 PUT    /api/properties/buildings/{id}         - Update building -done
 DELETE /api/properties/buildings/{id}         - Delete building - done
-GET    /api/properties/buildings/owner/{id}   - Get buildings by owner
+GET    /api/properties/buildings/owner/{id}   - Get buildings by owner - done
 ```
 
 **Flat Management:**
@@ -264,7 +266,7 @@ POST   /api/users                    - Create new user - done
 PUT    /api/users/{id}               - Update user - done
 DELETE /api/users/{id}               - Delete user - done
 GET    /api/users/email/{email}      - Get user by email - done
-GET    /api/users/role/{role}        - Get users by role (TENANT/OWNER)
+GET    /api/users/role/{role}        - Get users by role (TENANT/OWNER) -  done
 ```
 
 **Owner Management:**

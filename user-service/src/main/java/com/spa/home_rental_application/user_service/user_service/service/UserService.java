@@ -4,6 +4,7 @@ import com.spa.home_rental_application.user_service.user_service.DTO.Request.Eme
 import com.spa.home_rental_application.user_service.user_service.DTO.Response.EmergencyContactResponseDto;
 import com.spa.home_rental_application.user_service.user_service.DTO.Request.UserRequestDto;
 import com.spa.home_rental_application.user_service.user_service.DTO.Response.UserResponseDto;
+import com.spa.home_rental_application.user_service.user_service.DTO.Response.usersByRoleDto;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.web.multipart.MultipartFile;
@@ -17,7 +18,10 @@ public interface UserService {
     UserResponseDto getUserById(String userId);
     UserResponseDto getUserByEmail(String email);
     UserResponseDto deleteUserById(String userId);
+    UserResponseDto getUserByAuthUserId(String authUserId);
     UserResponseDto updateUser(UserRequestDto userRequest,String userId);
     List <UserResponseDto> searchUserByParam(String param);
     UserResponseDto uploadUserDocument(String userId, MultipartFile file, String type) throws IOException;
+
+    List<usersByRoleDto> getUserByRole(String roleName);
 }
