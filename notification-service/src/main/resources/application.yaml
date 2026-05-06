@@ -1,26 +1,76 @@
-server:
-  port: 8084   # or any free port
-
 spring:
   application:
-    name: notification-service
+    name: HRA-notification-service
 
-  datasource:
-    url: jdbc:oracle:thin:@//localhost:1521/orcl
-    username: siva
-    password: Pavan@123
-    driver-class-name: oracle.jdbc.OracleDriver
+  # Pull the real config from Config Server. Use optional: so the service
+  # still starts during local dev when Config Server is down.
+  config:
+    import: optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}
 
-  jpa:
-    hibernate:
-      ddl-auto: update       # or validate/create/update as you prefer
-    show-sql: true
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.OracleDialect
+  cloud:
+    config:
+      fail-fast: false
+      retry:
+        initial-interval: 1500
+        max-interval: 5000
+        max-attempts: 3
 
+# Operational endpoints + structured logging are kept here so they're
+# available even if Config Server is unreachable on first boot.
+server:
+  port: ${SERVER_PORT:8086}
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,env,loggers
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  level:
+    root: INFO
+    com.spa.home_rental_application: DEBUG
+    org.mongodb.driver: WARN
+    org.springframework.cloud.config: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{traceId:-},%X{spanId:-}] %logger{36} - %msg%n"
+
+# Eureka client baseline so the service can register even before Config
+# Server is reachable. Central config can still override.
 eureka:
+  instance:
+    prefer-ip-address: true
   client:
-    enabled: false
-    register-with-eureka: false
-    fetch-registry: false
+    register-with-eureka: true
+    fetch-registry: true
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka}
+
+# Auth-commons + Kafka topic name baselines — same defaults Config Server
+# serves; kept here so initial Kafka listener startup doesn't depend on
+# Config Server being reachable.
+app:
+  internal-auth:
+    enabled: ${INTERNAL_AUTH_ENABLED:true}
+    secret: ${INTERNAL_AUTH_SECRET:Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+    allowed-clock-skew-seconds: 60
+
+  kafka:
+    property-topic: property-events
+    user-topic: user-events
+    payment-topic: payment-events
+    maintenance-topic: maintenance-events
+    notification-topic: notification-events
+    auth-topic: auth-events

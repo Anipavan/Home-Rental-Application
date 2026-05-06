@@ -14,7 +14,7 @@ public class FlatOccupiedEvent {
     private String flatId;
     private String tenantId;
     private String buildingId;
-    private Double rentAmount;  // or BigDecimal to match schema
-    private String startDate;   // ISO string
+    private Double rentAmount;
+    private String startDate;
     private Instant timestamp;
 }

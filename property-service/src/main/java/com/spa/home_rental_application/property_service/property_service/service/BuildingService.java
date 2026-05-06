@@ -16,5 +16,6 @@ public interface BuildingService {
       BuildingResponseDTO deleteBuildingById(String buildId);
       BuildingResponseDTO updateBuilding(String buildId,BuildingRequestDTO buildingRequestDTO);
       List<BuildingResponseDTO> getBuildingsByOwnerId(String ownerId);
+      List<String> getTenantIdsByOwner(String ownerId);
 
 }

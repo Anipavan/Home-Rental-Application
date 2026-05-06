@@ -1,27 +1,71 @@
-server:
-  port: 8085   # or any free port
-
 spring:
   application:
-    name: analytics-service
+    name: HRA-analytics-service
 
-  datasource:
-    url: jdbc:oracle:thin:@//localhost:1521/orcl
-    username: siva
-    password: Pavan@123
-    driver-class-name: oracle.jdbc.OracleDriver
+  config:
+    import: optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}
 
-  jpa:
-    hibernate:
-      ddl-auto: update       # or validate/create/update as you prefer
-    show-sql: true
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.OracleDialect
+  cloud:
+    config:
+      fail-fast: false
+      retry:
+        initial-interval: 1500
+        max-interval: 5000
+        max-attempts: 3
+
+server:
+  port: ${SERVER_PORT:8087}
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,env,loggers
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  level:
+    root: INFO
+    com.spa.home_rental_application: DEBUG
+    org.hibernate.SQL: WARN
+    org.springframework.cloud.config: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{traceId:-},%X{spanId:-}] %logger{36} - %msg%n"
 
 eureka:
+  instance:
+    prefer-ip-address: true
   client:
-    enabled: false
-    register-with-eureka: false
-    fetch-registry: false
+    register-with-eureka: true
+    fetch-registry: true
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka}
 
+# Baselines so the service starts even if Config Server is briefly down.
+app:
+  internal-auth:
+    enabled: ${INTERNAL_AUTH_ENABLED:true}
+    secret: ${INTERNAL_AUTH_SECRET:Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+    allowed-clock-skew-seconds: 60
+
+  kafka:
+    property-topic: property-events
+    user-topic: user-events
+    payment-topic: payment-events
+    maintenance-topic: maintenance-events
+    notification-topic: notification-events
+    auth-topic: auth-events
+
+  analytics:
+    export-dir: ${ANALYTICS_EXPORT_DIR:reports}

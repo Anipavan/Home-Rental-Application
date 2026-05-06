@@ -1,12 +1,13 @@
 package com.spa.home_rental_application.auth_service.Config;
 
-import com.spa.home_rental_application.auth_service.Utils.CustomuserdetailsService;
+import com.spa.home_rental_application.auth_commons.GatewayAuthFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -17,48 +18,69 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
+/**
+ * Auth Service security chain.
+ * <ul>
+ *   <li>Stateless (JWT-based, no HTTP session)</li>
+ *   <li>CSRF disabled (no cookies, no browser forms)</li>
+ *   <li>Public endpoints: login, register, refresh, forgot/reset-password,
+ *       Swagger, actuator health/info</li>
+ *   <li>Everything else requires a valid JWT, with role checks via
+ *       {@code @PreAuthorize} on the controller methods</li>
+ * </ul>
+ */
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity
 public class Securityconfig {
 
+    private static final String[] PUBLIC_ENDPOINTS = {
+            "/auth/register",
+            "/auth/login",
+            "/auth/refresh",
+            "/auth/forgot-password",
+            "/auth/reset-password",
+            "/v3/api-docs/**",
+            "/swagger-ui.html",
+            "/swagger-ui/**",
+            "/actuator/health",
+            "/actuator/health/**",
+            "/actuator/info",
+            "/actuator/prometheus"
+    };
+
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain filterChain(HttpSecurity http,
+                                           JwtAuthenticationFilter jwtFilter,
+                                           GatewayAuthFilter gatewayAuthFilter) throws Exception {
         http
-
                 .csrf(AbstractHttpConfigurer::disable)
-
+                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-
-                        .requestMatchers(HttpMethod.POST, "/auth/register").permitAll()
-
-                        .requestMatchers("/auth/authentateUser").permitAll()
-
+                        .requestMatchers(HttpMethod.POST, "/auth/register", "/auth/login",
+                                "/auth/refresh", "/auth/forgot-password", "/auth/reset-password").permitAll()
+                        .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
                         .anyRequest().authenticated()
                 )
-
-                .sessionManagement(session ->
-                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-                );
+                // GatewayAuthFilter runs FIRST. It blocks any direct hit to this service
+                // (no/invalid X-Internal-Auth-Sig). The local JwtAuthenticationFilter
+                // then validates the access token IF present.
+                .addFilterBefore(gatewayAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(jwtFilter, com.spa.home_rental_application.auth_commons.GatewayAuthFilter.class);
         return http.build();
     }
+
     @Bean
-    public PasswordEncoder passwordEncoder()
-    {
+    public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
-    @Bean
-    public UserDetailsService userDetailsService()
-    {
-        return new CustomuserdetailsService();
-    }
 
     @Bean
-    public AuthenticationManager authenticationManager(UserDetailsService userDetailsService, PasswordEncoder passwordEncoder) {
-        DaoAuthenticationProvider daoAuthenticationProvider = new DaoAuthenticationProvider();
-        daoAuthenticationProvider.setUserDetailsService(userDetailsService);
-        daoAuthenticationProvider.setPasswordEncoder(passwordEncoder);
-
-        return new ProviderManager(daoAuthenticationProvider);
+    public AuthenticationManager authenticationManager(UserDetailsService userDetailsService,
+                                                       PasswordEncoder passwordEncoder) {
+        DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
+        provider.setUserDetailsService(userDetailsService);
+        provider.setPasswordEncoder(passwordEncoder);
+        return new ProviderManager(provider);
     }
-
 }

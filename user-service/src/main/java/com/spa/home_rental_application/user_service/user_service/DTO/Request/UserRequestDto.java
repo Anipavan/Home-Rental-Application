@@ -2,7 +2,7 @@ package com.spa.home_rental_application.user_service.user_service.DTO.Request;
 import jakarta.validation.constraints.*;
 import java.time.LocalDate;
 public record UserRequestDto(
-        @NotBlank(message = "authUserId is mandatory")
+
         String authUserId,
 
         @NotBlank(message = "firstName is mandatory")
@@ -27,9 +27,9 @@ public record UserRequestDto(
         @Size(max = 4000)
         String address,
 
-        @Size(max = 1000)
+        @Size(max = 10000)
         String profilePictureUrl,
 
-        @Size(max = 1000)
+        @Size(max = 10000)
         String idProofUrl
 ) {}
