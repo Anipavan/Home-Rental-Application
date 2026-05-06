@@ -1,0 +1,17 @@
+$kind: http-request
+url: http://localhost:8089/users/savecontact
+method: POST
+body:
+  type: json
+  content: "{\r
+
+    \  \"userId\": \"7d1a176d-3ff3-407d-afe0-cf16f27cd3ea\",\r
+
+    \  \"name\": \"Suresh Rao\",\r
+
+    \  \"relation\": \"Friend\",\r
+
+    \  \"phone\": \"+91-9988776655\"\r
+
+    }\r\n"
+order: 5000

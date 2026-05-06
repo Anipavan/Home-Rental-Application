@@ -1,0 +1,4 @@
+$kind: http-request
+url: http://localhost:8082/maintenance/requests
+method: GET
+order: 2000

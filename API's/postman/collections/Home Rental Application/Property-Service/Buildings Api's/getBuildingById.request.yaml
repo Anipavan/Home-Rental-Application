@@ -1,0 +1,6 @@
+$kind: http-request
+url: http://localhost:8088/properties/buildings/BLD-d158233c-049b-4d00-8dc2-ba306b514057
+method: GET
+auth:
+  type: noauth
+order: 3000

@@ -1,0 +1,29 @@
+$kind: http-request
+url: http://localhost:8088/properties/buildings/BLD-d158233c-049b-4d00-8dc2-ba306b514057/building
+method: PUT
+body:
+  type: json
+  content: " {\r
+
+    \        \"buildingName\": \"Sunrise Residenc2yTest\",\r
+
+    \        \"ownerId\": null,\r
+
+    \        \"buildingAddress\": \"123 MG Road, Sector 5\",\r
+
+    \        \"buildingCity\": \"Bangalore\",\r
+
+    \        \"buildingState\": \"Karnataka1\",\r
+
+    \        \"buildingTotalFloors\": \"10\",\r
+
+    \        \"buildingTotalFlats\": \"80\",\r
+
+    \        \"amenities\": \"Gym,Swimming Pool,Parking,Security\",\r
+
+    \        \"createdDt\": \"2025-12-21T13:48:14\",\r
+
+    \        \"updatedDt\": \"2025-12-21T13:48:14\"\r
+
+    \    }"
+order: 4000

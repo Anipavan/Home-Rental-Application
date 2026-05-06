@@ -1,0 +1,4 @@
+$kind: http-request
+url: http://localhost:8088/properties/flats/FLT-4a2dc5ee-f5c9-4154-bba4-bfa59fe4d1c3
+method: GET
+order: 3000

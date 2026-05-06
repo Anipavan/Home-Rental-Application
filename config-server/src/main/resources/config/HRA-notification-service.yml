@@ -1,0 +1,48 @@
+# Notification Service — overrides served by Config Server
+server:
+  port: ${SERVER_PORT:8086}
+
+spring:
+  data:
+    mongodb:
+      uri: ${MONGO_URI:mongodb://localhost:27017/HomeRentalDB}
+      auto-index-creation: true
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9093}
+    consumer:
+      group-id: hra-notification-service
+      auto-offset-reset: earliest
+
+  # SMTP settings — override in prod via env vars
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:noreply@homerental.local}
+    password: ${MAIL_PASSWORD:changeme}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+
+app:
+  notification:
+    # Master switch; set false in dev to swap real adapters for the noop ones
+    delivery-enabled: ${NOTIFICATION_DELIVERY:true}
+    from-email: ${NOTIFICATION_FROM_EMAIL:no-reply@homerental.local}
+    from-name:  ${NOTIFICATION_FROM_NAME:Home Rental}
+    max-retries: 3
+    retry-interval-minutes: 5
+
+  twilio:
+    account-sid: ${TWILIO_SID:placeholder}
+    auth-token:  ${TWILIO_TOKEN:placeholder}
+    from-number: ${TWILIO_FROM:+10000000000}
+
+  fcm:
+    server-key: ${FCM_SERVER_KEY:placeholder}

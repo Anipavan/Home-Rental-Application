@@ -1,0 +1,25 @@
+# User Service — overrides served by Config Server
+server:
+  port: ${SERVER_PORT:8089}
+
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:oracle:thin:@//localhost:1521/orcl}
+    username: ${DB_USERNAME:siva}
+    password: ${DB_PASSWORD:Pavan@123}
+    driver-class-name: oracle.jdbc.OracleDriver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.OracleDialect
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9093}
+    consumer:
+      group-id: hra-user-service
+      auto-offset-reset: earliest
+
+app:
+  uploads:
+    dir: ${USER_UPLOAD_DIR:uploads/users}

@@ -1,0 +1,4 @@
+$kind: http-request
+url: http://localhost:8089/users/owners
+method: GET
+order: 2000

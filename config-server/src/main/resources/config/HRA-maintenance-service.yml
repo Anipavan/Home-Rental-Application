@@ -1,0 +1,18 @@
+# Maintenance Service — overrides served by Config Server
+server:
+  port: ${SERVER_PORT:8085}
+
+spring:
+  data:
+    mongodb:
+      uri: ${MONGO_URI:mongodb://localhost:27017/HomeRentalDB}
+      auto-index-creation: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9093}
+    consumer:
+      group-id: hra-maintenance-service
+      auto-offset-reset: earliest
+
+app:
+  uploads:
+    dir: ${MAINTENANCE_UPLOAD_DIR:uploads/maintenance}

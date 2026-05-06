@@ -1,0 +1,4 @@
+$kind: http-request
+url: http://localhost:8088/properties/flats/building/BLD-42ba20ef-583d-4c7c-aacc-476054f96657
+method: GET
+order: 4000

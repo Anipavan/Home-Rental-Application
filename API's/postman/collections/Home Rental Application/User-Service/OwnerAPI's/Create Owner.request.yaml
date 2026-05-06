@@ -1,0 +1,23 @@
+$kind: http-request
+url: http://localhost:8089/users/owners
+method: POST
+body:
+  type: json
+  content: "{\r
+
+    \  \"userId\": \"112b07a3-0da8-4843-ae18-0e68cd39e2eb\",\r
+
+    \  \"businessName\": \"JP Nagar Residentials\",\r
+
+    \  \"gstNumber\": \"29IIIKK9999R1Z5\",\r
+
+    \  \"panNumber\": \"IIIKK9999R\",\r
+
+    \  \"bankAccountNumber\": \"103456789021\",\r
+
+    \  \"ifscCode\": \"UBIN0008899\",\r
+
+    \  \"totalProperties\": 7\r
+
+    }\r\n"
+order: 1000

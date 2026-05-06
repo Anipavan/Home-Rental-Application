@@ -1,0 +1,118 @@
+package com.spa.home_rental_application.payment_service.payment_service.gateway;
+
+import com.spa.home_rental_application.payment_service.payment_service.DTO.Request.InitiatePaymentRequest;
+import com.spa.home_rental_application.payment_service.payment_service.DTO.Request.VerifyPaymentRequest;
+import com.spa.home_rental_application.payment_service.payment_service.entities.Payment;
+import com.spa.home_rental_application.payment_service.payment_service.enums.PaymentMethod;
+import com.spa.home_rental_application.payment_service.payment_service.enums.UpiApp;
+import lombok.extern.slf4j.Slf4j;
+
+import java.util.UUID;
+
+/**
+ * Reference implementation that mimics a real gateway without ever
+ * leaving the JVM. Used in dev/test and when no real gateway secret is
+ * configured. Returns realistic-looking values so the rest of the system
+ * (controllers, listeners, receipts) can be exercised end-to-end.
+ *
+ * <p>Method-specific outputs:
+ * <ul>
+ *   <li>UPI: returns a valid-looking {@code upi://} intent string</li>
+ *   <li>CARD / NET_BANKING / WALLET: returns a "redirect" URL pointing at
+ *       a stub success page on this service itself</li>
+ *   <li>BANK_TRANSFER: returns dummy bank details</li>
+ *   <li>CASH: shouldn't reach here (handled by /pay-cash), but if it does
+ *       returns a no-op result</li>
+ * </ul>
+ *
+ * <p>Verification accepts any {@code transactionId == "MOCK_OK"} as success;
+ * any other value is treated as failure. Sufficient for integration tests.
+ */
+@Slf4j
+public class MockPaymentGateway implements PaymentGateway {
+
+    public static final String NAME = "mock";
+
+    @Override
+    public String name() { return NAME; }
+
+    @Override
+    public PaymentInitiationResult initiate(Payment payment, InitiatePaymentRequest req) {
+        String orderId = "mock_" + UUID.randomUUID();
+        var b = PaymentInitiationResult.builder()
+                .gatewayName(NAME)
+                .gatewayOrderId(orderId);
+
+        PaymentMethod method = req.paymentMethod();
+        switch (method) {
+            case UPI -> {
+                String vpa = req.upiVpa() != null ? req.upiVpa() : "rent@homerental";
+                b.upiIntentUrl(buildUpiIntent(req.upiApp(), vpa,
+                        payment.getTotalAmount().doubleValue(), orderId));
+                b.upiCollectStatus("PENDING_USER_ACTION");
+            }
+            case CARD, NET_BANKING, WALLET ->
+                    b.redirectUrl("http://localhost:8084/payments/mock/return?orderId=" + orderId
+                            + "&paymentId=" + payment.getId());
+            case BANK_TRANSFER ->
+                    b.bankAccountNumber("123456789012")
+                     .bankIfsc("HRAH0000001")
+                     .bankAccountName("Home Rental Escrow");
+            case CASH -> {
+                /* nothing — caller should use /pay-cash */
+            }
+        }
+        log.info("MockPaymentGateway.initiate paymentId={} method={} orderId={}",
+                payment.getId(), method, orderId);
+        return b.build();
+    }
+
+    @Override
+    public PaymentVerificationResult verify(Payment payment, VerifyPaymentRequest req) {
+        boolean ok = "MOCK_OK".equals(req.transactionId()) || req.transactionId().startsWith("mock_tx_");
+        return PaymentVerificationResult.builder()
+                .success(ok)
+                .transactionId(ok ? req.transactionId() : null)
+                .failureReason(ok ? null : "MockGateway expected transactionId=MOCK_OK or mock_tx_*")
+                .gatewayErrorCode(ok ? null : "MOCK_VERIFICATION_FAILED")
+                .build();
+    }
+
+    @Override
+    public WebhookVerificationResult verifyWebhook(String rawBody, String signatureHeader) {
+        // Mock: always valid; useful for end-to-end webhook tests.
+        return new WebhookVerificationResult(true, null, "mock_tx_" + UUID.randomUUID(), null);
+    }
+
+    /**
+     * Builds an app-aware UPI intent URI. When the tenant picks GPay /
+     * PhonePe / Paytm in the UI, we generate the app-specific deep link
+     * so on Android the OS opens that app directly instead of the chooser.
+     * Falls back to the universal upi:// scheme for OTHER / WHATSAPP.
+     *
+     *   GPay      tez://upi/pay?...
+     *   PhonePe   phonepe://pay?...
+     *   Paytm     paytmmp://pay?...
+     *   BHIM      bhim://upi/pay?...
+     *   AmazonPay amazonpay://pay?...
+     *   CRED      cred://upi/pay?...
+     *   else      upi://pay?...
+     */
+    private String buildUpiIntent(UpiApp app, String vpa, double amount, String txnRef) {
+        String query = "pa=" + vpa
+                     + "&pn=Home%20Rental"
+                     + "&am=" + amount
+                     + "&cu=INR"
+                     + "&tn=Rent%20payment"
+                     + "&tr=" + txnRef;
+        return switch (app == null ? UpiApp.OTHER : app) {
+            case GPAY      -> "tez://upi/pay?" + query;
+            case PHONEPE   -> "phonepe://pay?" + query;
+            case PAYTM     -> "paytmmp://pay?" + query;
+            case BHIM      -> "bhim://upi/pay?" + query;
+            case AMAZONPAY -> "amazonpay://pay?" + query;
+            case CRED      -> "cred://upi/pay?" + query;
+            case WHATSAPP, OTHER -> "upi://pay?" + query;
+        };
+    }
+}

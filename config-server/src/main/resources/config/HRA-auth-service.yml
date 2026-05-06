@@ -1,0 +1,27 @@
+# Auth Service — overrides served by Config Server
+server:
+  port: ${SERVER_PORT:9090}
+
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:oracle:thin:@//localhost:1521/orcl}
+    username: ${DB_USERNAME:siva}
+    password: ${DB_PASSWORD:Pavan@123}
+    driver-class-name: oracle.jdbc.OracleDriver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.OracleDialect
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9093}
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:U3VwZXJTZWNyZXRLZXlGb3JKV1RUb2tlbkdlbmVyYXRpb24xMjM0NTY3ODkwIQ==}
+    issuer: ${JWT_ISSUER:home-rental-auth}
+    access-token-validity-seconds: ${JWT_ACCESS_TTL:3600}
+    refresh-token-validity-seconds: ${JWT_REFRESH_TTL:2592000}
+  password-reset:
+    token-validity-minutes: ${PASSWORD_RESET_TTL_MINUTES:15}

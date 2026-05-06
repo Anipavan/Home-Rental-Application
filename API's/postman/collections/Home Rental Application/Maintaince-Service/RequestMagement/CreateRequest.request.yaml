@@ -1,0 +1,50 @@
+$kind: http-request
+url: http://localhost:8082/maintenance/requests
+method: POST
+body:
+  type: json
+  content: "{\r
+
+    \  \"requestNumber\": \"MR-2026-006\",\r
+
+    \  \"tenantId\": \"7d1a176d-3ff3-407d-afe0-cf16f27cd3ea\",\r
+
+    \  \"flatId\": \"55555\",\r
+
+    \  \"category\": \"GAS\",\r
+
+    \  \"title\": \"Gas smell in kitchen\",\r
+
+    \  \"description\": \"Strong gas odor detected near stove. Safety concern -
+    immediate attention required!\",\r
+
+    \  \"priority\": \"CRITICAL\",\r
+
+    \  \"status\": \"OPEN\",\r
+
+    \  \"images\": [\"https://example.com/images/gas-stove.jpg\"],\r
+
+    \  \"assignedTo\": null,\r
+
+    \  \"createdAt\": \"2026-01-03T15:10:00.000Z\",\r
+
+    \  \"updatedAt\": \"2026-01-03T15:10:00.000Z\",\r
+
+    \  \"resolvedAt\": null,\r
+
+    \  \"comments\": [\r
+
+    \    {\r
+
+    \      \"userId\": 56789,\r
+
+    \      \"comment\": \"Emergency request. Tenant evacuated kitchen area.\",\r
+
+    \      \"timestamp\": \"2026-01-03T15:10:00.000Z\"\r
+
+    \    }\r
+
+    \  ]\r
+
+    }\r\n"
+order: 1000
