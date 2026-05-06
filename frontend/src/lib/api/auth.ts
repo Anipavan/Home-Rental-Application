@@ -1,0 +1,31 @@
+import { api } from "./client";
+import type {
+  AuthResponse,
+  AuthUserResponse,
+  LoginRequest,
+  MessageResponse,
+  RegisterRequest,
+} from "@/types/api";
+
+export const authApi = {
+  login: (body: LoginRequest) =>
+    api.post<AuthResponse>("/auth/login", body).then((r) => r.data),
+  register: (body: RegisterRequest) =>
+    api.post<MessageResponse>("/auth/register", body).then((r) => r.data),
+  forgotPassword: (email: string) =>
+    api
+      .post<MessageResponse>("/auth/forgot-password", { email })
+      .then((r) => r.data),
+  resetPassword: (token: string, newPassword: string) =>
+    api
+      .post<MessageResponse>("/auth/reset-password", { token, newPassword })
+      .then((r) => r.data),
+  logout: (refreshToken: string) =>
+    api
+      .post<MessageResponse>("/auth/logout", { refreshToken })
+      .then((r) => r.data),
+  byRole: (role: string) =>
+    api.get<AuthUserResponse[]>(`/auth/role/${role}`).then((r) => r.data),
+  byId: (id: string) =>
+    api.get<AuthUserResponse>(`/auth/users/${id}`).then((r) => r.data),
+};
