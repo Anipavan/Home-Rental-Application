@@ -1,105 +1,145 @@
-// Small inline SVGs for payment-method branding so we don't ship external assets.
+// Payment-method tiles using the official brand SVGs from the
+// Simple Icons project (https://simpleicons.org, CC0). Each tile is a
+// brand-colored rounded square with the logo centered on top, matching
+// the visuals used in the actual app pickers (PhonePe / GPay / Paytm).
+//
+// Importing from `react-icons/si` keeps the bundle small — Vite tree-
+// shakes everything except the icons we use.
+
+import {
+  SiPhonepe,
+  SiGooglepay,
+  SiPaytm,
+} from "react-icons/si";
+import { Landmark, CreditCard, Banknote } from "lucide-react";
+
+/* ------------------------------------------------------------------ */
+/* PhonePe                                                            */
+/* ------------------------------------------------------------------ */
 
 export function PhonePeIcon({ className }: { className?: string }) {
+  // PhonePe brand purple is #5F259F. The SI logo is a single-path white
+  // mark; centring it on the brand tile gives the same look as the
+  // PhonePe app icon.
   return (
-    <svg viewBox="0 0 64 64" className={className}>
-      <rect width="64" height="64" rx="14" fill="#5F259F" />
-      <path
-        d="M22 18h20a4 4 0 0 1 0 8H35v6a14 14 0 1 1-13-13.96V18Zm0 6.5A7.5 7.5 0 1 0 29.5 32V18.06A12 12 0 0 0 22 24.5Z"
-        fill="#fff"
-      />
-    </svg>
+    <span
+      className={`relative inline-flex items-center justify-center rounded-2xl ${className ?? ""}`}
+      style={{ background: "#5F259F" }}
+      aria-label="PhonePe"
+    >
+      <SiPhonepe color="#ffffff" style={{ width: "60%", height: "60%" }} />
+    </span>
   );
 }
+
+/* ------------------------------------------------------------------ */
+/* Google Pay                                                         */
+/* ------------------------------------------------------------------ */
 
 export function GPayIcon({ className }: { className?: string }) {
+  // GPay's brand identity uses a white background with the multi-coloured
+  // "G". Simple Icons ships the GPay mark as a monochrome path though, so
+  // we render the whole tile in the GPay blue (#4285F4) on a white surface
+  // — which matches the latest "G Pay" pill design.
   return (
-    <svg viewBox="0 0 64 64" className={className}>
-      <rect width="64" height="64" rx="14" fill="#fff" stroke="#dadce0" />
-      <text
-        x="32"
-        y="40"
-        textAnchor="middle"
-        fontSize="22"
-        fontFamily="Inter, sans-serif"
-        fontWeight="700"
-      >
-        <tspan fill="#4285F4">G</tspan>
-        <tspan fill="#EA4335">P</tspan>
-        <tspan fill="#FBBC04">a</tspan>
-        <tspan fill="#34A853">y</tspan>
-      </text>
-    </svg>
+    <span
+      className={`relative inline-flex items-center justify-center rounded-2xl bg-white border ${className ?? ""}`}
+      style={{ borderColor: "#dadce0" }}
+      aria-label="Google Pay"
+    >
+      <SiGooglepay color="#4285F4" style={{ width: "70%", height: "70%" }} />
+    </span>
   );
 }
+
+/* ------------------------------------------------------------------ */
+/* Paytm                                                              */
+/* ------------------------------------------------------------------ */
 
 export function PaytmIcon({ className }: { className?: string }) {
+  // Paytm cyan #00BAF2; the SI mark is the lowercase "p" + wordmark.
   return (
-    <svg viewBox="0 0 64 64" className={className}>
-      <rect width="64" height="64" rx="14" fill="#00BAF2" />
-      <path
-        d="M14 23h36a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H14V23Zm10 7v8h6v-8h-6Zm10 0v8h6v-8h-6Z"
-        fill="#fff"
-      />
-      <text
-        x="32"
-        y="55"
-        textAnchor="middle"
-        fontSize="9"
-        fontFamily="Inter, sans-serif"
-        fontWeight="700"
-        fill="#002E6E"
-      >
-        Paytm
-      </text>
-    </svg>
+    <span
+      className={`relative inline-flex items-center justify-center rounded-2xl ${className ?? ""}`}
+      style={{ background: "#00BAF2" }}
+      aria-label="Paytm"
+    >
+      <SiPaytm color="#ffffff" style={{ width: "70%", height: "70%" }} />
+    </span>
   );
 }
+
+/* ------------------------------------------------------------------ */
+/* Generic UPI (collect-flow / "Other UPI")                           */
+/* ------------------------------------------------------------------ */
 
 export function UPIIcon({ className }: { className?: string }) {
+  // NPCI's UPI mark — orange-and-green chevrons. Hand-pathed because
+  // the official mark isn't in Simple Icons.
   return (
-    <svg viewBox="0 0 64 64" className={className}>
-      <rect width="64" height="64" rx="14" fill="#fff" stroke="#dadce0" />
-      <path d="M28 14l16 18-16 18 6-18-6-18Z" fill="#FF7E1B" />
-      <path d="M21 14l16 18-16 18 6-18-6-18Z" fill="#098041" opacity=".9" />
-    </svg>
+    <span
+      className={`relative inline-flex items-center justify-center rounded-2xl bg-white border ${className ?? ""}`}
+      style={{ borderColor: "#dadce0" }}
+      aria-label="UPI"
+    >
+      <svg viewBox="0 0 64 64" style={{ width: "65%", height: "65%" }}>
+        <path d="M28 14l16 18-16 18 6-18-6-18Z" fill="#FF7E1B" />
+        <path d="M21 14l16 18-16 18 6-18-6-18Z" fill="#098041" opacity=".9" />
+      </svg>
+    </span>
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Credit / Debit Card                                                */
+/* ------------------------------------------------------------------ */
+
 export function CardIcon({ className }: { className?: string }) {
+  // Generic card tile — gradient navy, with the lucide CreditCard glyph.
   return (
-    <svg viewBox="0 0 64 64" className={className}>
-      <rect width="64" height="64" rx="14" fill="url(#card-grad)" />
-      <defs>
-        <linearGradient id="card-grad" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#0f172a" />
-          <stop offset="100%" stopColor="#1e293b" />
-        </linearGradient>
-      </defs>
-      <rect x="10" y="20" width="44" height="6" fill="#facc15" />
-      <rect x="14" y="38" width="14" height="3" rx="1.5" fill="#fff" opacity=".8" />
-      <rect x="14" y="44" width="22" height="3" rx="1.5" fill="#fff" opacity=".5" />
-    </svg>
+    <span
+      className={`relative inline-flex items-center justify-center rounded-2xl text-white ${className ?? ""}`}
+      style={{
+        background: "linear-gradient(135deg,#0f172a 0%,#1e293b 100%)",
+      }}
+      aria-label="Credit / Debit Card"
+    >
+      <CreditCard style={{ width: "55%", height: "55%" }} strokeWidth={1.75} />
+    </span>
   );
 }
+
+/* ------------------------------------------------------------------ */
+/* Net Banking                                                        */
+/* ------------------------------------------------------------------ */
+
+export function NetBankingIcon({ className }: { className?: string }) {
+  // No single brand here — it's a fan-out to every Indian bank. Use
+  // lucide's Landmark (classical-column building) on a deep navy tile so
+  // it reads as "bank" at a glance, matching the picker's visual rhythm.
+  return (
+    <span
+      className={`relative inline-flex items-center justify-center rounded-2xl text-white ${className ?? ""}`}
+      style={{ background: "#1e3a8a" }}
+      aria-label="Net Banking"
+    >
+      <Landmark style={{ width: "55%", height: "55%" }} strokeWidth={1.75} />
+    </span>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Cash (owner-marked offline payment)                                */
+/* ------------------------------------------------------------------ */
 
 export function CashIcon({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 64 64" className={className}>
-      <rect width="64" height="64" rx="14" fill="#10b981" />
-      <rect x="10" y="20" width="44" height="24" rx="3" fill="#fff" />
-      <circle cx="32" cy="32" r="6" fill="#10b981" />
-      <text
-        x="32"
-        y="36"
-        textAnchor="middle"
-        fontSize="10"
-        fontFamily="Inter"
-        fontWeight="700"
-        fill="#fff"
-      >
-        ₹
-      </text>
-    </svg>
+    <span
+      className={`relative inline-flex items-center justify-center rounded-2xl text-white ${className ?? ""}`}
+      style={{ background: "#10b981" }}
+      aria-label="Cash"
+    >
+      <Banknote style={{ width: "55%", height: "55%" }} strokeWidth={1.75} />
+    </span>
   );
 }

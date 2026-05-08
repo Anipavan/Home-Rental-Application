@@ -9,7 +9,6 @@ import {
   Smartphone,
   Wallet,
   Lock,
-  Building2,
 } from "lucide-react";
 import { paymentsApi } from "@/lib/api/payments";
 import { paymentGateway } from "@/lib/api/payment-gateway";
@@ -30,6 +29,7 @@ import {
   PaytmIcon,
   UPIIcon,
   CardIcon,
+  NetBankingIcon,
 } from "@/components/payment/method-icons";
 import type {
   InitiatePaymentResponse,
@@ -57,7 +57,7 @@ const methods: MethodOption[] = [
   { key: "upi-paytm",   label: "Paytm UPI",    hint: "UPI · Wallet",       Icon: PaytmIcon,   group: "upi",                  paymentMethod: "UPI", upiApp: "PAYTM" },
   { key: "upi-other",   label: "Other UPI",    hint: "Enter UPI ID",       Icon: UPIIcon,     group: "upi",                  paymentMethod: "UPI", upiApp: "OTHER" },
   { key: "card",        label: "Credit / Debit Card", hint: "Visa · Mastercard · RuPay", Icon: CardIcon, group: "card",  paymentMethod: "CARD" },
-  { key: "netbanking",  label: "Net Banking",  hint: "All major banks",    Icon: Building2 as unknown as React.ComponentType<{ className?: string }>, group: "card",                  paymentMethod: "NET_BANKING" },
+  { key: "netbanking",  label: "Net Banking",  hint: "All major banks",    Icon: NetBankingIcon, group: "card",                  paymentMethod: "NET_BANKING" },
 ];
 
 export function PayPage() {
