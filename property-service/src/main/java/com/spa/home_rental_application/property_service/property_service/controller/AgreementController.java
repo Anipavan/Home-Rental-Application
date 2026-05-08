@@ -8,11 +8,14 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.io.IOException;
 import java.util.List;
 
 /**
@@ -71,5 +74,17 @@ public class AgreementController {
                                                        @RequestBody @Valid RejectAgreementRequest body) {
         log.info("POST /agreements/{}/reject reason={}", id, body.reason());
         return ResponseEntity.ok(agreementService.reject(id, body.reason()));
+    }
+
+    @Operation(summary = "Download the rendered lease deed PDF")
+    @GetMapping("/{id}/document")
+    public ResponseEntity<byte[]> downloadDocument(@PathVariable String id) throws IOException {
+        byte[] pdf = agreementService.loadDocument(id);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_PDF);
+        headers.setContentDispositionFormData("attachment",
+                "lease-agreement-" + id + ".pdf");
+        headers.setContentLength(pdf.length);
+        return new ResponseEntity<>(pdf, headers, HttpStatus.OK);
     }
 }

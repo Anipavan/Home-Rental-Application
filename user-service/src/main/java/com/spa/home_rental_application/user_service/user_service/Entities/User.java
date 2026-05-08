@@ -61,6 +61,24 @@ public class User {
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 
+    // ----- India Compliance Layer (added by KYC + Document consumers) -----
+    @Column(name = "kyc_status", length = 20)
+    @Builder.Default
+    private String kycStatus = "PENDING";          // PENDING | INITIATED | VERIFIED | FAILED
+
+    @Column(name = "kyc_provider", length = 50)
+    private String kycProvider;
+
+    @Column(name = "kyc_verified_at")
+    private LocalDateTime kycVerifiedAt;
+
+    @Column(name = "preferred_language", length = 10)
+    @Builder.Default
+    private String preferredLanguage = "en";
+
+    @Column(name = "whatsapp_number", length = 15)
+    private String whatsappNumber;
+
     @Override
     public String toString() {
         return "User{" +

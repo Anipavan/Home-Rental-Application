@@ -3,6 +3,7 @@ package com.spa.home_rental_application.property_service.property_service.servic
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.AgreementResponseDTO;
 import com.spa.home_rental_application.property_service.property_service.Entities.Flat;
 
+import java.io.IOException;
 import java.util.List;
 
 public interface AgreementService {
@@ -16,4 +17,7 @@ public interface AgreementService {
 
     AgreementResponseDTO sign(String agreementId, String signatureBase64);
     AgreementResponseDTO reject(String agreementId, String reason);
+
+    /** Load the rendered PDF bytes for download. */
+    byte[] loadDocument(String agreementId) throws IOException;
 }

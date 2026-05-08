@@ -19,6 +19,9 @@ import { MaintenancePage } from "@/pages/tenant/maintenance";
 import { MaintenanceNewPage } from "@/pages/tenant/maintenance-new";
 import { ProfilePage } from "@/pages/tenant/profile";
 import { TenantLeasePage } from "@/pages/tenant/lease";
+import { KycPage } from "@/pages/tenant/kyc";
+import { DocumentsPage } from "@/pages/tenant/documents";
+import { TenantReviewsPage } from "@/pages/tenant/reviews";
 import { OwnerDashboard } from "@/pages/owner/dashboard";
 import { BuildingsPage } from "@/pages/owner/buildings";
 import { BuildingNewPage } from "@/pages/owner/building-new";
@@ -30,11 +33,15 @@ import { OwnerPaymentsPage } from "@/pages/owner/payments";
 import { OwnerMaintenancePage } from "@/pages/owner/maintenance";
 import { OwnerAnalyticsPage } from "@/pages/owner/analytics";
 import { OwnerAgreementsPage } from "@/pages/owner/agreements";
+import { OwnerLeasesPage } from "@/pages/owner/leases";
+import { OwnerCompliancePage } from "@/pages/owner/compliance";
 import { AdminDashboard } from "@/pages/admin/dashboard";
 import { AdminUsersPage } from "@/pages/admin/users";
 import { AdminPropertiesPage } from "@/pages/admin/properties";
 import { AdminPaymentsPage } from "@/pages/admin/payments";
 import { AdminMaintenancePage } from "@/pages/admin/maintenance";
+import { AdminReviewsPage } from "@/pages/admin/reviews";
+import { AdminSupportPage } from "@/pages/admin/support";
 
 export const router = createBrowserRouter([
   {
@@ -67,6 +74,9 @@ export const router = createBrowserRouter([
       { path: "maintenance", element: <MaintenancePage /> },
       { path: "maintenance/new", element: <MaintenanceNewPage /> },
       { path: "lease", element: <TenantLeasePage /> },
+      { path: "kyc", element: <KycPage /> },
+      { path: "documents", element: <DocumentsPage /> },
+      { path: "reviews", element: <TenantReviewsPage /> },
       { path: "profile", element: <ProfilePage /> },
     ],
   },
@@ -88,6 +98,8 @@ export const router = createBrowserRouter([
       { path: "payments", element: <OwnerPaymentsPage /> },
       { path: "maintenance", element: <OwnerMaintenancePage /> },
       { path: "agreements", element: <OwnerAgreementsPage /> },
+      { path: "leases", element: <OwnerLeasesPage /> },
+      { path: "compliance", element: <OwnerCompliancePage /> },
       { path: "analytics", element: <OwnerAnalyticsPage /> },
     ],
   },
@@ -104,6 +116,8 @@ export const router = createBrowserRouter([
       { path: "properties", element: <AdminPropertiesPage /> },
       { path: "payments", element: <AdminPaymentsPage /> },
       { path: "maintenance", element: <AdminMaintenancePage /> },
+      { path: "reviews", element: <AdminReviewsPage /> },
+      { path: "support", element: <AdminSupportPage /> },
     ],
   },
   { path: "*", element: <NotFoundPage /> },

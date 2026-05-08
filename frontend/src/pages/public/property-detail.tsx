@@ -21,6 +21,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
+import { ReviewList } from "@/components/reviews/review-list";
 import { formatINR, formatDate } from "@/lib/utils";
 import { getPlaceholderImage } from "@/components/property/property-card";
 
@@ -174,6 +175,11 @@ export function PropertyDetailPage() {
                 </li>
               ))}
             </ul>
+          </section>
+
+          <section>
+            <h2 className="font-display text-xl font-semibold mb-3">Reviews</h2>
+            <ReviewList targetType="PROPERTY" targetId={String(flat.buildingId)} />
           </section>
         </div>
 

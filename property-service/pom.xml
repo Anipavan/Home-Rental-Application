@@ -82,6 +82,14 @@
 			<version>2.6.0</version>
 		</dependency>
 
+		<!-- OpenPDF — generates the lease agreement PDF on sign. Same library
+		     used by LeaseService and ComplianceService for consistency. -->
+		<dependency>
+			<groupId>com.github.librepdf</groupId>
+			<artifactId>openpdf</artifactId>
+			<version>2.0.3</version>
+		</dependency>
+
 		<dependency>
 			<groupId>org.projectlombok</groupId>
 			<artifactId>lombok</artifactId>

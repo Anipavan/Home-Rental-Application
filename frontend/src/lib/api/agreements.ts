@@ -35,4 +35,10 @@ export const agreementsApi = {
     api
       .post<AgreementResponseDTO>(`/properties/agreements/${id}/reject`, body)
       .then((r) => r.data),
+
+  /** Returns the rendered lease deed as a PDF Blob. */
+  downloadDocument: (id: string) =>
+    api
+      .get<Blob>(`/properties/agreements/${id}/document`, { responseType: "blob" })
+      .then((r) => r.data),
 };

@@ -57,6 +57,13 @@ public class Agreement {
     @Column(name = "rejected_at")   private LocalDateTime rejectedAt;
     @Column(name = "rejection_reason", length = 500) private String rejectionReason;
 
+    /**
+     * Path on disk (or storage URL) of the rendered PDF deed. Populated by
+     * {@code AgreementPdfGenerator} when the tenant signs; null until then.
+     */
+    @Column(name = "document_path", length = 1000)
+    private String documentPath;
+
     @Column(name = "created_at", nullable = false) private LocalDateTime createdAt;
     @Column(name = "updated_at", nullable = false) private LocalDateTime updatedAt;
 

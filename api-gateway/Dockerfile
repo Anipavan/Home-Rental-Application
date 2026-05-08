@@ -1,16 +1,30 @@
+# Self-contained build — see auth-service/Dockerfile for the rationale.
+# Run from repo root via `build.context: .` in docker-compose.yml.
+# api-gateway only needs auth-commons (no Kafka), but we bake KafkaEvents
+# too so every service shares an identical Dockerfile pattern. Cost is ~5s.
+
 # ----- build stage -----
 FROM maven:3.9.6-eclipse-temurin-21 AS build
 WORKDIR /workspace
-COPY pom.xml .
-RUN mvn -B -q -e -DskipTests dependency:go-offline
-COPY src ./src
-RUN mvn -B -q -DskipTests package
+
+COPY KafkaEvents/pom.xml KafkaEvents/pom.xml
+COPY KafkaEvents/src     KafkaEvents/src
+RUN mvn -B -q -DskipTests -f KafkaEvents/pom.xml install
+
+COPY auth-commons/pom.xml auth-commons/pom.xml
+COPY auth-commons/src     auth-commons/src
+RUN mvn -B -q -DskipTests -f auth-commons/pom.xml install
+
+COPY api-gateway/pom.xml api-gateway/pom.xml
+RUN mvn -B -q -DskipTests -f api-gateway/pom.xml dependency:go-offline
+COPY api-gateway/src api-gateway/src
+RUN mvn -B -q -DskipTests -f api-gateway/pom.xml package
 
 # ----- runtime stage -----
 FROM eclipse-temurin:21-jre-alpine
 RUN addgroup -S app && adduser -S app -G app
 WORKDIR /app
-COPY --from=build /workspace/target/*.jar app.jar
+COPY --from=build /workspace/api-gateway/target/*.jar app.jar
 
 USER app
 EXPOSE 8080

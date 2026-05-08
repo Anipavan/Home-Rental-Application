@@ -20,6 +20,12 @@ public record AgreementResponseDTO(
         LocalDateTime signedAt,
         LocalDateTime rejectedAt,
         String rejectionReason,
+        /**
+         * Truthy when the rendered PDF exists on disk and can be downloaded
+         * from {@code /properties/agreements/{id}/document}. Frontend uses
+         * this to enable the "Download deed (PDF)" button.
+         */
+        Boolean hasDocument,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {}

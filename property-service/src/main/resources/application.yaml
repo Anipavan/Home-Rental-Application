@@ -64,6 +64,10 @@ app:
     auth-topic: auth-events
   uploads:
     dir: ${PROPERTY_UPLOAD_DIR:uploads}
+  agreements:
+    # Where the rendered lease deed PDFs land. Mount a Docker volume here
+    # so deeds survive container restarts.
+    deed-storage-dir: ${AGREEMENT_DEED_DIR:uploads/lease-deeds-property}
 
 eureka:
   instance:

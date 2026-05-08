@@ -34,6 +34,10 @@ public class BuildingMapper {
                 .buildingTotalFloors(String.valueOf(dto.buildingTotalFloors()))
                 .buildingTotalFlats(String.valueOf(dto.buildingTotalFlats()))
                 .amenities(dto.amenities())
+                // Optional reference IDs from the cascading dropdown. May be
+                // null when the request comes from an old client / a script.
+                .stateId(dto.stateId())
+                .cityId(dto.cityId())
                 .createdDt(LocalDateTime.now().toString())
                 .updatedDt(LocalDateTime.now().toString())
                 .build();

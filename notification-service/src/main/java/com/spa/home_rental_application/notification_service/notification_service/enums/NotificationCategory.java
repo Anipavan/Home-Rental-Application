@@ -16,5 +16,16 @@ public enum NotificationCategory {
     MAINTENANCE_RESOLVED,
     LEASE_WELCOME,
     LEASE_EXPIRY,
+    // ----- India Compliance Layer -----
+    KYC_VERIFIED,
+    KYC_FAILED,
+    KYC_PAN_VERIFIED,
+    LEASE_SIGNED,
+    LEASE_RENEWED,
+    LEASE_TERMINATED,
+    RERA_REGISTERED,
+    GST_INVOICE_GENERATED,
+    DOCUMENT_VERIFIED,
+    DOCUMENT_EXTRACTED,
     GENERIC
 }

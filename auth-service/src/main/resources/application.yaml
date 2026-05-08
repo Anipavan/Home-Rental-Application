@@ -55,8 +55,10 @@ app:
   jwt:
     # Override in prod via JWT_SECRET env / Vault. Must be at least 256 bits.
     secret: ${JWT_SECRET:U3VwZXJTZWNyZXRLZXlGb3JKV1RUb2tlbkdlbmVyYXRpb24xMjM0NTY3ODkwIQ==}
-    access-token-validity-seconds: ${JWT_ACCESS_TTL:3600}        # 1 hour
-    refresh-token-validity-seconds: ${JWT_REFRESH_TTL:2592000}   # 30 days
+    # Stabilization sprint: tightened from 1h / 30d to 15min / 7d to enforce
+    # real session expiry. Frontend additionally enforces a 30-min idle timeout.
+    access-token-validity-seconds: ${JWT_ACCESS_TTL:900}          # 15 minutes
+    refresh-token-validity-seconds: ${JWT_REFRESH_TTL:604800}     # 7 days
     issuer: ${JWT_ISSUER:home-rental-auth}
   password-reset:
     token-validity-minutes: ${PASSWORD_RESET_TTL_MINUTES:15}

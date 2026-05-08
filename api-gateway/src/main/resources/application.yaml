@@ -96,6 +96,52 @@ spring:
             - name: CircuitBreaker
               args: {name: analyticsServiceCircuitBreaker, fallbackUri: forward:/__cb/fallback/analytics}
 
+        # ----- India Compliance Layer (v1) -----
+        - id: kyc-service-v1
+          uri: lb://HRA-kyc-service
+          predicates: [Path=/rentals/v1/kyc/**]
+          filters:
+            - RewritePath=/rentals/v1/(?<segment>.*), /$\{segment}
+            - AddResponseHeader=X-API-Version, v1
+            - name: CircuitBreaker
+              args: {name: kycServiceCircuitBreaker, fallbackUri: forward:/__cb/fallback/kyc}
+
+        - id: compliance-service-v1
+          uri: lb://HRA-compliance-service
+          predicates: [Path=/rentals/v1/compliance/**]
+          filters:
+            - RewritePath=/rentals/v1/(?<segment>.*), /$\{segment}
+            - AddResponseHeader=X-API-Version, v1
+            - name: CircuitBreaker
+              args: {name: complianceServiceCircuitBreaker, fallbackUri: forward:/__cb/fallback/compliance}
+
+        - id: lease-service-v1
+          uri: lb://HRA-lease-service
+          predicates: [Path=/rentals/v1/lease/**]
+          filters:
+            - RewritePath=/rentals/v1/(?<segment>.*), /$\{segment}
+            - AddResponseHeader=X-API-Version, v1
+            - name: CircuitBreaker
+              args: {name: leaseServiceCircuitBreaker, fallbackUri: forward:/__cb/fallback/lease}
+
+        - id: document-service-v1
+          uri: lb://HRA-document-service
+          predicates: [Path=/rentals/v1/documents/**]
+          filters:
+            - RewritePath=/rentals/v1/(?<segment>.*), /$\{segment}
+            - AddResponseHeader=X-API-Version, v1
+            - name: CircuitBreaker
+              args: {name: documentServiceCircuitBreaker, fallbackUri: forward:/__cb/fallback/document}
+
+        - id: review-service-v1
+          uri: lb://HRA-review-service
+          predicates: [Path=/rentals/v1/reviews/**]
+          filters:
+            - RewritePath=/rentals/v1/(?<segment>.*), /$\{segment}
+            - AddResponseHeader=X-API-Version, v1
+            - name: CircuitBreaker
+              args: {name: reviewServiceCircuitBreaker, fallbackUri: forward:/__cb/fallback/review}
+
         # ===== legacy routes (deprecated) =====
         - id: auth-service-legacy
           uri: lb://HRA-auth-service
@@ -174,6 +220,62 @@ spring:
             - name: CircuitBreaker
               args: {name: analyticsServiceCircuitBreaker, fallbackUri: forward:/__cb/fallback/analytics}
 
+        # ----- India Compliance Layer (legacy /api prefix) -----
+        - id: kyc-service-legacy
+          uri: lb://HRA-kyc-service
+          predicates: [Path=/api/kyc/**]
+          filters:
+            - StripPrefix=1
+            - AddResponseHeader=X-API-Version, legacy
+            - AddResponseHeader=X-Deprecation, "true"
+            - AddResponseHeader=X-Deprecation-Hint, "Use /rentals/v1/kyc/** instead"
+            - name: CircuitBreaker
+              args: {name: kycServiceCircuitBreaker, fallbackUri: forward:/__cb/fallback/kyc}
+
+        - id: compliance-service-legacy
+          uri: lb://HRA-compliance-service
+          predicates: [Path=/api/compliance/**]
+          filters:
+            - StripPrefix=1
+            - AddResponseHeader=X-API-Version, legacy
+            - AddResponseHeader=X-Deprecation, "true"
+            - AddResponseHeader=X-Deprecation-Hint, "Use /rentals/v1/compliance/** instead"
+            - name: CircuitBreaker
+              args: {name: complianceServiceCircuitBreaker, fallbackUri: forward:/__cb/fallback/compliance}
+
+        - id: lease-service-legacy
+          uri: lb://HRA-lease-service
+          predicates: [Path=/api/lease/**]
+          filters:
+            - StripPrefix=1
+            - AddResponseHeader=X-API-Version, legacy
+            - AddResponseHeader=X-Deprecation, "true"
+            - AddResponseHeader=X-Deprecation-Hint, "Use /rentals/v1/lease/** instead"
+            - name: CircuitBreaker
+              args: {name: leaseServiceCircuitBreaker, fallbackUri: forward:/__cb/fallback/lease}
+
+        - id: document-service-legacy
+          uri: lb://HRA-document-service
+          predicates: [Path=/api/documents/**]
+          filters:
+            - StripPrefix=1
+            - AddResponseHeader=X-API-Version, legacy
+            - AddResponseHeader=X-Deprecation, "true"
+            - AddResponseHeader=X-Deprecation-Hint, "Use /rentals/v1/documents/** instead"
+            - name: CircuitBreaker
+              args: {name: documentServiceCircuitBreaker, fallbackUri: forward:/__cb/fallback/document}
+
+        - id: review-service-legacy
+          uri: lb://HRA-review-service
+          predicates: [Path=/api/reviews/**]
+          filters:
+            - StripPrefix=1
+            - AddResponseHeader=X-API-Version, legacy
+            - AddResponseHeader=X-Deprecation, "true"
+            - AddResponseHeader=X-Deprecation-Hint, "Use /rentals/v1/reviews/** instead"
+            - name: CircuitBreaker
+              args: {name: reviewServiceCircuitBreaker, fallbackUri: forward:/__cb/fallback/review}
+
         # ===== Swagger aggregation routes =====
         # Springdoc cold spec generation can take 15-30s; bump per-route timeout to 60s.
         - id: aggregate-auth-docs
@@ -215,6 +317,36 @@ spring:
         - id: aggregate-analytics-docs
           uri: lb://HRA-analytics-service
           predicates: [Path=/aggregate/analytics-service/v3/api-docs/**]
+          filters: [StripPrefix=2]
+          metadata: {response-timeout: 60000, connect-timeout: 5000}
+
+        - id: aggregate-kyc-docs
+          uri: lb://HRA-kyc-service
+          predicates: [Path=/aggregate/kyc-service/v3/api-docs/**]
+          filters: [StripPrefix=2]
+          metadata: {response-timeout: 60000, connect-timeout: 5000}
+
+        - id: aggregate-compliance-docs
+          uri: lb://HRA-compliance-service
+          predicates: [Path=/aggregate/compliance-service/v3/api-docs/**]
+          filters: [StripPrefix=2]
+          metadata: {response-timeout: 60000, connect-timeout: 5000}
+
+        - id: aggregate-lease-docs
+          uri: lb://HRA-lease-service
+          predicates: [Path=/aggregate/lease-service/v3/api-docs/**]
+          filters: [StripPrefix=2]
+          metadata: {response-timeout: 60000, connect-timeout: 5000}
+
+        - id: aggregate-document-docs
+          uri: lb://HRA-document-service
+          predicates: [Path=/aggregate/document-service/v3/api-docs/**]
+          filters: [StripPrefix=2]
+          metadata: {response-timeout: 60000, connect-timeout: 5000}
+
+        - id: aggregate-review-docs
+          uri: lb://HRA-review-service
+          predicates: [Path=/aggregate/review-service/v3/api-docs/**]
           filters: [StripPrefix=2]
           metadata: {response-timeout: 60000, connect-timeout: 5000}
 
@@ -275,6 +407,11 @@ resilience4j:
       maintenanceServiceCircuitBreaker:  { baseConfig: default }
       notificationServiceCircuitBreaker: { baseConfig: default }
       analyticsServiceCircuitBreaker:    { baseConfig: default }
+      kycServiceCircuitBreaker:          { baseConfig: default }
+      complianceServiceCircuitBreaker:   { baseConfig: default }
+      leaseServiceCircuitBreaker:        { baseConfig: default }
+      documentServiceCircuitBreaker:     { baseConfig: default }
+      reviewServiceCircuitBreaker:       { baseConfig: default }
   timelimiter:
     configs:
       default:
@@ -288,6 +425,11 @@ resilience4j:
       maintenanceServiceCircuitBreaker:  { baseConfig: default }
       notificationServiceCircuitBreaker: { baseConfig: default }
       analyticsServiceCircuitBreaker:    { baseConfig: default }
+      kycServiceCircuitBreaker:          { baseConfig: default }
+      complianceServiceCircuitBreaker:   { baseConfig: default }
+      leaseServiceCircuitBreaker:        { baseConfig: default }
+      documentServiceCircuitBreaker:     { baseConfig: default }
+      reviewServiceCircuitBreaker:       { baseConfig: default }
 
 # ---------- Eureka ----------
 eureka:
@@ -346,6 +488,16 @@ springdoc:
         url:  /aggregate/notification-service/v3/api-docs
       - name: "7. Analytics Service"
         url:  /aggregate/analytics-service/v3/api-docs
+      - name: "8. KYC Service"
+        url:  /aggregate/kyc-service/v3/api-docs
+      - name: "9. Compliance Service"
+        url:  /aggregate/compliance-service/v3/api-docs
+      - name: "10. Lease Service"
+        url:  /aggregate/lease-service/v3/api-docs
+      - name: "11. Document Service"
+        url:  /aggregate/document-service/v3/api-docs
+      - name: "12. Review Service"
+        url:  /aggregate/review-service/v3/api-docs
 
 # ---------- Logging ----------
 logging:

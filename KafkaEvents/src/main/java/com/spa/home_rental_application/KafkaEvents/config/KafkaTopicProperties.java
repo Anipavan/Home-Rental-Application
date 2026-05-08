@@ -34,4 +34,9 @@ public class KafkaTopicProperties {
     private String maintenanceTopic = "maintenance-events";
     private String notificationTopic = "notification-events";
     private String authTopic = "auth-events";
+    private String kycTopic = "kyc-events";
+    private String leaseTopic = "lease-events";
+    private String complianceTopic = "compliance-events";
+    private String documentTopic = "document-events";
+    private String reviewTopic = "review-events";
 }
