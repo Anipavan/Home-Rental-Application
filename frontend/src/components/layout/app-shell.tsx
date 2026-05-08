@@ -8,12 +8,15 @@ import {
   BarChart3,
   Settings,
   LogOut,
-  Bell,
   Search,
   CreditCard,
   ShieldCheck,
   LayoutGrid,
   ScrollText,
+  FileText,
+  Star,
+  BadgeCheck,
+  Stamp,
 } from "lucide-react";
 import { Logo } from "./logo";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -27,6 +30,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { IdleTimer } from "@/components/auth/idle-timer";
+import { NotificationBell } from "./notification-bell";
+import { ContactSupport } from "./contact-support";
 import { useAuthStore } from "@/stores/auth-store";
 import { authApi } from "@/lib/api/auth";
 import { cn, initials } from "@/lib/utils";
@@ -44,6 +50,9 @@ const tenantNav: NavItem[] = [
   { to: "/app/lease", label: "Lease", icon: ScrollText },
   { to: "/app/payments", label: "Payments", icon: Receipt },
   { to: "/app/maintenance", label: "Maintenance", icon: Wrench },
+  { to: "/app/kyc", label: "KYC", icon: BadgeCheck },
+  { to: "/app/documents", label: "Documents", icon: FileText },
+  { to: "/app/reviews", label: "Reviews", icon: Star },
   { to: "/app/profile", label: "Profile", icon: Settings },
 ];
 
@@ -55,6 +64,8 @@ const ownerNav: NavItem[] = [
   { to: "/owner/payments", label: "Payments", icon: Receipt },
   { to: "/owner/maintenance", label: "Maintenance", icon: Wrench },
   { to: "/owner/agreements", label: "Agreements", icon: ScrollText },
+  { to: "/owner/leases", label: "Leases", icon: FileText },
+  { to: "/owner/compliance", label: "Compliance", icon: Stamp },
   { to: "/owner/analytics", label: "Analytics", icon: BarChart3 },
 ];
 
@@ -64,6 +75,8 @@ const adminNav: NavItem[] = [
   { to: "/admin/properties", label: "Properties", icon: Building2 },
   { to: "/admin/payments", label: "Payments", icon: Receipt },
   { to: "/admin/maintenance", label: "Maintenance", icon: Wrench },
+  { to: "/admin/reviews", label: "Reviews", icon: Star },
+  { to: "/admin/support", label: "Support", icon: FileText },
 ];
 
 function navFor(role: Role | null): NavItem[] {
@@ -88,6 +101,12 @@ export function AppShell() {
 
   return (
     <div className="flex min-h-screen bg-secondary/30">
+      {/*
+        Powers the 30-min idle logout + access-token-expiry banner. Runs once
+        per AppShell mount; only mounted for authenticated routes (this shell
+        is wrapped in <ProtectedRoute>), so we don't need to check auth here.
+      */}
+      <IdleTimer />
       <aside className="hidden lg:flex w-64 shrink-0 flex-col border-r border-border/60 bg-background">
         <div className="h-16 px-5 flex items-center border-b border-border/60">
           <Logo />
@@ -120,9 +139,7 @@ export function AppShell() {
             <p className="text-xs text-muted-foreground mt-1">
               Our team is online 9am – 9pm IST.
             </p>
-            <Button size="sm" variant="outline" className="mt-3 w-full">
-              Contact support
-            </Button>
+            <ContactSupport className="mt-3 w-full" />
           </div>
         </div>
       </aside>
@@ -147,9 +164,7 @@ export function AppShell() {
                   </Link>
                 </Button>
               )}
-              <Button variant="ghost" size="icon" aria-label="Notifications">
-                <Bell />
-              </Button>
+              <NotificationBell />
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button className="flex items-center gap-2 rounded-full hover:bg-secondary p-1 pr-3 transition-colors">

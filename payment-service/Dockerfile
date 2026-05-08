@@ -1,16 +1,28 @@
+# Self-contained build — see auth-service/Dockerfile for the rationale.
+# Run from repo root via `build.context: .` in docker-compose.yml.
+
 # ----- build stage -----
 FROM maven:3.9.6-eclipse-temurin-21 AS build
 WORKDIR /workspace
-COPY pom.xml .
-RUN mvn -B -q -e -DskipTests dependency:go-offline
-COPY src ./src
-RUN mvn -B -q -DskipTests package
+
+COPY KafkaEvents/pom.xml KafkaEvents/pom.xml
+COPY KafkaEvents/src     KafkaEvents/src
+RUN mvn -B -q -DskipTests -f KafkaEvents/pom.xml install
+
+COPY auth-commons/pom.xml auth-commons/pom.xml
+COPY auth-commons/src     auth-commons/src
+RUN mvn -B -q -DskipTests -f auth-commons/pom.xml install
+
+COPY payment-service/pom.xml payment-service/pom.xml
+RUN mvn -B -q -DskipTests -f payment-service/pom.xml dependency:go-offline
+COPY payment-service/src payment-service/src
+RUN mvn -B -q -DskipTests -f payment-service/pom.xml package
 
 # ----- runtime stage -----
 FROM eclipse-temurin:21-jre-alpine
 RUN addgroup -S app && adduser -S app -G app
 WORKDIR /app
-COPY --from=build /workspace/target/*.jar app.jar
+COPY --from=build /workspace/payment-service/target/*.jar app.jar
 
 USER app
 EXPOSE 8084

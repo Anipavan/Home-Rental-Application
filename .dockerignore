@@ -1,0 +1,55 @@
+# Root-level .dockerignore — applied to ALL Dockerfile builds with context: .
+# Keep the build context lean (otherwise `docker compose build` ships gigabytes
+# of target/ + .git/ + frontend node_modules/ to every service image).
+
+# Build artifacts
+**/target/
+**/build/
+
+# Maven wrapper local cache (we use the maven:3.9.6 base image instead)
+**/.mvn/wrapper/maven-wrapper.jar
+
+# Node / frontend
+frontend/
+**/node_modules/
+**/dist/
+**/.next/
+**/.cache/
+
+# Git + IDE state
+.git/
+.gitignore
+.github/
+.gitattributes
+**/.idea/
+**/.vscode/
+*.iml
+*.iws
+
+# Claude Code working state — never ship the worktree metadata
+.claude/
+
+# Logs + crash reports + tmp
+**/*.log
+hs_err_pid*.log
+replay_pid*.log
+
+# Local env files (never bake secrets into images)
+.env
+.env.*
+!.env.example
+
+# Docker config
+docker-compose*.yml
+**/.dockerignore
+**/Dockerfile
+
+# Misc
+*.swp
+*.bak
+.DS_Store
+Thumbs.db
+
+# Uploaded blobs / generated PDFs — written at runtime to volumes
+uploads/
+data/

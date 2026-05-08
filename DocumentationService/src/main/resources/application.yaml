@@ -1,3 +1,139 @@
+server:
+  port: 8091
+  shutdown: graceful
+
 spring:
   application:
-    name: DocumentationService
+    name: HRA-document-service
+
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+
+  datasource:
+    url: ${DB_URL:jdbc:oracle:thin:@//localhost:1521/orcl}
+    username: ${DB_USERNAME:siva}
+    password: ${DB_PASSWORD:Pavan@123}
+    driver-class-name: oracle.jdbc.OracleDriver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.OracleDialect
+        format_sql: true
+        jdbc:
+          batch_size: 25
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9093}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: 3
+      properties:
+        spring.json.add.type.headers: false
+    consumer:
+      group-id: hra-document-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.spa.home_rental_application.KafkaEvents.*"
+
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: ${DOCUMENT_MAX_FILE_SIZE:10MB}
+      max-request-size: ${DOCUMENT_MAX_REQUEST_SIZE:12MB}
+      file-size-threshold: 1MB
+
+app:
+  internal-auth:
+    enabled: ${INTERNAL_AUTH_ENABLED:true}
+    secret: ${INTERNAL_AUTH_SECRET:Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+    allowed-clock-skew-seconds: 60
+  kafka:
+    property-topic: property-events
+    user-topic: user-events
+    payment-topic: payment-events
+    maintenance-topic: maintenance-events
+    notification-topic: notification-events
+    auth-topic: auth-events
+    kyc-topic: kyc-events
+    lease-topic: lease-events
+    compliance-topic: compliance-events
+    document-topic: document-events
+  documents:
+    # Storage backend: LOCAL | S3
+    #   LOCAL — files under app.documents.local-dir (use a Docker volume).
+    #   S3    — software.amazon.awssdk:s3, AES256 SSE; auth via the standard
+    #           AWS credential chain (env, instance profile, profile config).
+    storage-backend: ${DOCUMENT_STORAGE_BACKEND:LOCAL}
+    local-dir: ${DOCUMENT_LOCAL_DIR:uploads/documents}
+    s3-bucket: ${DOCUMENT_S3_BUCKET:rentgenius-documents}
+    s3-region: ${DOCUMENT_S3_REGION:ap-south-1}
+    # Set when targeting MinIO / LocalStack; leave blank for real AWS.
+    s3-endpoint-override: ${DOCUMENT_S3_ENDPOINT:}
+    # Optional namespace inside the bucket (e.g. "prod/" or "staging/").
+    s3-key-prefix: ${DOCUMENT_S3_KEY_PREFIX:}
+    # Path-style addressing — true for MinIO/LocalStack, false for AWS.
+    s3-path-style-access: ${DOCUMENT_S3_PATH_STYLE:false}
+    # Pre-signed download URL TTL (architecture says 15 minutes).
+    download-url-ttl-seconds: ${DOCUMENT_DOWNLOAD_TTL:900}
+    # Pre-signed download HMAC secret — keep out of source control in prod.
+    download-url-secret: ${DOCUMENT_DOWNLOAD_SECRET:change-me-in-prod-doc-download-secret}
+    allowed-content-types:
+      - application/pdf
+      - image/png
+      - image/jpeg
+      - image/jpg
+    ocr:
+      # OCR backend: STUB | TESSERACT (TESSERACT requires native binaries; STUB is safe for dev)
+      provider: ${DOCUMENT_OCR_PROVIDER:STUB}
+
+eureka:
+  instance:
+    prefer-ip-address: true
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
+  client:
+    register-with-eureka: true
+    fetch-registry: true
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,env,loggers
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: method
+
+logging:
+  level:
+    root: INFO
+    com.spa.home_rental_application: DEBUG
+    org.hibernate.SQL: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{traceId:-},%X{spanId:-}] %logger{36} - %msg%n"

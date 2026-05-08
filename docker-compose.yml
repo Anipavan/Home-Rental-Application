@@ -120,7 +120,9 @@ services:
   # ========================================================================
 
   api-gateway:
-    build: ./api-gateway
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile
     container_name: hra-api-gateway
     depends_on:
       service-registry: {condition: service_healthy}
@@ -139,7 +141,9 @@ services:
   # ========================================================================
 
   auth-service:
-    build: ./auth-service
+    build:
+      context: .
+      dockerfile: auth-service/Dockerfile
     container_name: hra-auth-service
     depends_on:
       oracle-db:        {condition: service_healthy}
@@ -159,7 +163,9 @@ services:
       INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
 
   property-service:
-    build: ./property-service
+    build:
+      context: .
+      dockerfile: property-service/Dockerfile
     container_name: hra-property-service
     depends_on:
       oracle-db:        {condition: service_healthy}
@@ -177,7 +183,9 @@ services:
       INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
 
   user-service:
-    build: ./user-service
+    build:
+      context: .
+      dockerfile: user-service/Dockerfile
     container_name: hra-user-service
     depends_on:
       oracle-db:        {condition: service_healthy}
@@ -195,7 +203,9 @@ services:
       INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
 
   payment-service:
-    build: ./payment-service
+    build:
+      context: .
+      dockerfile: payment-service/Dockerfile
     container_name: hra-payment-service
     depends_on:
       oracle-db:        {condition: service_healthy}
@@ -214,7 +224,9 @@ services:
       PAYMENT_GATEWAY: ${PAYMENT_GATEWAY:-mock}
 
   maintenance-service:
-    build: ./maintenance-service
+    build:
+      context: .
+      dockerfile: maintenance-service/Dockerfile
     container_name: hra-maintenance-service
     depends_on:
       mongodb:          {condition: service_healthy}
@@ -230,7 +242,9 @@ services:
       INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
 
   notification-service:
-    build: ./notification-service
+    build:
+      context: .
+      dockerfile: notification-service/Dockerfile
     container_name: hra-notification-service
     depends_on:
       mongodb:          {condition: service_healthy}
@@ -248,7 +262,9 @@ services:
       NOTIFICATION_DELIVERY: "false"   # don't send real emails in dev compose
 
   analytics-service:
-    build: ./analytics-service
+    build:
+      context: .
+      dockerfile: analytics-service/Dockerfile
     container_name: hra-analytics-service
     depends_on:
       oracle-db:        {condition: service_healthy}
@@ -266,11 +282,154 @@ services:
       CONFIG_SERVER_URL: http://config-server:8888
       INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
 
+  # ========================================================================
+  # INDIA COMPLIANCE LAYER
+  #   - kyc-service:        Aadhaar / PAN / DigiLocker (Digio adapter)
+  #   - compliance-service: RERA registration + GST invoicing (PDFs)
+  #   - lease-service:      Lease lifecycle + RERA-stamped lease deeds
+  #   - document-service:   Secure upload + OCR + pre-signed downloads
+  # ========================================================================
+
+  kyc-service:
+    build:
+      context: .
+      dockerfile: KYCService/Dockerfile
+    container_name: hra-kyc-service
+    depends_on:
+      oracle-db:        {condition: service_healthy}
+      kafka:            {condition: service_healthy}
+      service-registry: {condition: service_healthy}
+      config-server:    {condition: service_healthy}
+    ports: ["8092:8092"]
+    networks: [hra-net]
+    environment:
+      DB_URL: jdbc:oracle:thin:@//oracle-db:1521/FREEPDB1
+      DB_USERNAME: ${ORACLE_APP_USER:-siva}
+      DB_PASSWORD: ${ORACLE_APP_PASSWORD:-Pavan@123}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EUREKA_URL: http://service-registry:8761/eureka
+      CONFIG_SERVER_URL: http://config-server:8888
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+      # KYC provider — keep MOCK for dev / CI; switch to DIGIO once creds wired
+      KYC_PROVIDER: ${KYC_PROVIDER:-MOCK}
+      KYC_AADHAAR_SALT: ${KYC_AADHAAR_SALT:-change-me-in-prod-aadhaar-pepper}
+      DIGIO_BASE_URL: ${DIGIO_BASE_URL:-https://api.digio.in}
+      DIGIO_API_KEY: ${DIGIO_API_KEY:-}
+      DIGIO_CLIENT_ID: ${DIGIO_CLIENT_ID:-}
+      DIGIO_CALLBACK_URL: ${DIGIO_CALLBACK_URL:-http://api-gateway:8080/api/kyc/webhook/digio}
+
+  compliance-service:
+    build:
+      context: .
+      dockerfile: ComplanceService/Dockerfile
+    container_name: hra-compliance-service
+    depends_on:
+      oracle-db:        {condition: service_healthy}
+      kafka:            {condition: service_healthy}
+      service-registry: {condition: service_healthy}
+      config-server:    {condition: service_healthy}
+    ports: ["8093:8093"]
+    networks: [hra-net]
+    volumes:
+      - gst-invoices:/data/gst-invoices
+    environment:
+      DB_URL: jdbc:oracle:thin:@//oracle-db:1521/FREEPDB1
+      DB_USERNAME: ${ORACLE_APP_USER:-siva}
+      DB_PASSWORD: ${ORACLE_APP_PASSWORD:-Pavan@123}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EUREKA_URL: http://service-registry:8761/eureka
+      CONFIG_SERVER_URL: http://config-server:8888
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+      COMPLIANCE_INVOICE_DIR: /data/gst-invoices
+      COMPLIANCE_GST_THRESHOLD: ${COMPLIANCE_GST_THRESHOLD:-2000000.00}
+      COMPLIANCE_GST_RATE: ${COMPLIANCE_GST_RATE:-18.00}
+      RERA_PROVIDER: ${RERA_PROVIDER:-MOCK}
+
+  lease-service:
+    build:
+      context: .
+      dockerfile: LeaseService/Dockerfile
+    container_name: hra-lease-service
+    depends_on:
+      oracle-db:          {condition: service_healthy}
+      kafka:              {condition: service_healthy}
+      service-registry:   {condition: service_healthy}
+      config-server:      {condition: service_healthy}
+      compliance-service: {condition: service_started}
+    ports: ["8090:8090"]
+    networks: [hra-net]
+    volumes:
+      - lease-deeds:/data/lease-deeds
+    environment:
+      DB_URL: jdbc:oracle:thin:@//oracle-db:1521/FREEPDB1
+      DB_USERNAME: ${ORACLE_APP_USER:-siva}
+      DB_PASSWORD: ${ORACLE_APP_PASSWORD:-Pavan@123}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EUREKA_URL: http://service-registry:8761/eureka
+      CONFIG_SERVER_URL: http://config-server:8888
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+      LEASE_DEED_DIR: /data/lease-deeds
+      LEASE_EXPIRY_WARNING_DAYS: ${LEASE_EXPIRY_WARNING_DAYS:-60}
+      LEASE_RENT_INCREMENT_PERCENT: ${LEASE_RENT_INCREMENT_PERCENT:-5.0}
+      LEASE_EXPIRY_CRON: ${LEASE_EXPIRY_CRON:-0 0 2 * * *}
+
+  document-service:
+    build:
+      context: .
+      dockerfile: DocumentationService/Dockerfile
+    container_name: hra-document-service
+    depends_on:
+      oracle-db:        {condition: service_healthy}
+      kafka:            {condition: service_healthy}
+      service-registry: {condition: service_healthy}
+      config-server:    {condition: service_healthy}
+    ports: ["8091:8091"]
+    networks: [hra-net]
+    volumes:
+      - documents:/data/documents
+    environment:
+      DB_URL: jdbc:oracle:thin:@//oracle-db:1521/FREEPDB1
+      DB_USERNAME: ${ORACLE_APP_USER:-siva}
+      DB_PASSWORD: ${ORACLE_APP_PASSWORD:-Pavan@123}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EUREKA_URL: http://service-registry:8761/eureka
+      CONFIG_SERVER_URL: http://config-server:8888
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+      DOCUMENT_STORAGE_BACKEND: ${DOCUMENT_STORAGE_BACKEND:-LOCAL}
+      DOCUMENT_LOCAL_DIR: /data/documents
+      DOCUMENT_S3_BUCKET: ${DOCUMENT_S3_BUCKET:-rentgenius-documents}
+      DOCUMENT_DOWNLOAD_TTL: ${DOCUMENT_DOWNLOAD_TTL:-900}
+      DOCUMENT_DOWNLOAD_SECRET: ${DOCUMENT_DOWNLOAD_SECRET:-change-me-in-prod-doc-download-secret}
+      DOCUMENT_OCR_PROVIDER: ${DOCUMENT_OCR_PROVIDER:-STUB}
+
+  review-service:
+    build:
+      context: .
+      dockerfile: ReviewService/Dockerfile
+    container_name: hra-review-service
+    depends_on:
+      mongodb:          {condition: service_healthy}
+      kafka:            {condition: service_healthy}
+      service-registry: {condition: service_healthy}
+      config-server:    {condition: service_healthy}
+    ports: ["8094:8094"]
+    networks: [hra-net]
+    environment:
+      MONGO_URI: mongodb://mongodb:27017/HomeRentalDB
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EUREKA_URL: http://service-registry:8761/eureka
+      CONFIG_SERVER_URL: http://config-server:8888
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+      REVIEWS_AUTO_PUBLISH: ${REVIEWS_AUTO_PUBLISH:-true}
+
 # ============================================================================
 volumes:
   oracle-data:
   mongo-data:
   kafka-data:
+  gst-invoices:
+  lease-deeds:
+  documents:
 
 networks:
   hra-net:

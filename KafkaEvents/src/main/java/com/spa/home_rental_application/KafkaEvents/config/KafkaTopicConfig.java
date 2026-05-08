@@ -52,4 +52,29 @@ public class KafkaTopicConfig {
     public NewTopic authEventsTopic() {
         return TopicBuilder.name(props.getAuthTopic()).partitions(3).replicas(1).build();
     }
+
+    @Bean
+    public NewTopic kycEventsTopic() {
+        return TopicBuilder.name(props.getKycTopic()).partitions(3).replicas(1).build();
+    }
+
+    @Bean
+    public NewTopic leaseEventsTopic() {
+        return TopicBuilder.name(props.getLeaseTopic()).partitions(3).replicas(1).build();
+    }
+
+    @Bean
+    public NewTopic complianceEventsTopic() {
+        return TopicBuilder.name(props.getComplianceTopic()).partitions(3).replicas(1).build();
+    }
+
+    @Bean
+    public NewTopic documentEventsTopic() {
+        return TopicBuilder.name(props.getDocumentTopic()).partitions(3).replicas(1).build();
+    }
+
+    @Bean
+    public NewTopic reviewEventsTopic() {
+        return TopicBuilder.name(props.getReviewTopic()).partitions(3).replicas(1).build();
+    }
 }

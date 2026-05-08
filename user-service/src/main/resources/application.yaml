@@ -65,6 +65,10 @@ app:
     maintenance-topic: maintenance-events
     notification-topic: notification-events
     auth-topic: auth-events
+    kyc-topic: kyc-events
+    lease-topic: lease-events
+    compliance-topic: compliance-events
+    document-topic: document-events
   uploads:
     dir: ${USER_UPLOAD_DIR:uploads/users}
 
