@@ -13,7 +13,13 @@ const BASE_URL =
 export const api: AxiosInstance = axios.create({
   baseURL: BASE_URL,
   withCredentials: true,
-  headers: { "Content-Type": "application/json" },
+  headers: {
+    "Content-Type": "application/json",
+    // ngrok's free tier blocks XHR from browsers (any request with a
+    // browser User-Agent) with 403 unless this header is present. It's
+    // a no-op when not going through ngrok, so we send it on every call.
+    "ngrok-skip-browser-warning": "true",
+  },
 });
 
 api.interceptors.request.use((config) => {
@@ -34,7 +40,10 @@ async function refreshAccessToken(): Promise<string> {
     const { data } = await axios.post(
       `${BASE_URL}/auth/refresh`,
       { refreshToken },
-      { withCredentials: true },
+      {
+        withCredentials: true,
+        headers: { "ngrok-skip-browser-warning": "true" },
+      },
     );
     setTokens(data.accessToken, data.refreshToken ?? refreshToken);
     return data.accessToken as string;
