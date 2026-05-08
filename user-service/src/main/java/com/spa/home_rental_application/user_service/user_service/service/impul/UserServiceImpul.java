@@ -101,11 +101,84 @@ public class UserServiceImpul implements UserService {
         return UserMapper.toDto(user);
     }
 
+    /**
+     * Look up a User Service profile by its Auth Service id.
+     *
+     * <p><b>Self-heal:</b> for legacy registrations (or any case where the
+     * Auth → User Feign create at register-time silently failed), there's
+     * no User row but the AuthUser definitely exists — that's the id we're
+     * being asked about. Rather than 404'ing the owner UI, we Feign back
+     * to Auth Service, fetch the bare-bones identity, persist a stub User
+     * row, and return it. Future calls hit the cache row directly.
+     *
+     * <p>Stub rows have just authUserId + firstName/lastName parsed from
+     * userName + email. The tenant can fill the rest in via Profile when
+     * they next log in (the same upsert path the dashboard uses).
+     */
     @Override
+    @Transactional
     public UserResponseDto getUserByAuthUserId(String authUserId) {
-        User user = userRepo.findFirstByAuthUserIdAndIsDeletedFalse(authUserId).orElseThrow(
-                () -> new RecordNotFound("User not found for authUserId: " + authUserId));
-        return UserMapper.toDto(user);
+        Optional<User> existing = userRepo.findFirstByAuthUserIdAndIsDeletedFalse(authUserId);
+        if (existing.isPresent()) {
+            return UserMapper.toDto(existing.get());
+        }
+        // Cache miss → try to self-heal from Auth Service.
+        authResponseDto auth;
+        try {
+            auth = authServiceFeig.getById(authUserId);
+        } catch (Exception ex) {
+            log.warn("Self-heal lookup for authUserId={} failed: {}", authUserId, ex.getMessage());
+            auth = null;
+        }
+        if (auth == null || auth.getUserName() == null) {
+            // Auth-tier doesn't know this id either, or the circuit was open
+            // and the fallback returned null. Honest 404.
+            throw new RecordNotFound("User not found for authUserId: " + authUserId);
+        }
+
+        // Synthesize first/last name from userName best-effort. The real
+        // values land here when the tenant edits their profile.
+        String[] parts = auth.getUserName().split("[\\s._-]+", 2);
+        String firstName = parts.length > 0 && !parts[0].isBlank()
+                ? parts[0]
+                : auth.getUserName();
+        String lastName = parts.length > 1 ? parts[1] : "";
+
+        // Email is NOT NULL UNIQUE in the schema. The auth-tier DTO doesn't
+        // expose email today, so we drop in a deterministic placeholder
+        // keyed off authUserId — the tenant can overwrite it via Profile.
+        String email = deriveEmailOrPlaceholder(auth, authUserId);
+
+        User stub = User.builder()
+                .authUserId(authUserId)
+                .firstName(firstName)
+                .lastName(lastName)
+                .email(email)
+                .isDeleted(false)
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build();
+        User saved = userRepo.save(stub);
+        log.info("Self-healed missing User row for authUserId={} (id={})",
+                authUserId, saved.getId());
+        return UserMapper.toDto(saved);
+    }
+
+    /**
+     * Try to read the email from the auth-tier DTO via reflection (the field
+     * may or may not be present depending on which version of the DTO was
+     * deployed). Falls back to a deterministic placeholder so the NOT NULL
+     * UNIQUE email column always has a sane value.
+     */
+    private String deriveEmailOrPlaceholder(authResponseDto auth, String authUserId) {
+        try {
+            var m = auth.getClass().getMethod("getEmail");
+            Object v = m.invoke(auth);
+            if (v != null && !v.toString().isBlank()) return v.toString();
+        } catch (ReflectiveOperationException ignored) {
+            /* fall through */
+        }
+        return "tenant-" + authUserId + "@hearth.local";
     }
 
     @Override

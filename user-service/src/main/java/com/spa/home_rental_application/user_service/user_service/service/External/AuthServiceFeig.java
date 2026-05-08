@@ -20,4 +20,17 @@ public interface AuthServiceFeig {
 
     @GetMapping("/auth/role/{roleName}")
     List<authResponseDto> getUserByRole(@PathVariable("roleName") String roleName);
+
+    /**
+     * Fetch a single AuthUser by id. Used by the User Service self-heal
+     * path: when {@code GET /users/auth/{authUserId}} fires for a user that
+     * has no profile row yet, we Feign-call this to recover the auth-tier
+     * identity and create a stub User on the spot.
+     *
+     * <p>Hits the OWNER+ADMIN-accessible {@code /auth/users/lookup/{id}}
+     * endpoint so the caller's JWT (always an authenticated user — owner
+     * or admin) is sufficient.
+     */
+    @GetMapping("/auth/users/lookup/{id}")
+    authResponseDto getById(@PathVariable("id") String id);
 }

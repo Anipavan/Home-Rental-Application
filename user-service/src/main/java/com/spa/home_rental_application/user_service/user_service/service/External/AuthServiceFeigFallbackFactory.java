@@ -28,6 +28,15 @@ public class AuthServiceFeigFallbackFactory implements FallbackFactory<AuthServi
                         roleName, cause.getMessage());
                 return Collections.emptyList();
             }
+
+            @Override
+            public authResponseDto getById(String id) {
+                // Self-heal path is best-effort; on circuit-open we return
+                // null so the caller falls through to its 404 branch.
+                log.warn("Auth Service Feign fallback for getById={} ({})",
+                        id, cause.getMessage());
+                return null;
+            }
         };
     }
 }

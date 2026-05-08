@@ -11,6 +11,8 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { agreementsApi } from "@/lib/api/agreements";
+import { useFlatLookup } from "@/hooks/use-flat-lookup";
+import { useUserLookup } from "@/hooks/use-user-lookup";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -114,6 +116,11 @@ function Grid({
   items: AgreementResponseDTO[];
   onSelect: (a: AgreementResponseDTO) => void;
 }) {
+  // Resolve flatId UUIDs -> "A-302" and tenantId Long-strings -> "First Last"
+  // for every card in this grid in a single batched fetch (60 s cache).
+  const flatLookup = useFlatLookup(items.map((a) => a.flatId));
+  const userLookup = useUserLookup(items.map((a) => a.tenantId));
+
   if (items.length === 0) {
     return (
       <Card className="p-12 text-center text-muted-foreground">
@@ -139,10 +146,10 @@ function Grid({
                   </div>
                   <div className="min-w-0">
                     <p className="font-medium truncate">
-                      Flat #{a.flatId}
+                      Flat {flatLookup.nameOf(a.flatId)}
                     </p>
                     <p className="text-xs text-muted-foreground truncate">
-                      Tenant {a.tenantId}
+                      {userLookup.nameOf(a.tenantId)}
                     </p>
                   </div>
                 </div>
@@ -183,14 +190,19 @@ function AgreementDetail({
   agreement: AgreementResponseDTO;
   onBack: () => void;
 }) {
+  // Resolve the single flat + tenant for the detail header so it reads
+  // "Lease for flat A-302 · Asha Rao" instead of two raw UUIDs.
+  const flatLookup = useFlatLookup([agreement.flatId]);
+  const userLookup = useUserLookup([agreement.tenantId]);
+
   return (
     <div className="animate-fade-in max-w-3xl">
       <Button variant="ghost" size="sm" className="mb-3" onClick={onBack}>
         <ArrowLeft /> Back to agreements
       </Button>
       <PageHeader
-        title={`Lease for flat #${agreement.flatId}`}
-        description={`Tenant ${agreement.tenantId}`}
+        title={`Lease for flat ${flatLookup.nameOf(agreement.flatId)}`}
+        description={userLookup.nameOf(agreement.tenantId)}
       />
 
       <Card>

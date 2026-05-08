@@ -19,4 +19,11 @@ public interface PropertyImageService {
      * file has been removed.
      */
     RawImage readRaw(String imageId) throws IOException;
+
+    /**
+     * Hard-delete a property image. Removes both the DB row and (best-effort)
+     * the on-disk file so we don't leak storage. No-op when the file no longer
+     * exists; the row is still removed.
+     */
+    void deleteImage(String imageId) throws IOException;
 }

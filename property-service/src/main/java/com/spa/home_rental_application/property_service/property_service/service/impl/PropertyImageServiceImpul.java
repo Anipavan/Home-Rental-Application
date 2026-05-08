@@ -83,6 +83,30 @@ public class PropertyImageServiceImpul implements PropertyImageService {
      * type is missing or non-image (defensive — the upload path validates
      * content-type, but legacy rows may be incomplete).
      */
+    /**
+     * Hard-delete a stored property image. Removes the DB row first, then
+     * tries to delete the file off disk best-effort — if the file is already
+     * missing (manual cleanup, container restart, etc.) we don't blow up,
+     * since the canonical state is the DB row.
+     */
+    @Override
+    public void deleteImage(String imageId) throws IOException {
+        PropertyImage img = repo.findById(imageId)
+                .orElseThrow(() -> new IllegalArgumentException("No image with id=" + imageId));
+        repo.delete(img);
+        if (img.getImageUrl() != null && !img.getImageUrl().isBlank()) {
+            try {
+                Path file = Paths.get(img.getImageUrl());
+                Files.deleteIfExists(file);
+                log.info("Deleted property image id={} file={}", imageId, file);
+            } catch (IOException e) {
+                // The DB row is gone; the file leak is logged for ops.
+                log.warn("Couldn't delete file for image {} (db row removed): {}",
+                        imageId, e.getMessage());
+            }
+        }
+    }
+
     @Override
     public RawImage readRaw(String imageId) throws IOException {
         PropertyImage img = repo.findById(imageId)

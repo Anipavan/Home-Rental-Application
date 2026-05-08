@@ -67,6 +67,9 @@ export const propertiesApi = {
       api
         .get<Blob>(`/properties/images/${imageId}/raw`, { responseType: "blob" })
         .then((r) => r.data),
+    /** Hard-delete a property image (removes DB row + on-disk file). */
+    deleteImage: (imageId: string) =>
+      api.delete(`/properties/images/${imageId}`).then((r) => r.data),
     uploadImage: (id: number | string, file: File) => {
       const fd = new FormData();
       fd.append("file", file);

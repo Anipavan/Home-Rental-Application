@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Plus } from "lucide-react";
+import { ArrowLeft, Loader2, Plus, Trash2 } from "lucide-react";
 import { propertiesApi } from "@/lib/api/properties";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -49,6 +50,20 @@ export function BuildingDetailPage() {
       toast({
         variant: "destructive",
         title: "Upload failed",
+        description: extractErrorMessage(e),
+      }),
+  });
+
+  const deleteM = useMutation({
+    mutationFn: (imageId: string) => propertiesApi.buildings.deleteImage(imageId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["building-images", buildingId] });
+      toast({ title: "Photo removed" });
+    },
+    onError: (e) =>
+      toast({
+        variant: "destructive",
+        title: "Couldn't delete photo",
         description: extractErrorMessage(e),
       }),
   });
@@ -112,19 +127,13 @@ export function BuildingDetailPage() {
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {(imagesQ.data ?? []).map((img) => (
-                <div
+                <PhotoTile
                   key={img.id}
-                  className="aspect-square rounded-xl overflow-hidden bg-muted border"
-                >
-                  {/* The DB stores a server-side filesystem path that the
-                      browser can't load directly, so PropertyImage fetches
-                      the bytes through the API and renders a blob URL. */}
-                  <PropertyImage
-                    imageId={img.id}
-                    alt={`Photo of ${b.buildingName}`}
-                    className="w-full h-full"
-                  />
-                </div>
+                  imageId={img.id}
+                  alt={`Photo of ${b.buildingName}`}
+                  onDelete={() => deleteM.mutate(img.id)}
+                  deleting={deleteM.isPending && deleteM.variables === img.id}
+                />
               ))}
               <FileUpload
                 accept="image/*"
@@ -205,6 +214,85 @@ function Stat({ label, value }: { label: string; value: string }) {
     <div>
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="font-display font-semibold text-xl mt-0.5">{value}</p>
+    </div>
+  );
+}
+
+/**
+ * Single photo tile in the building gallery. Shows the image (via blob URL)
+ * with a hover-only trash overlay; clicking the trash asks for confirmation
+ * then calls the delete mutation. Two-step confirm avoids accidental
+ * deletions while keeping the affordance discoverable.
+ */
+function PhotoTile({
+  imageId,
+  alt,
+  onDelete,
+  deleting,
+}: {
+  imageId: string;
+  alt: string;
+  onDelete: () => void;
+  deleting: boolean;
+}) {
+  const [confirming, setConfirming] = useState(false);
+
+  return (
+    <div className="aspect-square rounded-xl overflow-hidden bg-muted border relative group">
+      <PropertyImage imageId={imageId} alt={alt} className="w-full h-full" />
+
+      {/* Hover overlay with trash button */}
+      {!confirming && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            setConfirming(true);
+          }}
+          className="absolute top-2 right-2 size-8 rounded-full bg-black/60 text-white grid place-items-center opacity-0 group-hover:opacity-100 hover:bg-destructive transition"
+          aria-label="Delete photo"
+          disabled={deleting}
+        >
+          {deleting ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <Trash2 className="size-4" />
+          )}
+        </button>
+      )}
+
+      {/* Confirmation overlay */}
+      {confirming && (
+        <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center gap-3 text-white p-4 text-center">
+          <p className="text-sm font-medium">Delete this photo?</p>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={(e) => {
+                e.preventDefault();
+                setConfirming(false);
+                onDelete();
+              }}
+              disabled={deleting}
+            >
+              {deleting && <Loader2 className="size-3 animate-spin" />}
+              Delete
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={(e) => {
+                e.preventDefault();
+                setConfirming(false);
+              }}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

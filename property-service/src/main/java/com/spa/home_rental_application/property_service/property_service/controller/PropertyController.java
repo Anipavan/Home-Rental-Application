@@ -72,4 +72,12 @@ public class PropertyController {
         headers.setCacheControl(CacheControl.maxAge(7, TimeUnit.DAYS).cachePublic());
         return new ResponseEntity<>(raw.bytes(), headers, HttpStatus.OK);
     }
+
+    @Operation(summary = "Delete a property image (DB row + on-disk file)")
+    @DeleteMapping("/images/{imageId}")
+    public ResponseEntity<Void> deleteImage(@PathVariable String imageId) throws IOException {
+        log.info("DELETE /properties/images/{}", imageId);
+        propertyImageService.deleteImage(imageId);
+        return ResponseEntity.noContent().build();
+    }
 }
