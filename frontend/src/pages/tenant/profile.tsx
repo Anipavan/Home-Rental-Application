@@ -70,13 +70,19 @@ export function ProfilePage() {
     },
   });
 
-  // 404 means user registered via auth-service but no user-service record yet
-  // exists. We surface a bootstrap form to capture the missing fields.
+  // No user-service profile exists yet for this authUserId. The previous
+  // version only triggered on a strict 404 — but in practice the lookup
+  // can also surface as a 500 (Feign timeout in the gateway), an empty
+  // 200 response from a fallback handler, or even a network error during
+  // a tunnel-mode demo. In every one of those cases the page used to
+  // render with empty fields and no edit/save affordance, leaving the
+  // user stuck. Now we surface the bootstrap form whenever the data
+  // simply isn't there — `q.data` is undefined and we're done loading.
+  // The user-service `UserRegisteredListener` self-heal still creates
+  // profiles on its own from the user.registered event; this branch
+  // is a belt-and-braces fallback.
   const profileMissing =
-    !!authUserId &&
-    !q.isLoading &&
-    !q.data &&
-    (q.error as { response?: { status?: number } })?.response?.status === 404;
+    !!authUserId && !q.isLoading && !q.data;
 
   // Bootstrap mutation — creates the user-service record. After success
   // the byAuthId query is invalidated and the regular profile flow takes over.

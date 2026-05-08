@@ -1,5 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileText, Download, Sparkles, ShieldCheck, Trash2 } from "lucide-react";
+import {
+  FileText,
+  Download,
+  Sparkles,
+  ShieldCheck,
+  Trash2,
+  AlertCircle,
+} from "lucide-react";
+import { Link } from "react-router-dom";
 import { useState } from "react";
 import { useAuthStore } from "@/stores/auth-store";
 import { documentsApi } from "@/lib/api/documents";
@@ -103,12 +111,44 @@ export function DocumentsPage() {
     }
   }
 
+  // Document Service uploads are keyed by the user-service primary id.
+  // When `byAuthId` returns nothing we don't have a userId to attach to,
+  // so the upload box was previously rendered as a silently-disabled
+  // <FileUpload>. Users couldn't tell why nothing happened — they just
+  // saw the upload not work. Surface an explicit banner instead.
+  const profileMissing = !!authUserId && !meQ.isLoading && !meQ.data;
+
   return (
     <div className="animate-fade-in max-w-4xl">
       <PageHeader
         title="My documents"
         description="Aadhaar, PAN, rental agreements — all encrypted at rest, only you decide who sees what."
       />
+
+      {profileMissing && (
+        <Card className="mb-6 border-warning/40 bg-warning/5">
+          <CardContent className="p-5 flex items-start gap-3">
+            <AlertCircle className="size-5 text-warning shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="font-semibold text-sm">
+                Finish setting up your profile first
+              </p>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Documents are linked to your profile. Complete the short
+                profile form to enable uploads.
+              </p>
+              <Button
+                asChild
+                size="sm"
+                variant="gradient"
+                className="mt-3"
+              >
+                <Link to="/app/profile">Go to profile</Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card className="mb-6">
         <CardContent className="p-6 sm:p-8">
@@ -143,7 +183,11 @@ export function DocumentsPage() {
               onFiles={async (files) => {
                 if (files[0]) await uploadM.mutateAsync(files[0]);
               }}
-              hint={`Uploading as ${docType}`}
+              hint={
+                profileMissing
+                  ? "Complete your profile first"
+                  : `Uploading as ${docType}`
+              }
               disabled={!userId}
             />
           </div>
