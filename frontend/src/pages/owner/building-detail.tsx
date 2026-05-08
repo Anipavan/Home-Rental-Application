@@ -15,23 +15,26 @@ import { toast } from "@/hooks/use-toast";
 
 export function BuildingDetailPage() {
   const { id } = useParams();
-  const buildingId = Number(id);
+  // Building.buildingId is a String UUID on the backend — DON'T coerce to Number.
+  // The previous `Number(id)` produced NaN, the request went to /buildings/NaN,
+  // and the server returned 404 → users saw "Not found" with no explanation.
+  const buildingId = id ?? "";
   const qc = useQueryClient();
 
   const buildingQ = useQuery({
     queryKey: ["building", buildingId],
     queryFn: () => propertiesApi.buildings.get(buildingId),
-    enabled: !Number.isNaN(buildingId),
+    enabled: !!buildingId,
   });
   const flatsQ = useQuery({
     queryKey: ["flats-by-building", buildingId],
     queryFn: () => propertiesApi.flats.byBuilding(buildingId),
-    enabled: !Number.isNaN(buildingId),
+    enabled: !!buildingId,
   });
   const imagesQ = useQuery({
     queryKey: ["building-images", buildingId],
     queryFn: () => propertiesApi.buildings.images(buildingId),
-    enabled: !Number.isNaN(buildingId),
+    enabled: !!buildingId,
   });
 
   const uploadM = useMutation({

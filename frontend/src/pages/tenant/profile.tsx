@@ -63,6 +63,35 @@ export function ProfilePage() {
     queryKey: ["me", authUserId],
     queryFn: () => usersApi.byAuthId(authUserId!),
     enabled: !!authUserId,
+    // Don't loop on a 404 — we surface the "Complete your profile" form instead.
+    retry: (failureCount, err) => {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      return status !== 404 && failureCount < 2;
+    },
+  });
+
+  // 404 means user registered via auth-service but no user-service record yet
+  // exists. We surface a bootstrap form to capture the missing fields.
+  const profileMissing =
+    !!authUserId &&
+    !q.isLoading &&
+    !q.data &&
+    (q.error as { response?: { status?: number } })?.response?.status === 404;
+
+  // Bootstrap mutation — creates the user-service record. After success
+  // the byAuthId query is invalidated and the regular profile flow takes over.
+  const bootstrapM = useMutation({
+    mutationFn: (body: UserRequestDto) => usersApi.create(body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["me", authUserId] });
+      toast({ title: "Profile created" });
+    },
+    onError: (e) =>
+      toast({
+        variant: "destructive",
+        title: "Couldn't create profile",
+        description: extractErrorMessage(e),
+      }),
   });
 
   // Keep the draft in sync with fetched profile when not editing.
@@ -218,6 +247,16 @@ export function ProfilePage() {
 
       {q.isLoading ? (
         <Skeleton className="h-64 rounded-2xl" />
+      ) : profileMissing ? (
+        // First-visit case: auth-service created the account but no
+        // user-service record exists yet. Show a bootstrap form to capture
+        // the missing fields, then refetch.
+        <ProfileBootstrap
+          authUserId={authUserId!}
+          defaultName={userName ?? ""}
+          pending={bootstrapM.isPending}
+          onSubmit={(body) => bootstrapM.mutate(body)}
+        />
       ) : (
         <Card className="mb-6">
           <CardContent className="p-6 sm:p-8">
@@ -261,6 +300,11 @@ export function ProfilePage() {
         </Card>
       )}
 
+      {/*
+        ID verification only makes sense once we have a user-service record —
+        Document Service uploads need a real userId to attach to.
+      */}
+      {q.data && (
       <Card>
         <CardContent className="p-6 sm:p-8">
           <h3 className="font-display font-semibold text-lg flex items-center gap-2">
@@ -309,6 +353,7 @@ export function ProfilePage() {
           </div>
         </CardContent>
       </Card>
+      )}
     </div>
   );
 }
@@ -481,5 +526,144 @@ function userToUpdateDto(u: UserResponseDto): UserRequestDto {
     gender: u.gender,
     address: u.address,
   } as UserRequestDto;
+}
+
+/**
+ * First-visit bootstrap: shown when the User Service has no record for this
+ * authUserId. The auth-service register flow only creates an auth record;
+ * the user-service record is created here on the user's first profile visit.
+ *
+ * <p>Backend follow-up planned for Day 8: a user-service Kafka listener on
+ * `user.registered` so this bootstrap form is never needed in practice.
+ * Until that ships, this form is the unblock.
+ */
+function ProfileBootstrap({
+  authUserId,
+  defaultName,
+  pending,
+  onSubmit,
+}: {
+  authUserId: string;
+  defaultName: string;
+  pending: boolean;
+  onSubmit: (body: UserRequestDto) => void;
+}) {
+  // Best-effort split of the auth-service userName into first/last.
+  const [firstGuess, ...rest] = defaultName.split(/\s+/);
+  const lastGuess = rest.join(" ");
+
+  return (
+    <Card className="mb-6">
+      <CardContent className="p-6 sm:p-8">
+        <h3 className="font-display font-semibold text-lg">
+          Complete your profile
+        </h3>
+        <p className="text-sm text-muted-foreground mt-1">
+          Just a few details to finish setting up your account.
+        </p>
+
+        <form
+          className="mt-5 space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const fd = new FormData(e.currentTarget);
+            onSubmit({
+              authUserId,
+              firstName: String(fd.get("firstName") ?? "").trim(),
+              lastName: String(fd.get("lastName") ?? "").trim(),
+              email: String(fd.get("email") ?? "").trim(),
+              phone: String(fd.get("phone") ?? "").trim() || undefined,
+              dateOfBirth: String(fd.get("dateOfBirth") ?? "") || undefined,
+              gender: (String(fd.get("gender") ?? "") || undefined) as
+                | string
+                | undefined,
+              address: String(fd.get("address") ?? "") || undefined,
+            });
+          }}
+        >
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="firstName">First name</Label>
+              <Input
+                id="firstName"
+                name="firstName"
+                required
+                defaultValue={firstGuess ?? ""}
+                className="mt-1.5"
+              />
+            </div>
+            <div>
+              <Label htmlFor="lastName">Last name</Label>
+              <Input
+                id="lastName"
+                name="lastName"
+                defaultValue={lastGuess}
+                className="mt-1.5"
+              />
+            </div>
+          </div>
+          <div>
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
+              name="email"
+              type="email"
+              required
+              className="mt-1.5"
+            />
+          </div>
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="phone">Phone</Label>
+              <Input
+                id="phone"
+                name="phone"
+                type="tel"
+                className="mt-1.5"
+                placeholder="+91 …"
+              />
+            </div>
+            <div>
+              <Label htmlFor="dateOfBirth">Date of birth</Label>
+              <Input
+                id="dateOfBirth"
+                name="dateOfBirth"
+                type="date"
+                className="mt-1.5"
+              />
+            </div>
+          </div>
+          <div>
+            <Label htmlFor="address">Address</Label>
+            <Input
+              id="address"
+              name="address"
+              className="mt-1.5"
+            />
+          </div>
+          <div>
+            <Label htmlFor="gender">Gender</Label>
+            <select
+              id="gender"
+              name="gender"
+              className="mt-1.5 flex h-10 w-full rounded-lg border bg-background px-3 text-sm"
+              defaultValue=""
+            >
+              <option value="">Prefer not to say</option>
+              <option value="MALE">Male</option>
+              <option value="FEMALE">Female</option>
+              <option value="OTHER">Other</option>
+            </select>
+          </div>
+          <div className="pt-2 flex justify-end">
+            <Button type="submit" variant="gradient" disabled={pending}>
+              {pending ? <Loader2 className="size-4 animate-spin" /> : null}
+              Save profile
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
+  );
 }
 

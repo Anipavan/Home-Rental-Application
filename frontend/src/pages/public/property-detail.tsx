@@ -34,12 +34,14 @@ const amenities = [
 
 export function PropertyDetailPage() {
   const { id } = useParams();
-  const flatId = Number(id);
+  // Flat.id is a String UUID on the backend. Coercing to Number here was the
+  // bug behind public property-detail "Not found" pages.
+  const flatId = id ?? "";
 
   const flatQ = useQuery({
     queryKey: ["flat", flatId],
     queryFn: () => propertiesApi.flats.get(flatId),
-    enabled: !Number.isNaN(flatId),
+    enabled: !!flatId,
   });
 
   const buildingQ = useQuery({
