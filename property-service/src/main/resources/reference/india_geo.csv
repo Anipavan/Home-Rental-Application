@@ -1,0 +1,308 @@
+# India geographic reference data — states + cities for the Add Building cascade.
+# Format: TYPE,id,parent_id_or_code,name[,tier]
+#   STATE,<id>,<code>,<name>
+#   CITY ,<id>,<state_id>,<name>,<tier>
+#
+# IDs are intentionally hard-coded so cross-environment data stays
+# consistent. Don't renumber existing rows. Append new rows with
+# fresh IDs (start states at 1000+, cities at 100000+ if you need to).
+
+# ---- States + Union Territories (28 + 8 = 36) ----
+STATE,1,AN,Andaman and Nicobar Islands
+STATE,2,AP,Andhra Pradesh
+STATE,3,AR,Arunachal Pradesh
+STATE,4,AS,Assam
+STATE,5,BR,Bihar
+STATE,6,CH,Chandigarh
+STATE,7,CT,Chhattisgarh
+STATE,8,DN,Dadra and Nagar Haveli and Daman and Diu
+STATE,9,DL,Delhi
+STATE,10,GA,Goa
+STATE,11,GJ,Gujarat
+STATE,12,HR,Haryana
+STATE,13,HP,Himachal Pradesh
+STATE,14,JK,Jammu and Kashmir
+STATE,15,JH,Jharkhand
+STATE,16,KA,Karnataka
+STATE,17,KL,Kerala
+STATE,18,LA,Ladakh
+STATE,19,LD,Lakshadweep
+STATE,20,MP,Madhya Pradesh
+STATE,21,MH,Maharashtra
+STATE,22,MN,Manipur
+STATE,23,ML,Meghalaya
+STATE,24,MZ,Mizoram
+STATE,25,NL,Nagaland
+STATE,26,OD,Odisha
+STATE,27,PY,Puducherry
+STATE,28,PB,Punjab
+STATE,29,RJ,Rajasthan
+STATE,30,SK,Sikkim
+STATE,31,TN,Tamil Nadu
+STATE,32,TG,Telangana
+STATE,33,TR,Tripura
+STATE,34,UP,Uttar Pradesh
+STATE,35,UT,Uttarakhand
+STATE,36,WB,West Bengal
+
+# ---- Cities (state_id, name, tier) — major metros + tier-1 / tier-2 ----
+
+# Andaman and Nicobar Islands (1)
+CITY,1001,1,Port Blair,3
+
+# Andhra Pradesh (2)
+CITY,2001,2,Visakhapatnam,2
+CITY,2002,2,Vijayawada,2
+CITY,2003,2,Guntur,2
+CITY,2004,2,Tirupati,2
+CITY,2005,2,Nellore,3
+CITY,2006,2,Kurnool,3
+CITY,2007,2,Rajahmundry,3
+CITY,2008,2,Kakinada,3
+CITY,2009,2,Anantapur,3
+CITY,2010,2,Kadapa,3
+
+# Arunachal Pradesh (3)
+CITY,3001,3,Itanagar,3
+CITY,3002,3,Naharlagun,3
+
+# Assam (4)
+CITY,4001,4,Guwahati,2
+CITY,4002,4,Dibrugarh,3
+CITY,4003,4,Silchar,3
+CITY,4004,4,Jorhat,3
+CITY,4005,4,Tezpur,3
+
+# Bihar (5)
+CITY,5001,5,Patna,2
+CITY,5002,5,Gaya,3
+CITY,5003,5,Bhagalpur,3
+CITY,5004,5,Muzaffarpur,3
+CITY,5005,5,Darbhanga,3
+
+# Chandigarh (6)
+CITY,6001,6,Chandigarh,2
+
+# Chhattisgarh (7)
+CITY,7001,7,Raipur,2
+CITY,7002,7,Bhilai,3
+CITY,7003,7,Bilaspur,3
+CITY,7004,7,Korba,3
+
+# Dadra and Nagar Haveli and Daman and Diu (8)
+CITY,8001,8,Daman,3
+CITY,8002,8,Silvassa,3
+CITY,8003,8,Diu,3
+
+# Delhi (9)
+CITY,9001,9,New Delhi,1
+CITY,9002,9,Delhi,1
+CITY,9003,9,Dwarka,1
+CITY,9004,9,Rohini,1
+CITY,9005,9,Saket,1
+CITY,9006,9,Karol Bagh,1
+
+# Goa (10)
+CITY,10001,10,Panaji,2
+CITY,10002,10,Margao,2
+CITY,10003,10,Vasco da Gama,2
+CITY,10004,10,Mapusa,3
+
+# Gujarat (11)
+CITY,11001,11,Ahmedabad,1
+CITY,11002,11,Surat,1
+CITY,11003,11,Vadodara,2
+CITY,11004,11,Rajkot,2
+CITY,11005,11,Gandhinagar,2
+CITY,11006,11,Bhavnagar,3
+CITY,11007,11,Jamnagar,3
+CITY,11008,11,Anand,3
+
+# Haryana (12)
+CITY,12001,12,Gurugram,1
+CITY,12002,12,Faridabad,2
+CITY,12003,12,Panipat,2
+CITY,12004,12,Karnal,3
+CITY,12005,12,Hisar,3
+CITY,12006,12,Rohtak,3
+CITY,12007,12,Ambala,3
+
+# Himachal Pradesh (13)
+CITY,13001,13,Shimla,3
+CITY,13002,13,Manali,3
+CITY,13003,13,Dharamshala,3
+CITY,13004,13,Kullu,3
+
+# Jammu and Kashmir (14)
+CITY,14001,14,Srinagar,3
+CITY,14002,14,Jammu,3
+CITY,14003,14,Anantnag,3
+
+# Jharkhand (15)
+CITY,15001,15,Ranchi,2
+CITY,15002,15,Jamshedpur,2
+CITY,15003,15,Dhanbad,3
+CITY,15004,15,Bokaro Steel City,3
+
+# Karnataka (16)
+CITY,16001,16,Bengaluru,1
+CITY,16002,16,Mysuru,2
+CITY,16003,16,Mangaluru,2
+CITY,16004,16,Hubballi,2
+CITY,16005,16,Belagavi,3
+CITY,16006,16,Tumakuru,3
+CITY,16007,16,Davanagere,3
+CITY,16008,16,Ballari,3
+CITY,16009,16,Shivamogga,3
+CITY,16010,16,Udupi,3
+CITY,16011,16,Hassan,3
+CITY,16012,16,Kalaburagi,3
+
+# Kerala (17)
+CITY,17001,17,Thiruvananthapuram,1
+CITY,17002,17,Kochi,1
+CITY,17003,17,Kozhikode,2
+CITY,17004,17,Thrissur,2
+CITY,17005,17,Kollam,3
+CITY,17006,17,Kannur,3
+CITY,17007,17,Alappuzha,3
+CITY,17008,17,Palakkad,3
+CITY,17009,17,Malappuram,3
+
+# Ladakh (18)
+CITY,18001,18,Leh,3
+CITY,18002,18,Kargil,3
+
+# Lakshadweep (19)
+CITY,19001,19,Kavaratti,3
+
+# Madhya Pradesh (20)
+CITY,20001,20,Indore,1
+CITY,20002,20,Bhopal,2
+CITY,20003,20,Gwalior,2
+CITY,20004,20,Jabalpur,2
+CITY,20005,20,Ujjain,3
+CITY,20006,20,Sagar,3
+
+# Maharashtra (21)
+CITY,21001,21,Mumbai,1
+CITY,21002,21,Pune,1
+CITY,21003,21,Nagpur,1
+CITY,21004,21,Nashik,2
+CITY,21005,21,Aurangabad,2
+CITY,21006,21,Thane,1
+CITY,21007,21,Navi Mumbai,1
+CITY,21008,21,Solapur,2
+CITY,21009,21,Kolhapur,3
+CITY,21010,21,Amravati,3
+CITY,21011,21,Sangli,3
+CITY,21012,21,Nanded,3
+CITY,21013,21,Ahmednagar,3
+
+# Manipur (22)
+CITY,22001,22,Imphal,3
+
+# Meghalaya (23)
+CITY,23001,23,Shillong,3
+CITY,23002,23,Tura,3
+
+# Mizoram (24)
+CITY,24001,24,Aizawl,3
+
+# Nagaland (25)
+CITY,25001,25,Kohima,3
+CITY,25002,25,Dimapur,3
+
+# Odisha (26)
+CITY,26001,26,Bhubaneswar,2
+CITY,26002,26,Cuttack,2
+CITY,26003,26,Rourkela,3
+CITY,26004,26,Berhampur,3
+CITY,26005,26,Sambalpur,3
+CITY,26006,26,Puri,3
+
+# Puducherry (27)
+CITY,27001,27,Puducherry,3
+CITY,27002,27,Karaikal,3
+
+# Punjab (28)
+CITY,28001,28,Ludhiana,2
+CITY,28002,28,Amritsar,2
+CITY,28003,28,Jalandhar,2
+CITY,28004,28,Patiala,3
+CITY,28005,28,Bathinda,3
+CITY,28006,28,Mohali,3
+
+# Rajasthan (29)
+CITY,29001,29,Jaipur,1
+CITY,29002,29,Jodhpur,2
+CITY,29003,29,Udaipur,2
+CITY,29004,29,Kota,2
+CITY,29005,29,Ajmer,3
+CITY,29006,29,Bikaner,3
+CITY,29007,29,Bhilwara,3
+CITY,29008,29,Alwar,3
+
+# Sikkim (30)
+CITY,30001,30,Gangtok,3
+
+# Tamil Nadu (31)
+CITY,31001,31,Chennai,1
+CITY,31002,31,Coimbatore,2
+CITY,31003,31,Madurai,2
+CITY,31004,31,Tiruchirappalli,2
+CITY,31005,31,Salem,2
+CITY,31006,31,Tirunelveli,3
+CITY,31007,31,Erode,3
+CITY,31008,31,Vellore,3
+CITY,31009,31,Tiruppur,3
+CITY,31010,31,Thoothukudi,3
+CITY,31011,31,Dindigul,3
+CITY,31012,31,Thanjavur,3
+
+# Telangana (32)
+CITY,32001,32,Hyderabad,1
+CITY,32002,32,Warangal,2
+CITY,32003,32,Nizamabad,3
+CITY,32004,32,Karimnagar,3
+CITY,32005,32,Khammam,3
+CITY,32006,32,Secunderabad,1
+
+# Tripura (33)
+CITY,33001,33,Agartala,3
+
+# Uttar Pradesh (34)
+CITY,34001,34,Lucknow,1
+CITY,34002,34,Kanpur,1
+CITY,34003,34,Ghaziabad,1
+CITY,34004,34,Noida,1
+CITY,34005,34,Agra,2
+CITY,34006,34,Varanasi,2
+CITY,34007,34,Meerut,2
+CITY,34008,34,Allahabad,2
+CITY,34009,34,Bareilly,3
+CITY,34010,34,Aligarh,3
+CITY,34011,34,Moradabad,3
+CITY,34012,34,Saharanpur,3
+CITY,34013,34,Gorakhpur,3
+CITY,34014,34,Mathura,3
+CITY,34015,34,Greater Noida,1
+
+# Uttarakhand (35)
+CITY,35001,35,Dehradun,2
+CITY,35002,35,Haridwar,3
+CITY,35003,35,Roorkee,3
+CITY,35004,35,Haldwani,3
+CITY,35005,35,Rishikesh,3
+CITY,35006,35,Nainital,3
+
+# West Bengal (36)
+CITY,36001,36,Kolkata,1
+CITY,36002,36,Howrah,2
+CITY,36003,36,Durgapur,2
+CITY,36004,36,Asansol,3
+CITY,36005,36,Siliguri,3
+CITY,36006,36,Bardhaman,3
+CITY,36007,36,Malda,3
+CITY,36008,36,Kharagpur,3
+CITY,36009,36,Darjeeling,3

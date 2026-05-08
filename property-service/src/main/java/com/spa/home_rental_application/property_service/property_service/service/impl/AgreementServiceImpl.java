@@ -13,11 +13,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
+import static org.springframework.http.HttpStatus.NOT_FOUND;
 
 @Service
 @Slf4j
@@ -25,10 +29,14 @@ public class AgreementServiceImpl implements AgreementService {
 
     private final AgreementRepo agreementRepo;
     private final BuildingRepo buildingRepo;
+    private final AgreementPdfGenerator pdfGenerator;
 
-    public AgreementServiceImpl(AgreementRepo agreementRepo, BuildingRepo buildingRepo) {
+    public AgreementServiceImpl(AgreementRepo agreementRepo,
+                                BuildingRepo buildingRepo,
+                                AgreementPdfGenerator pdfGenerator) {
         this.agreementRepo = agreementRepo;
         this.buildingRepo = buildingRepo;
+        this.pdfGenerator = pdfGenerator;
     }
 
     @Override
@@ -89,7 +97,32 @@ public class AgreementServiceImpl implements AgreementService {
         a.setStatus(Agreement.Status.SIGNED);
         a.setSignedAt(LocalDateTime.now());
         a.setUpdatedAt(LocalDateTime.now());
+        // Render the deed PDF best-effort. If rendering fails (bad signature
+        // bytes, disk full, …) we still mark the lease SIGNED — the PDF can
+        // be regenerated later via re-sign or a backfill job.
+        try {
+            String path = pdfGenerator.render(a);
+            a.setDocumentPath(path);
+        } catch (Exception ex) {
+            log.warn("Deed PDF render failed for agreement={} — proceeding without doc",
+                    agreementId, ex);
+        }
         return toDto(agreementRepo.save(a));
+    }
+
+    /**
+     * Read the rendered PDF bytes off disk. Throws 404 if the agreement isn't
+     * signed yet or if the path is missing (e.g. PDF render failed).
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] loadDocument(String agreementId) throws IOException {
+        Agreement a = load(agreementId);
+        if (a.getDocumentPath() == null) {
+            throw new ResponseStatusException(NOT_FOUND,
+                    "Agreement " + agreementId + " has no rendered deed yet");
+        }
+        return Files.readAllBytes(Paths.get(a.getDocumentPath()));
     }
 
     @Override
@@ -147,6 +180,7 @@ public class AgreementServiceImpl implements AgreementService {
                 a.getRentAmount(), a.getLeaseStartDate(), a.getLeaseEndDate(),
                 a.getTerms(), a.getStatus().name(), a.getSignatureData(),
                 a.getSignedAt(), a.getRejectedAt(), a.getRejectionReason(),
+                a.getDocumentPath() != null,
                 a.getCreatedAt(), a.getUpdatedAt()
         );
     }

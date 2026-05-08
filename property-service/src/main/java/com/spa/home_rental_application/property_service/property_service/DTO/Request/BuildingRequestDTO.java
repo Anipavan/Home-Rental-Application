@@ -41,5 +41,14 @@ public record BuildingRequestDTO(
         @Max(value = 20, message = "A building cannot have more than 20 flats")
         Integer buildingTotalFlats,
 
-        String amenities
+        String amenities,
+
+        /**
+         * Optional. When the cascading dropdown is used, the frontend sends
+         * the id alongside the string name. Old clients that only send the
+         * strings continue to work unchanged.
+         */
+        Long stateId,
+
+        Long cityId
 ) {}

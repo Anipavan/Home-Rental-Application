@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Users, Mail, Phone } from "lucide-react";
+import { Users } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { propertiesApi } from "@/lib/api/properties";
 import { Card, CardContent } from "@/components/ui/card";
@@ -7,6 +7,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/layout/page-header";
+import { ContactPersonPopover } from "@/components/common/contact-person-popover";
 import { formatDate, formatINR, initials } from "@/lib/utils";
 
 export function TenantsPage() {
@@ -91,12 +92,18 @@ export function TenantsPage() {
                 </div>
               </div>
               <div className="mt-4 flex items-center gap-2">
-                <button className="size-8 rounded-md bg-secondary hover:bg-primary/10 hover:text-primary grid place-items-center text-muted-foreground transition-colors">
-                  <Mail className="size-4" />
-                </button>
-                <button className="size-8 rounded-md bg-secondary hover:bg-primary/10 hover:text-primary grid place-items-center text-muted-foreground transition-colors">
-                  <Phone className="size-4" />
-                </button>
+                {f.tenantId ? (
+                  <>
+                    <ContactPersonPopover
+                      authUserId={f.tenantId}
+                      variant="icon-mail"
+                    />
+                    <ContactPersonPopover
+                      authUserId={f.tenantId}
+                      variant="icon-phone"
+                    />
+                  </>
+                ) : null}
                 <Badge variant="success" className="ml-auto">
                   Active
                 </Badge>

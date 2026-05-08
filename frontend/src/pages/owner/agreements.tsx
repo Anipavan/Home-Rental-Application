@@ -3,7 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
   CheckCircle2,
+  Download,
   FileText,
+  Loader2,
   ScrollText,
   XCircle,
 } from "lucide-react";
@@ -16,6 +18,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { PageHeader } from "@/components/layout/page-header";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { extractErrorMessage } from "@/lib/api/client";
+import { toast } from "@/hooks/use-toast";
 import { formatDate, formatINR } from "@/lib/utils";
 import type {
   AgreementResponseDTO,
@@ -230,7 +234,7 @@ function AgreementDetail({
               "No additional terms recorded — the standard lease applies."}
           </div>
 
-          {agreement.status === "SIGNED" && agreement.signatureData && (
+          {agreement.status === "SIGNED" && (
             <div className="mt-6 rounded-xl border bg-success/5 border-success/30 p-5">
               <div className="flex items-start gap-3">
                 <CheckCircle2 className="size-5 text-success mt-0.5 shrink-0" />
@@ -238,19 +242,28 @@ function AgreementDetail({
                   <p className="font-semibold">
                     Signed by tenant on {formatDate(agreement.signedAt)}
                   </p>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    The signed deed is available as a PDF.
+                  </p>
                 </div>
               </div>
-              <div className="mt-4">
-                <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1.5">
-                  Tenant signature
-                </p>
-                <div className="rounded-lg border bg-white p-2 inline-block">
-                  <img
-                    src={agreement.signatureData}
-                    alt="Tenant signature"
-                    className="max-h-24"
-                  />
-                </div>
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                {agreement.hasDocument ? (
+                  <DownloadDeedButton agreementId={agreement.id} />
+                ) : (
+                  <p className="text-xs text-muted-foreground italic">
+                    PDF is being prepared — refresh in a moment.
+                  </p>
+                )}
+                {agreement.signatureData && (
+                  <div className="rounded-lg border bg-white p-2">
+                    <img
+                      src={agreement.signatureData}
+                      alt="Tenant signature"
+                      className="max-h-16"
+                    />
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -305,5 +318,39 @@ function KV({ label, value }: { label: string; value: string }) {
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="font-medium mt-0.5">{value}</p>
     </div>
+  );
+}
+
+function DownloadDeedButton({ agreementId }: { agreementId: string }) {
+  const [pending, setPending] = useState(false);
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      disabled={pending}
+      onClick={async () => {
+        setPending(true);
+        try {
+          const blob = await agreementsApi.downloadDocument(agreementId);
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `lease-agreement-${agreementId}.pdf`;
+          a.click();
+          URL.revokeObjectURL(url);
+        } catch (e) {
+          toast({
+            variant: "destructive",
+            title: "Couldn't download PDF",
+            description: extractErrorMessage(e),
+          });
+        } finally {
+          setPending(false);
+        }
+      }}
+    >
+      {pending ? <Loader2 className="size-4 animate-spin" /> : <Download />}
+      Download lease (PDF)
+    </Button>
   );
 }

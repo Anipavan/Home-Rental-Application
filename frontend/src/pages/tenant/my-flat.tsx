@@ -7,7 +7,6 @@ import {
   Calendar,
   Building2,
   MapPin,
-  Phone,
   Wrench,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
@@ -17,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/layout/page-header";
 import { Separator } from "@/components/ui/separator";
+import { ContactPersonPopover } from "@/components/common/contact-person-popover";
 import { formatINR, formatDate } from "@/lib/utils";
 import { getPlaceholderImage } from "@/components/property/property-card";
 
@@ -144,9 +144,17 @@ export function MyFlatPage() {
                   <Wrench /> Raise an issue
                 </Link>
               </Button>
-              <Button className="w-full" variant="outline">
-                <Phone /> Contact owner
-              </Button>
+              {b?.ownerId ? (
+                <ContactPersonPopover
+                  authUserId={b.ownerId}
+                  variant="button"
+                  label="Your owner"
+                />
+              ) : (
+                <Button className="w-full" variant="outline" disabled>
+                  Contact owner
+                </Button>
+              )}
             </div>
           </Card>
         </aside>

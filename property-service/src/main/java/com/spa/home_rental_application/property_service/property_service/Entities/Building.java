@@ -26,6 +26,20 @@
         String amenities;
         String createdDt;
         String updatedDt;
+
+        /**
+         * FK to {@code ref_states.id}. Optional — old buildings have only the
+         * {@code buildingState} string. New buildings (created via the
+         * cascading dropdown) carry both string + id so analytics / search
+         * can use either interchangeably.
+         */
+        @Column(name = "state_id")
+        private Long stateId;
+
+        /** FK to {@code ref_cities.id}. Optional — see {@link #stateId}. */
+        @Column(name = "city_id")
+        private Long cityId;
+
         @Column(name = "is_deleted", nullable = false)
         @Builder.Default
         private Boolean isDeleted = false;

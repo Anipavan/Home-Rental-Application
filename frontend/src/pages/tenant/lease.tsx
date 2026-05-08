@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
+  Download,
   FileText,
   Loader2,
   ScrollText,
@@ -46,9 +47,27 @@ export function TenantLeasePage() {
     enabled: !!authUserId,
   });
 
+  // Dedup defensively: backend can leave stale PENDING_SIGNATURE rows when a
+  // tenant is reassigned to the same flat. Keep the most recent agreement per
+  // flatId, which fixes the "lease shown twice" bug (B6).
   const agreements = q.data ?? [];
+  const dedupedByFlat = Object.values(
+    agreements.reduce<Record<string, AgreementResponseDTO>>((acc, a) => {
+      const existing = acc[a.flatId];
+      if (
+        !existing ||
+        new Date(a.updatedAt ?? a.createdAt ?? 0).getTime() >
+          new Date(existing.updatedAt ?? existing.createdAt ?? 0).getTime()
+      ) {
+        acc[a.flatId] = a;
+      }
+      return acc;
+    }, {}),
+  );
   // Surface the active one (PENDING_SIGNATURE > SIGNED > REJECTED) at the top.
-  const ordered = [...agreements].sort((a, b) => statusRank(a.status) - statusRank(b.status));
+  const ordered = [...dedupedByFlat].sort(
+    (a, b) => statusRank(a.status) - statusRank(b.status),
+  );
 
   return (
     <div className="animate-fade-in max-w-3xl">
@@ -174,12 +193,22 @@ function AgreementCard({ agreement }: { agreement: AgreementResponseDTO }) {
 
         <Separator className="my-5" />
 
-        <h3 className="font-display font-semibold text-sm uppercase tracking-wider text-muted-foreground mb-2">
-          Terms &amp; Conditions
-        </h3>
-        <div className="rounded-xl border bg-secondary/30 p-5 max-h-72 overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed">
-          {agreement.terms?.trim() || defaultTerms(agreement)}
-        </div>
+        {/*
+          Inline terms are only shown while the tenant has yet to sign — once
+          SIGNED, the full deed is available as a PDF download (rendered by
+          AgreementPdfGenerator). This both fixes the "shown twice"
+          perception and steers users to the canonical signed copy.
+        */}
+        {agreement.status === "PENDING_SIGNATURE" && (
+          <>
+            <h3 className="font-display font-semibold text-sm uppercase tracking-wider text-muted-foreground mb-2">
+              Terms &amp; Conditions
+            </h3>
+            <div className="rounded-xl border bg-secondary/30 p-5 max-h-72 overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed">
+              {agreement.terms?.trim() || defaultTerms(agreement)}
+            </div>
+          </>
+        )}
 
         {agreement.status === "PENDING_SIGNATURE" && (
           <div className="mt-6 space-y-4">
@@ -221,7 +250,7 @@ function AgreementCard({ agreement }: { agreement: AgreementResponseDTO }) {
           </div>
         )}
 
-        {agreement.status === "SIGNED" && agreement.signatureData && (
+        {agreement.status === "SIGNED" && (
           <div className="mt-6 rounded-xl border bg-success/5 border-success/30 p-5">
             <div className="flex items-start gap-3">
               <CheckCircle2 className="size-5 text-success mt-0.5 shrink-0" />
@@ -230,22 +259,27 @@ function AgreementCard({ agreement }: { agreement: AgreementResponseDTO }) {
                   Signed on {formatDate(agreement.signedAt)}
                 </p>
                 <p className="text-sm text-muted-foreground mt-0.5">
-                  This lease is active. Your owner has a copy of the signed
-                  agreement.
+                  Your lease is active. The signed deed is available as a PDF.
                 </p>
               </div>
             </div>
-            <div className="mt-4">
-              <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1.5">
-                Your signature
-              </p>
-              <div className="rounded-lg border bg-white p-2 inline-block">
-                <img
-                  src={agreement.signatureData}
-                  alt="Signature"
-                  className="max-h-20"
-                />
-              </div>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              {agreement.hasDocument ? (
+                <DownloadDeedButton agreementId={agreement.id} />
+              ) : (
+                <p className="text-xs text-muted-foreground italic">
+                  PDF is being prepared — refresh in a moment.
+                </p>
+              )}
+              {agreement.signatureData && (
+                <div className="rounded-lg border bg-white p-2">
+                  <img
+                    src={agreement.signatureData}
+                    alt="Your signature"
+                    className="max-h-12"
+                  />
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -333,6 +367,45 @@ function StatusBadge({ status }: { status: AgreementStatus }) {
   if (status === "SIGNED") return <Badge variant="success">Signed</Badge>;
   if (status === "REJECTED") return <Badge variant="destructive">Rejected</Badge>;
   return <Badge variant="warning">Awaiting signature</Badge>;
+}
+
+/**
+ * Triggers the GET /properties/agreements/{id}/document blob endpoint and
+ * pushes the PDF to a hidden anchor for download. The browser handles the
+ * filename via the Content-Disposition header set by the backend.
+ */
+function DownloadDeedButton({ agreementId }: { agreementId: string }) {
+  const [pending, setPending] = useState(false);
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      disabled={pending}
+      onClick={async () => {
+        setPending(true);
+        try {
+          const blob = await agreementsApi.downloadDocument(agreementId);
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `lease-agreement-${agreementId}.pdf`;
+          a.click();
+          URL.revokeObjectURL(url);
+        } catch (e) {
+          toast({
+            variant: "destructive",
+            title: "Couldn't download PDF",
+            description: extractErrorMessage(e),
+          });
+        } finally {
+          setPending(false);
+        }
+      }}
+    >
+      {pending ? <Loader2 className="size-4 animate-spin" /> : <Download />}
+      Download lease (PDF)
+    </Button>
+  );
 }
 
 function KV({ label, value }: { label: string; value: string }) {
