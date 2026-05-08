@@ -1,14 +1,17 @@
+import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Users } from "lucide-react";
+import { ChevronRight, Users } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { propertiesApi } from "@/lib/api/properties";
+import { useUserByAuth } from "@/hooks/use-user-by-auth";
 import { Card, CardContent } from "@/components/ui/card";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/layout/page-header";
 import { ContactPersonPopover } from "@/components/common/contact-person-popover";
 import { formatDate, formatINR, initials } from "@/lib/utils";
+import type { FlatResponseDTO } from "@/types/api";
 
 export function TenantsPage() {
   const { authUserId } = useAuthStore();
@@ -27,7 +30,9 @@ export function TenantsPage() {
         buildings.map((b) =>
           propertiesApi.flats
             .byBuilding(b.buildingId)
-            .then((flats) => flats.map((f) => ({ ...f, _buildingName: b.buildingName }))),
+            .then((flats) =>
+              flats.map((f) => ({ ...f, _buildingName: b.buildingName })),
+            ),
         ),
       );
       return all.flat();
@@ -41,7 +46,7 @@ export function TenantsPage() {
     <div className="animate-fade-in">
       <PageHeader
         title="Tenants"
-        description="People living in your homes."
+        description="People living in your homes. Click any card to see their full activity."
       />
 
       {flatsQ.isLoading && (
@@ -66,52 +71,83 @@ export function TenantsPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {tenantedFlats.map((f) => (
-          <Card key={f.id}>
-            <CardContent className="p-5">
-              <div className="flex items-center gap-3">
-                <Avatar className="size-12">
-                  <AvatarFallback>{initials(f.tenantId ?? "")}</AvatarFallback>
-                </Avatar>
-                <div className="min-w-0">
-                  <p className="font-semibold truncate">
-                    Tenant {f.tenantId}
-                  </p>
-                  <p className="text-xs text-muted-foreground truncate">
-                    {(f as { _buildingName?: string })._buildingName} · {f.flatNumber}
-                  </p>
-                </div>
-              </div>
-              <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
-                <div>
-                  <p className="text-muted-foreground">Rent</p>
-                  <p className="font-semibold mt-0.5">{formatINR(f.rentAmount)}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Lease ends</p>
-                  <p className="font-semibold mt-0.5">{formatDate(f.leaseEndDate)}</p>
-                </div>
-              </div>
-              <div className="mt-4 flex items-center gap-2">
-                {f.tenantId ? (
-                  <>
-                    <ContactPersonPopover
-                      authUserId={f.tenantId}
-                      variant="icon-mail"
-                    />
-                    <ContactPersonPopover
-                      authUserId={f.tenantId}
-                      variant="icon-phone"
-                    />
-                  </>
-                ) : null}
-                <Badge variant="success" className="ml-auto">
-                  Active
-                </Badge>
-              </div>
-            </CardContent>
-          </Card>
+          <TenantCard
+            key={f.id}
+            flat={f as FlatResponseDTO & { _buildingName?: string }}
+          />
         ))}
       </div>
     </div>
+  );
+}
+
+/**
+ * One tenant tile. The whole card is a link to /owner/tenants/:tenantId
+ * EXCEPT the contact-icon row at the bottom, which sits outside the link
+ * so opening the popover doesn't trigger navigation.
+ */
+function TenantCard({
+  flat,
+}: {
+  flat: FlatResponseDTO & { _buildingName?: string };
+}) {
+  const tenantId = flat.tenantId!;
+  const { user, fullName, isLoading } = useUserByAuth(tenantId);
+
+  return (
+    <Card className="overflow-hidden">
+      {/* Clickable header / stats area */}
+      <Link
+        to={`/owner/tenants/${tenantId}`}
+        className="block p-5 hover:bg-secondary/40 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <Avatar className="size-12">
+            {user?.profilePictureUrl && (
+              <AvatarImage src={user.profilePictureUrl} />
+            )}
+            <AvatarFallback>
+              {initials(fullName ?? tenantId.slice(0, 2))}
+            </AvatarFallback>
+          </Avatar>
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold truncate">
+              {isLoading ? (
+                <span className="inline-block h-4 w-28 rounded bg-secondary animate-pulse align-middle" />
+              ) : (
+                fullName ?? `Tenant ${tenantId.slice(0, 8)}…`
+              )}
+            </p>
+            <p className="text-xs text-muted-foreground truncate">
+              {flat._buildingName ?? "Building"} · {flat.flatNumber}
+            </p>
+          </div>
+          <ChevronRight className="size-4 text-muted-foreground shrink-0" />
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
+          <div>
+            <p className="text-muted-foreground">Rent</p>
+            <p className="font-semibold mt-0.5">
+              {formatINR(flat.rentAmount)}
+            </p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">Lease ends</p>
+            <p className="font-semibold mt-0.5">
+              {formatDate(flat.leaseEndDate) ?? "—"}
+            </p>
+          </div>
+        </div>
+      </Link>
+
+      {/* Action bar — outside the Link so dropdowns don't navigate */}
+      <CardContent className="px-5 pb-5 pt-0 flex items-center gap-2">
+        <ContactPersonPopover authUserId={tenantId} variant="icon-mail" />
+        <ContactPersonPopover authUserId={tenantId} variant="icon-phone" />
+        <Badge variant="success" className="ml-auto">
+          Active
+        </Badge>
+      </CardContent>
+    </Card>
   );
 }

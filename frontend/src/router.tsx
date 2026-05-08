@@ -29,6 +29,7 @@ import { BuildingDetailPage } from "@/pages/owner/building-detail";
 import { FlatsPage } from "@/pages/owner/flats";
 import { FlatNewPage } from "@/pages/owner/flat-new";
 import { TenantsPage } from "@/pages/owner/tenants";
+import { TenantDetailPage } from "@/pages/owner/tenant-detail";
 import { OwnerPaymentsPage } from "@/pages/owner/payments";
 import { OwnerMaintenancePage } from "@/pages/owner/maintenance";
 import { OwnerAnalyticsPage } from "@/pages/owner/analytics";
@@ -95,6 +96,7 @@ export const router = createBrowserRouter([
       { path: "flats", element: <FlatsPage /> },
       { path: "flats/new", element: <FlatNewPage /> },
       { path: "tenants", element: <TenantsPage /> },
+      { path: "tenants/:tenantId", element: <TenantDetailPage /> },
       { path: "payments", element: <OwnerPaymentsPage /> },
       { path: "maintenance", element: <OwnerMaintenancePage /> },
       { path: "agreements", element: <OwnerAgreementsPage /> },
