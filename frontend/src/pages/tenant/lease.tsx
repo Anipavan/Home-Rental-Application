@@ -50,19 +50,32 @@ export function TenantLeasePage() {
     enabled: !!authUserId,
   });
 
-  // Dedup defensively: backend can leave stale PENDING_SIGNATURE rows when a
-  // tenant is reassigned to the same flat. Keep the most recent agreement per
-  // flatId, which fixes the "lease shown twice" bug (B6).
+  // Dedup defensively. The backend now refuses to create a duplicate
+  // PENDING_SIGNATURE for the same flat+tenant (createForAssignment is
+  // idempotent), but legacy rows from before that fix can still produce
+  // a "lease shown twice" effect — particularly when there's a SIGNED
+  // row from an old assignment plus a stale PENDING_SIGNATURE for the
+  // same flat. We collapse to one card per flatId using a richer rank:
+  //
+  //   SIGNED  >  PENDING_SIGNATURE  >  REJECTED
+  //   within the same status, latest updated wins.
+  //
+  // The previous "latest-by-time" rule could pick a stale PENDING_
+  // SIGNATURE over a real SIGNED one if their timestamps were close.
   const agreements = q.data ?? [];
+  // First, strip any literal duplicate-id rows from the API response.
+  const uniqueById = Array.from(
+    new Map(agreements.map((a) => [a.id, a])).values(),
+  );
   const dedupedByFlat = Object.values(
-    agreements.reduce<Record<string, AgreementResponseDTO>>((acc, a) => {
-      const existing = acc[a.flatId];
-      if (
-        !existing ||
-        new Date(a.updatedAt ?? a.createdAt ?? 0).getTime() >
-          new Date(existing.updatedAt ?? existing.createdAt ?? 0).getTime()
-      ) {
-        acc[a.flatId] = a;
+    uniqueById.reduce<Record<string, AgreementResponseDTO>>((acc, a) => {
+      // Use agreement.id as the fallback key so an agreement with no
+      // flatId still gets its own slot rather than colliding with
+      // another null-flat row.
+      const key = a.flatId ?? a.id;
+      const existing = acc[key];
+      if (!existing || agreementRank(a) > agreementRank(existing)) {
+        acc[key] = a;
       }
       return acc;
     }, {}),
@@ -107,6 +120,29 @@ function statusRank(s: AgreementStatus): number {
   if (s === "PENDING_SIGNATURE") return 0;
   if (s === "SIGNED") return 1;
   return 2;
+}
+
+/**
+ * Per-agreement rank used by the per-flatId dedup. Higher wins.
+ *
+ *   SIGNED            -> 2 * 1e15 + ts   (always beats PENDING)
+ *   PENDING_SIGNATURE -> 1 * 1e15 + ts   (beats REJECTED)
+ *   REJECTED          ->        ts
+ *
+ * The big multiplier on the status component guarantees status order
+ * dominates timestamp order — so a real SIGNED agreement will never be
+ * shadowed by a stale PENDING_SIGNATURE that happens to be a few seconds
+ * newer. Within the same status, the most recently touched row wins.
+ */
+function agreementRank(a: AgreementResponseDTO): number {
+  const statusScore =
+    a.status === "SIGNED"
+      ? 2
+      : a.status === "PENDING_SIGNATURE"
+        ? 1
+        : 0;
+  const tsMs = new Date(a.updatedAt ?? a.createdAt ?? 0).getTime();
+  return statusScore * 1e15 + tsMs;
 }
 
 function AgreementCard({ agreement }: { agreement: AgreementResponseDTO }) {

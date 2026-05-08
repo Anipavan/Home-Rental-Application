@@ -66,6 +66,24 @@ public class AgreementServiceImpl implements AgreementService {
     @Override
     @Transactional
     public AgreementResponseDTO createForAssignment(Flat flat) {
+        // Idempotency: if there's already a PENDING_SIGNATURE agreement for
+        // this flat AND it belongs to the same tenant, reuse it instead of
+        // spawning a duplicate row. This is what causes the "lease shown
+        // twice in tenant login" bug — assignFlat called twice (UI retry,
+        // double-click, restart-driven retry on a Kafka producer) used to
+        // mint a fresh AGR-… UUID each time, leaving stale rows behind.
+        Agreement existing = agreementRepo
+                .findFirstByFlatIdAndStatusOrderByCreatedAtDesc(
+                        flat.getId(), Agreement.Status.PENDING_SIGNATURE)
+                .filter(a -> flat.getTenantId() != null
+                        && flat.getTenantId().equals(a.getTenantId()))
+                .orElse(null);
+        if (existing != null) {
+            log.info("Reusing pending agreement {} for flat={} tenant={}",
+                    existing.getId(), flat.getId(), flat.getTenantId());
+            return toDto(existing);
+        }
+
         Building b = buildingRepo.findById(flat.getBuildingId()).orElse(null);
         String terms = renderDefaultTerms(flat, b);
         LocalDateTime now = LocalDateTime.now();
