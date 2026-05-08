@@ -1,8 +1,12 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Download, CreditCard, Receipt } from "lucide-react";
+import { Download, CreditCard, FileText, Loader2, Receipt } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { paymentsApi } from "@/lib/api/payments";
+import { extractErrorMessage } from "@/lib/api/client";
+import { toast } from "@/hooks/use-toast";
+import { useFlatLookup } from "@/hooks/use-flat-lookup";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +14,21 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/layout/page-header";
 import { formatINR, formatDate } from "@/lib/utils";
 import type { PaymentResponse, PaymentStatus } from "@/types/api";
+
+/**
+ * Trigger a browser download for a Blob fetched from the API.
+ * Used for receipt + invoice PDFs.
+ */
+async function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
 
 export function PaymentsListPage() {
   const { authUserId } = useAuthStore();
@@ -26,6 +45,9 @@ export function PaymentsListPage() {
   const history = payments.filter(
     (p) => p.status === "PAID" || p.status === "FAILED",
   );
+
+  // Resolve flatId UUIDs -> "A-302" once for the whole page.
+  const flatLookup = useFlatLookup(payments.map((p) => p.flatId));
 
   return (
     <div className="animate-fade-in">
@@ -49,7 +71,11 @@ export function PaymentsListPage() {
         )}
         <div className="space-y-3">
           {dueNow.map((p) => (
-            <DueCard key={p.id} payment={p} />
+            <DueCard
+              key={p.id}
+              payment={p}
+              flatLabel={flatLookup.nameOf(p.flatId)}
+            />
           ))}
         </div>
       </section>
@@ -77,8 +103,33 @@ export function PaymentsListPage() {
   );
 }
 
-function DueCard({ payment }: { payment: PaymentResponse }) {
+function DueCard({
+  payment,
+  flatLabel,
+}: {
+  payment: PaymentResponse;
+  /** Pre-resolved flat number ("A-302") — passed in by the caller. */
+  flatLabel: string;
+}) {
   const overdue = payment.status === "OVERDUE";
+  const [downloadingInvoice, setDownloadingInvoice] = useState(false);
+
+  async function handleInvoiceDownload() {
+    setDownloadingInvoice(true);
+    try {
+      const blob = await paymentsApi.invoicePdf(payment.id);
+      await downloadBlob(blob, `invoice-${payment.id.slice(0, 8)}.pdf`);
+    } catch (e) {
+      toast({
+        variant: "destructive",
+        title: "Couldn't download invoice",
+        description: extractErrorMessage(e),
+      });
+    } finally {
+      setDownloadingInvoice(false);
+    }
+  }
+
   return (
     <Card className={overdue ? "border-destructive/40" : "border-warning/40"}>
       <CardContent className="p-5 sm:p-6 grid gap-4 sm:grid-cols-[1fr_auto] items-center">
@@ -91,7 +142,7 @@ function DueCard({ payment }: { payment: PaymentResponse }) {
           </div>
           <p className="text-sm text-muted-foreground mt-1">
             Due {formatDate(payment.dueDate)} ·{" "}
-            <span className="text-foreground">Flat #{payment.flatId}</span>
+            <span className="text-foreground">Flat {flatLabel}</span>
           </p>
           {payment.lateFee && payment.lateFee > 0 ? (
             <p className="text-xs text-destructive mt-1">
@@ -99,17 +150,51 @@ function DueCard({ payment }: { payment: PaymentResponse }) {
             </p>
           ) : null}
         </div>
-        <Button asChild variant="gradient" size="lg">
-          <Link to={`/app/payments/${payment.id}/pay`}>
-            <CreditCard /> Pay {formatINR(payment.totalAmount ?? payment.amount)}
-          </Link>
-        </Button>
+        <div className="flex flex-wrap gap-2 justify-end">
+          <Button
+            variant="outline"
+            size="lg"
+            onClick={handleInvoiceDownload}
+            disabled={downloadingInvoice}
+          >
+            {downloadingInvoice ? (
+              <Loader2 className="animate-spin" />
+            ) : (
+              <FileText />
+            )}
+            Invoice
+          </Button>
+          <Button asChild variant="gradient" size="lg">
+            <Link to={`/app/payments/${payment.id}/pay`}>
+              <CreditCard /> Pay {formatINR(payment.totalAmount ?? payment.amount)}
+            </Link>
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
 }
 
 function HistoryRow({ payment }: { payment: PaymentResponse }) {
+  const [downloading, setDownloading] = useState(false);
+  const isPaid = payment.status === "PAID";
+
+  async function handleReceiptDownload() {
+    setDownloading(true);
+    try {
+      const blob = await paymentsApi.receiptPdf(payment.id);
+      await downloadBlob(blob, `receipt-${payment.id.slice(0, 8)}.pdf`);
+    } catch (e) {
+      toast({
+        variant: "destructive",
+        title: "Couldn't download receipt",
+        description: extractErrorMessage(e),
+      });
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   return (
     <div className="px-5 sm:px-6 py-4 border-b border-border/60 last:border-0 grid grid-cols-[1fr_auto_auto] gap-3 items-center">
       <div className="min-w-0">
@@ -129,8 +214,18 @@ function HistoryRow({ payment }: { payment: PaymentResponse }) {
       <p className="text-xs text-muted-foreground capitalize hidden sm:block">
         {payment.paymentMethod?.toLowerCase().replace("_", " ") ?? "—"}
       </p>
-      <Button variant="ghost" size="sm" disabled={payment.status !== "PAID"}>
-        <Download className="size-4" />
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={!isPaid || downloading}
+        onClick={handleReceiptDownload}
+        title={isPaid ? "Download receipt PDF" : "Receipt available once paid"}
+      >
+        {downloading ? (
+          <Loader2 className="size-4 animate-spin" />
+        ) : (
+          <Download className="size-4" />
+        )}
         <span className="hidden sm:inline">Receipt</span>
       </Button>
     </div>

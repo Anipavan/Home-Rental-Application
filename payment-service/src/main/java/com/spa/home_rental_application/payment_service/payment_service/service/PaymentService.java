@@ -29,6 +29,8 @@ public interface PaymentService {
     /* --- documents --- */
     InvoiceResponse getInvoice(String paymentId);
     ReceiptResponse getReceipt(String paymentId);
+    byte[] getInvoicePdf(String paymentId);
+    byte[] getReceiptPdf(String paymentId);
 
     /* --- analytics --- */
     PaymentStatsResponse getStatsByTenant(String tenantId);

@@ -14,6 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -92,5 +93,27 @@ public class PaymentController {
     @GetMapping("/{id}/receipt")
     public ResponseEntity<ReceiptResponse> receipt(@PathVariable String id) {
         return ResponseEntity.ok(paymentService.getReceipt(id));
+    }
+
+    @Operation(summary = "Download the invoice PDF for a payment")
+    @GetMapping(value = "/{id}/invoice.pdf", produces = MediaType.APPLICATION_PDF_VALUE)
+    public ResponseEntity<byte[]> invoicePdf(@PathVariable String id) {
+        byte[] pdf = paymentService.getInvoicePdf(id);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_PDF);
+        headers.setContentDispositionFormData("inline", "invoice-" + id + ".pdf");
+        headers.setContentLength(pdf.length);
+        return new ResponseEntity<>(pdf, headers, HttpStatus.OK);
+    }
+
+    @Operation(summary = "Download the receipt PDF for a captured payment")
+    @GetMapping(value = "/{id}/receipt.pdf", produces = MediaType.APPLICATION_PDF_VALUE)
+    public ResponseEntity<byte[]> receiptPdf(@PathVariable String id) {
+        byte[] pdf = paymentService.getReceiptPdf(id);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_PDF);
+        headers.setContentDispositionFormData("inline", "receipt-" + id + ".pdf");
+        headers.setContentLength(pdf.length);
+        return new ResponseEntity<>(pdf, headers, HttpStatus.OK);
     }
 }

@@ -46,19 +46,22 @@ public class PaymentServiceImpl implements PaymentService {
     private final PaymentGateway gateway;
     private final PaymentServiceEvents events;
     private final PaymentProperties props;
+    private final PaymentPdfGenerator pdfGenerator;
 
     public PaymentServiceImpl(PaymentRepository paymentRepo,
                               InvoiceRepository invoiceRepo,
                               ReceiptRepository receiptRepo,
                               PaymentGateway gateway,
                               PaymentServiceEvents events,
-                              PaymentProperties props) {
+                              PaymentProperties props,
+                              PaymentPdfGenerator pdfGenerator) {
         this.paymentRepo = paymentRepo;
         this.invoiceRepo = invoiceRepo;
         this.receiptRepo = receiptRepo;
         this.gateway = gateway;
         this.events = events;
         this.props = props;
+        this.pdfGenerator = pdfGenerator;
     }
 
     /* ---------------- Lifecycle ---------------- */
@@ -233,6 +236,22 @@ public class PaymentServiceImpl implements PaymentService {
     public ReceiptResponse getReceipt(String paymentId) {
         return PaymentMapper.toResponse(receiptRepo.findByPaymentId(paymentId).orElseThrow(
                 () -> new PaymentNotFoundException("No receipt for paymentId: " + paymentId)));
+    }
+
+    @Override
+    public byte[] getInvoicePdf(String paymentId) {
+        Payment p = mustFind(paymentId);
+        Invoice inv = invoiceRepo.findByPaymentId(paymentId).orElseThrow(
+                () -> new PaymentNotFoundException("No invoice for paymentId: " + paymentId));
+        return pdfGenerator.generateInvoice(p, inv);
+    }
+
+    @Override
+    public byte[] getReceiptPdf(String paymentId) {
+        Payment p = mustFind(paymentId);
+        Receipt r = receiptRepo.findByPaymentId(paymentId).orElseThrow(
+                () -> new PaymentNotFoundException("No receipt for paymentId: " + paymentId));
+        return pdfGenerator.generateReceipt(p, r);
     }
 
     /* ---------------- Analytics ---------------- */

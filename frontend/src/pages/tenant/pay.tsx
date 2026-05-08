@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { paymentsApi } from "@/lib/api/payments";
 import { paymentGateway } from "@/lib/api/payment-gateway";
+import { useFlatLookup } from "@/hooks/use-flat-lookup";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -79,6 +80,12 @@ export function PayPage() {
     enabled: !!paymentId,
   });
 
+  // Resolve flat UUID -> "A-302". Hook tolerates an empty list and only
+  // fires once paymentQ.data?.flatId is known.
+  const flatLookup = useFlatLookup(
+    paymentQ.data?.flatId ? [paymentQ.data.flatId] : [],
+  );
+
   function handlePay() {
     if (!selected) return;
     setStep("checkout");
@@ -107,7 +114,14 @@ export function PayPage() {
   const total = p.totalAmount ?? p.amount;
 
   if (step === "success" || p.status === "PAID") {
-    return <SuccessView amount={total} dueDate={p.dueDate} transactionId={p.transactionId} />;
+    return (
+      <SuccessView
+        paymentId={paymentId}
+        amount={total}
+        dueDate={p.dueDate}
+        transactionId={p.transactionId}
+      />
+    );
   }
 
   return (
@@ -151,7 +165,7 @@ export function PayPage() {
           baseAmount={p.amount}
           lateFee={p.lateFee}
           dueDate={p.dueDate}
-          flatId={p.flatId}
+          flatLabel={flatLookup.nameOf(p.flatId)}
           onPay={handlePay}
           payDisabled={
             !selected || (selected.upiApp === "OTHER" && !upiVpa)
@@ -603,7 +617,7 @@ function SummaryCard({
   baseAmount,
   lateFee,
   dueDate,
-  flatId,
+  flatLabel,
   onPay,
   payDisabled,
   payLoading,
@@ -614,7 +628,8 @@ function SummaryCard({
   baseAmount: number;
   lateFee?: number;
   dueDate: string;
-  flatId: string;
+  /** Pre-resolved flat number ("A-302") — passed in by the caller. */
+  flatLabel: string;
   onPay: () => void;
   payDisabled: boolean;
   payLoading: boolean;
@@ -643,7 +658,7 @@ function SummaryCard({
         <div className="mt-5 p-3 rounded-lg bg-secondary/40 text-xs text-muted-foreground space-y-1">
           <div className="flex justify-between">
             <span>For flat</span>
-            <span className="font-medium text-foreground">#{flatId}</span>
+            <span className="font-medium text-foreground">{flatLabel}</span>
           </div>
           <div className="flex justify-between">
             <span>Due date</span>
@@ -695,14 +710,41 @@ function Row({
 }
 
 function SuccessView({
+  paymentId,
   amount,
   dueDate,
   transactionId,
 }: {
+  paymentId: string;
   amount: number;
   dueDate: string;
   transactionId?: string;
 }) {
+  const [downloading, setDownloading] = useState(false);
+
+  async function handleReceiptDownload() {
+    setDownloading(true);
+    try {
+      const blob = await paymentsApi.receiptPdf(paymentId);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `receipt-${paymentId.slice(0, 8)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast({
+        variant: "destructive",
+        title: "Couldn't download receipt",
+        description: extractErrorMessage(e),
+      });
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   return (
     <div className="max-w-xl mx-auto py-12 text-center animate-fade-in">
       <div className="size-20 rounded-full bg-success/15 grid place-items-center mx-auto">
@@ -734,7 +776,13 @@ function SuccessView({
         <Button asChild variant="gradient" size="lg">
           <Link to="/app/payments">Back to payments</Link>
         </Button>
-        <Button variant="outline" size="lg">
+        <Button
+          variant="outline"
+          size="lg"
+          onClick={handleReceiptDownload}
+          disabled={downloading}
+        >
+          {downloading && <Loader2 className="animate-spin" />}
           Download receipt
         </Button>
       </div>

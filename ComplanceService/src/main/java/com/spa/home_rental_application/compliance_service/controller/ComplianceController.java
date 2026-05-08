@@ -84,6 +84,14 @@ public class ComplianceController {
         return ResponseEntity.ok(gstInvoiceService.getById(id));
     }
 
+    @Operation(summary = "Find the GST invoice generated for a payment, if any")
+    @GetMapping("/gst/invoice/by-payment/{paymentId}")
+    public ResponseEntity<GstInvoiceResponseDto> getInvoiceByPayment(
+            @PathVariable String paymentId) {
+        GstInvoiceResponseDto dto = gstInvoiceService.findByPaymentId(paymentId);
+        return dto == null ? ResponseEntity.notFound().build() : ResponseEntity.ok(dto);
+    }
+
     @Operation(summary = "Download the GST invoice PDF")
     @GetMapping("/gst/invoice/{id}/pdf")
     public ResponseEntity<byte[]> getInvoicePdf(@PathVariable String id) throws IOException {
