@@ -78,15 +78,51 @@ public class KycServiceImpl implements KycService {
         record.setPanNumber(request.panNumber());
         record.setConsentRecorded(true);
         record.setKycReferenceId(result.referenceId());
-        record.setVerificationStatus("INITIATED");
         record.setFailureCode(null);
         record.setFailureReason(null);
         if (Boolean.TRUE.equals(request.linkDigilocker())) {
             record.setDigilockerLinked(false); // pending — set true on callback
         }
 
+        // Honour the provider's returned status. Most providers return
+        // PENDING and finalize asynchronously via webhook; mocks (and
+        // some sandbox modes) can return a terminal state directly. This
+        // lets us short-circuit the webhook round-trip in dev.
+        String providerStatus = result.providerStatus() == null
+                ? "PENDING"
+                : result.providerStatus();
+        boolean autoVerified = false;
+        if ("VERIFIED".equalsIgnoreCase(providerStatus)) {
+            record.setVerificationStatus("VERIFIED");
+            record.setAadhaarVerified(true);
+            if (request.panNumber() != null && !request.panNumber().isBlank()) {
+                record.setPanVerified(true);
+            }
+            record.setVerifiedAt(LocalDateTime.now());
+            autoVerified = true;
+        } else if ("FAILED".equalsIgnoreCase(providerStatus)) {
+            record.setVerificationStatus("FAILED");
+        } else {
+            record.setVerificationStatus("INITIATED");
+        }
+
         KycRecord saved = kycRepository.save(record);
-        log.info("KYC initiated id={} ref={}", saved.getId(), saved.getKycReferenceId());
+        log.info("KYC initiated id={} ref={} status={}",
+                saved.getId(), saved.getKycReferenceId(), saved.getVerificationStatus());
+
+        // Fire the verified event immediately when the provider auto-verified
+        // so downstream consumers (User Service KYC badge, Compliance) hear
+        // about it the same way they would after a webhook.
+        if (autoVerified) {
+            try {
+                publishVerified(saved);
+            } catch (Exception ex) {
+                // Event publishing is best-effort; the record is the source of truth.
+                log.warn("Failed to publish kyc.verified for userId={}: {}",
+                        saved.getUserId(), ex.getMessage());
+            }
+        }
+
         return kycMapper.toResponse(saved);
     }
 

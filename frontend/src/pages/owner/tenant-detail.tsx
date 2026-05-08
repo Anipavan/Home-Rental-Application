@@ -89,9 +89,12 @@ export function TenantDetailPage() {
   });
 
   const kycQ = useQuery({
-    queryKey: ["tenant-kyc", userServiceId],
-    queryFn: () => kycApi.status(userServiceId!),
-    enabled: !!userServiceId,
+    // KYC service keys records on authUserId (matches the tenant-side KYC
+    // page), not on the user-service profile id. Querying with the route
+    // param directly is the canonical lookup.
+    queryKey: ["tenant-kyc", authUserId],
+    queryFn: () => kycApi.status(authUserId),
+    enabled: !!authUserId,
     retry: false,
   });
 

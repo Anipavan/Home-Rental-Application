@@ -24,8 +24,12 @@ public class MockKycProvider implements KycProvider {
     @Override
     public InitiateResult initiate(String userId, InitiateKycRequest request) {
         String ref = "MOCK-" + UUID.randomUUID();
-        log.info("[MOCK-KYC] initiate userId={} ref={}", userId, ref);
-        return new InitiateResult(ref, "PENDING", "https://example.local/mock-kyc/" + ref);
+        // Auto-verify for the mock provider so engineers / demo users see
+        // the full happy-path end-to-end without waiting for a real Digio
+        // webhook to fire. Production traffic uses DigioKycProvider which
+        // returns PENDING and finalizes via webhook callback as designed.
+        log.info("[MOCK-KYC] initiate userId={} ref={} -> auto-VERIFIED", userId, ref);
+        return new InitiateResult(ref, "VERIFIED", "https://example.local/mock-kyc/" + ref);
     }
 
     @Override

@@ -3,7 +3,6 @@ import { ShieldCheck, AlertTriangle, CheckCircle2, Loader2 } from "lucide-react"
 import { useState } from "react";
 import { useAuthStore } from "@/stores/auth-store";
 import { kycApi } from "@/lib/api/kyc";
-import { usersApi } from "@/lib/api/users";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,13 +19,12 @@ export function KycPage() {
   const qc = useQueryClient();
   const [showInitiate, setShowInitiate] = useState(false);
 
-  // Resolve userId from auth — KYC Service keys on the user-service id.
-  const meQ = useQuery({
-    queryKey: ["me", authUserId],
-    queryFn: () => usersApi.byAuthId(authUserId!),
-    enabled: !!authUserId,
-  });
-  const userId = meQ.data ? String(meQ.data.id) : undefined;
+  // KYC Service stores the user identifier opaquely, so we use authUserId
+  // directly. This avoids a cross-service round-trip to user-service that
+  // can fail/lag on legacy tenants and leave the "Start KYC" button
+  // permanently disabled — the original bug. authUserId is on the JWT and
+  // available the moment the user is logged in.
+  const userId = authUserId ?? undefined;
 
   const statusQ = useQuery({
     queryKey: ["kyc", userId],
@@ -91,7 +89,9 @@ export function KycPage() {
       }),
   });
 
-  if (meQ.isLoading) {
+  if (!userId) {
+    // Not logged in — shouldn't reach this route via ProtectedRoute, but
+    // render a tiny loader rather than crashing on undefined.
     return <Skeleton className="h-72 rounded-2xl max-w-3xl" />;
   }
 
