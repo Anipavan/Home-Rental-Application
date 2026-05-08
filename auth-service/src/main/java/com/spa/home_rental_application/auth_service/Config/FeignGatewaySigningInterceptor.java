@@ -3,9 +3,13 @@ package com.spa.home_rental_application.auth_service.Config;
 import com.spa.home_rental_application.auth_commons.GatewaySigner;
 import feign.RequestInterceptor;
 import feign.RequestTemplate;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.web.context.request.RequestAttributes;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -36,6 +40,10 @@ import java.net.URISyntaxException;
 @Slf4j
 public class FeignGatewaySigningInterceptor {
 
+    private static final String HDR_USER  = "X-Auth-User-Name";
+    private static final String HDR_UID   = "X-Auth-User-Id";
+    private static final String HDR_ROLES = "X-Auth-Roles";
+
     @Bean
     public RequestInterceptor gatewaySigningRequestInterceptor(GatewaySigner signer) {
         return template -> {
@@ -46,8 +54,36 @@ public class FeignGatewaySigningInterceptor {
             template.header("X-Internal-Auth-Sig", s.signature());
             template.header("X-Internal-Auth-Ts",  Long.toString(s.timestamp()));
 
+            // Propagate the caller's identity so the downstream service's
+            // @PreAuthorize can construct a real Authentication. Without
+            // this the downstream sees an HMAC-signed but anonymous
+            // request and returns 403 on any role-protected endpoint.
+            HttpServletRequest req = currentRequest();
+            if (req != null) {
+                copyHeaderIfPresent(req, template, HDR_USER);
+                copyHeaderIfPresent(req, template, HDR_UID);
+                copyHeaderIfPresent(req, template, HDR_ROLES);
+            }
+
             log.debug("Signed outbound Feign call {} {} (ts={})", method, path, s.timestamp());
         };
+    }
+
+    private static HttpServletRequest currentRequest() {
+        RequestAttributes attrs = RequestContextHolder.getRequestAttributes();
+        if (attrs instanceof ServletRequestAttributes sra) {
+            return sra.getRequest();
+        }
+        return null;
+    }
+
+    private static void copyHeaderIfPresent(HttpServletRequest req,
+                                            RequestTemplate template,
+                                            String name) {
+        String v = req.getHeader(name);
+        if (v != null && !v.isBlank()) {
+            template.header(name, v);
+        }
     }
 
     /**
