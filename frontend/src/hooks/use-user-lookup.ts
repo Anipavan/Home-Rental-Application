@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { usersApi } from "@/lib/api/users";
+import { authApi } from "@/lib/api/auth";
 import type { UserResponseDto } from "@/types/api";
 
 /**
@@ -7,8 +8,9 @@ import type { UserResponseDto } from "@/types/api";
  * for 60 s. Used on payment lists / activity feeds where we need to render
  * tenant names instead of opaque ids.
  *
- * <p>Failed lookups (404) are silently skipped — the {@link nameOf}
- * helper falls back to a short id slice so the row still renders.
+ * <p>Two-tier lookup, mirroring {@link useUserByAuth}: try User Service
+ * first (rich profile), fall back to Auth Service (userName / email) on
+ * 404 so legacy tenants without a User row still render with a real name.
  */
 export function useUserLookup(authUserIds: string[]) {
   const dedup = Array.from(new Set(authUserIds.filter(Boolean))).sort();
@@ -21,7 +23,29 @@ export function useUserLookup(authUserIds: string[]) {
           usersApi
             .byAuthId(id)
             .then((u) => [id, u] as const)
-            .catch(() => [id, null] as const),
+            .catch(async (e) => {
+              const status = (e as { response?: { status?: number } })?.response
+                ?.status;
+              if (status !== 404) return [id, null] as const;
+              // Auth-service fallback — at minimum gives us userName + email.
+              try {
+                const auth = await authApi.lookupById(id);
+                const parts = (auth.userName ?? "").split(/[\s._-]+/);
+                const firstName = parts[0] ?? "";
+                const lastName = parts.slice(1).join(" ") || "";
+                const synthesized = {
+                  id: 0,
+                  authUserId: auth.id,
+                  firstName,
+                  lastName,
+                  email: auth.email ?? "",
+                  role: (auth.userRole as UserResponseDto["role"]) ?? undefined,
+                } as UserResponseDto;
+                return [id, synthesized] as const;
+              } catch {
+                return [id, null] as const;
+              }
+            }),
         ),
       );
       const map = new Map<string, UserResponseDto>();

@@ -95,6 +95,20 @@ public class AuthController {
         return ResponseEntity.ok(authService.getById(id));
     }
 
+    /**
+     * Fallback lookup used by the owner UI when User Service has no profile
+     * row for a tenant (legacy registrations, Feign hiccup, etc.). Returns
+     * just the bare-bones identity (userName, email, role) so we can render
+     * SOMETHING useful instead of "Couldn't load tenant profile". Same path
+     * as /users/{id} but accessible to ADMIN and OWNER.
+     */
+    @Operation(summary = "Bare-bones auth-user lookup by id (ADMIN + OWNER)")
+    @GetMapping("/users/lookup/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN','OWNER')")
+    public ResponseEntity<AuthUserResponse> lookupById(@PathVariable Long id) {
+        return ResponseEntity.ok(authService.getById(id));
+    }
+
 
     private static Roles parseRole(String input) {
         try {

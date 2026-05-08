@@ -58,6 +58,15 @@ export const propertiesApi = {
       api
         .get<PropertyImageResponseDTO[]>(`/properties/buildings/${id}/images`)
         .then((r) => r.data),
+    /**
+     * Fetch the raw bytes of a stored property image as a Blob. The DB row's
+     * {@code imageUrl} is a server-side filesystem path the browser can't
+     * load directly, so we go through this streaming endpoint instead.
+     */
+    imageRaw: (imageId: string) =>
+      api
+        .get<Blob>(`/properties/images/${imageId}/raw`, { responseType: "blob" })
+        .then((r) => r.data),
     uploadImage: (id: number | string, file: File) => {
       const fd = new FormData();
       fd.append("file", file);

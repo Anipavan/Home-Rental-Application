@@ -113,29 +113,36 @@ export function TenantDetailPage() {
         </Link>
       </Button>
 
-      {/* Header — name, contact actions, KYC badge */}
+      {/* Header — name, contact actions, KYC badge.
+          The hook returns at least the auth-tier fallback (userName+email)
+          when User Service has no profile row, so userQ.user is almost
+          never undefined. Even when it IS, we render the fallback header
+          (id slice + flat info) instead of an unhelpful error message —
+          the rest of the page (lease, payments, maintenance) is keyed
+          off authUserId and still loads. */}
       <Card className="mb-6">
         <CardContent className="p-6 sm:p-8">
           {userQ.isLoading ? (
             <Skeleton className="h-24" />
-          ) : !userQ.user ? (
-            <div className="text-sm text-muted-foreground">
-              Couldn't load tenant profile.
-            </div>
           ) : (
             <div className="flex items-start gap-5 flex-wrap">
               <Avatar className="size-20">
-                {userQ.user.profilePictureUrl && (
+                {userQ.user?.profilePictureUrl && (
                   <AvatarImage src={userQ.user.profilePictureUrl} />
                 )}
                 <AvatarFallback className="text-2xl">
-                  {initials(userQ.fullName ?? "")}
+                  {initials(
+                    userQ.fullName ?? `T${authUserId.slice(0, 2)}`,
+                  )}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
                 <PageHeader
                   className="mb-2"
-                  title={userQ.fullName || "Tenant"}
+                  title={
+                    userQ.fullName ||
+                    `Tenant ${authUserId.slice(0, 8)}…`
+                  }
                   description={
                     flat
                       ? `${(flat as { buildingName?: string }).buildingName ?? "Flat"} · ${flat.flatNumber}`
@@ -145,14 +152,14 @@ export function TenantDetailPage() {
                 <KycBadge status={kycQ.data?.verificationStatus} />
               </div>
               <div className="flex flex-wrap gap-2">
-                {userQ.user.phone && (
+                {userQ.user?.phone && (
                   <Button asChild variant="outline" size="sm">
                     <a href={`tel:${userQ.user.phone}`}>
                       <Phone /> Call
                     </a>
                   </Button>
                 )}
-                {userQ.user.email && (
+                {userQ.user?.email && (
                   <Button asChild variant="outline" size="sm">
                     <a href={`mailto:${userQ.user.email}`}>
                       <Mail /> Email
@@ -181,6 +188,12 @@ export function TenantDetailPage() {
                 Icon={Building2}
               />
             </div>
+          )}
+          {!userQ.isLoading && !userQ.user && (
+            <p className="text-xs text-muted-foreground mt-4">
+              This tenant hasn't completed their profile yet — name, phone,
+              and address will appear here once they do.
+            </p>
           )}
         </CardContent>
       </Card>

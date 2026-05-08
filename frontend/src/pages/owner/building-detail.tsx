@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { PageHeader } from "@/components/layout/page-header";
 import { FileUpload } from "@/components/ui/file-upload";
+import { PropertyImage } from "@/components/property/property-image";
 import { formatINR, formatDate } from "@/lib/utils";
 import { extractErrorMessage } from "@/lib/api/client";
 import { toast } from "@/hooks/use-toast";
@@ -115,10 +116,13 @@ export function BuildingDetailPage() {
                   key={img.id}
                   className="aspect-square rounded-xl overflow-hidden bg-muted border"
                 >
-                  <img
-                    src={img.imageUrl}
-                    alt=""
-                    className="w-full h-full object-cover"
+                  {/* The DB stores a server-side filesystem path that the
+                      browser can't load directly, so PropertyImage fetches
+                      the bytes through the API and renders a blob URL. */}
+                  <PropertyImage
+                    imageId={img.id}
+                    alt={`Photo of ${b.buildingName}`}
+                    className="w-full h-full"
                   />
                 </div>
               ))}

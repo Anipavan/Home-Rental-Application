@@ -17,3 +17,5 @@ Thumbs.db
 node_modules/
 dist/
 *.tsbuildinfo
+# Local uploads dir (property-service writes images here in dev)
+uploads/

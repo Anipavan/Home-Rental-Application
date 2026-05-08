@@ -72,4 +72,34 @@ public class PropertyImageServiceImpul implements PropertyImageService {
                 .map(PropertyImageMapper::toDTO)
                 .toList();
     }
+
+    /**
+     * The DB row stores a local-filesystem path in {@code image_url}. Browsers
+     * obviously can't load that as an &lt;img src&gt;, so the controller
+     * fronts each image with /properties/images/{id}/raw and we read the file
+     * bytes here.
+     *
+     * <p>Falls back to {@code application/octet-stream} when the persisted
+     * type is missing or non-image (defensive — the upload path validates
+     * content-type, but legacy rows may be incomplete).
+     */
+    @Override
+    public RawImage readRaw(String imageId) throws IOException {
+        PropertyImage img = repo.findById(imageId)
+                .orElseThrow(() -> new IllegalArgumentException("No image with id=" + imageId));
+        String url = img.getImageUrl();
+        if (url == null || url.isBlank()) {
+            throw new IOException("Image " + imageId + " has no on-disk path");
+        }
+        Path file = Paths.get(url);
+        if (!Files.exists(file)) {
+            throw new IOException("Image file no longer exists on disk: " + file);
+        }
+        byte[] bytes = Files.readAllBytes(file);
+        String ct = img.getType();
+        if (ct == null || ct.isBlank() || !ct.startsWith("image/")) {
+            ct = "application/octet-stream";
+        }
+        return new RawImage(bytes, ct);
+    }
 }

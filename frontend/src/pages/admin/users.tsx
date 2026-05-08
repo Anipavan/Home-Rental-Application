@@ -149,7 +149,7 @@ function UserTable({
             <span className="text-muted-foreground truncate hidden sm:block">
               {u.email ?? "—"}
             </span>
-            <RoleBadge role={u.role} />
+            <RoleBadge role={u.role ?? (u.userRole as typeof u.role) ?? "TENANT"} />
             <span className="text-muted-foreground hidden sm:block">
               {formatDate(u.createdAt)}
             </span>

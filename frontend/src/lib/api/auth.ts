@@ -28,4 +28,12 @@ export const authApi = {
     api.get<AuthUserResponse[]>(`/auth/role/${role}`).then((r) => r.data),
   byId: (id: string) =>
     api.get<AuthUserResponse>(`/auth/users/${id}`).then((r) => r.data),
+  /**
+   * Owner-accessible fallback lookup. Used by the tenant-detail / tenants
+   * list when the User Service has no profile row for a given authUserId
+   * (common for legacy registrations) — at minimum we get back userName,
+   * email, and role so we can render something useful.
+   */
+  lookupById: (id: string) =>
+    api.get<AuthUserResponse>(`/auth/users/lookup/${id}`).then((r) => r.data),
 };

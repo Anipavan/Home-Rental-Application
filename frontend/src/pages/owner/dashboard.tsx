@@ -22,6 +22,7 @@ import { useAuthStore } from "@/stores/auth-store";
 import { propertiesApi } from "@/lib/api/properties";
 import { paymentsApi } from "@/lib/api/payments";
 import { maintenanceApi } from "@/lib/api/maintenance";
+import { useFlatLookup } from "@/hooks/use-flat-lookup";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -74,6 +75,17 @@ export function OwnerDashboard() {
   ).length;
 
   const trend = buildMonthlyTrend(payments);
+
+  // Resolve flatId UUIDs to readable flat numbers for the Recent activity
+  // strip + the maintenance queue. 60 s cache — single batched fetch.
+  const recentPayments = (paymentsQ.data ?? []).slice(0, 5);
+  const openMaintTickets = (maintQ.data ?? [])
+    .filter((r) => r.status !== "CLOSED" && r.status !== "RESOLVED")
+    .slice(0, 4);
+  const flatLookup = useFlatLookup([
+    ...recentPayments.map((p) => p.flatId),
+    ...openMaintTickets.map((r) => r.flatId),
+  ]);
 
   return (
     <div className="animate-fade-in">
@@ -176,14 +188,14 @@ export function OwnerDashboard() {
               Array.from({ length: 4 }).map((_, i) => (
                 <Skeleton key={i} className="h-12" />
               ))}
-            {(paymentsQ.data ?? []).slice(0, 5).map((p) => (
+            {recentPayments.map((p) => (
               <div
                 key={p.id}
                 className="flex items-center justify-between text-sm"
               >
                 <div className="min-w-0">
                   <p className="font-medium truncate">
-                    Flat #{p.flatId}
+                    Flat {flatLookup.nameOf(p.flatId)}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {p.paymentDate ? formatDate(p.paymentDate) : `Due ${formatDate(p.dueDate)}`}
@@ -279,10 +291,7 @@ export function OwnerDashboard() {
               Array.from({ length: 3 }).map((_, i) => (
                 <Skeleton key={i} className="h-14" />
               ))}
-            {(maintQ.data ?? [])
-              .filter((r) => r.status !== "CLOSED" && r.status !== "RESOLVED")
-              .slice(0, 4)
-              .map((r) => (
+            {openMaintTickets.map((r) => (
                 <div
                   key={r.id}
                   className="flex items-start justify-between p-3 rounded-lg hover:bg-secondary/50 transition-colors"
@@ -290,7 +299,7 @@ export function OwnerDashboard() {
                   <div className="min-w-0">
                     <p className="font-medium text-sm truncate">{r.title}</p>
                     <p className="text-xs text-muted-foreground">
-                      Flat #{r.flatId} · {r.category}
+                      Flat {flatLookup.nameOf(r.flatId)} · {r.category}
                     </p>
                   </div>
                   <Badge variant={r.priority === "CRITICAL" || r.priority === "HIGH" ? "destructive" : "warning"}>

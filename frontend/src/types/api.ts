@@ -36,15 +36,24 @@ export interface AuthUserResponse {
   id: string;
   userName: string;
   email?: string;
-  role: Role;
+  /** Legacy alias kept for screens that read this field directly. */
+  role?: Role;
+  /**
+   * Auth-service serializes the field as {@code userRole} (Java record
+   * component name). Newer code reads this; older code reads {@link role}.
+   */
+  userRole?: string;
   isActive?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
 
 export interface PropertyImageResponseDTO {
-  id: number;
-  propertyId: number;
+  /** Backend stores image rows with a String UUID primary key. */
+  id: string;
+  /** Building or flat the image belongs to. UUID. */
+  propertyId: string;
+  /** Server-side filesystem path; not loadable from a browser as-is. */
   imageUrl: string;
   type?: string;
 }

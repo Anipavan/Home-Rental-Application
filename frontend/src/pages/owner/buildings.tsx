@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/layout/page-header";
+import { PropertyImage } from "@/components/property/property-image";
+import type { BuildingResponseDTO } from "@/types/api";
 
 export function BuildingsPage() {
   const { authUserId } = useAuthStore();
@@ -58,28 +60,61 @@ export function BuildingsPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {(q.data ?? []).map((b) => (
-          <Link key={b.buildingId} to={`/owner/buildings/${b.buildingId}`}>
-            <Card className="hover:shadow-lift transition-shadow group">
-              <CardContent className="p-5">
-                <div className="size-11 rounded-lg bg-primary/10 text-primary grid place-items-center mb-3">
-                  <Building2 className="size-5" />
-                </div>
-                <h3 className="font-display font-semibold text-lg truncate">
-                  {b.buildingName}
-                </h3>
-                <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                  <MapPin className="size-3" />
-                  {b.buildingCity}, {b.buildingState}
-                </p>
-                <div className="mt-4 flex items-center gap-2">
-                  <Badge variant="secondary">{b.activeFlatsCount ?? b.buildingTotalFlats ?? 0} flats</Badge>
-                  <Badge variant="secondary">{b.buildingTotalFloors ?? 0} floors</Badge>
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
+          <BuildingCard key={b.buildingId} building={b} />
         ))}
       </div>
     </div>
+  );
+}
+
+/**
+ * One building tile on the list page. Pulls the building's image list and
+ * uses the first photo as the cover thumbnail. Shows a generic icon when
+ * the owner hasn't uploaded any photos yet.
+ */
+function BuildingCard({ building: b }: { building: BuildingResponseDTO }) {
+  const imagesQ = useQuery({
+    queryKey: ["building-images", b.buildingId],
+    queryFn: () => propertiesApi.buildings.images(b.buildingId),
+    enabled: !!b.buildingId,
+    staleTime: 60_000,
+  });
+  const cover = imagesQ.data?.[0];
+
+  return (
+    <Link to={`/owner/buildings/${b.buildingId}`}>
+      <Card className="hover:shadow-lift transition-shadow group overflow-hidden">
+        <div className="aspect-[16/9] bg-muted overflow-hidden">
+          {cover ? (
+            <PropertyImage
+              imageId={cover.id}
+              alt={b.buildingName}
+              className="w-full h-full"
+            />
+          ) : (
+            <div className="w-full h-full grid place-items-center text-muted-foreground bg-gradient-to-br from-secondary/40 to-secondary/10">
+              <Building2 className="size-8" />
+            </div>
+          )}
+        </div>
+        <CardContent className="p-5">
+          <h3 className="font-display font-semibold text-lg truncate">
+            {b.buildingName}
+          </h3>
+          <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+            <MapPin className="size-3" />
+            {b.buildingCity}, {b.buildingState}
+          </p>
+          <div className="mt-4 flex items-center gap-2">
+            <Badge variant="secondary">
+              {b.activeFlatsCount ?? b.buildingTotalFlats ?? 0} flats
+            </Badge>
+            <Badge variant="secondary">
+              {b.buildingTotalFloors ?? 0} floors
+            </Badge>
+          </div>
+        </CardContent>
+      </Card>
+    </Link>
   );
 }
