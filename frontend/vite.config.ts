@@ -37,6 +37,22 @@ export default defineConfig({
         // Strip the cookie domain so cookies set by the gateway round-trip
         // back to the browser even when accessed via a tunnel.
         cookieDomainRewrite: "",
+        // Forge the Origin header to match what the gateway's CORS filter
+        // allows. When accessed via a tunnel the browser sends e.g.
+        //   Origin: https://foo.ngrok-free.dev
+        // …which isn't in CORS_ALLOWED_ORIGINS so the gateway 403's. From
+        // the gateway's POV every request through this proxy *is* coming
+        // from localhost:4200, so we rewrite the header to match. Override
+        // with VITE_PROXY_ORIGIN if your gateway whitelists a different
+        // origin.
+        configure: (proxy) => {
+          const forgedOrigin =
+            process.env.VITE_PROXY_ORIGIN ?? "http://localhost:4200";
+          proxy.on("proxyReq", (proxyReq) => {
+            proxyReq.setHeader("origin", forgedOrigin);
+            proxyReq.setHeader("referer", forgedOrigin + "/");
+          });
+        },
       },
     },
     // Vite's HMR + dev server checks the Host header against
