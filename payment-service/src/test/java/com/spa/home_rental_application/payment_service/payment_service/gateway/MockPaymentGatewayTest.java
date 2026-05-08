@@ -26,7 +26,9 @@ class MockPaymentGatewayTest {
                 "siva@oksbi", null, null, null, null, null);
         var r = gw.initiate(payment(new BigDecimal("8500")), req);
         assertThat(r.getGatewayName()).isEqualTo("mock");
-        assertThat(r.getUpiIntentUrl()).startsWith("upi://pay?pa=siva@oksbi");
+        // GPay deep-link uses the legacy "tez" scheme so Android opens GPay
+        // directly instead of presenting the OS-level UPI chooser.
+        assertThat(r.getUpiIntentUrl()).startsWith("tez://upi/pay?pa=siva@oksbi");
         assertThat(r.getUpiIntentUrl()).contains("am=8500");
         assertThat(r.getUpiCollectStatus()).isEqualTo("PENDING_USER_ACTION");
     }
@@ -36,8 +38,11 @@ class MockPaymentGatewayTest {
         var req = new InitiatePaymentRequest("PAY-1", PaymentMethod.CARD, null, null,
                 null, null, null, null, null);
         var r = gw.initiate(payment(new BigDecimal("8500")), req);
-        assertThat(r.getRedirectUrl()).contains("/payments/mock/return");
+        // Card / netbanking now bounces through the hosted /mock/checkout
+        // HTML page so the user gets a real redirect-and-back flow.
+        assertThat(r.getRedirectUrl()).contains("/payments/mock/checkout");
         assertThat(r.getRedirectUrl()).contains("paymentId=PAY-1");
+        assertThat(r.getRedirectUrl()).contains("method=CARD");
     }
 
     @Test
@@ -45,7 +50,8 @@ class MockPaymentGatewayTest {
         var req = new InitiatePaymentRequest("PAY-1", PaymentMethod.WALLET, null, null,
                 WalletProvider.PAYTM, null, null, null, null);
         var r = gw.initiate(payment(new BigDecimal("8500")), req);
-        assertThat(r.getRedirectUrl()).contains("/payments/mock/return");
+        assertThat(r.getRedirectUrl()).contains("/payments/mock/checkout");
+        assertThat(r.getRedirectUrl()).contains("method=WALLET");
     }
 
     @Test

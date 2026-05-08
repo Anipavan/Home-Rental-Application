@@ -30,7 +30,9 @@ class PaymentLateFeeAndAnalyticsTest {
     @Mock PaymentServiceEvents events;
 
     PaymentServiceImpl service() {
-        return new PaymentServiceImpl(paymentRepo, invoiceRepo, receiptRepo, gateway, events, new PaymentProperties());
+        return new PaymentServiceImpl(paymentRepo, invoiceRepo, receiptRepo, gateway, events,
+                new PaymentProperties(),
+                new com.spa.home_rental_application.payment_service.payment_service.service.impl.PaymentPdfGenerator());
     }
 
     @Test
