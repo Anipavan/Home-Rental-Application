@@ -415,6 +415,21 @@ function UpiCheckout({
   }, [response, phase, paymentId, onSuccess, onCancel]);
 
   const intentUrl = response?.upiIntentUrl;
+  // On mobile we attempt to open the deep link (e.g. phonepe://, tez://,
+  // paytmmp://) automatically as soon as we have it. Desktop browsers
+  // ignore custom schemes — they just see the QR.
+  const isMobile =
+    typeof window !== "undefined" &&
+    /android|iphone|ipad|ipod|mobile/i.test(window.navigator.userAgent);
+
+  useEffect(() => {
+    if (!intentUrl || phase !== "waiting" || !isMobile) return;
+    // Defer slightly so the page renders before the OS app switch.
+    const t = setTimeout(() => {
+      window.location.href = intentUrl;
+    }, 250);
+    return () => clearTimeout(t);
+  }, [intentUrl, phase, isMobile]);
 
   return (
     <Card>
@@ -452,17 +467,29 @@ function UpiCheckout({
             <div>
               <ol className="space-y-3 text-sm">
                 <Step n={1} text={`Open ${method.label} on your phone`} />
-                <Step n={2} text="Scan the QR or tap the link below" />
+                <Step n={2} text="Scan the QR or tap the button below" />
                 <Step n={3} text="Enter your UPI PIN to confirm" />
               </ol>
               {intentUrl && (
-                <a
-                  href={intentUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-4 block text-sm text-primary font-medium hover:underline truncate"
+                <Button
+                  asChild
+                  variant="gradient"
+                  size="lg"
+                  className="w-full mt-4"
                 >
-                  Open {method.label} app →
+                  <a href={intentUrl} target="_blank" rel="noreferrer">
+                    <Smartphone /> Open {method.label} app
+                  </a>
+                </Button>
+              )}
+              {/* Fallback to universal upi:// in case the app-specific scheme
+                  isn't installed on the user's phone. */}
+              {intentUrl && intentUrl.startsWith("upi://") === false && (
+                <a
+                  href={`upi://pay?${intentUrl.split("?")[1] ?? ""}`}
+                  className="mt-2 block text-xs text-muted-foreground hover:text-foreground text-center"
+                >
+                  Use a different UPI app →
                 </a>
               )}
               <div className="mt-6 p-3 rounded-lg bg-secondary/60 text-xs text-muted-foreground">

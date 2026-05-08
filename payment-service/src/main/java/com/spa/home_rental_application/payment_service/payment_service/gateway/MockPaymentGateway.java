@@ -7,6 +7,8 @@ import com.spa.home_rental_application.payment_service.payment_service.enums.Pay
 import com.spa.home_rental_application.payment_service.payment_service.enums.UpiApp;
 import lombok.extern.slf4j.Slf4j;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
 /**
@@ -51,9 +53,20 @@ public class MockPaymentGateway implements PaymentGateway {
                         payment.getTotalAmount().doubleValue(), orderId));
                 b.upiCollectStatus("PENDING_USER_ACTION");
             }
-            case CARD, NET_BANKING, WALLET ->
-                    b.redirectUrl("http://localhost:8084/payments/mock/return?orderId=" + orderId
-                            + "&paymentId=" + payment.getId());
+            case CARD, NET_BANKING, WALLET -> {
+                // Send the user to the in-house mock checkout page. The page
+                // shows a fake card / netbanking form, then on "Pay" redirects
+                // back to the tenant's returnUrl with verification params.
+                String urlEncodedReturn = req.returnUrl() == null
+                        ? ""
+                        : URLEncoder.encode(req.returnUrl(), StandardCharsets.UTF_8);
+                b.redirectUrl("http://localhost:8084/payments/mock/checkout"
+                        + "?orderId=" + orderId
+                        + "&paymentId=" + payment.getId()
+                        + "&method=" + method.name()
+                        + "&amount=" + payment.getTotalAmount().toPlainString()
+                        + "&returnUrl=" + urlEncodedReturn);
+            }
             case BANK_TRANSFER ->
                     b.bankAccountNumber("123456789012")
                      .bankIfsc("HRAH0000001")
