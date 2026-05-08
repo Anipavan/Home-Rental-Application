@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Banknote, Bell, Download, Loader2 } from "lucide-react";
+import { Banknote, Bell, Download, FileText, Loader2 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { paymentsApi } from "@/lib/api/payments";
 import { notificationsApi } from "@/lib/api/notifications";
+import { useFlatLookup } from "@/hooks/use-flat-lookup";
+import { useUserLookup } from "@/hooks/use-user-lookup";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -232,6 +234,11 @@ function Table({
   remindingId?: string;
   reminderLog: Record<string, number>;
 }) {
+  // Resolve flat UUID -> "A-302" and tenant authUserId -> "First Last" for
+  // every row in this table. Single batch fetch, cached for 60 s.
+  const flatLookup = useFlatLookup(payments.map((p) => p.flatId));
+  const userLookup = useUserLookup(payments.map((p) => p.tenantId));
+
   if (loading) {
     return (
       <Card className="p-3 space-y-2">
@@ -271,8 +278,10 @@ function Table({
               key={p.id}
               className="grid grid-cols-2 sm:grid-cols-[90px_1fr_110px_110px_110px_100px_240px] gap-3 px-5 py-3.5 text-sm items-center"
             >
-              <span className="font-mono">#{p.flatId}</span>
-              <span className="truncate text-muted-foreground">{p.tenantId}</span>
+              <span className="font-medium">{flatLookup.nameOf(p.flatId)}</span>
+              <span className="truncate text-muted-foreground">
+                {userLookup.nameOf(p.tenantId)}
+              </span>
               <span className="text-muted-foreground">{formatDate(p.dueDate)}</span>
               <span className="text-muted-foreground">
                 {p.paymentDate ? formatDate(p.paymentDate) : "—"}
@@ -313,6 +322,8 @@ function Table({
                     </Button>
                   </>
                 )}
+                {p.status === "PAID" && <ReceiptButton paymentId={p.id} />}
+                {isUnpaid && <InvoiceButton paymentId={p.id} />}
               </div>
             </div>
           );
@@ -335,6 +346,10 @@ function RecordCashDialog({
 }) {
   const [reference, setReference] = useState("");
 
+  // Resolve the single tenant id to a friendly name so the confirmation
+  // dialog reads naturally ("Mark ₹15,000 from Asha Rao as paid").
+  const userLookup = useUserLookup(target?.tenantId ? [target.tenantId] : []);
+
   return (
     <Dialog
       open={!!target}
@@ -355,9 +370,9 @@ function RecordCashDialog({
                 <span className="font-semibold text-foreground">
                   {formatINR(target.totalAmount ?? target.amount)}
                 </span>{" "}
-                from tenant{" "}
-                <span className="font-mono text-foreground">
-                  {target.tenantId}
+                from{" "}
+                <span className="font-medium text-foreground">
+                  {userLookup.nameOf(target.tenantId)}
                 </span>{" "}
                 as paid in cash.
               </>
@@ -406,4 +421,79 @@ function StatusBadge({ status }: { status: PaymentStatus }) {
   if (status === "CANCELLED") return <Badge variant="secondary">Cancelled</Badge>;
   if (status === "REFUNDED") return <Badge variant="secondary">Refunded</Badge>;
   return <Badge variant="warning">Pending</Badge>;
+}
+
+/**
+ * Trigger a browser download for a Blob fetched from the API.
+ * Same shape as the lease/agreement download flow.
+ */
+async function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function ReceiptButton({ paymentId }: { paymentId: string }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <Button
+      size="sm"
+      variant="ghost"
+      title="Download receipt PDF"
+      disabled={busy}
+      onClick={async () => {
+        setBusy(true);
+        try {
+          const blob = await paymentsApi.receiptPdf(paymentId);
+          await downloadBlob(blob, `receipt-${paymentId.slice(0, 8)}.pdf`);
+        } catch (e) {
+          toast({
+            variant: "destructive",
+            title: "Couldn't download receipt",
+            description: extractErrorMessage(e),
+          });
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      {busy ? <Loader2 className="animate-spin" /> : <Download />}
+      Receipt
+    </Button>
+  );
+}
+
+function InvoiceButton({ paymentId }: { paymentId: string }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <Button
+      size="sm"
+      variant="ghost"
+      title="Download invoice PDF"
+      disabled={busy}
+      onClick={async () => {
+        setBusy(true);
+        try {
+          const blob = await paymentsApi.invoicePdf(paymentId);
+          await downloadBlob(blob, `invoice-${paymentId.slice(0, 8)}.pdf`);
+        } catch (e) {
+          toast({
+            variant: "destructive",
+            title: "Couldn't download invoice",
+            description: extractErrorMessage(e),
+          });
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      {busy ? <Loader2 className="animate-spin" /> : <FileText />}
+      Invoice
+    </Button>
+  );
 }

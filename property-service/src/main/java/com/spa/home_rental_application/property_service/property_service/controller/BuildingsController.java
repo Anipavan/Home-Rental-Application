@@ -42,6 +42,16 @@ public class BuildingsController {
         return ResponseEntity.ok().body(building_service.getBuildings(pageable));
     }
 
+    @Operation(summary = "Search active buildings by name / address / city / state")
+    @GetMapping("/buildings/search")
+    public ResponseEntity<List<BuildingResponseDTO>> searchBuildings(
+            @RequestParam("q") String q,
+            @RequestParam(value = "ownerId", required = false) String ownerId,
+            @RequestParam(value = "limit", defaultValue = "10") @Min(1) int limit) {
+        log.info("GET /properties/buildings/search q={} owner={} limit={}", q, ownerId, limit);
+        return ResponseEntity.ok(building_service.searchBuildings(q, ownerId, limit));
+    }
+
     @Operation(summary = "Create a new building (publishes property.created)")
     @PostMapping(
             value = "/buildings/create/building",

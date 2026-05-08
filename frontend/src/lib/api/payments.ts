@@ -37,4 +37,16 @@ export const paymentsApi = {
     api.get<{ pdfUrl?: string; receiptNumber?: string }>(
       `/payments/${id}/receipt`,
     ).then((r) => r.data),
+  /**
+   * Fetch a freshly-rendered PDF (invoice or receipt) for a payment.
+   * Returns a Blob the caller can hand to a saveAs / link download.
+   */
+  invoicePdf: (id: number | string) =>
+    api
+      .get<Blob>(`/payments/${id}/invoice.pdf`, { responseType: "blob" })
+      .then((r) => r.data),
+  receiptPdf: (id: number | string) =>
+    api
+      .get<Blob>(`/payments/${id}/receipt.pdf`, { responseType: "blob" })
+      .then((r) => r.data),
 };

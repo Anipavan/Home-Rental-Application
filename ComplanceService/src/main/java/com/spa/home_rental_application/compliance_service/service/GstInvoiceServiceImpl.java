@@ -119,6 +119,14 @@ public class GstInvoiceServiceImpl implements GstInvoiceService {
 
     @Override
     @Transactional(readOnly = true)
+    public GstInvoiceResponseDto findByPaymentId(String paymentId) {
+        return repository.findByPaymentId(paymentId)
+                .map(mapper::toGstResponse)
+                .orElse(null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public byte[] getPdf(String invoiceId) throws IOException {
         GstInvoice invoice = repository.findById(invoiceId)
                 .orElseThrow(() -> new GstInvoiceNotFoundException(
