@@ -244,15 +244,44 @@ public class LeaseServiceImpl implements LeaseService {
         return mapper.toResponse(saved);
     }
 
+    /**
+     * Stream the rendered deed PDF.
+     *
+     * <p><b>Self-heal:</b> if the lease has no {@code documentUrl} yet (RERA
+     * stamp never invoked, signing happened before the generator was wired
+     * up, …) <em>or</em> the file on disk is missing, we render the PDF
+     * on-the-fly here using whatever stamp is on the row (or "" when none),
+     * persist the path, and return the bytes. Means the owner / tenant can
+     * always grab the deed even mid-lifecycle, and a stamp can be applied
+     * later without breaking the link.
+     */
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public byte[] downloadDeed(String leaseId) throws IOException {
         Lease lease = mustFind(leaseId);
-        if (lease.getDocumentUrl() == null) {
-            throw new LeaseNotFoundException(
-                    "Lease " + leaseId + " has no rendered deed yet — call /generate-rera first");
+        String path = lease.getDocumentUrl();
+
+        boolean needsRender = path == null
+                || path.isBlank()
+                || !Files.exists(Paths.get(path));
+        if (needsRender) {
+            try {
+                String stamp = lease.getReraAgreementNumber() == null
+                        ? ""
+                        : lease.getReraAgreementNumber();
+                String fresh = pdfGenerator.generate(lease, stamp);
+                lease.setDocumentUrl(fresh);
+                leaseRepository.save(lease);
+                path = fresh;
+                log.info("Rendered lease deed on-demand for lease={} (path={})",
+                        leaseId, fresh);
+            } catch (Exception ex) {
+                log.error("On-demand lease deed render failed for {}", leaseId, ex);
+                throw new LeaseNotFoundException(
+                        "Lease " + leaseId + " deed is unavailable: " + ex.getMessage());
+            }
         }
-        return Files.readAllBytes(Paths.get(lease.getDocumentUrl()));
+        return Files.readAllBytes(Paths.get(path));
     }
 
     @Override

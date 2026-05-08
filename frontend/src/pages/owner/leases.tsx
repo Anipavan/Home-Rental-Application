@@ -540,11 +540,11 @@ function LeaseDetailDialog({
             disabled={reraM.isPending}
             onSubmit={(state) => reraM.mutate(state)}
           />
-          {lease.documentUrl && (
-            <Button variant="ghost" onClick={onDownload}>
-              <Download /> Deed PDF
-            </Button>
-          )}
+          {/* Always offer the deed download. Lease Service renders the
+              PDF on-demand if no documentUrl is set yet. */}
+          <Button variant="ghost" onClick={onDownload}>
+            <Download /> Deed PDF
+          </Button>
         </div>
 
         <DialogFooter>

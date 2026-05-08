@@ -264,13 +264,10 @@ function AgreementCard({ agreement }: { agreement: AgreementResponseDTO }) {
               </div>
             </div>
             <div className="mt-4 flex flex-wrap items-center gap-3">
-              {agreement.hasDocument ? (
-                <DownloadDeedButton agreementId={agreement.id} />
-              ) : (
-                <p className="text-xs text-muted-foreground italic">
-                  PDF is being prepared — refresh in a moment.
-                </p>
-              )}
+              {/* Backend now renders the PDF on-demand when missing, so we
+                  always offer the button — no more "PDF is being prepared"
+                  dead-end. */}
+              <DownloadDeedButton agreementId={agreement.id} />
               {agreement.signatureData && (
                 <div className="rounded-lg border bg-white p-2">
                   <img
@@ -281,6 +278,15 @@ function AgreementCard({ agreement }: { agreement: AgreementResponseDTO }) {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Allow download for any agreement status — the backend renders
+            the deed on-demand from the current terms. Useful for tenants
+            who want to read the draft offline before signing. */}
+        {agreement.status === "PENDING_SIGNATURE" && (
+          <div className="mt-4 flex items-center justify-end">
+            <DownloadDeedButton agreementId={agreement.id} />
           </div>
         )}
 

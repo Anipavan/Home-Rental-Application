@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type MouseEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -153,7 +153,10 @@ function Grid({
                     </p>
                   </div>
                 </div>
-                <StatusBadge status={a.status} />
+                <div className="flex items-center gap-2 shrink-0">
+                  <StatusBadge status={a.status} />
+                  <InlineDownloadDeedButton agreementId={a.id} />
+                </div>
               </div>
               <div className="grid grid-cols-3 gap-3 mt-4 text-xs">
                 <div>
@@ -180,6 +183,57 @@ function Grid({
         </button>
       ))}
     </div>
+  );
+}
+
+/**
+ * Compact download trigger placed inside each agreement card. Stops both
+ * propagation and default so clicking it doesn't open the card detail.
+ * Backend renders the deed on-demand if it doesn't exist yet, so this
+ * works for any agreement status.
+ */
+function InlineDownloadDeedButton({ agreementId }: { agreementId: string }) {
+  const [pending, setPending] = useState(false);
+  async function handleClick(e: MouseEvent<HTMLButtonElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    setPending(true);
+    try {
+      const blob = await agreementsApi.downloadDocument(agreementId);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `lease-${agreementId.slice(0, 12)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast({
+        variant: "destructive",
+        title: "Couldn't download lease",
+        description: extractErrorMessage(e),
+      });
+    } finally {
+      setPending(false);
+    }
+  }
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="outline"
+      onClick={handleClick}
+      disabled={pending}
+      title="Download lease as PDF"
+    >
+      {pending ? (
+        <Loader2 className="size-3.5 animate-spin" />
+      ) : (
+        <Download className="size-3.5" />
+      )}
+      <span className="hidden sm:inline">PDF</span>
+    </Button>
   );
 }
 
@@ -246,6 +300,13 @@ function AgreementDetail({
               "No additional terms recorded — the standard lease applies."}
           </div>
 
+          {/* Always offer the deed download. Backend renders the PDF
+              on-demand from the current terms when no rendered file
+              exists yet, so owners can grab the lease at any stage. */}
+          <div className="mt-4 flex justify-end">
+            <DownloadDeedButton agreementId={agreement.id} />
+          </div>
+
           {agreement.status === "SIGNED" && (
             <div className="mt-6 rounded-xl border bg-success/5 border-success/30 p-5">
               <div className="flex items-start gap-3">
@@ -260,13 +321,6 @@ function AgreementDetail({
                 </div>
               </div>
               <div className="mt-4 flex flex-wrap items-center gap-3">
-                {agreement.hasDocument ? (
-                  <DownloadDeedButton agreementId={agreement.id} />
-                ) : (
-                  <p className="text-xs text-muted-foreground italic">
-                    PDF is being prepared — refresh in a moment.
-                  </p>
-                )}
                 {agreement.signatureData && (
                   <div className="rounded-lg border bg-white p-2">
                     <img

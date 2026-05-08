@@ -111,18 +111,43 @@ public class AgreementServiceImpl implements AgreementService {
     }
 
     /**
-     * Read the rendered PDF bytes off disk. Throws 404 if the agreement isn't
-     * signed yet or if the path is missing (e.g. PDF render failed).
+     * Read the rendered PDF bytes off disk.
+     *
+     * <p><b>Self-heal:</b> if {@code documentPath} is null (sign happened
+     * before the PDF generator was wired in, or render failed at sign
+     * time) <em>or</em> the file on disk is missing (manual cleanup,
+     * container restart with ephemeral storage), we render the PDF
+     * on-the-fly here. The new path is persisted so subsequent calls hit
+     * the cache. Tenants and owners can therefore download the deed at
+     * any point in the lifecycle — including draft / pending-signature.
      */
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public byte[] loadDocument(String agreementId) throws IOException {
         Agreement a = load(agreementId);
-        if (a.getDocumentPath() == null) {
-            throw new ResponseStatusException(NOT_FOUND,
-                    "Agreement " + agreementId + " has no rendered deed yet");
+        String path = a.getDocumentPath();
+
+        boolean needsRender = path == null
+                || path.isBlank()
+                || !Files.exists(Paths.get(path));
+        if (needsRender) {
+            try {
+                String fresh = pdfGenerator.render(a);
+                a.setDocumentPath(fresh);
+                a.setUpdatedAt(LocalDateTime.now());
+                agreementRepo.save(a);
+                path = fresh;
+                log.info("Rendered deed PDF on-demand for agreement={} (path={})",
+                        agreementId, fresh);
+            } catch (Exception ex) {
+                log.error("On-demand deed render failed for agreement={}",
+                        agreementId, ex);
+                throw new ResponseStatusException(NOT_FOUND,
+                        "Agreement " + agreementId + " deed is unavailable: "
+                                + ex.getMessage());
+            }
         }
-        return Files.readAllBytes(Paths.get(a.getDocumentPath()));
+        return Files.readAllBytes(Paths.get(path));
     }
 
     @Override
