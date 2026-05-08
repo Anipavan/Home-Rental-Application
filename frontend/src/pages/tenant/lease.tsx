@@ -1,12 +1,15 @@
+import type React from "react";
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
   Download,
+  FileCheck2,
   FileText,
   Loader2,
   ScrollText,
   ShieldCheck,
+  Upload,
   XCircle,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
@@ -278,6 +281,15 @@ function AgreementCard({ agreement }: { agreement: AgreementResponseDTO }) {
                 </div>
               )}
             </div>
+
+            {/*
+              Notarization & re-upload flow. The auto-generated deed is a
+              draft — the legally binding copy is the wet-signed, notary-
+              stamped scan. This block lets the tenant upload that copy and,
+              once uploaded, download/replace it.
+            */}
+            <Separator className="my-5" />
+            <SignedDeedSection agreement={agreement} />
           </div>
         )}
 
@@ -411,6 +423,178 @@ function DownloadDeedButton({ agreementId }: { agreementId: string }) {
       {pending ? <Loader2 className="size-4 animate-spin" /> : <Download />}
       Download lease (PDF)
     </Button>
+  );
+}
+
+/**
+ * Renders the upload + download affordances for the wet-signed,
+ * notary-stamped PDF. The flow is:
+ *
+ *   1. Tenant downloads the auto-generated draft via DownloadDeedButton.
+ *   2. Tenant + owner sign on stamp paper, get it notarized.
+ *   3. Tenant scans the notarized copy and uploads it here.
+ *   4. Either party can then re-download the notarized copy as the
+ *      legally binding artifact.
+ *
+ * After a successful upload we invalidate the my-agreements query so the
+ * surrounding card re-renders with the green "Notarized copy on file"
+ * state and the download button.
+ */
+function SignedDeedSection({
+  agreement,
+}: {
+  agreement: AgreementResponseDTO;
+}) {
+  const qc = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
+  async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    // Reset so the same file can be re-picked after a failed upload.
+    e.target.value = "";
+    if (!file) return;
+    if (file.type && file.type !== "application/pdf") {
+      toast({
+        variant: "destructive",
+        title: "PDF only",
+        description: "The notarized copy must be a PDF.",
+      });
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast({
+        variant: "destructive",
+        title: "File too large",
+        description: "Maximum 10 MB.",
+      });
+      return;
+    }
+    setUploading(true);
+    try {
+      await agreementsApi.uploadSignedDeed(agreement.id, file);
+      qc.invalidateQueries({ queryKey: ["my-agreements"] });
+      toast({
+        title: "Notarized deed uploaded",
+        description: "Your owner can now download the wet-signed copy too.",
+      });
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Upload failed",
+        description: extractErrorMessage(err),
+      });
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function onDownload() {
+    setDownloading(true);
+    try {
+      const blob = await agreementsApi.downloadSignedDeed(agreement.id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `lease-agreement-${agreement.id}-notarized.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Couldn't download notarized copy",
+        description: extractErrorMessage(err),
+      });
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  return (
+    <div>
+      <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+        Notarized copy
+      </p>
+      {agreement.hasSignedDeed ? (
+        <div className="mt-2 flex items-start gap-3">
+          <FileCheck2 className="size-5 text-success mt-0.5 shrink-0" />
+          <div className="flex-1">
+            <p className="font-medium text-sm">
+              Notarized deed on file
+              {agreement.notarizedAt && (
+                <>
+                  {" "}
+                  · uploaded {formatDate(agreement.notarizedAt)}
+                </>
+              )}
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              This is the legally binding wet-signed copy. Replace it by
+              uploading a new PDF below.
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={onDownload}
+                disabled={downloading}
+              >
+                {downloading ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Download />
+                )}
+                Download notarized copy
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+              >
+                {uploading ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Upload />
+                )}
+                Replace
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-2">
+          <p className="text-sm text-muted-foreground">
+            Print the deed above on stamp paper, sign it with your owner in
+            front of two witnesses, get it attested by a Notary Public, then
+            upload the scanned copy here.
+          </p>
+          <div className="mt-3">
+            <Button
+              size="sm"
+              variant="gradient"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+            >
+              {uploading ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Upload />
+              )}
+              Upload notarized PDF
+            </Button>
+          </div>
+        </div>
+      )}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/pdf"
+        className="hidden"
+        onChange={onPick}
+      />
+    </div>
   );
 }
 

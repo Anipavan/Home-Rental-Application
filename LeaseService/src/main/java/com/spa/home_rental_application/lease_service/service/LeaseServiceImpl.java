@@ -15,6 +15,11 @@ import com.spa.home_rental_application.lease_service.Entities.LeaseHistory;
 import com.spa.home_rental_application.lease_service.Exceptionclass.InvalidLeaseStateException;
 import com.spa.home_rental_application.lease_service.Exceptionclass.LeaseNotFoundException;
 import com.spa.home_rental_application.lease_service.client.ComplianceClient;
+import com.spa.home_rental_application.lease_service.client.PropertyClient;
+import com.spa.home_rental_application.lease_service.client.PropertyClient.BuildingSummary;
+import com.spa.home_rental_application.lease_service.client.PropertyClient.FlatSummary;
+import com.spa.home_rental_application.lease_service.client.UserClient;
+import com.spa.home_rental_application.lease_service.client.UserClient.UserSummary;
 import com.spa.home_rental_application.lease_service.config.LeaseProperties;
 import com.spa.home_rental_application.lease_service.mapper.LeaseMapper;
 import com.spa.home_rental_application.lease_service.repository.LeaseHistoryRepository;
@@ -41,6 +46,8 @@ public class LeaseServiceImpl implements LeaseService {
     private final LeaseMapper mapper;
     private final LeaseDeedPdfGenerator pdfGenerator;
     private final ComplianceClient complianceClient;
+    private final PropertyClient propertyClient;
+    private final UserClient userClient;
     private final LeaseServiceEvents events;
     private final LeaseProperties props;
 
@@ -49,6 +56,8 @@ public class LeaseServiceImpl implements LeaseService {
                             LeaseMapper mapper,
                             LeaseDeedPdfGenerator pdfGenerator,
                             ComplianceClient complianceClient,
+                            PropertyClient propertyClient,
+                            UserClient userClient,
                             LeaseServiceEvents events,
                             LeaseProperties props) {
         this.leaseRepository = leaseRepository;
@@ -56,6 +65,8 @@ public class LeaseServiceImpl implements LeaseService {
         this.mapper = mapper;
         this.pdfGenerator = pdfGenerator;
         this.complianceClient = complianceClient;
+        this.propertyClient = propertyClient;
+        this.userClient = userClient;
         this.events = events;
         this.props = props;
     }
@@ -236,7 +247,13 @@ public class LeaseServiceImpl implements LeaseService {
                 new ComplianceClient.GenerateReraLeaseDto(leaseId, lease.getFlatId(), state))
                 .get("reraMetadata");
         lease.setReraAgreementNumber(stamp);
-        String pdfPath = pdfGenerator.generate(lease, stamp);
+        FlatSummary flat = safeFetchFlat(lease.getFlatId());
+        BuildingSummary building = safeFetchBuilding(flat);
+        String pdfPath = pdfGenerator.generate(lease, stamp,
+                building,
+                flat,
+                safeFetchUser(lease.getOwnerId()),
+                safeFetchUser(lease.getTenantId()));
         lease.setDocumentUrl(pdfPath);
         Lease saved = leaseRepository.save(lease);
         recordHistory(saved.getId(), "AMENDED", saved.getRentAmount(), saved.getRentAmount(),
@@ -247,39 +264,38 @@ public class LeaseServiceImpl implements LeaseService {
     /**
      * Stream the rendered deed PDF.
      *
-     * <p><b>Self-heal:</b> if the lease has no {@code documentUrl} yet (RERA
-     * stamp never invoked, signing happened before the generator was wired
-     * up, …) <em>or</em> the file on disk is missing, we render the PDF
-     * on-the-fly here using whatever stamp is on the row (or "" when none),
-     * persist the path, and return the bytes. Means the owner / tenant can
-     * always grab the deed even mid-lifecycle, and a stamp can be applied
-     * later without breaking the link.
+     * <p>We <b>always render fresh</b> here rather than serving a cached
+     * file from a previous request — the deed template + party-detail
+     * enrichment can change between deploys, RERA stamps can be applied
+     * later, and owner/tenant KYC details can move around in
+     * user-service. Render cost is ~50-100 ms; well under any reasonable
+     * download latency budget. The persisted {@code documentUrl} is still
+     * updated so the row reflects the latest path.
      */
     @Override
     @Transactional
     public byte[] downloadDeed(String leaseId) throws IOException {
         Lease lease = mustFind(leaseId);
-        String path = lease.getDocumentUrl();
-
-        boolean needsRender = path == null
-                || path.isBlank()
-                || !Files.exists(Paths.get(path));
-        if (needsRender) {
-            try {
-                String stamp = lease.getReraAgreementNumber() == null
-                        ? ""
-                        : lease.getReraAgreementNumber();
-                String fresh = pdfGenerator.generate(lease, stamp);
-                lease.setDocumentUrl(fresh);
-                leaseRepository.save(lease);
-                path = fresh;
-                log.info("Rendered lease deed on-demand for lease={} (path={})",
-                        leaseId, fresh);
-            } catch (Exception ex) {
-                log.error("On-demand lease deed render failed for {}", leaseId, ex);
-                throw new LeaseNotFoundException(
-                        "Lease " + leaseId + " deed is unavailable: " + ex.getMessage());
-            }
+        String path;
+        try {
+            String stamp = lease.getReraAgreementNumber() == null
+                    ? ""
+                    : lease.getReraAgreementNumber();
+            FlatSummary flat = safeFetchFlat(lease.getFlatId());
+            BuildingSummary building = safeFetchBuilding(flat);
+            path = pdfGenerator.generate(lease, stamp,
+                    building,
+                    flat,
+                    safeFetchUser(lease.getOwnerId()),
+                    safeFetchUser(lease.getTenantId()));
+            lease.setDocumentUrl(path);
+            leaseRepository.save(lease);
+            log.info("Rendered lease deed on-demand for lease={} (path={})",
+                    leaseId, path);
+        } catch (Exception ex) {
+            log.error("On-demand lease deed render failed for {}", leaseId, ex);
+            throw new LeaseNotFoundException(
+                    "Lease " + leaseId + " deed is unavailable: " + ex.getMessage());
         }
         return Files.readAllBytes(Paths.get(path));
     }
@@ -301,6 +317,57 @@ public class LeaseServiceImpl implements LeaseService {
     }
 
     // ---------- Helpers ----------
+
+    /**
+     * Best-effort lookup helpers — never propagate. Feign already has
+     * fallback beans, but we still wrap defensively so deed generation
+     * never fails because of an enrichment hiccup. A null return is
+     * treated by {@link LeaseDeedPdfGenerator} as "render this section
+     * as a handwritten blank".
+     */
+    private UserSummary safeFetchUser(String userId) {
+        if (userId == null || userId.isBlank()) return null;
+        try {
+            UserSummary u = userClient.getUserById(userId);
+            return u == null ? UserSummary.empty() : u;
+        } catch (Exception ex) {
+            log.warn("user-service lookup failed for userId={} — falling back to blanks: {}",
+                    userId, ex.getMessage());
+            return UserSummary.empty();
+        }
+    }
+
+    private FlatSummary safeFetchFlat(String flatId) {
+        if (flatId == null || flatId.isBlank()) return null;
+        try {
+            FlatSummary f = propertyClient.getFlatById(flatId);
+            return f == null ? FlatSummary.empty() : f;
+        } catch (Exception ex) {
+            log.warn("property-service flat lookup failed for flatId={} — blanks: {}",
+                    flatId, ex.getMessage());
+            return FlatSummary.empty();
+        }
+    }
+
+    /**
+     * The Lease entity carries flatId, not buildingId, so we resolve the
+     * building via the flat we've already fetched. If the flat lookup
+     * failed or the flat has no parent buildingId we just return null and
+     * the deed renders building fields as blanks.
+     */
+    private BuildingSummary safeFetchBuilding(FlatSummary flat) {
+        if (flat == null || flat.buildingId() == null || flat.buildingId().isBlank()) {
+            return null;
+        }
+        try {
+            BuildingSummary b = propertyClient.getBuildingById(flat.buildingId());
+            return b == null ? BuildingSummary.empty() : b;
+        } catch (Exception ex) {
+            log.warn("property-service building lookup failed for buildingId={} — blanks: {}",
+                    flat.buildingId(), ex.getMessage());
+            return BuildingSummary.empty();
+        }
+    }
 
     private Lease mustFind(String leaseId) {
         return leaseRepository.findById(leaseId)

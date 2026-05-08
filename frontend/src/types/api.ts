@@ -203,6 +203,13 @@ export interface AgreementResponseDTO {
   rejectionReason?: string;
   /** True once the lease deed PDF has been rendered and is downloadable. */
   hasDocument?: boolean;
+  /**
+   * True once the wet-signed, notary-stamped PDF has been uploaded back
+   * to the platform. Surfaces the "Download notarized copy" affordance.
+   */
+  hasSignedDeed?: boolean;
+  /** ISO timestamp when the notarized PDF was uploaded; null until then. */
+  notarizedAt?: string;
   createdAt?: string;
   updatedAt?: string;
 }

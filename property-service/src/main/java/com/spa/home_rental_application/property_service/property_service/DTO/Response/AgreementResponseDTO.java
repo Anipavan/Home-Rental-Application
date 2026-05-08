@@ -26,6 +26,15 @@ public record AgreementResponseDTO(
          * this to enable the "Download deed (PDF)" button.
          */
         Boolean hasDocument,
+        /**
+         * Truthy when the wet-signed, notary-stamped PDF has been uploaded
+         * by the parties and can be downloaded from
+         * {@code /properties/agreements/{id}/signed-deed}. Surfaces the
+         * "Download notarized copy" button.
+         */
+        Boolean hasSignedDeed,
+        /** When the notarized PDF was uploaded. Null until uploaded. */
+        LocalDateTime notarizedAt,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {}

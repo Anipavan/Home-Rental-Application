@@ -14,6 +14,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.List;
@@ -84,6 +85,33 @@ public class AgreementController {
         headers.setContentType(MediaType.APPLICATION_PDF);
         headers.setContentDispositionFormData("attachment",
                 "lease-agreement-" + id + ".pdf");
+        headers.setContentLength(pdf.length);
+        return new ResponseEntity<>(pdf, headers, HttpStatus.OK);
+    }
+
+    @Operation(summary = "Upload the wet-signed, notary-stamped lease deed PDF",
+            description = "Accepts the offline-signed + notarized copy of the lease " +
+                    "agreement. The agreement must already be SIGNED. The uploaded file " +
+                    "replaces any prior notarized upload on the same agreement.")
+    @PostMapping(value = "/{id}/signed-deed",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<AgreementResponseDTO> uploadSignedDeed(
+            @PathVariable String id,
+            @RequestParam("file") MultipartFile file) throws IOException {
+        log.info("POST /agreements/{}/signed-deed bytes={} name={}",
+                id, file == null ? 0 : file.getSize(),
+                file == null ? null : file.getOriginalFilename());
+        return ResponseEntity.ok(agreementService.uploadSignedDeed(id, file));
+    }
+
+    @Operation(summary = "Download the wet-signed, notary-stamped lease deed PDF")
+    @GetMapping("/{id}/signed-deed")
+    public ResponseEntity<byte[]> downloadSignedDeed(@PathVariable String id) throws IOException {
+        byte[] pdf = agreementService.loadSignedDeed(id);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_PDF);
+        headers.setContentDispositionFormData("attachment",
+                "lease-agreement-" + id + "-notarized.pdf");
         headers.setContentLength(pdf.length);
         return new ResponseEntity<>(pdf, headers, HttpStatus.OK);
     }

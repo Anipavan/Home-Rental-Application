@@ -64,6 +64,19 @@ public class Agreement {
     @Column(name = "document_path", length = 1000)
     private String documentPath;
 
+    /**
+     * Path on disk of the wet-signed, notary-stamped PDF that the parties
+     * uploaded back to the platform after offline signing. Null until the
+     * upload arrives. The original auto-generated deed at
+     * {@link #documentPath} is preserved so reviewers can compare.
+     */
+    @Column(name = "signed_deed_path", length = 1000)
+    private String signedDeedPath;
+
+    /** When the notarized PDF arrived. Null until {@link #signedDeedPath} is set. */
+    @Column(name = "notarized_at")
+    private LocalDateTime notarizedAt;
+
     @Column(name = "created_at", nullable = false) private LocalDateTime createdAt;
     @Column(name = "updated_at", nullable = false) private LocalDateTime updatedAt;
 

@@ -5,17 +5,24 @@ import com.spa.home_rental_application.property_service.property_service.Entitie
 import com.spa.home_rental_application.property_service.property_service.Entities.Building;
 import com.spa.home_rental_application.property_service.property_service.Entities.Flat;
 import com.spa.home_rental_application.property_service.property_service.ExceptionClass.RecordNotFoundException;
+import com.spa.home_rental_application.property_service.property_service.client.UserClient;
+import com.spa.home_rental_application.property_service.property_service.client.UserClient.UserSummary;
 import com.spa.home_rental_application.property_service.property_service.repository.AgreementRepo;
 import com.spa.home_rental_application.property_service.property_service.repository.BuildingRepo;
+import com.spa.home_rental_application.property_service.property_service.repository.FlatRepo;
 import com.spa.home_rental_application.property_service.property_service.service.AgreementService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -29,13 +36,30 @@ public class AgreementServiceImpl implements AgreementService {
 
     private final AgreementRepo agreementRepo;
     private final BuildingRepo buildingRepo;
+    private final FlatRepo flatRepo;
+    private final UserClient userClient;
     private final AgreementPdfGenerator pdfGenerator;
+
+    /**
+     * Where notarized PDFs uploaded by tenants/owners land. Separate dir
+     * from the auto-generated deeds so the original is preserved and
+     * reviewers can compare.
+     */
+    @Value("${app.agreements.signed-deed-storage-dir:uploads/lease-deeds-property-signed}")
+    private String signedDeedStorageDir;
+
+    /** Hard cap on uploaded notarized PDFs — same shape as KYC/profile uploads. */
+    private static final long MAX_SIGNED_DEED_BYTES = 10L * 1024L * 1024L;
 
     public AgreementServiceImpl(AgreementRepo agreementRepo,
                                 BuildingRepo buildingRepo,
+                                FlatRepo flatRepo,
+                                UserClient userClient,
                                 AgreementPdfGenerator pdfGenerator) {
         this.agreementRepo = agreementRepo;
         this.buildingRepo = buildingRepo;
+        this.flatRepo = flatRepo;
+        this.userClient = userClient;
         this.pdfGenerator = pdfGenerator;
     }
 
@@ -101,7 +125,11 @@ public class AgreementServiceImpl implements AgreementService {
         // bytes, disk full, …) we still mark the lease SIGNED — the PDF can
         // be regenerated later via re-sign or a backfill job.
         try {
-            String path = pdfGenerator.render(a);
+            Flat flat = flatRepo.findById(a.getFlatId()).orElse(null);
+            Building building = buildingRepo.findById(a.getBuildingId()).orElse(null);
+            UserSummary owner = safeFetchUser(a.getOwnerId());
+            UserSummary tenant = safeFetchUser(a.getTenantId());
+            String path = pdfGenerator.render(a, building, flat, owner, tenant);
             a.setDocumentPath(path);
         } catch (Exception ex) {
             log.warn("Deed PDF render failed for agreement={} — proceeding without doc",
@@ -113,39 +141,42 @@ public class AgreementServiceImpl implements AgreementService {
     /**
      * Read the rendered PDF bytes off disk.
      *
-     * <p><b>Self-heal:</b> if {@code documentPath} is null (sign happened
-     * before the PDF generator was wired in, or render failed at sign
-     * time) <em>or</em> the file on disk is missing (manual cleanup,
-     * container restart with ephemeral storage), we render the PDF
-     * on-the-fly here. The new path is persisted so subsequent calls hit
-     * the cache. Tenants and owners can therefore download the deed at
-     * any point in the lifecycle — including draft / pending-signature.
+     * <p>We <b>always render fresh</b> here rather than serving a cached
+     * file from a previous request. Reasons:
+     * <ul>
+     *   <li>The deed template + party-detail enrichment can change between
+     *       deploys; a cached PDF would silently serve the old layout.</li>
+     *   <li>Owner / tenant KYC details (name, address) can be updated in
+     *       user-service after signing; the deed should reflect the
+     *       current state.</li>
+     *   <li>Render cost is ~50-100 ms for a single-page A4 PDF — well
+     *       under any reasonable download latency budget.</li>
+     * </ul>
+     * The persisted {@code documentPath} is still updated so other code
+     * paths (e.g. the {@code hasDocument} DTO flag) stay accurate.
      */
     @Override
     @Transactional
     public byte[] loadDocument(String agreementId) throws IOException {
         Agreement a = load(agreementId);
-        String path = a.getDocumentPath();
-
-        boolean needsRender = path == null
-                || path.isBlank()
-                || !Files.exists(Paths.get(path));
-        if (needsRender) {
-            try {
-                String fresh = pdfGenerator.render(a);
-                a.setDocumentPath(fresh);
-                a.setUpdatedAt(LocalDateTime.now());
-                agreementRepo.save(a);
-                path = fresh;
-                log.info("Rendered deed PDF on-demand for agreement={} (path={})",
-                        agreementId, fresh);
-            } catch (Exception ex) {
-                log.error("On-demand deed render failed for agreement={}",
-                        agreementId, ex);
-                throw new ResponseStatusException(NOT_FOUND,
-                        "Agreement " + agreementId + " deed is unavailable: "
-                                + ex.getMessage());
-            }
+        String path;
+        try {
+            Flat flat = flatRepo.findById(a.getFlatId()).orElse(null);
+            Building building = buildingRepo.findById(a.getBuildingId()).orElse(null);
+            UserSummary owner = safeFetchUser(a.getOwnerId());
+            UserSummary tenant = safeFetchUser(a.getTenantId());
+            path = pdfGenerator.render(a, building, flat, owner, tenant);
+            a.setDocumentPath(path);
+            a.setUpdatedAt(LocalDateTime.now());
+            agreementRepo.save(a);
+            log.info("Rendered deed PDF on-demand for agreement={} (path={})",
+                    agreementId, path);
+        } catch (Exception ex) {
+            log.error("On-demand deed render failed for agreement={}",
+                    agreementId, ex);
+            throw new ResponseStatusException(NOT_FOUND,
+                    "Agreement " + agreementId + " deed is unavailable: "
+                            + ex.getMessage());
         }
         return Files.readAllBytes(Paths.get(path));
     }
@@ -165,7 +196,85 @@ public class AgreementServiceImpl implements AgreementService {
         return toDto(agreementRepo.save(a));
     }
 
+    /**
+     * Receive the wet-signed, notary-stamped PDF that the parties uploaded
+     * back to the platform after the offline notarization flow. The
+     * agreement must already be SIGNED — uploading on a PENDING_SIGNATURE
+     * or REJECTED row is rejected as 400.
+     *
+     * <p>The original auto-generated deed at {@code documentPath} is kept
+     * so reviewers (and disputes later) can compare against the wet-signed
+     * copy.
+     */
+    @Override
+    @Transactional
+    public AgreementResponseDTO uploadSignedDeed(String agreementId, MultipartFile file)
+            throws IOException {
+        Agreement a = load(agreementId);
+        if (a.getStatus() != Agreement.Status.SIGNED) {
+            throw new ResponseStatusException(BAD_REQUEST,
+                    "Agreement " + agreementId + " is " + a.getStatus()
+                            + " — only SIGNED agreements accept a notarized upload.");
+        }
+        if (file == null || file.isEmpty()) {
+            throw new ResponseStatusException(BAD_REQUEST, "Uploaded file is empty.");
+        }
+        if (file.getSize() > MAX_SIGNED_DEED_BYTES) {
+            throw new ResponseStatusException(BAD_REQUEST,
+                    "Uploaded file exceeds 10 MB limit (" + file.getSize() + " bytes).");
+        }
+        String contentType = file.getContentType();
+        if (contentType != null && !contentType.equalsIgnoreCase("application/pdf")
+                && !contentType.equalsIgnoreCase("application/octet-stream")) {
+            throw new ResponseStatusException(BAD_REQUEST,
+                    "Uploaded file must be a PDF (got " + contentType + ").");
+        }
+
+        Path dir = Paths.get(signedDeedStorageDir);
+        Files.createDirectories(dir);
+        Path dest = dir.resolve(a.getId() + ".pdf");
+        try (var in = file.getInputStream()) {
+            Files.copy(in, dest, StandardCopyOption.REPLACE_EXISTING);
+        }
+        a.setSignedDeedPath(dest.toAbsolutePath().toString());
+        a.setNotarizedAt(LocalDateTime.now());
+        a.setUpdatedAt(LocalDateTime.now());
+        Agreement saved = agreementRepo.save(a);
+        log.info("Stored signed deed for agreement={} at {}", agreementId, dest);
+        return toDto(saved);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] loadSignedDeed(String agreementId) throws IOException {
+        Agreement a = load(agreementId);
+        String path = a.getSignedDeedPath();
+        if (path == null || path.isBlank() || !Files.exists(Paths.get(path))) {
+            throw new ResponseStatusException(NOT_FOUND,
+                    "No notarized deed has been uploaded for agreement " + agreementId);
+        }
+        return Files.readAllBytes(Paths.get(path));
+    }
+
     /* -------------------------- helpers -------------------------- */
+
+    /**
+     * Best-effort KYC fetch — never propagates an exception. Feign already
+     * has a fallback bean wired in, but we still wrap defensively so a
+     * {@code null} userId or DTO-level failure doesn't take down the
+     * deed-rendering path.
+     */
+    private UserSummary safeFetchUser(String userId) {
+        if (userId == null || userId.isBlank()) return null;
+        try {
+            UserSummary u = userClient.getUserById(userId);
+            return u == null ? UserSummary.empty() : u;
+        } catch (Exception ex) {
+            log.warn("user-service lookup failed for userId={} — falling back to blanks: {}",
+                    userId, ex.getMessage());
+            return UserSummary.empty();
+        }
+    }
 
     private Agreement load(String id) {
         return agreementRepo.findById(id).orElseThrow(
@@ -206,6 +315,8 @@ public class AgreementServiceImpl implements AgreementService {
                 a.getTerms(), a.getStatus().name(), a.getSignatureData(),
                 a.getSignedAt(), a.getRejectedAt(), a.getRejectionReason(),
                 a.getDocumentPath() != null,
+                a.getSignedDeedPath() != null,
+                a.getNotarizedAt(),
                 a.getCreatedAt(), a.getUpdatedAt()
         );
     }

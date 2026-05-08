@@ -41,4 +41,28 @@ export const agreementsApi = {
     api
       .get<Blob>(`/properties/agreements/${id}/document`, { responseType: "blob" })
       .then((r) => r.data),
+
+  /**
+   * Upload the wet-signed, notary-stamped PDF back to the platform.
+   * The agreement must already be SIGNED. Replaces any prior upload.
+   */
+  uploadSignedDeed: (id: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api
+      .post<AgreementResponseDTO>(
+        `/properties/agreements/${id}/signed-deed`,
+        form,
+        { headers: { "Content-Type": "multipart/form-data" } },
+      )
+      .then((r) => r.data);
+  },
+
+  /** Returns the previously uploaded notarized lease deed as a PDF Blob. */
+  downloadSignedDeed: (id: string) =>
+    api
+      .get<Blob>(`/properties/agreements/${id}/signed-deed`, {
+        responseType: "blob",
+      })
+      .then((r) => r.data),
 };
