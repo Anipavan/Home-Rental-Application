@@ -170,6 +170,39 @@ public class BuildingImpul implements BuildingService {
     }
 
     /**
+     * Case-insensitive client-side search on the active buildings list.
+     * Owner-scoped if {@code ownerId} is non-null. Truncated to {@code limit}.
+     *
+     * <p>For our current scale (≤ a few hundred buildings per owner) the
+     * naive in-memory filter is fine; if the catalog grows we'd swap this
+     * for a JPA {@code @Query} or full-text index.
+     */
+    @Override
+    public List<BuildingResponseDTO> searchBuildings(String q, String ownerId, int limit) {
+        if (q == null || q.isBlank()) return List.of();
+        String needle = q.toLowerCase().trim();
+        int cap = Math.min(Math.max(limit, 1), 50);
+
+        List<Building> source = (ownerId != null && !ownerId.isBlank())
+                ? building_repo.findByOwnerId(ownerId)
+                : building_repo.findAll();
+
+        return source.stream()
+                .filter(b -> !Boolean.TRUE.equals(b.getIsDeleted()))
+                .filter(b -> matches(b.getBuildingName(), needle)
+                        || matches(b.getBuildingAddress(), needle)
+                        || matches(b.getBuildingCity(), needle)
+                        || matches(b.getBuildingState(), needle))
+                .limit(cap)
+                .map(b -> BuildingMapper.toDTO(b, flat_repo))
+                .collect(Collectors.toList());
+    }
+
+    private static boolean matches(String haystack, String needle) {
+        return haystack != null && haystack.toLowerCase().contains(needle);
+    }
+
+    /**
      * Returns the tenantIds of every currently-occupied flat across every
      * building owned by the given owner. Returns an empty list (not 404)
      * when the owner has no occupied flats -- callers expect a list.

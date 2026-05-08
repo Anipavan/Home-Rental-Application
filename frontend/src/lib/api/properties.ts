@@ -25,6 +25,17 @@ export const propertiesApi = {
       api
         .get<BuildingResponseDTO[]>(`/properties/buildings/owner/${ownerId}`)
         .then((r) => r.data),
+    /**
+     * Case-insensitive search on buildingName / buildingAddress / city /
+     * state. Optionally scoped to a single owner. Used by the global
+     * search bar in the app shell.
+     */
+    search: (q: string, ownerId?: string, limit = 8) =>
+      api
+        .get<BuildingResponseDTO[]>("/properties/buildings/search", {
+          params: { q, ownerId, limit },
+        })
+        .then((r) => r.data),
     create: (body: BuildingRequestDTO) =>
       api
         .post<BuildingResponseDTO>(

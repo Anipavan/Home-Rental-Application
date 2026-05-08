@@ -8,7 +8,6 @@ import {
   BarChart3,
   Settings,
   LogOut,
-  Search,
   CreditCard,
   ShieldCheck,
   LayoutGrid,
@@ -21,7 +20,6 @@ import {
 import { Logo } from "./logo";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,6 +31,7 @@ import {
 import { IdleTimer } from "@/components/auth/idle-timer";
 import { NotificationBell } from "./notification-bell";
 import { ContactSupport } from "./contact-support";
+import { GlobalSearch } from "./global-search";
 import { useAuthStore } from "@/stores/auth-store";
 import { authApi } from "@/lib/api/auth";
 import { cn, initials } from "@/lib/utils";
@@ -148,12 +147,8 @@ export function AppShell() {
         <header className="sticky top-0 z-30 h-16 border-b border-border/60 bg-background/85 backdrop-blur-xl">
           <div className="h-full px-4 sm:px-6 flex items-center justify-between gap-4">
             <div className="flex items-center gap-3 flex-1 max-w-md">
-              <div className="relative w-full hidden sm:block">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search homes, tenants, invoices…"
-                  className="pl-10 bg-secondary/60 border-transparent"
-                />
+              <div className="w-full hidden sm:block">
+                <GlobalSearch />
               </div>
             </div>
             <div className="flex items-center gap-2">

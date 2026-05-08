@@ -18,4 +18,11 @@ public interface BuildingService {
       List<BuildingResponseDTO> getBuildingsByOwnerId(String ownerId);
       List<String> getTenantIdsByOwner(String ownerId);
 
+      /**
+       * Case-insensitive search on buildingName / buildingAddress /
+       * buildingCity. Returns at most {@code limit} hits, scoped to the
+       * given owner if {@code ownerId} is non-null.
+       */
+      List<BuildingResponseDTO> searchBuildings(String q, String ownerId, int limit);
+
 }
