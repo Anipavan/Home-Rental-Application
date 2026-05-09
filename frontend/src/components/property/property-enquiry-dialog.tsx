@@ -9,10 +9,14 @@ import {
   UserCircle,
   Calendar,
   Send,
+  MessageCircle,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { usersApi } from "@/lib/api/users";
-import { supportTicketsApi } from "@/lib/api/notifications";
+import {
+  supportTicketsApi,
+  visitRequestsApi,
+} from "@/lib/api/notifications";
 import {
   Dialog,
   DialogContent,
@@ -58,9 +62,13 @@ interface Props {
   mode: "contact" | "visit";
   /** Building owner id from the building DTO. May be null if not loaded. */
   ownerId?: string | null;
+  /** The flat being enquired about — passed straight through on visit requests. */
+  flatId: string;
+  /** Building the flat belongs to — same. */
+  buildingId?: string;
   /** Human-readable property label, e.g. "Sunrise Residency · B-202". */
   propertyLabel: string;
-  /** URL of the property detail page — recorded with the ticket. */
+  /** URL of the property detail page — recorded with the request. */
   contextUrl: string;
 }
 
@@ -69,6 +77,8 @@ export function PropertyEnquiryDialog({
   onOpenChange,
   mode,
   ownerId,
+  flatId,
+  buildingId,
   propertyLabel,
   contextUrl,
 }: Props) {
@@ -96,12 +106,23 @@ export function PropertyEnquiryDialog({
     retry: false,
   });
 
-  const submitM = useMutation({
+  /**
+   * Two distinct backends behind one dialog:
+   *
+   *   - mode="contact" → supportTicketsApi.create (notification-service
+   *     /support-tickets) — surfaced in the admin /support inbox.
+   *   - mode="visit"   → visitRequestsApi.create  (notification-service
+   *     /visit-requests) — surfaced in the admin /visit-requests queue
+   *     with first-class flatId / preferredAt fields the admin can
+   *     filter on. The same backend service triggers an autoresponder
+   *     email back to the visitor for both flavours.
+   */
+  const submitContactM = useMutation({
     mutationFn: supportTicketsApi.create,
     onSuccess: () => {
       onOpenChange(false);
       toast({
-        title: mode === "contact" ? "Enquiry sent" : "Visit request sent",
+        title: "Enquiry sent",
         description:
           "We've notified the owner. You'll hear back within 24 hours.",
       });
@@ -114,6 +135,26 @@ export function PropertyEnquiryDialog({
       }),
   });
 
+  const submitVisitM = useMutation({
+    mutationFn: visitRequestsApi.create,
+    onSuccess: () => {
+      onOpenChange(false);
+      toast({
+        title: "Visit request sent",
+        description:
+          "We've passed your slot to the owner. They'll confirm shortly.",
+      });
+    },
+    onError: (e) =>
+      toast({
+        variant: "destructive",
+        title: "Couldn't submit",
+        description: extractErrorMessage(e),
+      }),
+  });
+
+  const submitting = submitContactM.isPending || submitVisitM.isPending;
+
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
@@ -123,37 +164,48 @@ export function PropertyEnquiryDialog({
     const preferredDate = String(fd.get("preferredDate") ?? "").trim();
     const userMessage = String(fd.get("message") ?? "").trim();
 
-    const subject =
-      mode === "contact"
-        ? `Enquiry: ${propertyLabel}`
-        : `Visit request: ${propertyLabel}`;
+    // Backend requires a non-blank userId on both flows. Public visitors
+    // get a synthetic id; admins can spot these as anonymous-source leads.
+    const userId = authUserId ?? "PUBLIC_VISITOR";
 
-    // Roll the contact + preferred-date fields into the message body so
-    // an admin reviewing the ticket has everything in one place. The
-    // dedicated support-ticket DTO doesn't have first-class fields for
-    // these.
+    if (mode === "visit") {
+      submitVisitM.mutate({
+        userId,
+        visitorName,
+        visitorEmail: visitorEmail || meQ.data?.email || undefined,
+        visitorPhone: visitorPhone || undefined,
+        flatId,
+        buildingId: buildingId ?? undefined,
+        propertyLabel,
+        // datetime-local gives "YYYY-MM-DDTHH:mm" in local TZ; we let the
+        // browser/JSON layer turn it into a real ISO instant.
+        preferredAt: preferredDate
+          ? new Date(preferredDate).toISOString()
+          : undefined,
+        message:
+          userMessage ||
+          `Looking forward to seeing ${propertyLabel}.`,
+        contextUrl,
+      });
+      return;
+    }
+
+    // Contact flow — folds contact details into the message body
+    // because the support-ticket DTO has no first-class slots for them.
     const messageLines = [
-      mode === "visit" && preferredDate
-        ? `Preferred date: ${preferredDate}`
-        : null,
       `Name: ${visitorName || "—"}`,
       `Phone: ${visitorPhone || "—"}`,
       `Email: ${visitorEmail || "—"}`,
       "",
       userMessage ||
-        (mode === "contact"
-          ? `I'm interested in ${propertyLabel}. Please reach out.`
-          : `I'd like to schedule a visit to ${propertyLabel}.`),
-    ].filter(Boolean) as string[];
-
-    submitM.mutate({
-      // Backend requires a non-blank userId. Public visitors get a
-      // synthetic id; admins can spot these as anonymous-source leads.
-      userId: authUserId ?? "PUBLIC_VISITOR",
+        `I'm interested in ${propertyLabel}. Please reach out.`,
+    ];
+    submitContactM.mutate({
+      userId,
       userName: visitorName || userName || undefined,
       userEmail: visitorEmail || meQ.data?.email || undefined,
       userRole: role ?? "PUBLIC",
-      subject,
+      subject: `Enquiry: ${propertyLabel}`,
       message: messageLines.join("\n"),
       contextUrl,
     });
@@ -198,14 +250,34 @@ export function PropertyEnquiryDialog({
             </div>
 
             {owner!.phone ? (
-              <a
-                href={`tel:${owner!.phone}`}
-                className="flex items-center gap-2 text-sm hover:bg-secondary rounded-md px-2 py-1.5 transition"
-              >
-                <Phone className="size-4" />
-                <span className="flex-1">{owner!.phone}</span>
-                <CopyChip value={owner!.phone} />
-              </a>
+              <>
+                <a
+                  href={`tel:${owner!.phone}`}
+                  className="flex items-center gap-2 text-sm hover:bg-secondary rounded-md px-2 py-1.5 transition"
+                >
+                  <Phone className="size-4" />
+                  <span className="flex-1">{owner!.phone}</span>
+                  <CopyChip value={owner!.phone} />
+                </a>
+                {/*
+                  WhatsApp deep-link. Most renters in India live in WhatsApp,
+                  so a tap-to-chat is generally faster than tel:. wa.me wants
+                  digits-only with no leading "+", so we strip non-digits.
+                  Pre-filled text gives the owner enough context that they
+                  don't have to ask "which property?".
+                */}
+                <a
+                  href={`https://wa.me/${(owner!.phone ?? "").replace(/\D/g, "")}?text=${encodeURIComponent(
+                    `Hi, I'm interested in ${propertyLabel} on Hearth.`,
+                  )}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-2 text-sm hover:bg-secondary rounded-md px-2 py-1.5 transition"
+                >
+                  <MessageCircle className="size-4 text-emerald-600" />
+                  <span className="flex-1">WhatsApp the owner</span>
+                </a>
+              </>
             ) : (
               <p className="text-sm text-muted-foreground flex items-center gap-2 px-2">
                 <Phone className="size-4" /> No phone on file
@@ -338,7 +410,7 @@ export function PropertyEnquiryDialog({
             type="button"
             variant="ghost"
             onClick={() => onOpenChange(false)}
-            disabled={submitM.isPending}
+            disabled={submitting}
           >
             {showOwnerCard ? "Close" : "Cancel"}
           </Button>
@@ -347,9 +419,9 @@ export function PropertyEnquiryDialog({
               form="enquiry-form"
               type="submit"
               variant="gradient"
-              disabled={submitM.isPending}
+              disabled={submitting}
             >
-              {submitM.isPending ? (
+              {submitting ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : (
                 <Send className="size-4" />

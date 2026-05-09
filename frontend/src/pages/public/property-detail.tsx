@@ -236,6 +236,8 @@ export function PropertyDetailPage() {
             }}
             mode={enquiryMode ?? "contact"}
             ownerId={b?.ownerId}
+            flatId={flat.id}
+            buildingId={flat.buildingId}
             propertyLabel={
               b?.buildingName
                 ? `${b.buildingName} · ${flat.flatNumber}`

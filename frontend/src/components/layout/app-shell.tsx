@@ -16,6 +16,7 @@ import {
   Star,
   BadgeCheck,
   Stamp,
+  Calendar,
 } from "lucide-react";
 import { Logo } from "./logo";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -76,6 +77,7 @@ const adminNav: NavItem[] = [
   { to: "/admin/maintenance", label: "Maintenance", icon: Wrench },
   { to: "/admin/reviews", label: "Reviews", icon: Star },
   { to: "/admin/support", label: "Support", icon: FileText },
+  { to: "/admin/visit-requests", label: "Visit requests", icon: Calendar },
 ];
 
 function navFor(role: Role | null): NavItem[] {

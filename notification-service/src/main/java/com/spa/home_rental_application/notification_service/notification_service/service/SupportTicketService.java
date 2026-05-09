@@ -18,9 +18,12 @@ import java.time.Instant;
 public class SupportTicketService {
 
     private final SupportTicketRepository repository;
+    private final EnquiryAutoResponder autoResponder;
 
-    public SupportTicketService(SupportTicketRepository repository) {
+    public SupportTicketService(SupportTicketRepository repository,
+                                EnquiryAutoResponder autoResponder) {
         this.repository = repository;
+        this.autoResponder = autoResponder;
     }
 
     public SupportTicketResponse create(CreateSupportTicketRequest req) {
@@ -36,7 +39,9 @@ public class SupportTicketService {
                 .contextUrl(req.contextUrl())
                 .status("OPEN")
                 .build();
-        return toResponse(repository.save(t));
+        SupportTicket saved = repository.save(t);
+        autoResponder.onSupportTicketCreated(saved);
+        return toResponse(saved);
     }
 
     public Page<SupportTicketResponse> listByStatus(String status, Pageable pageable) {

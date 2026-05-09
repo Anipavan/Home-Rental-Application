@@ -43,6 +43,7 @@ import { AdminPaymentsPage } from "@/pages/admin/payments";
 import { AdminMaintenancePage } from "@/pages/admin/maintenance";
 import { AdminReviewsPage } from "@/pages/admin/reviews";
 import { AdminSupportPage } from "@/pages/admin/support";
+import { AdminVisitRequestsPage } from "@/pages/admin/visit-requests";
 
 export const router = createBrowserRouter([
   {
@@ -120,6 +121,7 @@ export const router = createBrowserRouter([
       { path: "maintenance", element: <AdminMaintenancePage /> },
       { path: "reviews", element: <AdminReviewsPage /> },
       { path: "support", element: <AdminSupportPage /> },
+      { path: "visit-requests", element: <AdminVisitRequestsPage /> },
     ],
   },
   { path: "*", element: <NotFoundPage /> },
