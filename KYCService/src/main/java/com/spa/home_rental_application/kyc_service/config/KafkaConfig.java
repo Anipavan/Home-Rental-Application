@@ -7,7 +7,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.errors.SerializationException;
 import org.apache.kafka.common.serialization.StringDeserializer;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -66,13 +65,27 @@ import java.util.Map;
 @Slf4j
 public class KafkaConfig {
 
-    @Value("${spring.json.trusted.packages:com.spa.home_rental_application.KafkaEvents.*}")
-    private String trustedPackages;
-
     /**
-     * The {@link JsonDeserializer} we hand to Kafka. We construct it with
-     * the target type fixed at compile time and {@code useTypeHeaders=false}
-     * because the producer publishes without {@code __TypeId__} headers.
+     * The {@link JsonDeserializer} we hand to Kafka.
+     *
+     * <p><b>Important — do not call any setters on this instance.</b>
+     * Spring Kafka's {@code JsonDeserializer} guards against mixing
+     * setter-based and property-based config (it tracks a
+     * {@code setterCalled} flag and the {@code configure()} method
+     * throws {@code "JsonDeserializer must be configured with property
+     * setters, or via configuration properties; not both"} otherwise).
+     * Since {@link DefaultKafkaConsumerFactory} always calls
+     * {@code configure()} with the consumer-properties map at consumer
+     * creation time — including any {@code spring.json.*} entries from
+     * yaml — calling a setter here would crash the listener container
+     * on first start.
+     *
+     * <p>The constructor argument {@code UserProfileCreatedEvent.class}
+     * pins the target type. The producer publishes without
+     * {@code __TypeId__} headers, so {@code typeMapper.toJavaType(headers)}
+     * returns null at deserialise time and the deserializer falls back
+     * to the constructor-supplied target type — exactly the behaviour
+     * we'd otherwise get from {@code setUseTypeHeaders(false)}.
      *
      * <p>The {@code user-events} topic carries three event shapes
      * ({@code UserProfileCreatedEvent}, {@code UserProfileUpdatedEvent},
@@ -90,11 +103,8 @@ public class KafkaConfig {
         // refuse to deserialise the timestamp field on UserProfileCreatedEvent.
         mapper.registerModule(new JavaTimeModule());
 
-        JsonDeserializer<UserProfileCreatedEvent> jd =
-                new JsonDeserializer<>(UserProfileCreatedEvent.class, mapper);
-        jd.setUseTypeHeaders(false);
-        jd.addTrustedPackages(trustedPackages.split(","));
-        return jd;
+        // No setters on the returned instance — see Javadoc above.
+        return new JsonDeserializer<>(UserProfileCreatedEvent.class, mapper);
     }
 
     /**
