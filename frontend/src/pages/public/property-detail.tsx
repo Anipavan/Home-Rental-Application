@@ -1,4 +1,5 @@
-import { Link, useParams } from "react-router-dom";
+import { useState } from "react";
+import { Link, useLocation, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   Bed,
@@ -24,6 +25,7 @@ import { Separator } from "@/components/ui/separator";
 import { ReviewList } from "@/components/reviews/review-list";
 import { formatINR, formatDate } from "@/lib/utils";
 import { getPlaceholderImage } from "@/components/property/property-card";
+import { PropertyEnquiryDialog } from "@/components/property/property-enquiry-dialog";
 
 const amenities = [
   { icon: Wifi, label: "High-speed Wi-Fi" },
@@ -34,9 +36,18 @@ const amenities = [
 
 export function PropertyDetailPage() {
   const { id } = useParams();
+  const location = useLocation();
   // Flat.id is a String UUID on the backend. Coercing to Number here was the
   // bug behind public property-detail "Not found" pages.
   const flatId = id ?? "";
+
+  // Enquiry-dialog state. Two modes share one dialog component — see
+  // PropertyEnquiryDialog. Buttons used to hard-link to /login, which
+  // broke the visitor flow entirely; now they open a contextual dialog
+  // that either surfaces the owner contact (auth + lookup OK) or
+  // captures a lead via support tickets.
+  const [enquiryMode, setEnquiryMode] =
+    useState<"contact" | "visit" | null>(null);
 
   const flatQ = useQuery({
     queryKey: ["flat", flatId],
@@ -197,18 +208,41 @@ export function PropertyDetailPage() {
               <Row label="Maintenance" value="₹2,000 / mo" />
               <Row label="Available from" value={formatDate(flat.leaseStartDate) ?? "Immediate"} />
             </div>
-            <Button asChild size="lg" variant="gradient" className="w-full mt-6">
-              <Link to="/login">
-                <Phone /> Contact owner
-              </Link>
+            <Button
+              size="lg"
+              variant="gradient"
+              className="w-full mt-6"
+              onClick={() => setEnquiryMode("contact")}
+            >
+              <Phone /> Contact owner
             </Button>
-            <Button asChild size="lg" variant="outline" className="w-full mt-2">
-              <Link to="/login">Schedule a visit</Link>
+            <Button
+              size="lg"
+              variant="outline"
+              className="w-full mt-2"
+              onClick={() => setEnquiryMode("visit")}
+            >
+              Schedule a visit
             </Button>
             <p className="text-xs text-muted-foreground text-center mt-4">
               You won't be charged anything to enquire.
             </p>
           </Card>
+
+          <PropertyEnquiryDialog
+            open={enquiryMode !== null}
+            onOpenChange={(v) => {
+              if (!v) setEnquiryMode(null);
+            }}
+            mode={enquiryMode ?? "contact"}
+            ownerId={b?.ownerId}
+            propertyLabel={
+              b?.buildingName
+                ? `${b.buildingName} · ${flat.flatNumber}`
+                : `Flat ${flat.flatNumber}`
+            }
+            contextUrl={location.pathname}
+          />
 
           <Card className="p-6">
             <p className="font-display font-semibold">Why renters trust Hearth</p>
