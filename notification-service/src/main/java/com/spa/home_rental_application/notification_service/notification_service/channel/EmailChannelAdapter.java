@@ -4,6 +4,7 @@ import com.spa.home_rental_application.notification_service.notification_service
 import com.spa.home_rental_application.notification_service.notification_service.entities.NotificationLog;
 import com.spa.home_rental_application.notification_service.notification_service.enums.NotificationType;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -11,12 +12,27 @@ import org.springframework.stereotype.Component;
 
 /**
  * SMTP-backed email delivery via Spring's {@link JavaMailSender}.
- * Activated by default; flip {@code app.notification.delivery-enabled=false}
- * to swap for the {@link NoopChannelAdapter}.
+ *
+ * <p>Two conditions gate this bean's registration:
+ * <ul>
+ *   <li>{@code app.notification.delivery-enabled} (default {@code true}).
+ *       Flip to {@code false} to swap for the {@link NoopChannelAdapter}
+ *       deliberately.</li>
+ *   <li>A {@link JavaMailSender} bean must already be in the context.
+ *       Spring Boot's {@code MailSenderAutoConfiguration} only creates one
+ *       when {@code spring.mail.host} is set. Without that, this adapter
+ *       silently doesn't register — instead of bringing the whole service
+ *       down with "no bean of type JavaMailSender". Anything that calls
+ *       this adapter through {@code Optional<EmailChannelAdapter>} (the
+ *       autoresponder, etc.) becomes a no-op; the dispatcher, which
+ *       resolves channels by type, will route email-class notifications
+ *       to {@link NoopChannelAdapter} instead.</li>
+ * </ul>
  */
 @Component
 @Slf4j
 @ConditionalOnProperty(prefix = "app.notification", name = "delivery-enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnBean(JavaMailSender.class)
 public class EmailChannelAdapter implements NotificationChannelAdapter {
 
     private final JavaMailSender mailSender;
