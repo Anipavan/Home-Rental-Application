@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/layout/page-header";
 import { Separator } from "@/components/ui/separator";
 import { ContactPersonPopover } from "@/components/common/contact-person-popover";
+import { MyRequestsCard } from "@/components/tenant/my-requests-card";
 import { formatINR, formatDate } from "@/lib/utils";
 import { getPlaceholderImage } from "@/components/property/property-card";
 
@@ -45,7 +46,7 @@ export function MyFlatPage() {
 
   if (!flat) {
     return (
-      <div className="animate-fade-in">
+      <div className="animate-fade-in space-y-6">
         <PageHeader title="My home" />
         <Card className="p-12 text-center">
           <Building2 className="size-12 mx-auto text-muted-foreground" />
@@ -58,6 +59,12 @@ export function MyFlatPage() {
             <Link to="/browse">Browse homes</Link>
           </Button>
         </Card>
+        {/*
+          Even before a flat is assigned, the tenant can have outstanding
+          enquiries / visit requests sent from the public listing pages —
+          surface them here so they don't have to hunt for status updates.
+        */}
+        <MyRequestsCard />
       </div>
     );
   }
@@ -130,6 +137,14 @@ export function MyFlatPage() {
               </ul>
             </CardContent>
           </Card>
+
+          {/*
+            All requests this tenant has sent (contact-owner enquiries +
+            schedule-visit bookings) — with their current status. Sits
+            below the lease block so users land here naturally after
+            checking their home info.
+          */}
+          <MyRequestsCard />
         </div>
 
         <aside className="space-y-4">
