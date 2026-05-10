@@ -4,8 +4,8 @@ import { propertiesApi } from "@/lib/api/properties";
 
 /**
  * Returns whether the currently logged-in tenant has at least one flat
- * assigned. Powers the "no flat → restricted feature" gate that the
- * AppShell + FlatRequiredOutlet enforce.
+ * assigned. Powers the "no flat → restricted feature" gate enforced by
+ * {@code <FlatRequiredOutlet>} in the router.
  *
  * <p>Result shape:
  * <ul>
@@ -39,30 +39,4 @@ export function useTenantHasFlat() {
     hasFlat: q.data ? q.data.length > 0 : undefined,
     isLoading: q.isLoading,
   };
-}
-
-/**
- * Tenant nav paths that require a flat. The AppShell click-handler and
- * the FlatRequiredOutlet route wrapper both consult this set, so changing
- * the gate's coverage is a one-line edit here.
- *
- * <p>Allowed without a flat: Overview ({@code /app}), My Home
- * ({@code /app/my-flat}), Profile ({@code /app/profile}). Everything
- * else is gated.
- */
-export const TENANT_FLAT_REQUIRED_PATHS: ReadonlySet<string> = new Set([
-  "/app/lease",
-  "/app/payments",
-  "/app/maintenance",
-  "/app/kyc",
-  "/app/documents",
-  "/app/reviews",
-]);
-
-/** True when {@code path} (or one of its subpaths) needs a flat. */
-export function isFlatRequiredPath(path: string): boolean {
-  for (const p of TENANT_FLAT_REQUIRED_PATHS) {
-    if (path === p || path.startsWith(p + "/")) return true;
-  }
-  return false;
 }
