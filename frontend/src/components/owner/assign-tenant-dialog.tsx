@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, UserPlus } from "lucide-react";
+import { Check, Loader2, Search, UserPlus } from "lucide-react";
 import { propertiesApi } from "@/lib/api/properties";
 import { usersApi } from "@/lib/api/users";
 import {
@@ -14,13 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import { extractErrorMessage } from "@/lib/api/client";
 import { toast } from "@/hooks/use-toast";
 
@@ -63,16 +57,18 @@ export function AssignTenantDialog({
   const qc = useQueryClient();
 
   const [tenantAuthId, setTenantAuthId] = useState<string>("");
+  const [tenantSearch, setTenantSearch] = useState<string>("");
   const [leaseStart, setLeaseStart] = useState<string>(toDateInput(new Date()));
   const [leaseEnd, setLeaseEnd] = useState<string>(
     toDateInput(addMonths(new Date(), 12)),
   );
 
-  // Reset state every time the dialog opens, so a stale selection from
-  // a previous flat doesn't leak in.
+  // Reset state every time the dialog opens, so a stale selection /
+  // search from a previous flat doesn't leak in.
   useEffect(() => {
     if (open) {
       setTenantAuthId("");
+      setTenantSearch("");
       setLeaseStart(toDateInput(new Date()));
       setLeaseEnd(toDateInput(addMonths(new Date(), 12)));
     }
@@ -93,6 +89,31 @@ export function AssignTenantDialog({
       ),
     [tenantsQ.data],
   );
+
+  /**
+   * Case-insensitive filter across firstName + lastName + userName +
+   * email. Triggered live as the owner types — for ~50 tenants this
+   * is cheap. If the list ever grows past a few hundred we'd want to
+   * debounce + paginate, but the backend already returns the full
+   * set so client-side is fine for now.
+   */
+  const filteredTenants = useMemo(() => {
+    const q = tenantSearch.trim().toLowerCase();
+    if (!q) return tenants;
+    return tenants.filter((t) => {
+      const haystack = [
+        t.firstName,
+        t.lastName,
+        t.userName,
+        t.email,
+        t.phone,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [tenants, tenantSearch]);
 
   const assignM = useMutation({
     mutationFn: () =>
@@ -155,7 +176,7 @@ export function AssignTenantDialog({
 
         <div className="space-y-4">
           <div>
-            <Label htmlFor="tenant">Tenant</Label>
+            <Label htmlFor="tenantSearch">Tenant</Label>
             {tenantsQ.isLoading ? (
               <div className="mt-1.5 text-sm text-muted-foreground flex items-center gap-2">
                 <Loader2 className="size-4 animate-spin" />
@@ -167,21 +188,77 @@ export function AssignTenantDialog({
                 TENANT role, they'll show here.
               </p>
             ) : (
-              <Select
-                value={tenantAuthId}
-                onValueChange={setTenantAuthId}
-              >
-                <SelectTrigger id="tenant" className="mt-1.5">
-                  <SelectValue placeholder="Select a tenant…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {tenants.map((t) => (
-                    <SelectItem key={t.authUserId} value={t.authUserId}>
-                      {labelFor(t)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <>
+                {/* Live search across name/userName/email/phone. */}
+                <div className="relative mt-1.5">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                  <Input
+                    id="tenantSearch"
+                    type="search"
+                    autoComplete="off"
+                    placeholder="Search by name, username, email or phone…"
+                    value={tenantSearch}
+                    onChange={(e) => setTenantSearch(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+
+                {/* Scrollable result list. Each row is a button so
+                    keyboard nav works. The selected row gets the
+                    primary-tinted background + check icon. */}
+                <div className="mt-2 max-h-56 overflow-y-auto rounded-lg border">
+                  {filteredTenants.length === 0 ? (
+                    <p className="p-4 text-sm text-muted-foreground text-center">
+                      No tenants match "{tenantSearch}".
+                    </p>
+                  ) : (
+                    <ul className="divide-y">
+                      {filteredTenants.map((t) => {
+                        const selected = t.authUserId === tenantAuthId;
+                        return (
+                          <li key={t.authUserId}>
+                            <button
+                              type="button"
+                              onClick={() => setTenantAuthId(t.authUserId)}
+                              className={cn(
+                                "w-full text-left px-3 py-2.5 text-sm flex items-center gap-2 hover:bg-secondary/60 transition-colors",
+                                selected && "bg-primary/10",
+                              )}
+                            >
+                              <div
+                                className={cn(
+                                  "size-4 shrink-0 grid place-items-center rounded-full border",
+                                  selected
+                                    ? "bg-primary text-primary-foreground border-primary"
+                                    : "border-muted-foreground/30",
+                                )}
+                              >
+                                {selected && <Check className="size-3" />}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium truncate">
+                                  {labelFor(t)}
+                                </p>
+                                {t.phone && (
+                                  <p className="text-xs text-muted-foreground truncate">
+                                    {t.phone}
+                                  </p>
+                                )}
+                              </div>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  {tenantAuthId
+                    ? "1 tenant selected."
+                    : `${filteredTenants.length} of ${tenants.length} matching — tap a row to pick.`}
+                </p>
+              </>
             )}
           </div>
 

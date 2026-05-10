@@ -171,13 +171,19 @@ public class FlatServiceImpul implements FlatService {
         flat.setTenantId(null);
         flat.setUpdatedAt(LocalDateTime.now());
 
-        eventProducer.sendFlatVacated(FlatVacatedEvent.builder()
-                .eventType("flat.vacated")
-                .flatId(flatId)
-                .tenantId(tenantBeingVacated)
-                .endDate(leaseEnd)
-                .timestamp(Instant.now())
-                .build());
+        // Best-effort, same reasoning as the assignFlat publish above.
+        try {
+            eventProducer.sendFlatVacated(FlatVacatedEvent.builder()
+                    .eventType("flat.vacated")
+                    .flatId(flatId)
+                    .tenantId(tenantBeingVacated)
+                    .endDate(leaseEnd)
+                    .timestamp(Instant.now())
+                    .build());
+        } catch (Exception ex) {
+            log.warn("flat.vacated publish failed for flatId={} (proceeding): {}",
+                    flatId, ex.getMessage());
+        }
 
         return flatMapper.toResponseDTO(flat);
     }
@@ -259,15 +265,30 @@ public class FlatServiceImpul implements FlatService {
         flat.setUpdatedAt(LocalDateTime.now());
         Flat saved = flatRepo.save(flat);
 
-        eventProducer.sendFlatOccupied(FlatOccupiedEvent.builder()
-                .eventType("flat.occupied")
-                .flatId(saved.getId())
-                .tenantId(saved.getTenantId())
-                .buildingId(saved.getBuildingId())
-                .rentAmount(saved.getRentAmount() != null ? saved.getRentAmount().doubleValue() : null)
-                .startDate(saved.getLeaseStartDate() != null ? saved.getLeaseStartDate().toString() : null)
-                .timestamp(Instant.now())
-                .build());
+        // Best-effort. KafkaTemplate.send() returns a future, but the
+        // very first call (or any call after a metadata refresh expires)
+        // does a synchronous broker-metadata fetch that can take 10+
+        // seconds when Kafka is slow / unreachable / Eureka hasn't
+        // propagated the broker yet. Without this guard the gateway's
+        // 10s response-timeout fires, the request 504s, and after 5
+        // such failures the propertyServiceCircuitBreaker opens — at
+        // which point even healthy assigns return "property service is
+        // unavailable" via the fallback controller. Same pattern
+        // already applied to DocumentationService.upload.
+        try {
+            eventProducer.sendFlatOccupied(FlatOccupiedEvent.builder()
+                    .eventType("flat.occupied")
+                    .flatId(saved.getId())
+                    .tenantId(saved.getTenantId())
+                    .buildingId(saved.getBuildingId())
+                    .rentAmount(saved.getRentAmount() != null ? saved.getRentAmount().doubleValue() : null)
+                    .startDate(saved.getLeaseStartDate() != null ? saved.getLeaseStartDate().toString() : null)
+                    .timestamp(Instant.now())
+                    .build());
+        } catch (Exception ex) {
+            log.warn("flat.occupied publish failed for flatId={} (proceeding): {}",
+                    saved.getId(), ex.getMessage());
+        }
 
         // Auto-create a PENDING_SIGNATURE lease agreement so the tenant
         // immediately sees something to review and sign on their dashboard.
