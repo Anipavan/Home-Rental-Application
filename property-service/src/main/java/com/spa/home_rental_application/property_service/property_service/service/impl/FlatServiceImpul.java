@@ -79,6 +79,13 @@ public class FlatServiceImpul implements FlatService {
                     () -> new RecordNotFoundException(
                             "Building not found for buildingId=" + flat.getBuildingId()));
 
+        // Ownership guard: an OWNER can only create flats inside their
+        // own buildings. Resolved against the parent's persisted
+        // ownerId so the request body can't lie.
+        if (parent != null) {
+            CallerSecurity.requireOwnerOrAdmin(parent.getOwnerId());
+        }
+
         LocalDateTime now = LocalDateTime.now();
         if (flat.getCreatedAt() == null) flat.setCreatedAt(now);
         flat.setUpdatedAt(now);
@@ -93,15 +100,22 @@ public class FlatServiceImpul implements FlatService {
     public FlatResponseDTO deleteFlatById(String flatId) {
         Flat flat = flatRepo.findById(flatId).orElseThrow(
                 () -> new RecordNotFoundException("Flat not found with id: " + flatId));
+
+        // Ownership guard: only the owner of the flat's parent
+        // building (or admin) can soft-delete it.
+        Building parentBuilding = (flat.getBuildingId() == null) ? null
+                : buildingRepo.findById(flat.getBuildingId()).orElse(null);
+        if (parentBuilding != null) {
+            CallerSecurity.requireOwnerOrAdmin(parentBuilding.getOwnerId());
+        }
+
         flat.setIsDeleted(true);
         flat.setUpdatedAt(LocalDateTime.now());
         Flat saved = flatRepo.save(flat);
 
-        Building parent = (flat.getBuildingId() == null) ? null
-                : buildingRepo.findById(flat.getBuildingId()).orElse(null);
-        syncBuildingFlatCount(parent);
+        syncBuildingFlatCount(parentBuilding);
 
-        return flatMapper.toResponseDTO(saved, parent);
+        return flatMapper.toResponseDTO(saved, parentBuilding);
     }
 
     @Override
@@ -175,12 +189,24 @@ public class FlatServiceImpul implements FlatService {
         Flat existing = flatRepo.findById(flatId).orElseThrow(
                 () -> new RecordNotFoundException("Flat not found with id: " + flatId));
 
+        // Ownership guard: only the owner of the flat's *current* parent
+        // building (or admin) can mutate it. If the request also tries
+        // to move the flat into a different building, that target
+        // building must also belong to the caller — same caller, both
+        // sides — otherwise an owner could relocate someone else's
+        // flat under their own building.
+        Building currentParent = buildingRepo.findById(existing.getBuildingId()).orElse(null);
+        if (currentParent != null) {
+            CallerSecurity.requireOwnerOrAdmin(currentParent.getOwnerId());
+        }
+
         Building oldParent = null;
         if (dto.getBuildingId() != null && !dto.getBuildingId().equals(existing.getBuildingId())) {
             oldParent = buildingRepo.findById(existing.getBuildingId()).orElse(null);
-            buildingRepo.findById(dto.getBuildingId()).orElseThrow(
+            Building targetParent = buildingRepo.findById(dto.getBuildingId()).orElseThrow(
                     () -> new RecordNotFoundException(
                             "Building not found for buildingId=" + dto.getBuildingId()));
+            CallerSecurity.requireOwnerOrAdmin(targetParent.getOwnerId());
         }
 
         existing.setBuildingId(dto.getBuildingId());

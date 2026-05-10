@@ -11,6 +11,8 @@ import com.spa.home_rental_application.property_service.property_service.Excepti
 import com.spa.home_rental_application.property_service.property_service.ExceptionClass.RecordNotFoundException;
 import com.spa.home_rental_application.property_service.property_service.repository.BuildingRepo;
 import com.spa.home_rental_application.property_service.property_service.repository.FlatRepo;
+import com.spa.home_rental_application.property_service.property_service.security.CallerSecurity;
+import com.spa.home_rental_application.property_service.property_service.security.ForbiddenException;
 import com.spa.home_rental_application.property_service.property_service.service.BuildingService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -56,6 +58,12 @@ public class BuildingImpul implements BuildingService {
 
         Building building = BuildingMapper.toEntity(buildingRequestDTO);
 
+        // Ownership guard: an OWNER can only create a building under
+        // their own ownerId. Admins can create on behalf of anyone.
+        // No-ops cleanly when there's no request context (Kafka, jobs,
+        // tests).
+        CallerSecurity.requireOwnerOrAdmin(building.getOwnerId());
+
         if (building.getBuildingId() == null || building.getBuildingId().isBlank()) {
             String bid = String.valueOf(UUID.randomUUID());
             log.info("Building Id is found null, hence setting up the id to ID: {}", bid);
@@ -92,6 +100,12 @@ public class BuildingImpul implements BuildingService {
         Building building = building_repo.findById(buildId)
                 .orElseThrow(() -> new RecordNotFoundException("No record found with id: " + buildId));
 
+        // Ownership guard: only the building's owner (or admin) can
+        // delete it. Resolved against the persisted ownerId — never
+        // the request body — so a malicious caller can't lie about
+        // who owns the building.
+        CallerSecurity.requireOwnerOrAdmin(building.getOwnerId());
+
         // Real flat-existence check -- string field on the entity is unreliable
         // because it captures planned capacity, not the actual count of created flats.
         long activeFlats = flat_repo.findByBuildingId(buildId).stream()
@@ -119,10 +133,24 @@ public class BuildingImpul implements BuildingService {
                 .orElseThrow(() -> new RecordNotFoundException(
                         "No record found with the given id: " + buildId));
 
+        // Ownership guard: only the building's current owner (or
+        // admin) can mutate it. Read against the persisted ownerId —
+        // never the request body.
+        CallerSecurity.requireOwnerOrAdmin(matchedBuilding.getOwnerId());
+
         if (building.getBuildingName() != null && !building.getBuildingName().isBlank()) {
             matchedBuilding.setBuildingName(building.getBuildingName());
         }
-        if (building.getOwnerId() != null && !building.getOwnerId().isBlank()) {
+        // ownerId transfer is restricted to admins. An owner trying to
+        // hand-off ownership to someone else (or to themselves on a
+        // different building) gets a 403 here — gives an explicit
+        // signal rather than silently dropping the field.
+        if (building.getOwnerId() != null && !building.getOwnerId().isBlank()
+                && !building.getOwnerId().equals(matchedBuilding.getOwnerId())) {
+            if (!CallerSecurity.isAdmin()) {
+                throw new ForbiddenException(
+                        "Only an admin can transfer building ownership.");
+            }
             matchedBuilding.setOwnerId(building.getOwnerId());
         }
         if (building.getBuildingAddress() != null && !building.getBuildingAddress().isBlank()) {
