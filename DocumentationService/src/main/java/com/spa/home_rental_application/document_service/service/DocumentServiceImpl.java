@@ -87,18 +87,36 @@ public class DocumentServiceImpl implements DocumentService {
                 .build();
         Document saved = repository.save(doc);
 
-        events.sendDocumentUploaded(DocumentUploadedEvent.builder()
-                .eventType("document.uploaded")
-                .documentId(saved.getId())
-                .userId(saved.getUserId())
-                .documentType(saved.getDocumentType())
-                .contentType(saved.getContentType())
-                .fileSizeBytes(saved.getFileSizeBytes())
-                .storageUrl(saved.getStorageUrl())
-                .uploadedAt(saved.getUploadedAt())
-                .timestamp(LocalDateTime.now())
-                .build());
+        // Publish best-effort. KafkaTemplate.send() returns a future but the
+        // initial broker-metadata fetch is synchronous and can throw
+        // KafkaException when Kafka is unreachable / Eureka hasn't resolved
+        // the broker yet. Without this guard the user sees a generic
+        // "An unexpected error occurred" toast for what's actually a
+        // background-event failure on a successful upload — the file is on
+        // disk and the row is in the DB. Downstream consumers can be
+        // re-driven via a manual replay if event delivery matters; from
+        // the user's perspective the upload should always succeed.
+        publishUploadedSafe(saved);
         return mapper.toResponse(saved);
+    }
+
+    private void publishUploadedSafe(Document saved) {
+        try {
+            events.sendDocumentUploaded(DocumentUploadedEvent.builder()
+                    .eventType("document.uploaded")
+                    .documentId(saved.getId())
+                    .userId(saved.getUserId())
+                    .documentType(saved.getDocumentType())
+                    .contentType(saved.getContentType())
+                    .fileSizeBytes(saved.getFileSizeBytes())
+                    .storageUrl(saved.getStorageUrl())
+                    .uploadedAt(saved.getUploadedAt())
+                    .timestamp(LocalDateTime.now())
+                    .build());
+        } catch (Exception ex) {
+            log.warn("document.uploaded publish failed for documentId={} (proceeding anyway): {}",
+                    saved.getId(), ex.getMessage());
+        }
     }
 
     @Override
@@ -154,17 +172,24 @@ public class DocumentServiceImpl implements DocumentService {
             doc.setOcrStatus("DONE");
             Document saved = repository.save(doc);
 
-            events.sendDocumentExtracted(DocumentExtractedEvent.builder()
-                    .eventType("document.extracted")
-                    .documentId(saved.getId())
-                    .userId(saved.getUserId())
-                    .documentType(saved.getDocumentType())
-                    .extractedData(result.fields())
-                    .fraudFlag(saved.getFraudFlag())
-                    .confidenceScore(saved.getConfidenceScore())
-                    .extractedAt(LocalDateTime.now())
-                    .timestamp(LocalDateTime.now())
-                    .build());
+            // Same best-effort pattern as upload — extraction success
+            // shouldn't 500 the API just because Kafka is flaky.
+            try {
+                events.sendDocumentExtracted(DocumentExtractedEvent.builder()
+                        .eventType("document.extracted")
+                        .documentId(saved.getId())
+                        .userId(saved.getUserId())
+                        .documentType(saved.getDocumentType())
+                        .extractedData(result.fields())
+                        .fraudFlag(saved.getFraudFlag())
+                        .confidenceScore(saved.getConfidenceScore())
+                        .extractedAt(LocalDateTime.now())
+                        .timestamp(LocalDateTime.now())
+                        .build());
+            } catch (Exception ex) {
+                log.warn("document.extracted publish failed for documentId={} (proceeding): {}",
+                        saved.getId(), ex.getMessage());
+            }
             return mapper.toResponse(saved);
         } catch (Exception ex) {
             log.error("OCR extraction failed for documentId={}", documentId, ex);
@@ -189,16 +214,21 @@ public class DocumentServiceImpl implements DocumentService {
         doc.setFraudFlag(fraudFlag);
         Document saved = repository.save(doc);
 
-        events.sendDocumentVerified(DocumentVerifiedEvent.builder()
-                .eventType("document.verified")
-                .documentId(saved.getId())
-                .userId(saved.getUserId())
-                .documentType(saved.getDocumentType())
-                .verifiedBy(verifiedBy)
-                .fraudFlag(fraudFlag)
-                .verifiedAt(saved.getVerifiedAt())
-                .timestamp(LocalDateTime.now())
-                .build());
+        try {
+            events.sendDocumentVerified(DocumentVerifiedEvent.builder()
+                    .eventType("document.verified")
+                    .documentId(saved.getId())
+                    .userId(saved.getUserId())
+                    .documentType(saved.getDocumentType())
+                    .verifiedBy(verifiedBy)
+                    .fraudFlag(fraudFlag)
+                    .verifiedAt(saved.getVerifiedAt())
+                    .timestamp(LocalDateTime.now())
+                    .build());
+        } catch (Exception ex) {
+            log.warn("document.verified publish failed for documentId={} (proceeding): {}",
+                    saved.getId(), ex.getMessage());
+        }
         return mapper.toResponse(saved);
     }
 
