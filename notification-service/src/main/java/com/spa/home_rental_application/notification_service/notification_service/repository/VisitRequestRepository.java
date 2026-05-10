@@ -15,6 +15,9 @@ public interface VisitRequestRepository extends MongoRepository<VisitRequest, St
 
     Page<VisitRequest> findByUserIdOrderByPreferredAtDesc(String userId, Pageable pageable);
 
+    /** Visit requests targeting an owner's buildings. Powers /owner/enquiries. */
+    Page<VisitRequest> findByOwnerIdOrderByPreferredAtAsc(String ownerId, Pageable pageable);
+
     /**
      * Date-range slice keyed on {@code preferred_at}. Powers the admin
      * "today / this week" calendar filter.
@@ -23,4 +26,7 @@ public interface VisitRequestRepository extends MongoRepository<VisitRequest, St
             Instant from, Instant to, Pageable pageable);
 
     long countByStatus(String status);
+
+    /** Pending count for the owner-side inbox badge. */
+    long countByOwnerIdAndStatus(String ownerId, String status);
 }

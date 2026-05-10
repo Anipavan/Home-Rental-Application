@@ -27,13 +27,14 @@ public class SupportTicketService {
     }
 
     public SupportTicketResponse create(CreateSupportTicketRequest req) {
-        log.info("New support ticket from userId={} subject={}",
-                req.userId(), req.subject());
+        log.info("New support ticket from userId={} ownerId={} subject={}",
+                req.userId(), req.ownerId(), req.subject());
         SupportTicket t = SupportTicket.builder()
                 .userId(req.userId())
                 .userName(req.userName())
                 .userEmail(req.userEmail())
                 .userRole(req.userRole())
+                .ownerId(blankToNull(req.ownerId()))
                 .subject(req.subject())
                 .message(req.message())
                 .contextUrl(req.contextUrl())
@@ -52,6 +53,20 @@ public class SupportTicketService {
     public Page<SupportTicketResponse> listByUser(String userId, Pageable pageable) {
         return repository.findByUserIdOrderByCreatedAtDesc(userId, pageable)
                 .map(this::toResponse);
+    }
+
+    /** Property enquiries the given owner should see in their inbox. */
+    public Page<SupportTicketResponse> listByOwner(String ownerId, Pageable pageable) {
+        return repository.findByOwnerIdOrderByCreatedAtDesc(ownerId, pageable)
+                .map(this::toResponse);
+    }
+
+    public long openCountForOwner(String ownerId) {
+        return repository.countByOwnerIdAndStatus(ownerId, "OPEN");
+    }
+
+    private static String blankToNull(String s) {
+        return s == null || s.isBlank() ? null : s;
     }
 
     public SupportTicketResponse respond(String id, RespondToTicketRequest req) {
@@ -83,6 +98,7 @@ public class SupportTicketService {
                 t.getUserName(),
                 t.getUserEmail(),
                 t.getUserRole(),
+                t.getOwnerId(),
                 t.getSubject(),
                 t.getMessage(),
                 t.getContextUrl(),

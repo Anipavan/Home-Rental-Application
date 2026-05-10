@@ -36,6 +36,7 @@ import { OwnerMaintenancePage } from "@/pages/owner/maintenance";
 import { OwnerAnalyticsPage } from "@/pages/owner/analytics";
 import { OwnerAgreementsPage } from "@/pages/owner/agreements";
 import { OwnerLeasesPage } from "@/pages/owner/leases";
+import { OwnerEnquiriesPage } from "@/pages/owner/enquiries";
 import { OwnerCompliancePage } from "@/pages/owner/compliance";
 import { AdminDashboard } from "@/pages/admin/dashboard";
 import { AdminUsersPage } from "@/pages/admin/users";
@@ -117,6 +118,7 @@ export const router = createBrowserRouter([
       { path: "maintenance", element: <OwnerMaintenancePage /> },
       { path: "agreements", element: <OwnerAgreementsPage /> },
       { path: "leases", element: <OwnerLeasesPage /> },
+      { path: "enquiries", element: <OwnerEnquiriesPage /> },
       { path: "compliance", element: <OwnerCompliancePage /> },
       { path: "analytics", element: <OwnerAnalyticsPage /> },
     ],

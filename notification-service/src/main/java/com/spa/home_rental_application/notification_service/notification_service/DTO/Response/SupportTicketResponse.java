@@ -11,6 +11,7 @@ public record SupportTicketResponse(
         String userName,
         String userEmail,
         String userRole,
+        String ownerId,
         String subject,
         String message,
         String contextUrl,

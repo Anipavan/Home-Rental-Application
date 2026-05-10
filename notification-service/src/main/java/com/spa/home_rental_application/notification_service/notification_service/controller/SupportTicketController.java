@@ -68,6 +68,22 @@ public class SupportTicketController {
         return ResponseEntity.ok(service.listByUser(userId, p));
     }
 
+    @Operation(summary = "Owner inbox: property-related enquiries the given owner should see")
+    @GetMapping("/owner/{ownerId}")
+    public ResponseEntity<Page<SupportTicketResponse>> byOwner(
+            @PathVariable String ownerId,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) int size) {
+        Pageable p = PageRequest.of(page, size);
+        return ResponseEntity.ok(service.listByOwner(ownerId, p));
+    }
+
+    @Operation(summary = "Owner inbox: count of OPEN enquiries (sidebar badge)")
+    @GetMapping("/owner/{ownerId}/count/open")
+    public ResponseEntity<Map<String, Long>> openCountForOwner(@PathVariable String ownerId) {
+        return ResponseEntity.ok(Map.of("count", service.openCountForOwner(ownerId)));
+    }
+
     @Operation(summary = "Admin: respond to a ticket and update status")
     @PutMapping(value = "/{id}/respond", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<SupportTicketResponse> respond(

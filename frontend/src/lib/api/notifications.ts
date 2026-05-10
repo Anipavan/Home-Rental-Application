@@ -43,6 +43,12 @@ export interface SupportTicket {
   userName?: string;
   userEmail?: string;
   userRole?: string;
+  /**
+   * Set when the ticket is a property-related enquiry (Contact-owner from
+   * the property-detail page). Null for generic support tickets. Powers
+   * the owner-side /owner/enquiries inbox.
+   */
+  ownerId?: string;
   subject: string;
   message: string;
   contextUrl?: string;
@@ -62,6 +68,8 @@ export interface CreateSupportTicketBody {
   subject: string;
   message: string;
   contextUrl?: string;
+  /** See {@link SupportTicket.ownerId}. */
+  ownerId?: string;
 }
 
 export interface RespondToTicketBody {
@@ -95,6 +103,14 @@ export const supportTicketsApi = {
       })
       .then((r) => r.data),
 
+  /** Owner inbox: every property-related enquiry on the owner's buildings. */
+  byOwner: (ownerId: string, page = 0, size = 20) =>
+    api
+      .get<Page<SupportTicket>>(`/notifications/support-tickets/owner/${ownerId}`, {
+        params: { page, size },
+      })
+      .then((r) => r.data),
+
   respond: (id: string, body: RespondToTicketBody) =>
     api
       .put<SupportTicket>(`/notifications/support-tickets/${id}/respond`, body)
@@ -103,6 +119,14 @@ export const supportTicketsApi = {
   openCount: () =>
     api
       .get<{ count: number }>("/notifications/support-tickets/count/open")
+      .then((r) => r.data.count),
+
+  /** Owner inbox badge count — OPEN enquiries scoped to this owner. */
+  openCountForOwner: (ownerId: string) =>
+    api
+      .get<{ count: number }>(
+        `/notifications/support-tickets/owner/${ownerId}/count/open`,
+      )
       .then((r) => r.data.count),
 };
 
@@ -122,6 +146,8 @@ export interface VisitRequest {
   visitorPhone?: string;
   flatId: string;
   buildingId?: string;
+  /** Resolved from building.ownerId at submit time. Powers /owner/enquiries. */
+  ownerId?: string;
   propertyLabel?: string;
   /** ISO-8601 instant. Null when the visitor didn't pick a time. */
   preferredAt?: string | null;
@@ -142,6 +168,8 @@ export interface CreateVisitRequestBody {
   visitorPhone?: string;
   flatId: string;
   buildingId?: string;
+  /** See {@link VisitRequest.ownerId}. */
+  ownerId?: string;
   propertyLabel?: string;
   preferredAt?: string;
   message?: string;
@@ -202,6 +230,15 @@ export const visitRequestsApi = {
       )
       .then((r) => r.data),
 
+  /** Owner inbox: visit requests targeting the owner's buildings. */
+  byOwner: (ownerId: string, page = 0, size = 20) =>
+    api
+      .get<Page<VisitRequest>>(
+        `/notifications/visit-requests/owner/${ownerId}`,
+        { params: { page, size } },
+      )
+      .then((r) => r.data),
+
   respond: (id: string, body: RespondToVisitRequestBody) =>
     api
       .put<VisitRequest>(
@@ -213,5 +250,13 @@ export const visitRequestsApi = {
   pendingCount: () =>
     api
       .get<{ count: number }>("/notifications/visit-requests/count/pending")
+      .then((r) => r.data.count),
+
+  /** Owner inbox badge count — PENDING visit requests for this owner. */
+  pendingCountForOwner: (ownerId: string) =>
+    api
+      .get<{ count: number }>(
+        `/notifications/visit-requests/owner/${ownerId}/count/pending`,
+      )
       .then((r) => r.data.count),
 };

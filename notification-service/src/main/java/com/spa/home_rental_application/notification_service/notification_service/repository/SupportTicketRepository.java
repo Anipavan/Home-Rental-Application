@@ -11,5 +11,11 @@ public interface SupportTicketRepository extends MongoRepository<SupportTicket, 
 
     Page<SupportTicket> findByUserIdOrderByCreatedAtDesc(String userId, Pageable pageable);
 
+    /** Property-related enquiries fanned out to a specific owner. */
+    Page<SupportTicket> findByOwnerIdOrderByCreatedAtDesc(String ownerId, Pageable pageable);
+
     long countByStatus(String status);
+
+    /** Open ticket count for the owner-side inbox badge. */
+    long countByOwnerIdAndStatus(String ownerId, String status);
 }

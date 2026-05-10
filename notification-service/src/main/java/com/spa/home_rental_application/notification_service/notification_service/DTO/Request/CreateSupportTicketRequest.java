@@ -10,6 +10,12 @@ public record CreateSupportTicketRequest(
         String userRole,
         @NotBlank @Size(max = 200) String subject,
         @NotBlank @Size(max = 4000) String message,
-        @Size(max = 500) String contextUrl
+        @Size(max = 500) String contextUrl,
+        /**
+         * Optional. Set when the ticket is a property enquiry
+         * (Contact-owner from the property-detail page) so the owner can
+         * read it via /owner/enquiries. Null for generic support tickets.
+         */
+        String ownerId
 ) {
 }

@@ -66,6 +66,17 @@ public class VisitRequest {
     @Field("building_id")
     private String buildingId;
 
+    /**
+     * Denormalised owner id at submit time so the owner-side
+     * /owner/enquiries page can fetch every visit request about their
+     * buildings without a cross-service join. Resolved from
+     * {@code building.ownerId} on the public property-detail page when
+     * the dialog is opened.
+     */
+    @Indexed
+    @Field("owner_id")
+    private String ownerId;
+
     /** Snapshot at submit time so the queue page doesn't have to re-resolve. */
     @Field("property_label")
     private String propertyLabel;

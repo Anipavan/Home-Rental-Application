@@ -176,6 +176,9 @@ export function PropertyEnquiryDialog({
         visitorPhone: visitorPhone || undefined,
         flatId,
         buildingId: buildingId ?? undefined,
+        // Denormalise ownerId on the visit-request so the owner-side
+        // /owner/enquiries page can list it without a cross-service join.
+        ownerId: ownerId ?? undefined,
         propertyLabel,
         // datetime-local gives "YYYY-MM-DDTHH:mm" in local TZ; we let the
         // browser/JSON layer turn it into a real ISO instant.
@@ -205,6 +208,9 @@ export function PropertyEnquiryDialog({
       userName: visitorName || userName || undefined,
       userEmail: visitorEmail || meQ.data?.email || undefined,
       userRole: role ?? "PUBLIC",
+      // Same denormalisation for the contact-owner enquiry — surfaces
+      // it on /owner/enquiries Enquiries tab.
+      ownerId: ownerId ?? undefined,
       subject: `Enquiry: ${propertyLabel}`,
       message: messageLines.join("\n"),
       contextUrl,

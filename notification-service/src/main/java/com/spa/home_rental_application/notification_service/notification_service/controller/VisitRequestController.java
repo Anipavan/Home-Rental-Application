@@ -92,6 +92,22 @@ public class VisitRequestController {
         return ResponseEntity.ok(service.listByUser(userId, p));
     }
 
+    @Operation(summary = "Owner inbox: visit requests targeting the given owner's buildings")
+    @GetMapping("/owner/{ownerId}")
+    public ResponseEntity<Page<VisitRequestResponse>> byOwner(
+            @PathVariable String ownerId,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) int size) {
+        Pageable p = PageRequest.of(page, size);
+        return ResponseEntity.ok(service.listByOwner(ownerId, p));
+    }
+
+    @Operation(summary = "Owner inbox: count of PENDING visit requests (sidebar badge)")
+    @GetMapping("/owner/{ownerId}/count/pending")
+    public ResponseEntity<Map<String, Long>> pendingCountForOwner(@PathVariable String ownerId) {
+        return ResponseEntity.ok(Map.of("count", service.pendingCountForOwner(ownerId)));
+    }
+
     @Operation(summary = "Admin: confirm/cancel/complete a visit request")
     @PutMapping(value = "/{id}/respond", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<VisitRequestResponse> respond(

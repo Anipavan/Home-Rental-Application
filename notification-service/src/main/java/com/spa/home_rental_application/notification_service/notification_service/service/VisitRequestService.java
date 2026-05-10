@@ -27,8 +27,8 @@ public class VisitRequestService {
     }
 
     public VisitRequestResponse create(CreateVisitRequest req) {
-        log.info("New visit request from userId={} flatId={} preferredAt={}",
-                req.userId(), req.flatId(), req.preferredAt());
+        log.info("New visit request from userId={} flatId={} ownerId={} preferredAt={}",
+                req.userId(), req.flatId(), req.ownerId(), req.preferredAt());
         VisitRequest v = VisitRequest.builder()
                 .userId(req.userId())
                 .visitorName(req.visitorName())
@@ -36,6 +36,7 @@ public class VisitRequestService {
                 .visitorPhone(req.visitorPhone())
                 .flatId(req.flatId())
                 .buildingId(req.buildingId())
+                .ownerId(blankToNull(req.ownerId()))
                 .propertyLabel(req.propertyLabel())
                 .preferredAt(req.preferredAt())
                 .message(req.message())
@@ -45,6 +46,10 @@ public class VisitRequestService {
         VisitRequest saved = repository.save(v);
         autoResponder.onVisitRequestCreated(saved);
         return toResponse(saved);
+    }
+
+    private static String blankToNull(String s) {
+        return s == null || s.isBlank() ? null : s;
     }
 
     public Page<VisitRequestResponse> listByStatus(String status, Pageable pageable) {
@@ -60,6 +65,16 @@ public class VisitRequestService {
     public Page<VisitRequestResponse> listByUser(String userId, Pageable pageable) {
         return repository.findByUserIdOrderByPreferredAtDesc(userId, pageable)
                 .map(this::toResponse);
+    }
+
+    /** Visit requests against the given owner's buildings. */
+    public Page<VisitRequestResponse> listByOwner(String ownerId, Pageable pageable) {
+        return repository.findByOwnerIdOrderByPreferredAtAsc(ownerId, pageable)
+                .map(this::toResponse);
+    }
+
+    public long pendingCountForOwner(String ownerId) {
+        return repository.countByOwnerIdAndStatus(ownerId, "PENDING");
     }
 
     public Page<VisitRequestResponse> listBetween(Instant from, Instant to,
@@ -99,6 +114,7 @@ public class VisitRequestService {
                 v.getVisitorPhone(),
                 v.getFlatId(),
                 v.getBuildingId(),
+                v.getOwnerId(),
                 v.getPropertyLabel(),
                 v.getPreferredAt(),
                 v.getMessage(),

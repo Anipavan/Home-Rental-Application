@@ -17,6 +17,7 @@ import {
   BadgeCheck,
   Stamp,
   Calendar,
+  Inbox,
 } from "lucide-react";
 import { Logo } from "./logo";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -65,6 +66,7 @@ const ownerNav: NavItem[] = [
   { to: "/owner/maintenance", label: "Maintenance", icon: Wrench },
   { to: "/owner/agreements", label: "Agreements", icon: ScrollText },
   { to: "/owner/leases", label: "Leases", icon: FileText },
+  { to: "/owner/enquiries", label: "Enquiries", icon: Inbox },
   { to: "/owner/compliance", label: "Compliance", icon: Stamp },
   { to: "/owner/analytics", label: "Analytics", icon: BarChart3 },
 ];

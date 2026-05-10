@@ -22,6 +22,13 @@ public record CreateVisitRequest(
         @NotBlank String flatId,
         String buildingId,
 
+        /**
+         * Optional. Resolved from {@code building.ownerId} on the public
+         * property-detail page so /owner/enquiries can list every visit
+         * request about the owner's buildings without a cross-service join.
+         */
+        String ownerId,
+
         @Size(max = 200) String propertyLabel,
 
         /** When the visitor wants to come. ISO-8601 instant. */

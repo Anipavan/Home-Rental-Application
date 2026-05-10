@@ -10,6 +10,7 @@ public record VisitRequestResponse(
         String visitorPhone,
         String flatId,
         String buildingId,
+        String ownerId,
         String propertyLabel,
         Instant preferredAt,
         String message,

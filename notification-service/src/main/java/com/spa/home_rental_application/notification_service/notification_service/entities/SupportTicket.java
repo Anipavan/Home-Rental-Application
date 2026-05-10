@@ -43,6 +43,17 @@ public class SupportTicket {
     @Field("user_role")
     private String userRole;          // OWNER | TENANT | ADMIN
 
+    /**
+     * Denormalised owner id when the ticket is property-related (e.g. an
+     * enquiry submitted from the public property-detail page's
+     * "Contact owner" dialog). Lets the owner-side /owner/enquiries page
+     * fetch every ticket about their buildings without a cross-service
+     * join. Null for generic support requests not tied to a property.
+     */
+    @Indexed
+    @Field("owner_id")
+    private String ownerId;
+
     private String subject;
     private String message;
 
