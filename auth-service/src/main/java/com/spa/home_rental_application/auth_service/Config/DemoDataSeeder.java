@@ -1,5 +1,7 @@
 package com.spa.home_rental_application.auth_service.Config;
 
+import com.spa.home_rental_application.KafkaEvents.Producers.DTO.AuthServiceEvents.UserRegisteredEvent;
+import com.spa.home_rental_application.KafkaEvents.Producers.Events.AuthServiceEvents;
 import com.spa.home_rental_application.auth_service.Entity.UserDetails;
 import com.spa.home_rental_application.auth_service.Repository.UserRepository;
 import com.spa.home_rental_application.auth_service.enums.Roles;
@@ -44,10 +46,14 @@ public class DemoDataSeeder implements CommandLineRunner {
 
     private final UserRepository userRepo;
     private final PasswordEncoder encoder;
+    private final AuthServiceEvents authEvents;
 
-    public DemoDataSeeder(UserRepository userRepo, PasswordEncoder encoder) {
+    public DemoDataSeeder(UserRepository userRepo,
+                          PasswordEncoder encoder,
+                          AuthServiceEvents authEvents) {
         this.userRepo = userRepo;
         this.encoder = encoder;
+        this.authEvents = authEvents;
     }
 
     @Override
@@ -93,6 +99,32 @@ public class DemoDataSeeder implements CommandLineRunner {
             log.info("DemoDataSeeder: + {} ({}) -- id={} email={}",
                     s.userName, s.role, saved.getId(), s.email);
             inserted++;
+
+            // Re-emit the same `user.registered` event the normal
+            // /auth/register flow publishes. The user-service's
+            // UserRegisteredListener consumes this and creates a
+            // matching profile row, without which:
+            //   - getUserByRole drops these users from the join
+            //     (the owner-side "Assign tenant" dropdown shows
+            //     "No registered tenants yet"),
+            //   - byAuthId returns 404 on first login,
+            //   - contact-owner / documents / KYC bootstrap forms
+            //     fire on every seeded tenant's first visit.
+            // Failure here is logged + swallowed so a Kafka outage
+            // never aborts the seed transaction.
+            try {
+                authEvents.sendUserRegistered(UserRegisteredEvent.builder()
+                        .eventType("user.registered")
+                        .authUserId(saved.getId().toString())
+                        .userName(saved.getUsername())
+                        .role(s.role.name())
+                        .email(s.email)
+                        .timestamp(Instant.now())
+                        .build());
+            } catch (Exception ex) {
+                log.warn("DemoDataSeeder: user.registered publish failed for {} (proceeding): {}",
+                        s.userName, ex.getMessage());
+            }
         }
 
         if (inserted == 0) {

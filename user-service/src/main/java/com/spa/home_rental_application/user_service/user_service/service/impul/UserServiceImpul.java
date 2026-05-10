@@ -323,30 +323,63 @@ public class UserServiceImpul implements UserService {
             return List.of();
         }
 
-        // Build a quick auth-id → auth-record index for in-memory join
-        Map<String, authResponseDto> authIndex = authUsers.stream()
+        // Lenient outer-join: every auth user with the requested role is
+        // surfaced. If a matching user-service profile exists we hydrate
+        // the row with its richer fields (firstName, address, etc.); if
+        // not we fall back to a "shell" record using only the auth-side
+        // data plus a best-effort firstName/lastName split of userName.
+        //
+        // The previous inner-join behaviour silently dropped auth users
+        // who had no profile yet — most visibly the demo seed accounts
+        // and any user whose registration's downstream Feign create
+        // fell into the circuit-breaker fallback. Owner-side dropdowns
+        // ("Assign tenant") then read empty even though the tenants
+        // existed in auth.
+        return authUsers.stream()
                 .filter(a -> a.getId() != null)
-                .collect(Collectors.toMap(a -> a.getId().toString(), a -> a, (a, b) -> a));
+                .map(a -> {
+                    String authId = a.getId();
+                    User u = userRepo
+                            .findFirstByAuthUserIdAndIsDeletedFalse(authId)
+                            .orElse(null);
 
-        return authIndex.keySet().stream()
-                .map(authId -> userRepo.findFirstByAuthUserIdAndIsDeletedFalse(authId).orElse(null))
-                .filter(Objects::nonNull)
-                .map(u -> {
-                    authResponseDto a = authIndex.get(u.getAuthUserId());
+                    if (u != null) {
+                        return new usersByRoleDto(
+                                u.getId(),
+                                u.getAuthUserId(),
+                                u.getFirstName(),
+                                u.getLastName(),
+                                u.getEmail(),
+                                u.getPhone(),
+                                u.getDateOfBirth(),
+                                u.getGender(),
+                                u.getAddress(),
+                                a.getUserName(),
+                                a.getUserRole());
+                    }
+
+                    // No profile yet — synthesise from auth payload.
+                    String[] split = splitName(a.getUserName());
                     return new usersByRoleDto(
-                            u.getId(),
-                            u.getAuthUserId(),
-                            u.getFirstName(),
-                            u.getLastName(),
-                            u.getEmail(),
-                            u.getPhone(),
-                            u.getDateOfBirth(),
-                            u.getGender(),
-                            u.getAddress(),
-                            a != null ? a.getUserName() : null,
-                            a != null ? a.getUserRole() : null);
+                            null,
+                            authId,
+                            split[0],
+                            split[1],
+                            a.getEmail(),
+                            null,
+                            null,
+                            null,
+                            null,
+                            a.getUserName(),
+                            a.getUserRole());
                 })
                 .toList();
+    }
+
+    private static String[] splitName(String userName) {
+        if (userName == null || userName.isBlank()) return new String[] {null, null};
+        String[] parts = userName.trim().split("\\s+", 2);
+        return new String[] {parts[0], parts.length > 1 ? parts[1] : null};
     }
 
     private static boolean notBlank(String s) {
