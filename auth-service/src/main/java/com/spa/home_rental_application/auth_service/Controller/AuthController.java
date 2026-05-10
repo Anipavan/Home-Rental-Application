@@ -80,9 +80,16 @@ public class AuthController {
         return ResponseEntity.ok(new MessageResponse("Password updated"));
     }
 
-    @Operation(summary = "List users with the given role (ADMIN only)")
+    /**
+     * Used by user-service ({@code AuthServiceFeig.getUserByRole}) to
+     * power the owner-side "Assign tenant" picker. Owners need this
+     * call to surface every TENANT-role auth user, not just admins —
+     * follows the same hasAnyRole pattern as the lookupById endpoint
+     * below.
+     */
+    @Operation(summary = "List users with the given role (ADMIN + OWNER)")
     @GetMapping("/role/{roleName}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OWNER')")
     public ResponseEntity<List<AuthUserResponse>> getUserByRole(@PathVariable String roleName) {
         Roles role = parseRole(roleName);
         return ResponseEntity.ok(authService.getUsersByRole(role));

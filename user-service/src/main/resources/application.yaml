@@ -78,7 +78,7 @@ app:
     dir: ${USER_UPLOAD_DIR:uploads/users}
 
 # ---------- Feign + circuit breakers ----------
-# auth-service Feign client → CB instance "auth-service"
+# HRA-auth-service Feign client → CB instance "HRA-auth-service"
 # HRA-property-service Feign client → CB instance "HRA-property-service"
 feign:
   circuitbreaker:
@@ -108,7 +108,7 @@ resilience4j:
         automaticTransitionFromOpenToHalfOpenEnabled: true
         registerHealthIndicator: true
     instances:
-      auth-service:           { baseConfig: default }
+      HRA-auth-service:       { baseConfig: default }
       HRA-property-service:   { baseConfig: default }
   timelimiter:
     configs:
@@ -116,7 +116,7 @@ resilience4j:
         timeoutDuration: 6s
         cancelRunningFuture: true
     instances:
-      auth-service:           { baseConfig: default }
+      HRA-auth-service:       { baseConfig: default }
       HRA-property-service:   { baseConfig: default }
   retry:
     configs:

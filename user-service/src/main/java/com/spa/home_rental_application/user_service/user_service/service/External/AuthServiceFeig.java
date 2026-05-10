@@ -9,12 +9,19 @@ import java.util.List;
 
 /**
  * Feign client into Auth Service. Wrapped with a Resilience4j circuit
- * breaker named after the client itself ({@code auth-service}). When the
- * breaker is open we fall back via {@link AuthServiceFeigFallbackFactory}
+ * breaker named after the client itself ({@code HRA-auth-service}). When
+ * the breaker is open we fall back via {@link AuthServiceFeigFallbackFactory}
  * so callers see a clean empty-result rather than a 5xx cascade.
+ *
+ * <p><b>Service name:</b> auth-service registers itself with Eureka as
+ * {@code HRA-auth-service} (matches {@code spring.application.name} in
+ * its yaml). The previous {@code name = "auth-service"} value never
+ * resolved → every call tripped the fallback, which silently returned
+ * an empty list — so the owner-side "Assign tenant" dropdown read
+ * empty even though tenants existed in the auth DB.
  */
 @FeignClient(
-        name = "auth-service",
+        name = "HRA-auth-service",
         fallbackFactory = AuthServiceFeigFallbackFactory.class)
 public interface AuthServiceFeig {
 
