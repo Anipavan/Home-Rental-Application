@@ -2,6 +2,7 @@ import { createBrowserRouter, Navigate } from "react-router-dom";
 import { PublicLayout } from "@/components/layout/public-layout";
 import { AppShell } from "@/components/layout/app-shell";
 import { ProtectedRoute } from "@/components/auth/protected-route";
+import { FlatRequiredOutlet } from "@/components/auth/flat-required-outlet";
 import { LandingPage } from "@/pages/public/landing";
 import { BrowsePage } from "@/pages/public/browse";
 import { PropertyDetailPage } from "@/pages/public/property-detail";
@@ -68,18 +69,32 @@ export const router = createBrowserRouter([
       </ProtectedRoute>
     ),
     children: [
+      // Always available — even before a flat is assigned. The user's
+      // first-day flow is: register → see Overview / My Home (empty
+      // state with "browse listings" CTA) / Profile.
       { index: true, element: <TenantDashboard /> },
       { path: "my-flat", element: <MyFlatPage /> },
-      { path: "payments", element: <PaymentsListPage /> },
-      { path: "payments/:id/pay", element: <PayPage /> },
-      { path: "payments/:id/return", element: <PaymentReturnPage /> },
-      { path: "maintenance", element: <MaintenancePage /> },
-      { path: "maintenance/new", element: <MaintenanceNewPage /> },
-      { path: "lease", element: <TenantLeasePage /> },
-      { path: "kyc", element: <KycPage /> },
-      { path: "documents", element: <DocumentsPage /> },
-      { path: "reviews", element: <TenantReviewsPage /> },
       { path: "profile", element: <ProfilePage /> },
+      // Gated by FlatRequiredOutlet. Direct-URL access without a flat
+      // gets toasted + redirected back to /app. Nav-link clicks are
+      // also intercepted in AppShell for the same UX without a route
+      // round-trip. Set membership in TENANT_FLAT_REQUIRED_PATHS
+      // (use-tenant-has-flat.ts) must stay in sync with the children
+      // of this nested layout-route.
+      {
+        element: <FlatRequiredOutlet />,
+        children: [
+          { path: "payments", element: <PaymentsListPage /> },
+          { path: "payments/:id/pay", element: <PayPage /> },
+          { path: "payments/:id/return", element: <PaymentReturnPage /> },
+          { path: "maintenance", element: <MaintenancePage /> },
+          { path: "maintenance/new", element: <MaintenanceNewPage /> },
+          { path: "lease", element: <TenantLeasePage /> },
+          { path: "kyc", element: <KycPage /> },
+          { path: "documents", element: <DocumentsPage /> },
+          { path: "reviews", element: <TenantReviewsPage /> },
+        ],
+      },
     ],
   },
   {

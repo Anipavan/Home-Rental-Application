@@ -37,6 +37,11 @@ import { useAuthStore } from "@/stores/auth-store";
 import { authApi } from "@/lib/api/auth";
 import { cn, initials } from "@/lib/utils";
 import type { Role } from "@/types/api";
+import {
+  useTenantHasFlat,
+  isFlatRequiredPath,
+} from "@/hooks/use-tenant-has-flat";
+import { toast } from "@/hooks/use-toast";
 
 interface NavItem {
   to: string;
@@ -90,6 +95,7 @@ export function AppShell() {
   const { role, userName, refreshToken, clear } = useAuthStore();
   const navigate = useNavigate();
   const items = navFor(role);
+  const { hasFlat } = useTenantHasFlat();
 
   const onLogout = async () => {
     try {
@@ -98,6 +104,27 @@ export function AppShell() {
       clear();
       navigate("/login");
     }
+  };
+
+  /**
+   * Click-handler for tenant nav items that need a flat assignment.
+   * Returns a handler that intercepts the click on a restricted nav
+   * item when the tenant has no flat, surfaces the error toast, and
+   * stops navigation. For all other paths / roles / states, returns
+   * undefined so React preserves the default NavLink behaviour.
+   */
+  const restrictedClick = (to: string) => {
+    if (role !== "TENANT") return undefined;
+    if (hasFlat !== false) return undefined;
+    if (!isFlatRequiredPath(to)) return undefined;
+    return (e: React.MouseEvent) => {
+      e.preventDefault();
+      toast({
+        variant: "destructive",
+        title: "Flat not assigned",
+        description: "To avail this feature a flat must be assigned.",
+      });
+    };
   };
 
   return (
@@ -118,6 +145,7 @@ export function AppShell() {
               key={item.to}
               to={item.to}
               end={item.to === "/app" || item.to === "/owner" || item.to === "/admin"}
+              onClick={restrictedClick(item.to)}
               className={({ isActive }) =>
                 cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
@@ -209,6 +237,7 @@ export function AppShell() {
                 key={item.to}
                 to={item.to}
                 end={item.to === "/app" || item.to === "/owner" || item.to === "/admin"}
+                onClick={restrictedClick(item.to)}
                 className={({ isActive }) =>
                   cn(
                     "flex flex-col items-center justify-center gap-1 py-2.5 text-[11px]",
