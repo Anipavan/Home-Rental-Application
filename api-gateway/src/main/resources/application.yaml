@@ -28,7 +28,13 @@ spring:
           enabled: false
       httpclient:
         connect-timeout: 2000
-        response-timeout: 10s
+        # Bumped from 10s → 30s. Property-service / lease-service /
+        # document-service routinely take 8-12s on a cold-start
+        # response (JIT warmup, hibernate session bring-up, eager JPA
+        # bean init, the first-call Kafka producer metadata fetch).
+        # 10s would tip the slow-call detector and ultimately open
+        # the breaker even when the underlying service was healthy.
+        response-timeout: 30s
       default-filters:
         - AddResponseHeader=X-API-Version, v1
       routes:
@@ -391,9 +397,21 @@ resilience4j:
         slidingWindowType: COUNT_BASED
         slidingWindowSize: 20
         minimumNumberOfCalls: 5
+        # Only trip on actual hard failures (5xx / connection refused).
+        # 50% was reasonable for a steady-state production deploy but
+        # bit hard during dev when one transient cold-start failure +
+        # a quick retry could open the breaker for 10s. Keeping the
+        # threshold at 50 still catches a real outage; the change is
+        # the slow-call thresholds below.
         failureRateThreshold: 50
-        slowCallRateThreshold: 50
-        slowCallDurationThreshold: 5s
+        # Effectively disable slow-call rate-based tripping —
+        # property-service's cold-start assign + agreement-create can
+        # touch 8s legitimately on the first call, and the 5s + 50%
+        # combination would mark even a single such call as a "slow
+        # failure" and open the breaker. We still surface slow calls
+        # in actuator metrics, just don't blow up traffic over them.
+        slowCallRateThreshold: 100
+        slowCallDurationThreshold: 20s
         waitDurationInOpenState: 10s
         permittedNumberOfCallsInHalfOpenState: 3
         automaticTransitionFromOpenToHalfOpenEnabled: true
@@ -415,7 +433,13 @@ resilience4j:
   timelimiter:
     configs:
       default:
-        timeoutDuration: 10s
+        # Aligned with the bumped httpclient response-timeout above.
+        # Anything over this hits the @CircuitBreaker fallback as a
+        # TimeoutException and counts toward failureRateThreshold —
+        # so it should be ≥ response-timeout to avoid double-counting
+        # the same slow call as both an httpclient timeout and a
+        # tlimiter timeout.
+        timeoutDuration: 30s
         cancelRunningFuture: true
     instances:
       authServiceCircuitBreaker:         { baseConfig: default }
