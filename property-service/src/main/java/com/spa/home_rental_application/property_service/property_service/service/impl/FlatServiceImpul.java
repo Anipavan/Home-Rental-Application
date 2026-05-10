@@ -14,6 +14,7 @@ import com.spa.home_rental_application.property_service.property_service.Excepti
 import com.spa.home_rental_application.property_service.property_service.ExceptionClass.RecordNotFoundException;
 import com.spa.home_rental_application.property_service.property_service.repository.BuildingRepo;
 import com.spa.home_rental_application.property_service.property_service.repository.FlatRepo;
+import com.spa.home_rental_application.property_service.property_service.security.CallerSecurity;
 import com.spa.home_rental_application.property_service.property_service.service.AgreementService;
 import com.spa.home_rental_application.property_service.property_service.service.FlatService;
 import lombok.extern.slf4j.Slf4j;
@@ -126,6 +127,14 @@ public class FlatServiceImpul implements FlatService {
         Flat flat = flatRepo.findById(flatId).orElseThrow(
                 () -> new RecordNotFoundException("Flat not found with id: " + flatId));
 
+        // Ownership guard: only the building's owner (or an admin) can
+        // vacate a flat. No-ops when there's no request context — same
+        // call from Kafka listeners / scheduled jobs / tests is allowed.
+        Building parentBuilding = buildingRepo.findById(flat.getBuildingId()).orElse(null);
+        if (parentBuilding != null) {
+            CallerSecurity.requireOwnerOrAdmin(parentBuilding.getOwnerId());
+        }
+
         if (Boolean.FALSE.equals(flat.getIsOccupied())) {
             return flatMapper.toResponseDTO(flat);
         }
@@ -199,6 +208,15 @@ public class FlatServiceImpul implements FlatService {
     public FlatResponseDTO assignFlat(String flatId, AssignFlatRequest req) {
         Flat flat = flatRepo.findById(flatId).orElseThrow(
                 () -> new RecordNotFoundException("Flat not found with id: " + flatId));
+
+        // Ownership guard: only the building's owner (or an admin) can
+        // assign a tenant. Resolved before the occupancy check so a
+        // poacher gets a clean 403 instead of leaking which flats are
+        // already taken via the FlatOccupiedException.
+        Building assigningBuilding = buildingRepo.findById(flat.getBuildingId()).orElse(null);
+        if (assigningBuilding != null) {
+            CallerSecurity.requireOwnerOrAdmin(assigningBuilding.getOwnerId());
+        }
 
         if (Boolean.TRUE.equals(flat.getIsOccupied())) {
             throw new FlatOccupiedException(

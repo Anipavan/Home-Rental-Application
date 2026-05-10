@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { Plus, Search, UserPlus } from "lucide-react";
+import { LogOut, Plus, Search, UserPlus } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { propertiesApi } from "@/lib/api/properties";
 import { Card } from "@/components/ui/card";
@@ -17,6 +17,7 @@ import {
   TabsContent,
 } from "@/components/ui/tabs";
 import { AssignTenantDialog } from "@/components/owner/assign-tenant-dialog";
+import { VacateFlatDialog } from "@/components/owner/vacate-flat-dialog";
 import { formatINR } from "@/lib/utils";
 
 export function FlatsPage() {
@@ -117,9 +118,10 @@ function FlatTable({
   flats: FlatRow[];
   loading?: boolean;
 }) {
-  // Single mutable target for the Assign dialog — clicking a row's
-  // "Assign" button sets this; closing the dialog clears it.
+  // Mutable targets for the per-row Assign / Vacate dialogs. Clicking
+  // a row button sets the right one; closing the dialog clears it.
   const [assignTarget, setAssignTarget] = useState<FlatRow | null>(null);
+  const [vacateTarget, setVacateTarget] = useState<FlatRow | null>(null);
 
   if (loading) {
     return (
@@ -170,9 +172,14 @@ function FlatTable({
               </Badge>
               <div className="sm:text-right col-span-2 sm:col-span-1">
                 {f.isOccupied ? (
-                  <span className="text-xs text-muted-foreground">
-                    Assigned
-                  </span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-destructive hover:text-destructive"
+                    onClick={() => setVacateTarget(f)}
+                  >
+                    <LogOut /> Vacate
+                  </Button>
                 ) : (
                   <Button
                     size="sm"
@@ -197,6 +204,19 @@ function FlatTable({
           flatId={assignTarget.id}
           flatNumber={assignTarget.flatNumber}
           buildingName={assignTarget._buildingName}
+        />
+      )}
+
+      {vacateTarget && (
+        <VacateFlatDialog
+          open={!!vacateTarget}
+          onOpenChange={(o) => {
+            if (!o) setVacateTarget(null);
+          }}
+          flatId={vacateTarget.id}
+          flatNumber={vacateTarget.flatNumber}
+          buildingName={vacateTarget._buildingName}
+          tenantId={vacateTarget.tenantId}
         />
       )}
     </>
