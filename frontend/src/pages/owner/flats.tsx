@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, UserPlus } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { propertiesApi } from "@/lib/api/properties";
 import { Card } from "@/components/ui/card";
@@ -16,6 +16,7 @@ import {
   TabsTrigger,
   TabsContent,
 } from "@/components/ui/tabs";
+import { AssignTenantDialog } from "@/components/owner/assign-tenant-dialog";
 import { formatINR } from "@/lib/utils";
 
 export function FlatsPage() {
@@ -107,13 +108,19 @@ export function FlatsPage() {
   );
 }
 
+type FlatRow = import("@/types/api").FlatResponseDTO & { _buildingName?: string };
+
 function FlatTable({
   flats,
   loading,
 }: {
-  flats: (import("@/types/api").FlatResponseDTO & { _buildingName?: string })[];
+  flats: FlatRow[];
   loading?: boolean;
 }) {
+  // Single mutable target for the Assign dialog — clicking a row's
+  // "Assign" button sets this; closing the dialog clears it.
+  const [assignTarget, setAssignTarget] = useState<FlatRow | null>(null);
+
   if (loading) {
     return (
       <Card className="p-3 space-y-2">
@@ -131,36 +138,67 @@ function FlatTable({
     );
   }
   return (
-    <Card>
-      <div className="hidden sm:grid grid-cols-[80px_1fr_1fr_140px_120px_100px] gap-3 px-5 py-3 text-xs uppercase tracking-wider text-muted-foreground border-b">
-        <span>Flat</span>
-        <span>Building</span>
-        <span>Layout</span>
-        <span>Tenant</span>
-        <span>Rent</span>
-        <span>Status</span>
-      </div>
-      <div className="divide-y">
-        {flats.map((f) => (
-          <div
-            key={f.id}
-            className="grid grid-cols-2 sm:grid-cols-[80px_1fr_1fr_140px_120px_100px] gap-3 px-5 py-3.5 text-sm items-center"
-          >
-            <span className="font-mono font-semibold">{f.flatNumber}</span>
-            <span className="truncate">{f._buildingName ?? "—"}</span>
-            <span className="text-muted-foreground">
-              {f.bedrooms ?? 2}BHK · {f.areaSqft ?? "—"} sqft
-            </span>
-            <span className="text-muted-foreground truncate">
-              {f.tenantId ?? "—"}
-            </span>
-            <span className="font-medium">{formatINR(f.rentAmount)}</span>
-            <Badge variant={f.isOccupied ? "secondary" : "success"}>
-              {f.isOccupied ? "Occupied" : "Vacant"}
-            </Badge>
-          </div>
-        ))}
-      </div>
-    </Card>
+    <>
+      <Card>
+        {/* New "Action" column on the right for the Assign / status button. */}
+        <div className="hidden sm:grid grid-cols-[80px_1fr_1fr_140px_110px_90px_120px] gap-3 px-5 py-3 text-xs uppercase tracking-wider text-muted-foreground border-b">
+          <span>Flat</span>
+          <span>Building</span>
+          <span>Layout</span>
+          <span>Tenant</span>
+          <span>Rent</span>
+          <span>Status</span>
+          <span className="text-right">Action</span>
+        </div>
+        <div className="divide-y">
+          {flats.map((f) => (
+            <div
+              key={f.id}
+              className="grid grid-cols-2 sm:grid-cols-[80px_1fr_1fr_140px_110px_90px_120px] gap-3 px-5 py-3.5 text-sm items-center"
+            >
+              <span className="font-mono font-semibold">{f.flatNumber}</span>
+              <span className="truncate">{f._buildingName ?? "—"}</span>
+              <span className="text-muted-foreground">
+                {f.bedrooms ?? 2}BHK · {f.areaSqft ?? "—"} sqft
+              </span>
+              <span className="text-muted-foreground truncate">
+                {f.tenantId ?? "—"}
+              </span>
+              <span className="font-medium">{formatINR(f.rentAmount)}</span>
+              <Badge variant={f.isOccupied ? "secondary" : "success"}>
+                {f.isOccupied ? "Occupied" : "Vacant"}
+              </Badge>
+              <div className="sm:text-right col-span-2 sm:col-span-1">
+                {f.isOccupied ? (
+                  <span className="text-xs text-muted-foreground">
+                    Assigned
+                  </span>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setAssignTarget(f)}
+                  >
+                    <UserPlus /> Assign
+                  </Button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {assignTarget && (
+        <AssignTenantDialog
+          open={!!assignTarget}
+          onOpenChange={(o) => {
+            if (!o) setAssignTarget(null);
+          }}
+          flatId={assignTarget.id}
+          flatNumber={assignTarget.flatNumber}
+          buildingName={assignTarget._buildingName}
+        />
+      )}
+    </>
   );
 }

@@ -98,6 +98,26 @@ export interface UserRequestDto {
   idProofUrl?: string;
 }
 
+/**
+ * Flat projection returned by {@code GET /users/role/{roleName}} —
+ * carries both the user-service primary id and the auth-side authUserId
+ * so UIs that need to write back via Flat.tenantId / Building.ownerId
+ * (e.g. the owner-side "Assign tenant" dialog) can pick the right key.
+ */
+export interface UserByRole {
+  id?: string;
+  authUserId?: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+  dateOfBirth?: string;
+  gender?: string;
+  address?: string;
+  userName?: string;
+  role?: string;
+}
+
 export interface BuildingResponseDTO {
   buildingId: string;
   buildingName: string;

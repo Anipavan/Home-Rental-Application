@@ -334,6 +334,8 @@ public class UserServiceImpul implements UserService {
                 .map(u -> {
                     authResponseDto a = authIndex.get(u.getAuthUserId());
                     return new usersByRoleDto(
+                            u.getId(),
+                            u.getAuthUserId(),
                             u.getFirstName(),
                             u.getLastName(),
                             u.getEmail(),

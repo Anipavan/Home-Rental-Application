@@ -1,5 +1,10 @@
 import { api } from "./client";
-import type { Page, UserRequestDto, UserResponseDto } from "@/types/api";
+import type {
+  Page,
+  UserByRole,
+  UserRequestDto,
+  UserResponseDto,
+} from "@/types/api";
 
 export const usersApi = {
   list: (page = 0, size = 20) =>
@@ -10,9 +15,15 @@ export const usersApi = {
     api.get<UserResponseDto>(`/users/user/${id}`).then((r) => r.data),
   byAuthId: (authUserId: string) =>
     api.get<UserResponseDto>(`/users/auth/${authUserId}`).then((r) => r.data),
+  /**
+   * Returns the projection joined with auth-service ({@link UserByRole})
+   * so the caller has both {@code id} and {@code authUserId}. The
+   * previous typing as {@code UserResponseDto[]} was a lie — those
+   * fields aren't on the wire from this endpoint.
+   */
   byRole: (role: string) =>
     api
-      .get<UserResponseDto[]>(`/users/role/${role}`)
+      .get<UserByRole[]>(`/users/role/${role}`)
       .then((r) => r.data),
   search: (q: string) =>
     api.get<UserResponseDto[]>(`/users/search/${q}`).then((r) => r.data),
