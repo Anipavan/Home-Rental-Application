@@ -59,6 +59,44 @@ public class Flat {
     @Column(name = "lease_end_date")
     private LocalDate leaseEndDate;
 
+    /* ─────────── Listing attributes (filter-facing) ───────────
+     * These power the NoBroker / 99acres-style filters on the public
+     * browse page. Nullable so legacy rows keep working — the filter
+     * UI treats null as "not specified" and shows the listing
+     * regardless of the filter setting. Owners fill them in via the
+     * flat-create / flat-edit forms.
+     */
+
+    /** UNFURNISHED | SEMI_FURNISHED | FULLY_FURNISHED. Free-string for
+     *  schema-evolution flexibility (lease history shows the value
+     *  changes over time without an enum migration). */
+    @Column(name = "furnishing_status", length = 32)
+    private String furnishingStatus;
+
+    /** Pet policy disclosed upfront — saves owners + tenants a
+     *  back-and-forth that 99% of pet-owning renters need. */
+    @Column(name = "pet_friendly")
+    private Boolean petFriendly;
+
+    /** Earliest date the flat is available to a new tenant. Powers
+     *  the "moving in by X" filter. Independent of leaseStartDate —
+     *  that's the CURRENT tenant's lease. */
+    @Column(name = "available_from")
+    private LocalDate availableFrom;
+
+    /** Refundable security deposit. Most Indian landlords use a
+     *  rent-multiple convention but the actual number is the only
+     *  truth — capture it so the listing card and filters can use
+     *  the real value instead of a "2× rent" guess. */
+    @Column(name = "deposit_amount")
+    private BigDecimal depositAmount;
+
+    /** Short marketing description shown on the listing card hover
+     *  and the property-detail page. Owners can write up to 2000
+     *  chars; keeps the schema flexible without going @Lob. */
+    @Column(name = "description", length = 2000)
+    private String description;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

@@ -9,6 +9,11 @@ import java.time.LocalDateTime;
  * Building (name + address + city) so single-flat views don't need a
  * second API call. The building* fields are nullable for the rare case
  * where the parent has been hard-deleted.
+ *
+ * <p>Filter-facing attributes ({@code furnishingStatus}, {@code petFriendly},
+ * {@code availableFrom}, {@code depositAmount}, {@code description}) are
+ * all nullable — legacy rows pre-migration will surface as null and the
+ * filter UI treats null as "not specified" rather than excluding the row.
  */
 public record FlatResponseDTO(
         String id,
@@ -26,6 +31,12 @@ public record FlatResponseDTO(
         String tenantId,
         LocalDate leaseStartDate,
         LocalDate leaseEndDate,
+        /* Listing attributes (NoBroker / 99acres filter parity) */
+        String furnishingStatus,
+        Boolean petFriendly,
+        LocalDate availableFrom,
+        BigDecimal depositAmount,
+        String description,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {}

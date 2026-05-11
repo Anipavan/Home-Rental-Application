@@ -33,6 +33,13 @@ public class FlatMapper {
 
     public Flat toEntity(FlatRequestDTO dto) {
         if (dto == null) return null;
+        // Empty-string furnishing is treated as null (the @Pattern on
+        // the DTO allows empty for form-serialisation; we don't want
+        // empty strings in the DB).
+        String furnishing = (dto.furnishingStatus() == null
+                || dto.furnishingStatus().isBlank())
+                ? null
+                : dto.furnishingStatus();
         return Flat.builder()
                 .buildingId(dto.buildingId())
                 .flatNumber(dto.flatNumber())
@@ -44,6 +51,11 @@ public class FlatMapper {
                 .tenantId(dto.tenantId())
                 .leaseStartDate(dto.leaseStartDate())
                 .leaseEndDate(dto.leaseEndDate())
+                .furnishingStatus(furnishing)
+                .petFriendly(dto.petFriendly())
+                .availableFrom(dto.availableFrom())
+                .depositAmount(dto.depositAmount())
+                .description(dto.description())
                 .build();
     }
 
@@ -73,6 +85,11 @@ public class FlatMapper {
                 flat.getTenantId(),
                 flat.getLeaseStartDate(),
                 flat.getLeaseEndDate(),
+                flat.getFurnishingStatus(),
+                flat.getPetFriendly(),
+                flat.getAvailableFrom(),
+                flat.getDepositAmount(),
+                flat.getDescription(),
                 flat.getCreatedAt(),
                 flat.getUpdatedAt()
         );

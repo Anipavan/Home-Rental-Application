@@ -224,6 +224,16 @@ public class FlatServiceImpul implements FlatService {
         existing.setRentAmount(dto.getRentAmount());
         existing.setLeaseStartDate(dto.getLeaseStartDate());
         existing.setLeaseEndDate(dto.getLeaseEndDate());
+        // Listing-attribute updates: null on the request = "no change"
+        // would be ergonomic, but we can't distinguish that from
+        // "explicitly clear" without an Optional wrapper, so we go
+        // with the simpler "always overwrite" semantics matching the
+        // rest of this method.
+        existing.setFurnishingStatus(dto.getFurnishingStatus());
+        existing.setPetFriendly(dto.getPetFriendly());
+        existing.setAvailableFrom(dto.getAvailableFrom());
+        existing.setDepositAmount(dto.getDepositAmount());
+        existing.setDescription(dto.getDescription());
         existing.setUpdatedAt(LocalDateTime.now());
         Flat saved = flatRepo.save(existing);
 

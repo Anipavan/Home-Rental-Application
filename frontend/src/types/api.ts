@@ -165,6 +165,12 @@ export interface RefCityDto {
   tier?: number;
 }
 
+/** UNFURNISHED | SEMI_FURNISHED | FULLY_FURNISHED. */
+export type FurnishingStatus =
+  | "UNFURNISHED"
+  | "SEMI_FURNISHED"
+  | "FULLY_FURNISHED";
+
 export interface FlatResponseDTO {
   id: string;
   buildingId: string;
@@ -181,6 +187,12 @@ export interface FlatResponseDTO {
   tenantId?: string;
   leaseStartDate?: string;
   leaseEndDate?: string;
+  /* Listing attributes — NoBroker / 99acres filter parity */
+  furnishingStatus?: FurnishingStatus | null;
+  petFriendly?: boolean | null;
+  availableFrom?: string | null;
+  depositAmount?: number | null;
+  description?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -196,6 +208,12 @@ export interface FlatRequestDTO {
   tenantId?: string;
   leaseStartDate?: string;
   leaseEndDate?: string;
+  /* Listing attributes — optional so legacy create forms still work. */
+  furnishingStatus?: FurnishingStatus | "";
+  petFriendly?: boolean;
+  availableFrom?: string;
+  depositAmount?: number;
+  description?: string;
 }
 
 export interface AssignFlatRequest {

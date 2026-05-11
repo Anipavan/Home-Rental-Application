@@ -5,6 +5,8 @@ import {
   Bath,
   Bed,
   Building2,
+  CalendarDays,
+  Dog,
   Eye,
   IndianRupee,
   Layers,
@@ -14,6 +16,7 @@ import {
   Ruler,
   Search,
   SlidersHorizontal,
+  Sofa,
   X,
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
@@ -79,6 +82,14 @@ const DEFAULT_FILTERS = {
   areaMin: "",
   areaMax: "",
   vacantOnly: false,
+  // Listing-attribute filters (NoBroker / 99acres style).
+  // "any" = don't filter on this dimension.
+  furnishing: "any" as "any" | "UNFURNISHED" | "SEMI_FURNISHED" | "FULLY_FURNISHED",
+  petPolicy: "any" as "any" | "allowed" | "notAllowed",
+  /** ISO yyyy-mm-dd; "" = no constraint. Filter is "available on or
+   *  before this date" — flats whose availableFrom is null are
+   *  excluded only when the user explicitly picks a date. */
+  availableBy: "",
   sort: "recent" as SortKey,
 };
 
@@ -546,6 +557,28 @@ function applyFilters(
     list = list.filter((flat) => !flat.isOccupied);
   }
 
+  // Listing attributes — only filter when the user has actively
+  // picked a value. "any" / "" treat the dimension as ignored, so
+  // legacy rows with null attributes still surface.
+  if (f.furnishing !== "any") {
+    list = list.filter((flat) => flat.furnishingStatus === f.furnishing);
+  }
+  if (f.petPolicy === "allowed") {
+    list = list.filter((flat) => flat.petFriendly === true);
+  } else if (f.petPolicy === "notAllowed") {
+    list = list.filter((flat) => flat.petFriendly === false);
+  }
+  if (f.availableBy) {
+    // Show flats available on OR before the chosen date. A null
+    // availableFrom means the owner hasn't specified — when the user
+    // does pick a date, those un-specified flats are excluded to
+    // keep the filter strict.
+    const cutoff = f.availableBy;
+    list = list.filter(
+      (flat) => flat.availableFrom != null && flat.availableFrom <= cutoff,
+    );
+  }
+
   // Sort last so it operates on the filtered set.
   switch (f.sort) {
     case "priceLow":
@@ -593,7 +626,10 @@ type ChipKey =
   | "areaMin"
   | "areaMax"
   | "floor"
-  | "vacantOnly";
+  | "vacantOnly"
+  | "furnishing"
+  | "petPolicy"
+  | "availableBy";
 
 function describeActiveFilters(f: Filters, q: string): Chip[] {
   const chips: Chip[] = [];
@@ -627,7 +663,28 @@ function describeActiveFilters(f: Filters, q: string): Chip[] {
   if (f.areaMax) chips.push({ key: "areaMax", label: `Area ≤ ${f.areaMax} sqft` });
   if (f.floor !== "any") chips.push({ key: "floor", label: prettyFloor(f.floor) });
   if (f.vacantOnly) chips.push({ key: "vacantOnly", label: "Vacant only" });
+  if (f.furnishing !== "any")
+    chips.push({ key: "furnishing", label: prettyFurnishing(f.furnishing) });
+  if (f.petPolicy !== "any")
+    chips.push({
+      key: "petPolicy",
+      label: f.petPolicy === "allowed" ? "Pet friendly" : "No pets",
+    });
+  if (f.availableBy) chips.push({ key: "availableBy", label: `Move-in by ${f.availableBy}` });
   return chips;
+}
+
+function prettyFurnishing(v: string): string {
+  switch (v) {
+    case "UNFURNISHED":
+      return "Unfurnished";
+    case "SEMI_FURNISHED":
+      return "Semi-furnished";
+    case "FULLY_FURNISHED":
+      return "Fully furnished";
+    default:
+      return v;
+  }
 }
 
 function prettyFloor(v: string): string {
@@ -655,6 +712,9 @@ function advancedCount(f: Filters): number {
   if (f.areaMin) n++;
   if (f.areaMax) n++;
   if (f.vacantOnly) n++;
+  if (f.furnishing !== "any") n++;
+  if (f.petPolicy !== "any") n++;
+  if (f.availableBy) n++;
   return n;
 }
 
@@ -685,6 +745,15 @@ function clearOne(
         break;
       case "vacantOnly":
         next.vacantOnly = false;
+        break;
+      case "furnishing":
+        next.furnishing = "any";
+        break;
+      case "petPolicy":
+        next.petPolicy = "any";
+        break;
+      case "availableBy":
+        next.availableBy = "";
         break;
     }
     return next;
@@ -845,10 +914,81 @@ function MoreFiltersDialog({
             </div>
           </div>
 
-          {/* Availability — vacant only. Currently the only availability
-              signal we get from the backend is the boolean isOccupied;
-              when we add a "movein date" field, this becomes a date
-              picker. */}
+          <div className="grid sm:grid-cols-2 gap-4">
+            {/* Furnishing */}
+            <div>
+              <Label className="flex items-center gap-1.5 mb-2">
+                <Sofa className="size-3.5 text-muted-foreground" />
+                Furnishing
+              </Label>
+              <Select
+                value={draft.furnishing}
+                onValueChange={(v) =>
+                  setDraft((d) => ({
+                    ...d,
+                    furnishing: v as Filters["furnishing"],
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="any">Any</SelectItem>
+                  <SelectItem value="UNFURNISHED">Unfurnished</SelectItem>
+                  <SelectItem value="SEMI_FURNISHED">Semi-furnished</SelectItem>
+                  <SelectItem value="FULLY_FURNISHED">Fully furnished</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Pet policy */}
+            <div>
+              <Label className="flex items-center gap-1.5 mb-2">
+                <Dog className="size-3.5 text-muted-foreground" />
+                Pet policy
+              </Label>
+              <Select
+                value={draft.petPolicy}
+                onValueChange={(v) =>
+                  setDraft((d) => ({
+                    ...d,
+                    petPolicy: v as Filters["petPolicy"],
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="any">Any</SelectItem>
+                  <SelectItem value="allowed">Pets allowed</SelectItem>
+                  <SelectItem value="notAllowed">No pets</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Move-in date — flats available on or before. */}
+          <div>
+            <Label className="flex items-center gap-1.5 mb-2">
+              <CalendarDays className="size-3.5 text-muted-foreground" />
+              Move-in by
+            </Label>
+            <Input
+              type="date"
+              value={draft.availableBy}
+              onChange={(e) =>
+                setDraft((d) => ({ ...d, availableBy: e.target.value }))
+              }
+            />
+            <p className="text-[11px] text-muted-foreground mt-1">
+              Shows flats available on or before this date. Listings
+              without a move-in date are hidden when a date is set.
+            </p>
+          </div>
+
+          {/* Availability — vacant only. */}
           <div>
             <Label className="flex items-center gap-1.5 mb-2">
               <Eye className="size-3.5 text-muted-foreground" />
