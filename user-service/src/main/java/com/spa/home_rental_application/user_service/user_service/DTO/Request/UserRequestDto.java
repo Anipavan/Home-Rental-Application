@@ -21,7 +21,15 @@ public record UserRequestDto(
 
         LocalDate dateOfBirth,
 
-        @Pattern(regexp = "MALE|FEMALE|OTHER", message = "gender must be MALE, FEMALE or OTHER")
+        // Keep this list in sync with the frontend EditForm dropdown
+        // (frontend/src/pages/tenant/profile.tsx). PREFER_NOT_TO_SAY was
+        // missing from the regex while the UI offered it, causing every
+        // profile update — including the profile-picture flow which
+        // re-PUTs the full user — to 400 on validation for any user who
+        // had selected that option. Empty string is also accepted so
+        // we don't trip when a form serializes the unselected case.
+        @Pattern(regexp = "^$|MALE|FEMALE|OTHER|PREFER_NOT_TO_SAY",
+                message = "gender must be MALE, FEMALE, OTHER, or PREFER_NOT_TO_SAY")
         String gender,
 
         @Size(max = 4000)

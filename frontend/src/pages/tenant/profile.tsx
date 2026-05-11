@@ -139,17 +139,41 @@ export function ProfilePage() {
 
   /* ── Profile pic upload via Document Service ─────────────────────────── */
   const photoUploadM = useMutation({
-    mutationFn: (file: File) =>
-      documentsApi.upload(String(q.data!.id), "PHOTO", file),
+    mutationFn: async (file: File) => {
+      // Guard: q.data may be undefined if the bootstrap form is still on
+      // screen. Without this, `String(q.data!.id)` would post a row with
+      // userId="undefined" — backend accepts it, but the upload trivially
+      // succeeds against the wrong owner and looks like data corruption.
+      if (!q.data?.id) {
+        throw new Error("Complete your profile first, then upload a photo.");
+      }
+      return documentsApi.upload(String(q.data.id), "PHOTO", file);
+    },
     onSuccess: async (doc) => {
+      // Stage 2/3 happen best-effort. The photo is already on disk in
+      // document-service; persisting the URL to user-service is a
+      // convenience so other pages render the avatar without an extra
+      // round-trip. If either step fails we still treat the upload as a
+      // success — the user sees the new avatar on the next page load
+      // when byAuthId rehydrates.
+      let stage = "presign";
       try {
         const url = await documentsApi.getDownloadUrl(doc.id);
-        await usersApi.update(q.data!.id, {
-          ...userToUpdateDto(q.data!),
-          profilePictureUrl: url.url,
-        });
-      } catch {
-        /* non-fatal */
+        stage = "persist";
+        if (q.data) {
+          await usersApi.update(q.data.id, {
+            ...userToUpdateDto(q.data),
+            profilePictureUrl: url.url,
+          });
+        }
+      } catch (e) {
+        // Don't bubble — but log so an engineer can debug from devtools
+        // without the user seeing a scary toast for a non-fatal followup.
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[profile] photo uploaded (id=${doc.id}) but ${stage} step failed:`,
+          extractErrorMessage(e),
+        );
       }
       qc.invalidateQueries({ queryKey: ["me", authUserId] });
       toast({ title: "Photo updated" });
@@ -222,6 +246,10 @@ export function ProfilePage() {
               accept="image/png,image/jpeg,image/jpg"
               maxSizeMB={5}
               loading={photoUploadM.isPending}
+              // Disabled until the user-service record exists. Trying
+              // to attach a photo to a non-existent profile is the
+              // textbook "Unexpected error" path — guard at the source.
+              disabled={!q.data?.id}
               onFiles={async (files) => {
                 if (files[0]) await photoUploadM.mutateAsync(files[0]);
               }}

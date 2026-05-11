@@ -42,9 +42,17 @@ public class User {
     @Lob
     private String address;
 
+    // Pre-signed download URLs from document-service. With expires +
+    // HMAC signature query params they run ~150-250 chars on the local
+    // backend and can grow well past Oracle's default VARCHAR2(255)
+    // behind a proxy / ngrok / longer host. @Lob avoids the silent
+    // overflow that surfaces as an "An unexpected error occurred"
+    // INTERNAL_ERROR when JPA tries to save the row.
+    @Lob
     @Column(name = "profile_picture_url")
     private String profilePictureUrl;
 
+    @Lob
     @Column(name = "id_proof_url")
     private String idProofUrl;
 

@@ -28,6 +28,24 @@ api.interceptors.request.use((config) => {
     if (!config.headers) config.headers = new AxiosHeaders();
     config.headers.set("Authorization", `Bearer ${token}`);
   }
+
+  // FormData → drop the JSON default Content-Type so the browser
+  // gets to set `multipart/form-data; boundary=...` itself. axios
+  // v1's merge of instance defaults + per-request headers is
+  // unreliable when the per-request value is `undefined` — the
+  // instance-level `application/json` can bleed through and Spring's
+  // multipart parser then rejects the body as malformed. The visible
+  // symptom is a generic 500 from the document/user-service catch-all
+  // ("An unexpected error occurred"). Explicitly deleting the header
+  // here removes that whole class of bug from every upload site.
+  if (typeof FormData !== "undefined" && config.data instanceof FormData) {
+    if (config.headers instanceof AxiosHeaders) {
+      config.headers.delete("Content-Type");
+    } else if (config.headers) {
+      // Plain-object headers path — same intent.
+      delete (config.headers as Record<string, unknown>)["Content-Type"];
+    }
+  }
   return config;
 });
 
@@ -90,8 +108,32 @@ api.interceptors.response.use(
 
 export function extractErrorMessage(err: unknown, fallback = "Something went wrong"): string {
   if (axios.isAxiosError(err)) {
-    const data = err.response?.data as { message?: string } | undefined;
-    return data?.message || err.message || fallback;
+    const data = err.response?.data as
+      | { message?: string; errorCode?: string; error?: string }
+      | undefined;
+    const message = data?.message;
+    const code = data?.errorCode;
+    // The backend catch-all returns the same string ("An unexpected
+    // error occurred. Please contact support.") for every unhandled
+    // exception — useless in a toast because the user can't tell what
+    // actually broke. When we see it, fall back to something more
+    // diagnostic: the HTTP status code + endpoint, plus the error code
+    // if it's anything other than INTERNAL_ERROR.
+    if (
+      message &&
+      (message.toLowerCase().includes("unexpected error occurred") ||
+        code === "INTERNAL_ERROR")
+    ) {
+      const status = err.response?.status;
+      const path = err.response?.config?.url ?? err.config?.url ?? "";
+      const briefPath = path.split("?")[0].split("/").slice(-3).join("/");
+      const parts: string[] = ["Request failed"];
+      if (status) parts.push(`(HTTP ${status})`);
+      if (briefPath) parts.push(`on ${briefPath}`);
+      parts.push("— please retry, or contact support if it persists.");
+      return parts.join(" ");
+    }
+    return message || err.message || fallback;
   }
   if (err instanceof Error) return err.message;
   return fallback;
