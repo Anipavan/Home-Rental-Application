@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Heart, Search } from "lucide-react";
+import { Heart, Scale, Search } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { favoritesApi } from "@/lib/api/properties";
 import { PropertyCard } from "@/components/property/property-card";
@@ -36,6 +36,23 @@ export function SavedListingsPage() {
       <PageHeader
         title="Saved homes"
         description="Every listing you've added to your wishlist, in one place."
+        actions={
+          items.length >= 2 && (
+            <Button asChild variant="outline" size="sm">
+              {/* Comparison page accepts up to 3 ids in the URL.
+                  We pre-fill with the most-recent 3 saves — the user
+                  can drop/add columns once they're on /compare. */}
+              <Link
+                to={`/app/compare?ids=${items
+                  .slice(0, 3)
+                  .map((f) => f.id)
+                  .join(",")}`}
+              >
+                <Scale /> Compare top {Math.min(items.length, 3)}
+              </Link>
+            </Button>
+          )
+        }
       />
 
       {q.isLoading && (

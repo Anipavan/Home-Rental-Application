@@ -55,6 +55,7 @@ import { AdminSupportPage } from "@/pages/admin/support";
 import { AdminVisitRequestsPage } from "@/pages/admin/visit-requests";
 import { NotificationsInboxPage } from "@/pages/notifications-inbox";
 import { SavedListingsPage } from "@/pages/tenant/saved";
+import { ComparePage } from "@/pages/tenant/compare";
 
 export const router = createBrowserRouter([
   {
@@ -89,6 +90,7 @@ export const router = createBrowserRouter([
       // tenant browsing for their NEXT home (no flat assigned yet)
       // can still wishlist and receive registration emails.
       { path: "saved", element: <SavedListingsPage /> },
+      { path: "compare", element: <ComparePage /> },
       { path: "notifications", element: <NotificationsInboxPage /> },
       // Browse listings is always available — a tenant with a flat
       // assigned should still be able to look at other homes (longer
