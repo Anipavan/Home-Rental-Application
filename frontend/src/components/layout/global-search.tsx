@@ -23,14 +23,16 @@ import { cn } from "@/lib/utils";
 /**
  * Cross-entity global search bar for the AppShell.
  *
- * Fans out to two endpoints in parallel — properties.buildings.search and
- * users.search — debounced at 250 ms. Results are grouped into sections;
- * each row is a router Link to the appropriate detail page.
+ * Fans out to up-to-two endpoints in parallel — properties.buildings.search
+ * and users.search — debounced at 250 ms. Results are grouped into
+ * sections; each row is a router Link to the appropriate detail page.
  *
  * Role-aware:
  *   OWNER  → properties (own only) + tenants (own only via /users/role/TENANT)
  *   ADMIN  → all properties + all users
- *   TENANT → no global search (returns null; the input area is hidden)
+ *   TENANT → properties only (so tenants can search for other homes
+ *            from anywhere in the app, not just /app/browse). Tenants
+ *            don't get the users index (privacy + irrelevance).
  *
  * Keyboard:
  *   ⌘K / Ctrl-K    focus
@@ -81,11 +83,13 @@ export function GlobalSearch() {
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
 
-  // Tenants don't get global search yet.
-  if (role === "TENANT" || !role) return null;
+  // No search outside of authenticated routes.
+  if (!role) return null;
 
   const enabled = debounced.length >= 2;
-  // Owner-scoped property search; admins see everything.
+  // Owner-scoped property search; admins + tenants see every active
+  // building. Tenants don't have the privacy concern around owner
+  // isolation that owners do — they're browsing, not managing.
   const ownerScope =
     role === "OWNER" && authUserId ? authUserId : undefined;
 
@@ -96,10 +100,12 @@ export function GlobalSearch() {
     staleTime: 30_000,
   });
 
+  // Users index is owner/admin only. Tenants don't see the people-
+  // directory — they're looking for homes, not other users.
   const usersQ = useQuery({
     queryKey: ["search-users", debounced],
     queryFn: () => usersApi.search(debounced),
-    enabled,
+    enabled: enabled && role !== "TENANT",
     staleTime: 30_000,
   });
 
@@ -118,7 +124,11 @@ export function GlobalSearch() {
         value={raw}
         onChange={(e) => setRaw(e.target.value)}
         onFocus={() => setOpen(true)}
-        placeholder="Search homes, tenants…  (⌘K)"
+        placeholder={
+          role === "TENANT"
+            ? "Search homes…  (⌘K)"
+            : "Search homes, tenants…  (⌘K)"
+        }
         className="pl-10 pr-9 bg-secondary/60 border-transparent"
       />
       {raw.length > 0 && (
@@ -163,7 +173,17 @@ export function GlobalSearch() {
                   to={
                     role === "OWNER"
                       ? `/owner/buildings/${b.buildingId}`
-                      : `/admin/properties`
+                      : role === "TENANT"
+                        ? // Tenants browse, they don't manage. Send
+                          // them to the full browse page filtered by
+                          // the matched building name. /property/:id
+                          // expects a FLAT id, not a building id, so
+                          // we can't deep-link to a single property
+                          // from a building hit.
+                          `/app/browse?q=${encodeURIComponent(
+                            b.buildingName ?? "",
+                          )}`
+                        : `/admin/properties`
                   }
                   onSelect={() => {
                     setOpen(false);
@@ -194,11 +214,13 @@ export function GlobalSearch() {
               type="button"
               onClick={() => {
                 setOpen(false);
-                navigate(
+                const target =
                   role === "ADMIN"
                     ? `/admin/properties?q=${encodeURIComponent(debounced)}`
-                    : `/owner/buildings?q=${encodeURIComponent(debounced)}`,
-                );
+                    : role === "TENANT"
+                      ? `/app/browse?q=${encodeURIComponent(debounced)}`
+                      : `/owner/buildings?q=${encodeURIComponent(debounced)}`;
+                navigate(target);
               }}
               className="w-full text-left px-4 py-2.5 text-xs text-muted-foreground hover:bg-muted border-t border-border/60"
             >

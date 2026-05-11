@@ -19,6 +19,7 @@ import {
   Calendar,
   Inbox,
   MessageSquareWarning,
+  Search,
 } from "lucide-react";
 import { Logo } from "./logo";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -57,6 +58,11 @@ interface NavItem {
 const tenantNav: NavItem[] = [
   { to: "/app", label: "Overview", icon: Home },
   { to: "/app/my-flat", label: "My Home", icon: Building2 },
+  // Always visible — even after a flat is assigned, tenants should be
+  // able to look at other listings (planning ahead, longer lease,
+  // recommending to a friend, etc.). The route lives outside the
+  // FlatRequiredOutlet gate so it works on day one too.
+  { to: "/app/browse", label: "Browse Homes", icon: Search },
   { to: "/app/lease", label: "Lease", icon: ScrollText },
   { to: "/app/payments", label: "Payments", icon: Receipt },
   { to: "/app/maintenance", label: "Maintenance", icon: Wrench },

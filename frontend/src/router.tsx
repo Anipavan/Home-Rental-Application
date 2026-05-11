@@ -88,6 +88,13 @@ export const router = createBrowserRouter([
       // can still receive notifications (welcome email, password
       // reset, etc.) so it must not be gated behind FlatRequiredOutlet.
       { path: "notifications", element: <NotificationsInboxPage /> },
+      // Browse listings is always available — a tenant with a flat
+      // assigned should still be able to look at other homes (longer
+      // lease, bigger place, different neighbourhood, etc.). Reuses
+      // the public BrowsePage component, which doesn't depend on the
+      // PublicLayout shell — it's a self-contained page that drops
+      // cleanly inside AppShell's <main>.
+      { path: "browse", element: <BrowsePage /> },
       // Gated by FlatRequiredOutlet. Direct-URL access without a flat
       // gets toasted + redirected back to /app. Nav-link clicks are
       // also intercepted in AppShell for the same UX without a route

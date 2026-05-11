@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Search, SlidersHorizontal } from "lucide-react";
 import { propertiesApi } from "@/lib/api/properties";
@@ -17,10 +18,23 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/layout/page-header";
 
 export function BrowsePage() {
-  const [q, setQ] = useState("");
+  // ?q= is honoured so deep-links from the AppShell GlobalSearch
+  // ("Press Enter to see all results for X →") and the tenant nav's
+  // Browse Homes link land on the page with the filter pre-applied.
+  const [searchParams] = useSearchParams();
+  const [q, setQ] = useState(searchParams.get("q") ?? "");
   const [bhk, setBhk] = useState("any");
   const [budget, setBudget] = useState("any");
   const [sort, setSort] = useState("recent");
+
+  // Sync from URL → state whenever the query param changes. This
+  // catches the case where a user is already on /app/browse and
+  // searches again from the GlobalSearch popover — without this the
+  // URL updates but the input doesn't.
+  useEffect(() => {
+    const next = searchParams.get("q") ?? "";
+    setQ(next);
+  }, [searchParams]);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["flats", "all"],
@@ -31,11 +45,24 @@ export function BrowsePage() {
     let list = data?.content ?? [];
     if (q) {
       const needle = q.toLowerCase();
-      list = list.filter(
-        (f) =>
-          f.flatNumber.toLowerCase().includes(needle) ||
-          String(f.buildingId).includes(needle),
-      );
+      // Match against everything a renter would actually type: flat
+      // number, building name, address, city. The old filter only
+      // looked at flatNumber + buildingId which never matched any
+      // real-world query (nobody searches by flat #103 or building
+      // UUID). FlatResponseDTO carries these joined fields from the
+      // backend already.
+      list = list.filter((f) => {
+        const hay = [
+          f.flatNumber,
+          f.buildingName,
+          f.buildingAddress,
+          f.buildingCity,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return hay.includes(needle);
+      });
     }
     if (bhk !== "any") list = list.filter((f) => f.bedrooms === Number(bhk));
     if (budget !== "any") {
@@ -66,7 +93,7 @@ export function BrowsePage() {
             <Input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Search by flat number or area"
+              placeholder="Search by area, building or flat number"
               className="pl-10"
             />
           </div>
