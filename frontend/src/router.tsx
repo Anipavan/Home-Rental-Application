@@ -53,6 +53,7 @@ import { AdminComplaintsPage } from "@/pages/admin/complaints";
 import { AdminReviewsPage } from "@/pages/admin/reviews";
 import { AdminSupportPage } from "@/pages/admin/support";
 import { AdminVisitRequestsPage } from "@/pages/admin/visit-requests";
+import { NotificationsInboxPage } from "@/pages/notifications-inbox";
 
 export const router = createBrowserRouter([
   {
@@ -83,6 +84,10 @@ export const router = createBrowserRouter([
       { index: true, element: <TenantDashboard /> },
       { path: "my-flat", element: <MyFlatPage /> },
       { path: "profile", element: <ProfilePage /> },
+      // Inbox available always — even pre-flat-assignment, a tenant
+      // can still receive notifications (welcome email, password
+      // reset, etc.) so it must not be gated behind FlatRequiredOutlet.
+      { path: "notifications", element: <NotificationsInboxPage /> },
       // Gated by FlatRequiredOutlet. Direct-URL access without a flat
       // gets toasted + redirected back to /app. Nav-link clicks are
       // also intercepted in AppShell for the same UX without a route
@@ -149,6 +154,7 @@ export const router = createBrowserRouter([
       { path: "enquiries", element: <OwnerEnquiriesPage /> },
       { path: "compliance", element: <OwnerCompliancePage /> },
       { path: "analytics", element: <OwnerAnalyticsPage /> },
+      { path: "notifications", element: <NotificationsInboxPage /> },
     ],
   },
   {
@@ -168,6 +174,7 @@ export const router = createBrowserRouter([
       { path: "reviews", element: <AdminReviewsPage /> },
       { path: "support", element: <AdminSupportPage /> },
       { path: "visit-requests", element: <AdminVisitRequestsPage /> },
+      { path: "notifications", element: <NotificationsInboxPage /> },
     ],
   },
   { path: "*", element: <NotFoundPage /> },
