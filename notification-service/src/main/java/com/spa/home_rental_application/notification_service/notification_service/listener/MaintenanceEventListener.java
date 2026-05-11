@@ -34,18 +34,36 @@ public class MaintenanceEventListener {
     )
     public void onCreated(MaintenanceCreatedEvent e) {
         if (e == null || !"maintenance.created".equals(e.getEventType())) return;
-        log.info("Received {} for requestId={}", e.getEventType(), e.getRequestId());
+        log.info("Received {} kind={} for requestId={}", e.getEventType(), e.getKind(), e.getRequestId());
+
+        boolean isComplaint = "COMPLAINT".equalsIgnoreCase(e.getKind());
+
+        // Compose template vars — both maintenance + complaint templates
+        // pull from the same map; missing keys render as the literal
+        // placeholder so accidentally-missing fields stand out.
         Map<String, Object> vars = Map.of(
-                "requestNumber", safe(e.getRequestNumber()),
-                "category",     safe(e.getCategory()),
-                "priority",     safe(e.getPriority()));
-        // Tenant gets the "we got your request" via INAPP (bell) +
-        // EMAIL (if SMTP set up). The owner gets pinged separately on
-        // MaintenanceAssignedEvent — maintenance-service auto-routes
-        // the ticket to the building owner and fires that event right
-        // after MaintenanceCreatedEvent.
-        notifications.fanOut(e.getTenantId(),
-                NotificationCategory.MAINTENANCE_CREATED, vars);
+                "requestNumber",     safe(e.getRequestNumber()),
+                "category",          safe(e.getCategory()),
+                "complaintCategory", safe(e.getComplaintCategory()),
+                "priority",          safe(e.getPriority()),
+                "title",             safe(e.getTitle()));
+
+        NotificationCategory tenantCategory = isComplaint
+                ? NotificationCategory.COMPLAINT_CREATED
+                : NotificationCategory.MAINTENANCE_CREATED;
+
+        notifications.fanOut(e.getTenantId(), tenantCategory, vars);
+
+        // Ping the owner too if we know who they are. For complaints
+        // about OWNER_BEHAVIOR we deliberately skip this — that route
+        // is admin-only and the owner shouldn't get a bell ping for a
+        // grievance filed against them.
+        String ownerId = e.getOwnerId();
+        boolean isOwnerBehavior = isComplaint
+                && "OWNER_BEHAVIOR".equalsIgnoreCase(e.getComplaintCategory());
+        if (ownerId != null && !ownerId.isBlank() && !isOwnerBehavior) {
+            notifications.fanOut(ownerId, tenantCategory, vars);
+        }
     }
 
     @KafkaListener(

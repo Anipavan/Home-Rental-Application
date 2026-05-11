@@ -2,6 +2,7 @@ package com.spa.home_rental_application.maintenance_service.maintenance_service.
 
 import com.spa.home_rental_application.maintenance_service.maintenance_service.DTO.Response.MaintenanceRequestResponse;
 import com.spa.home_rental_application.maintenance_service.maintenance_service.entities.MaintenanceRequest;
+import com.spa.home_rental_application.maintenance_service.maintenance_service.enums.Kind;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -19,7 +20,12 @@ public final class MaintenanceMapper {
                 e.getTenantId(),
                 e.getFlatId(),
                 e.getOwnerId(),
+                // Legacy rows (created before the discriminator field
+                // existed) deserialize with kind == null; treat those
+                // as MAINTENANCE so the response shape stays well-typed.
+                e.getKind() == null ? Kind.MAINTENANCE : e.getKind(),
                 e.getCategory(),
+                e.getComplaintCategory(),
                 e.getTitle(),
                 e.getDescription(),
                 e.getPriority(),

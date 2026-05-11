@@ -375,9 +375,40 @@ export type MaintenanceCategory =
   | "PEST_CONTROL"
   | "GENERAL";
 
+/**
+ * Discriminator for the shared maintenance/complaint ticket. The
+ * backend reuses one collection + one state machine for both kinds
+ * (so assignment, comments, status-change, and notification machinery
+ * is shared); the discriminator picks which UX/copy/category taxonomy
+ * to render.
+ */
+export type TicketKind = "MAINTENANCE" | "COMPLAINT";
+
+/**
+ * Category taxonomy for COMPLAINT-kind tickets. Distinct from
+ * MaintenanceCategory because the value sets share no overlap.
+ */
+export type ComplaintCategory =
+  | "NOISE"
+  | "NEIGHBOR_DISPUTE"
+  | "SECURITY_CONCERN"
+  | "OWNER_BEHAVIOR"
+  | "BILLING_DISPUTE"
+  | "SAFETY_HAZARD"
+  | "COMMON_AREA"
+  | "LEASE_VIOLATION"
+  | "OTHER";
+
 export interface MaintenanceComment {
   userId: string;
   comment: string;
+  timestamp: string;
+}
+
+export interface MaintenanceHistoryEntry {
+  fromStatus: MaintenanceStatus | null;
+  toStatus: MaintenanceStatus;
+  changedBy: string;
   timestamp: string;
 }
 
@@ -387,7 +418,12 @@ export interface MaintenanceRequestResponse {
   tenantId: string;
   flatId: string;
   ownerId?: string;
-  category: MaintenanceCategory;
+  /** Server defaults to MAINTENANCE on legacy rows. */
+  kind: TicketKind;
+  /** Set when kind == "MAINTENANCE". */
+  category: MaintenanceCategory | null;
+  /** Set when kind == "COMPLAINT". */
+  complaintCategory: ComplaintCategory | null;
   title: string;
   description: string;
   priority: MaintenancePriority;
@@ -397,13 +433,21 @@ export interface MaintenanceRequestResponse {
   createdAt: string;
   updatedAt?: string;
   resolvedAt?: string;
+  closedAt?: string;
   comments?: MaintenanceComment[];
+  history?: MaintenanceHistoryEntry[];
 }
 
 export interface CreateRequestDto {
   flatId: string;
   tenantId: string;
-  category: MaintenanceCategory;
+  ownerId?: string;
+  /** Omit (server defaults to MAINTENANCE) or pass explicitly. */
+  kind?: TicketKind;
+  /** Required when kind = MAINTENANCE. */
+  category?: MaintenanceCategory;
+  /** Required when kind = COMPLAINT. */
+  complaintCategory?: ComplaintCategory;
   priority: MaintenancePriority;
   title: string;
   description: string;
@@ -428,6 +472,9 @@ export type NotificationCategory =
   | "MAINTENANCE_CREATED"
   | "MAINTENANCE_ASSIGNED"
   | "MAINTENANCE_RESOLVED"
+  | "COMPLAINT_CREATED"
+  | "COMPLAINT_ACKNOWLEDGED"
+  | "COMPLAINT_RESOLVED"
   | "LEASE_WELCOME"
   | "LEASE_EXPIRY"
   | "GENERIC";

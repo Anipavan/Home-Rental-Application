@@ -126,7 +126,8 @@ function RequestCard({ request }: { request: MaintenanceRequestResponse }) {
             <div className="min-w-0">
               <p className="font-medium truncate">{request.title}</p>
               <p className="text-xs text-muted-foreground truncate">
-                Flat #{request.flatId} · {request.category} · Tenant{" "}
+                Flat #{request.flatId} ·{" "}
+                {request.category ?? request.complaintCategory ?? "—"} · Tenant{" "}
                 {request.tenantId} · {relativeFromNow(request.createdAt)}
               </p>
             </div>

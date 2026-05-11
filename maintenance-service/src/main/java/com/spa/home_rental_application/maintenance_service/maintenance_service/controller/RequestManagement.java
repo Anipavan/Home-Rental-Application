@@ -5,6 +5,7 @@ import com.spa.home_rental_application.maintenance_service.maintenance_service.D
 import com.spa.home_rental_application.maintenance_service.maintenance_service.DTO.Response.MaintenanceRequestResponse;
 import com.spa.home_rental_application.maintenance_service.maintenance_service.Service.RequestService;
 import com.spa.home_rental_application.maintenance_service.maintenance_service.enums.Category;
+import com.spa.home_rental_application.maintenance_service.maintenance_service.enums.Kind;
 import com.spa.home_rental_application.maintenance_service.maintenance_service.enums.Priority;
 import com.spa.home_rental_application.maintenance_service.maintenance_service.enums.Status;
 import io.swagger.v3.oas.annotations.Operation;
@@ -27,7 +28,7 @@ import java.util.List;
 @RequestMapping(value = "/maintenance", produces = MediaType.APPLICATION_JSON_VALUE)
 @Validated
 @Slf4j
-@Tag(name = "Maintenance Requests", description = "Lifecycle CRUD + lookup endpoints")
+@Tag(name = "Maintenance Requests", description = "Lifecycle CRUD + lookup endpoints (handles both maintenance tickets and complaints)")
 public class RequestManagement {
 
     private final RequestService requestService;
@@ -36,20 +37,25 @@ public class RequestManagement {
         this.requestService = requestService;
     }
 
-    @Operation(summary = "Create a maintenance request (publishes maintenance.created)")
+    @Operation(summary = "Create a maintenance request OR a complaint (kind discriminator)",
+            description = "Default kind = MAINTENANCE. Set kind=COMPLAINT plus complaintCategory to file a grievance.")
     @PostMapping(value = "/requests", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<MaintenanceRequestResponse> create(@Valid @RequestBody CreateRequestDto body) {
-        log.info("POST /maintenance/requests tenant={} flat={}", body.tenantId(), body.flatId());
+        log.info("POST /maintenance/requests kind={} tenant={} flat={}",
+                body.kind(), body.tenantId(), body.flatId());
         return ResponseEntity.status(HttpStatus.CREATED).body(requestService.createRequest(body));
     }
 
-    @Operation(summary = "List all requests (paginated)")
+    @Operation(summary = "List all requests (paginated, optionally filtered by kind)")
     @GetMapping("/requests")
     public ResponseEntity<Page<MaintenanceRequestResponse>> list(
             @RequestParam(defaultValue = "0") @Min(0) int page,
-            @RequestParam(defaultValue = "10") @Min(1) int size) {
+            @RequestParam(defaultValue = "10") @Min(1) int size,
+            @RequestParam(required = false) Kind kind) {
         Pageable pageable = PageRequest.of(page, size);
-        return ResponseEntity.ok(requestService.getAllRequests(pageable));
+        return ResponseEntity.ok(kind == null
+                ? requestService.getAllRequests(pageable)
+                : requestService.getAllByKind(kind, pageable));
     }
 
     @Operation(summary = "Get a maintenance request by id")
@@ -90,15 +96,31 @@ public class RequestManagement {
         return ResponseEntity.ok(requestService.getRequestsByCategory(category));
     }
 
-    @Operation(summary = "List all requests for a tenant")
+    @Operation(summary = "List all requests for a tenant (optionally filtered by kind)")
     @GetMapping("/requests/tenant/{tenantId}")
-    public ResponseEntity<List<MaintenanceRequestResponse>> byTenant(@PathVariable String tenantId) {
-        return ResponseEntity.ok(requestService.getRequestsByTenant(tenantId));
+    public ResponseEntity<List<MaintenanceRequestResponse>> byTenant(
+            @PathVariable String tenantId,
+            @RequestParam(required = false) Kind kind) {
+        return ResponseEntity.ok(kind == null
+                ? requestService.getRequestsByTenant(tenantId)
+                : requestService.getByTenantAndKind(tenantId, kind));
     }
 
-    @Operation(summary = "List all requests for an owner")
+    @Operation(summary = "List all requests for an owner (optionally filtered by kind)")
     @GetMapping("/requests/owner/{ownerId}")
-    public ResponseEntity<List<MaintenanceRequestResponse>> byOwner(@PathVariable String ownerId) {
-        return ResponseEntity.ok(requestService.getRequestsByOwner(ownerId));
+    public ResponseEntity<List<MaintenanceRequestResponse>> byOwner(
+            @PathVariable String ownerId,
+            @RequestParam(required = false) Kind kind) {
+        return ResponseEntity.ok(kind == null
+                ? requestService.getRequestsByOwner(ownerId)
+                : requestService.getByOwnerAndKind(ownerId, kind));
+    }
+
+    @Operation(summary = "Count of pending (OPEN/IN_PROGRESS) requests, optionally filtered by kind")
+    @GetMapping("/requests/pending-count")
+    public ResponseEntity<Long> pendingCount(@RequestParam(required = false) Kind kind) {
+        return ResponseEntity.ok(kind == null
+                ? requestService.getPendingRequestCount()
+                : requestService.getPendingCountByKind(kind));
     }
 }

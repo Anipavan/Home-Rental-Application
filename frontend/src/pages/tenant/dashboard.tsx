@@ -187,7 +187,9 @@ export function TenantDashboard() {
               >
                 <div className="min-w-0">
                   <p className="font-medium text-sm truncate">{r.title}</p>
-                  <p className="text-xs text-muted-foreground">{r.category}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {r.category ?? r.complaintCategory ?? "—"}
+                  </p>
                 </div>
                 <Badge variant={statusVariant(r.status)}>{r.status}</Badge>
               </div>

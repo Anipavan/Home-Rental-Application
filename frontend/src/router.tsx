@@ -18,6 +18,9 @@ import { PayPage } from "@/pages/tenant/pay";
 import { PaymentReturnPage } from "@/pages/tenant/payment-return";
 import { MaintenancePage } from "@/pages/tenant/maintenance";
 import { MaintenanceNewPage } from "@/pages/tenant/maintenance-new";
+import { ComplaintsPage } from "@/pages/tenant/complaints";
+import { ComplaintsNewPage } from "@/pages/tenant/complaints-new";
+import { ComplaintDetailPage } from "@/pages/tenant/complaint-detail";
 import { ProfilePage } from "@/pages/tenant/profile";
 import { TenantLeasePage } from "@/pages/tenant/lease";
 import { KycPage } from "@/pages/tenant/kyc";
@@ -33,6 +36,7 @@ import { TenantsPage } from "@/pages/owner/tenants";
 import { TenantDetailPage } from "@/pages/owner/tenant-detail";
 import { OwnerPaymentsPage } from "@/pages/owner/payments";
 import { OwnerMaintenancePage } from "@/pages/owner/maintenance";
+import { OwnerComplaintsPage } from "@/pages/owner/complaints";
 import { OwnerAnalyticsPage } from "@/pages/owner/analytics";
 import { OwnerAgreementsPage } from "@/pages/owner/agreements";
 import { OwnerLeasesPage } from "@/pages/owner/leases";
@@ -43,6 +47,7 @@ import { AdminUsersPage } from "@/pages/admin/users";
 import { AdminPropertiesPage } from "@/pages/admin/properties";
 import { AdminPaymentsPage } from "@/pages/admin/payments";
 import { AdminMaintenancePage } from "@/pages/admin/maintenance";
+import { AdminComplaintsPage } from "@/pages/admin/complaints";
 import { AdminReviewsPage } from "@/pages/admin/reviews";
 import { AdminSupportPage } from "@/pages/admin/support";
 import { AdminVisitRequestsPage } from "@/pages/admin/visit-requests";
@@ -90,6 +95,9 @@ export const router = createBrowserRouter([
           { path: "payments/:id/return", element: <PaymentReturnPage /> },
           { path: "maintenance", element: <MaintenancePage /> },
           { path: "maintenance/new", element: <MaintenanceNewPage /> },
+          { path: "complaints", element: <ComplaintsPage /> },
+          { path: "complaints/new", element: <ComplaintsNewPage /> },
+          { path: "complaints/:id", element: <ComplaintDetailPage /> },
           { path: "lease", element: <TenantLeasePage /> },
           { path: "kyc", element: <KycPage /> },
           { path: "documents", element: <DocumentsPage /> },
@@ -116,6 +124,7 @@ export const router = createBrowserRouter([
       { path: "tenants/:tenantId", element: <TenantDetailPage /> },
       { path: "payments", element: <OwnerPaymentsPage /> },
       { path: "maintenance", element: <OwnerMaintenancePage /> },
+      { path: "complaints", element: <OwnerComplaintsPage /> },
       { path: "agreements", element: <OwnerAgreementsPage /> },
       { path: "leases", element: <OwnerLeasesPage /> },
       { path: "enquiries", element: <OwnerEnquiriesPage /> },
@@ -136,6 +145,7 @@ export const router = createBrowserRouter([
       { path: "properties", element: <AdminPropertiesPage /> },
       { path: "payments", element: <AdminPaymentsPage /> },
       { path: "maintenance", element: <AdminMaintenancePage /> },
+      { path: "complaints", element: <AdminComplaintsPage /> },
       { path: "reviews", element: <AdminReviewsPage /> },
       { path: "support", element: <AdminSupportPage /> },
       { path: "visit-requests", element: <AdminVisitRequestsPage /> },

@@ -78,6 +78,26 @@ public class TemplateSeeder {
                 "Good news — your maintenance request {{requestId}} has been resolved (resolution time: {{resolutionTimeMinutes}} minutes).",
                 List.of("requestId", "resolutionTimeMinutes"));
 
+        /* ─────── Complaints — share the maintenance pipeline, distinct copy ─────── */
+        seedIfAbsent("complaint-created-email", NotificationCategory.COMPLAINT_CREATED, NotificationType.EMAIL,
+                "Complaint {{requestNumber}} registered",
+                "We've registered your complaint {{requestNumber}} (about: {{complaintCategory}}, priority: {{priority}}).\n\n"
+                        + "A property manager will review it and reply through the in-app messages thread. "
+                        + "You can track status anytime under Complaints in your dashboard.",
+                List.of("requestNumber", "complaintCategory", "priority"));
+
+        seedIfAbsent("complaint-acknowledged-email", NotificationCategory.COMPLAINT_ACKNOWLEDGED, NotificationType.EMAIL,
+                "Update on complaint {{requestNumber}}",
+                "Your complaint {{requestNumber}} is now being worked on by {{assignedTo}}. "
+                        + "You'll be notified when there's a resolution; replies appear in the complaint's messages thread.",
+                List.of("requestNumber", "assignedTo"));
+
+        seedIfAbsent("complaint-resolved-email", NotificationCategory.COMPLAINT_RESOLVED, NotificationType.EMAIL,
+                "Your complaint has been resolved",
+                "Good news — your complaint {{requestNumber}} has been resolved. "
+                        + "If you're not happy with the outcome, reply in the messages thread within 7 days to re-open it.",
+                List.of("requestNumber", "resolutionTimeMinutes"));
+
         seedIfAbsent("welcome-flat-email", NotificationCategory.LEASE_WELCOME, NotificationType.EMAIL,
                 "Welcome to your new home!",
                 "Welcome! You've moved into flat {{flatId}}. Your monthly rent is ₹{{rentAmount}} starting {{startDate}}.",

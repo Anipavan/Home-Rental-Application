@@ -11,6 +11,7 @@ import com.spa.home_rental_application.maintenance_service.maintenance_service.R
 import com.spa.home_rental_application.maintenance_service.maintenance_service.Service.RequestService;
 import com.spa.home_rental_application.maintenance_service.maintenance_service.entities.MaintenanceRequest;
 import com.spa.home_rental_application.maintenance_service.maintenance_service.enums.Category;
+import com.spa.home_rental_application.maintenance_service.maintenance_service.enums.Kind;
 import com.spa.home_rental_application.maintenance_service.maintenance_service.enums.Priority;
 import com.spa.home_rental_application.maintenance_service.maintenance_service.enums.Status;
 import com.spa.home_rental_application.maintenance_service.maintenance_service.exception.IllegalStatusTransitionException;
@@ -58,8 +59,26 @@ public class RequestServiceImpul implements RequestService {
 
     @Override
     public MaintenanceRequestResponse createRequest(CreateRequestDto dto) {
-        log.info("createRequest tenant={} flat={} category={} priority={}",
-                dto.tenantId(), dto.flatId(), dto.category(), dto.priority());
+        // Default kind = MAINTENANCE so legacy clients that don't know
+        // about the discriminator continue to work unchanged.
+        Kind effectiveKind = dto.kind() == null ? Kind.MAINTENANCE : dto.kind();
+
+        // Cross-field validation: each kind needs its own taxonomy field.
+        // We do this here (not via @NotNull on the DTO) because the rule
+        // depends on the value of `kind`, which Bean Validation can't
+        // express cleanly without a custom annotation.
+        if (effectiveKind == Kind.MAINTENANCE && dto.category() == null) {
+            throw new IllegalArgumentException(
+                    "category is required when kind = MAINTENANCE");
+        }
+        if (effectiveKind == Kind.COMPLAINT && dto.complaintCategory() == null) {
+            throw new IllegalArgumentException(
+                    "complaintCategory is required when kind = COMPLAINT");
+        }
+
+        log.info("createRequest kind={} tenant={} flat={} category={} complaintCategory={} priority={}",
+                effectiveKind, dto.tenantId(), dto.flatId(), dto.category(),
+                dto.complaintCategory(), dto.priority());
 
         Instant now = Instant.now();
         MaintenanceRequest entity = MaintenanceRequest.builder()
@@ -67,7 +86,9 @@ public class RequestServiceImpul implements RequestService {
                 .tenantId(dto.tenantId())
                 .flatId(dto.flatId())
                 .ownerId(dto.ownerId())
-                .category(dto.category())
+                .kind(effectiveKind)
+                .category(effectiveKind == Kind.MAINTENANCE ? dto.category() : null)
+                .complaintCategory(effectiveKind == Kind.COMPLAINT ? dto.complaintCategory() : null)
                 .title(dto.title())
                 .description(dto.description())
                 .priority(dto.priority())
@@ -92,7 +113,13 @@ public class RequestServiceImpul implements RequestService {
                 .requestNumber(saved.getRequestNumber())
                 .tenantId(saved.getTenantId())
                 .flatId(saved.getFlatId())
-                .category(saved.getCategory().name())
+                .ownerId(saved.getOwnerId())
+                .kind(saved.getKind() == null ? Kind.MAINTENANCE.name() : saved.getKind().name())
+                .category(saved.getCategory() == null ? null : saved.getCategory().name())
+                .complaintCategory(saved.getComplaintCategory() == null
+                        ? null
+                        : saved.getComplaintCategory().name())
+                .title(saved.getTitle())
                 .priority(saved.getPriority().name())
                 .timestamp(Instant.now())
                 .build());
@@ -154,6 +181,25 @@ public class RequestServiceImpul implements RequestService {
     @Override
     public List<MaintenanceRequestResponse> getRequestsByOwner(String ownerId) {
         return repo.findByOwnerId(ownerId).stream().map(MaintenanceMapper::toResponse).toList();
+    }
+
+    /* ---------- Kind-scoped lookups (complaints feature) ---------- */
+
+    @Override
+    public Page<MaintenanceRequestResponse> getAllByKind(Kind kind, Pageable pageable) {
+        return repo.findByKind(kind, pageable).map(MaintenanceMapper::toResponse);
+    }
+
+    @Override
+    public List<MaintenanceRequestResponse> getByTenantAndKind(String tenantId, Kind kind) {
+        return repo.findByTenantIdAndKind(tenantId, kind).stream()
+                .map(MaintenanceMapper::toResponse).toList();
+    }
+
+    @Override
+    public List<MaintenanceRequestResponse> getByOwnerAndKind(String ownerId, Kind kind) {
+        return repo.findByOwnerIdAndKind(ownerId, kind).stream()
+                .map(MaintenanceMapper::toResponse).toList();
     }
 
     /* ---------- Actions ---------- */
@@ -281,6 +327,11 @@ public class RequestServiceImpul implements RequestService {
     @Override
     public long getPendingRequestCount() {
         return repo.countByStatusIn(PENDING_STATUSES);
+    }
+
+    @Override
+    public long getPendingCountByKind(Kind kind) {
+        return repo.countByKindAndStatusIn(kind, PENDING_STATUSES);
     }
 
     @Override

@@ -14,6 +14,10 @@ public enum NotificationCategory {
     MAINTENANCE_CREATED,
     MAINTENANCE_ASSIGNED,
     MAINTENANCE_RESOLVED,
+    // Complaints share the maintenance pipeline but render different copy.
+    COMPLAINT_CREATED,
+    COMPLAINT_ACKNOWLEDGED,
+    COMPLAINT_RESOLVED,
     LEASE_WELCOME,
     LEASE_EXPIRY,
     // ----- India Compliance Layer -----

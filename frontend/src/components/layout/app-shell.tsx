@@ -18,6 +18,7 @@ import {
   Stamp,
   Calendar,
   Inbox,
+  MessageSquareWarning,
 } from "lucide-react";
 import { Logo } from "./logo";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -51,6 +52,7 @@ const tenantNav: NavItem[] = [
   { to: "/app/lease", label: "Lease", icon: ScrollText },
   { to: "/app/payments", label: "Payments", icon: Receipt },
   { to: "/app/maintenance", label: "Maintenance", icon: Wrench },
+  { to: "/app/complaints", label: "Complaints", icon: MessageSquareWarning },
   { to: "/app/kyc", label: "KYC", icon: BadgeCheck },
   { to: "/app/documents", label: "Documents", icon: FileText },
   { to: "/app/reviews", label: "Reviews", icon: Star },
@@ -64,6 +66,7 @@ const ownerNav: NavItem[] = [
   { to: "/owner/tenants", label: "Tenants", icon: Users },
   { to: "/owner/payments", label: "Payments", icon: Receipt },
   { to: "/owner/maintenance", label: "Maintenance", icon: Wrench },
+  { to: "/owner/complaints", label: "Complaints", icon: MessageSquareWarning },
   { to: "/owner/agreements", label: "Agreements", icon: ScrollText },
   { to: "/owner/leases", label: "Leases", icon: FileText },
   { to: "/owner/enquiries", label: "Enquiries", icon: Inbox },
@@ -77,6 +80,7 @@ const adminNav: NavItem[] = [
   { to: "/admin/properties", label: "Properties", icon: Building2 },
   { to: "/admin/payments", label: "Payments", icon: Receipt },
   { to: "/admin/maintenance", label: "Maintenance", icon: Wrench },
+  { to: "/admin/complaints", label: "Complaints", icon: MessageSquareWarning },
   { to: "/admin/reviews", label: "Reviews", icon: Star },
   { to: "/admin/support", label: "Support", icon: FileText },
   { to: "/admin/visit-requests", label: "Visit requests", icon: Calendar },

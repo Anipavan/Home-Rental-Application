@@ -27,7 +27,7 @@ export function OwnerMaintenancePage() {
 
   const setStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: MaintenanceStatus }) =>
-      maintenanceApi.setStatus(id, status),
+      maintenanceApi.setStatus(id, status, authUserId!),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["owner-maintenance"] });
       toast({ title: "Status updated" });
@@ -116,7 +116,8 @@ function RequestCard({
             <div className="min-w-0">
               <p className="font-medium truncate">{request.title}</p>
               <p className="text-xs text-muted-foreground">
-                Flat #{request.flatId} · {request.category} ·{" "}
+                Flat #{request.flatId} ·{" "}
+                {request.category ?? request.complaintCategory ?? "—"} ·{" "}
                 {relativeFromNow(request.createdAt)}
               </p>
             </div>

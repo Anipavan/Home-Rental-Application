@@ -299,7 +299,8 @@ export function OwnerDashboard() {
                   <div className="min-w-0">
                     <p className="font-medium text-sm truncate">{r.title}</p>
                     <p className="text-xs text-muted-foreground">
-                      Flat {flatLookup.nameOf(r.flatId)} · {r.category}
+                      Flat {flatLookup.nameOf(r.flatId)} ·{" "}
+                      {r.category ?? r.complaintCategory ?? "—"}
                     </p>
                   </div>
                   <Badge variant={r.priority === "CRITICAL" || r.priority === "HIGH" ? "destructive" : "warning"}>

@@ -1,6 +1,8 @@
 package com.spa.home_rental_application.maintenance_service.maintenance_service.entities;
 
 import com.spa.home_rental_application.maintenance_service.maintenance_service.enums.Category;
+import com.spa.home_rental_application.maintenance_service.maintenance_service.enums.ComplaintCategory;
+import com.spa.home_rental_application.maintenance_service.maintenance_service.enums.Kind;
 import com.spa.home_rental_application.maintenance_service.maintenance_service.enums.Priority;
 import com.spa.home_rental_application.maintenance_service.maintenance_service.enums.Status;
 import lombok.*;
@@ -47,7 +49,25 @@ public class MaintenanceRequest {
     @Indexed
     private String ownerId;
 
+    /**
+     * Discriminator. MAINTENANCE = physical repair / handyman ticket
+     * (category enum is {@link Category}). COMPLAINT = grievance about
+     * the property / owner / neighbours / building (category enum is
+     * {@link #complaintCategory}).
+     *
+     * <p>Default to MAINTENANCE so legacy rows created before this
+     * field existed continue to be treated as maintenance tickets.
+     */
+    @Indexed
+    @Builder.Default
+    private Kind kind = Kind.MAINTENANCE;
+
+    /** Maintenance-side taxonomy. Populated when {@link #kind} = MAINTENANCE. */
     private Category category;
+
+    /** Complaint-side taxonomy. Populated when {@link #kind} = COMPLAINT. */
+    @Field("complaint_category")
+    private ComplaintCategory complaintCategory;
 
     private String title;
 

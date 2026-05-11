@@ -268,7 +268,8 @@ export function AdminDashboard() {
                   <div className="flex-1 min-w-0">
                     <p className="font-medium truncate">{r.title}</p>
                     <p className="text-xs text-muted-foreground">
-                      Flat #{r.flatId} · {r.category}
+                      Flat #{r.flatId} ·{" "}
+                      {r.category ?? r.complaintCategory ?? "—"}
                     </p>
                   </div>
                   <Badge

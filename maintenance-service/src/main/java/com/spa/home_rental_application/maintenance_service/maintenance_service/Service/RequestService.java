@@ -5,6 +5,7 @@ import com.spa.home_rental_application.maintenance_service.maintenance_service.D
 import com.spa.home_rental_application.maintenance_service.maintenance_service.DTO.Response.MaintenanceRequestResponse;
 import com.spa.home_rental_application.maintenance_service.maintenance_service.DTO.Response.ResolutionTimeStatsResponse;
 import com.spa.home_rental_application.maintenance_service.maintenance_service.enums.Category;
+import com.spa.home_rental_application.maintenance_service.maintenance_service.enums.Kind;
 import com.spa.home_rental_application.maintenance_service.maintenance_service.enums.Priority;
 import com.spa.home_rental_application.maintenance_service.maintenance_service.enums.Status;
 import org.springframework.data.domain.Page;
@@ -30,6 +31,12 @@ public interface RequestService {
     List<MaintenanceRequestResponse> getRequestsByTenant(String tenantId);
     List<MaintenanceRequestResponse> getRequestsByOwner(String ownerId);
 
+    /* Kind-scoped lookups — power the complaints feature without
+       duplicating the storage/state-machine. */
+    Page<MaintenanceRequestResponse> getAllByKind(Kind kind, Pageable pageable);
+    List<MaintenanceRequestResponse> getByTenantAndKind(String tenantId, Kind kind);
+    List<MaintenanceRequestResponse> getByOwnerAndKind(String ownerId, Kind kind);
+
     /* Actions */
     MaintenanceRequestResponse assignTechnician(String id, AssignTechnicianRequest body);
     MaintenanceRequestResponse addComment(String id, AddCommentRequest body);
@@ -39,6 +46,7 @@ public interface RequestService {
 
     /* Analytics */
     long getPendingRequestCount();
+    long getPendingCountByKind(Kind kind);
     List<CategoryStatsResponse> getCategoryStats();
     ResolutionTimeStatsResponse getResolutionTimeStats();
 

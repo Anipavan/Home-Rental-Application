@@ -317,7 +317,7 @@ export function TenantDetailPage() {
                       <p className="text-sm font-medium truncate">{m.title}</p>
                       <div className="flex items-center gap-2 text-[11px] text-muted-foreground mt-0.5 flex-wrap">
                         <Badge variant="secondary" className="text-[10px]">
-                          {m.category}
+                          {m.category ?? m.complaintCategory ?? "—"}
                         </Badge>
                         <span>· {m.priority}</span>
                         <span>·</span>

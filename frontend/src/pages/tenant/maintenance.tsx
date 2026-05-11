@@ -139,7 +139,8 @@ function RequestRow({
             <div className="min-w-0">
               <p className="font-medium truncate">{request.title}</p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                {request.category} · {request.priority} priority ·{" "}
+                {request.category ?? request.complaintCategory ?? "—"} ·{" "}
+                {request.priority} priority ·{" "}
                 {relativeFromNow(request.createdAt)}
                 {reminderCount > 0 && (
                   <>
