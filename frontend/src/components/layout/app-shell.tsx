@@ -22,6 +22,7 @@ import {
   MessageSquareWarning,
   Search,
   Heart,
+  BellRing,
 } from "lucide-react";
 import { Logo } from "./logo";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -65,6 +66,10 @@ const tenantNav: NavItem[] = [
   // because it's a frequent re-entry point — users come back to
   // re-open the same shortlist multiple times during their search.
   { to: "/app/saved", label: "Saved", icon: Heart },
+  // Saved-search alerts (email me when a new home matches). Lives
+  // right under "Saved" because the user mental model is identical —
+  // both surfaces are "things I want the platform to remember".
+  { to: "/app/saved-searches", label: "Alerts", icon: BellRing },
   // Always visible — even after a flat is assigned, tenants should be
   // able to look at other listings (planning ahead, longer lease,
   // recommending to a friend, etc.). The route lives outside the

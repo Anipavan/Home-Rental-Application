@@ -10,11 +10,25 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 public interface FlatRepo extends JpaRepository<Flat,String> {
     List<Flat> findByBuildingId(String buildingId);
     List<Flat> findByIsOccupiedFalse();
+
+    /**
+     * Vacant flats listed after a watermark — used by
+     * {@code SavedSearchMatcherScheduler} so we only consider flats
+     * the user hasn't already been notified about. Soft-deleted +
+     * occupied flats are filtered out at the DB level.
+     */
+    @Query("SELECT f FROM Flat f " +
+           "WHERE (f.isDeleted = false OR f.isDeleted IS NULL) " +
+           "AND f.isOccupied = false " +
+           "AND f.createdAt IS NOT NULL " +
+           "AND f.createdAt > :since")
+    List<Flat> findVacantCreatedAfter(@Param("since") LocalDateTime since);
 
     /** All non-deleted flats currently assigned to this tenant. */
     @Query("SELECT f FROM Flat f " +

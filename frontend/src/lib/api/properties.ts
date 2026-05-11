@@ -209,3 +209,57 @@ export const favoritesApi = {
   ids: () =>
     api.get<string[]>("/properties/favorites/ids").then((r) => r.data),
 };
+
+/**
+ * Saved-search alerts API — tenants store a filter combination
+ * ("2BHK under ₹30k in Indiranagar") and get an email the moment a
+ * matching flat is listed. Like the wishlist, the user identity is
+ * taken from the gateway's X-Auth-User-Id header, so the client never
+ * sends userId.
+ */
+export interface SavedSearchRequest {
+  name?: string | null;
+  city?: string | null;
+  bedrooms?: number | null;
+  minRent?: number | null;
+  maxRent?: number | null;
+  minAreaSqft?: number | null;
+  furnishingStatus?: string | null;
+  petFriendly?: boolean | null;
+  isActive?: boolean | null;
+}
+
+export interface SavedSearchResponse {
+  id: string;
+  userId: string;
+  name: string | null;
+  city: string | null;
+  bedrooms: number | null;
+  minRent: number | null;
+  maxRent: number | null;
+  minAreaSqft: number | null;
+  furnishingStatus: string | null;
+  petFriendly: boolean | null;
+  isActive: boolean;
+  lastMatchedAt: string | null;
+  createdAt: string;
+}
+
+export const savedSearchesApi = {
+  create: (body: SavedSearchRequest) =>
+    api
+      .post<SavedSearchResponse>("/properties/saved-searches", body)
+      .then((r) => r.data),
+  list: () =>
+    api
+      .get<SavedSearchResponse[]>("/properties/saved-searches")
+      .then((r) => r.data),
+  update: (id: string, body: SavedSearchRequest) =>
+    api
+      .put<SavedSearchResponse>(`/properties/saved-searches/${id}`, body)
+      .then((r) => r.data),
+  remove: (id: string) =>
+    api
+      .delete<void>(`/properties/saved-searches/${id}`)
+      .then((r) => r.data),
+};

@@ -1,17 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { Link, useSearchParams } from "react-router-dom";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   Bath,
   Bed,
+  BellPlus,
   Building2,
   CalendarDays,
   Dog,
   Eye,
   IndianRupee,
+  LayoutGrid,
   Layers,
   Loader2,
   LocateFixed,
+  Map as MapIcon,
   MapPin,
   Ruler,
   Search,
@@ -20,8 +23,10 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
-import { propertiesApi } from "@/lib/api/properties";
+import { propertiesApi, savedSearchesApi } from "@/lib/api/properties";
+import { useAuthStore } from "@/stores/auth-store";
 import { PropertyCard } from "@/components/property/property-card";
+import { PropertyMapView } from "@/components/property/property-map";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -43,8 +48,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/layout/page-header";
-import { formatINR } from "@/lib/utils";
-import type { FlatResponseDTO } from "@/types/api";
+import { cn, formatINR } from "@/lib/utils";
+import type { BuildingResponseDTO, FlatResponseDTO } from "@/types/api";
 
 /**
  * Advanced browse page — inspired by NoBroker / 99acres / Zillow filters.
@@ -105,6 +110,14 @@ export function BrowsePage() {
   // separately so we can show a friendly "Using your location: <City>"
   // banner even when the user hasn't explicitly set the city dropdown.
   const [geoCity, setGeoCity] = useState<string | null>(null);
+  // List vs Map view — defaults to list because that's what users
+  // expect to see first; the map toggle is for spatially-oriented
+  // search (commute-time, neighborhood feel) that NoBroker/99acres
+  // also lead with after a city is picked.
+  const [viewMode, setViewMode] = useState<"list" | "map">("list");
+  // Coords from the geolocation flow; passed to the map so it can
+  // centre on the user when they hit "Use my location" + switch to map.
+  const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
 
   // Sync from URL → state. Catches the case where the user is already
   // on /app/browse and searches again from the AppShell GlobalSearch.
@@ -117,6 +130,24 @@ export function BrowsePage() {
     queryKey: ["flats", "all"],
     queryFn: () => propertiesApi.flats.list(0, 60),
   });
+
+  // Buildings query — needed for the Map view to resolve each flat's
+  // lat/lng (the geo-pin lives on the parent Building, not the Flat).
+  // Only fires when the user actually switches to map; until then the
+  // list view doesn't need it. Cached for 5min — buildings don't move.
+  const buildingsQ = useQuery({
+    queryKey: ["buildings", "all"],
+    queryFn: () => propertiesApi.buildings.list(0, 200),
+    enabled: viewMode === "map",
+    staleTime: 5 * 60_000,
+  });
+  const buildingsById = useMemo(() => {
+    const map: Record<string, BuildingResponseDTO> = {};
+    for (const b of buildingsQ.data?.content ?? []) {
+      map[b.buildingId] = b;
+    }
+    return map;
+  }, [buildingsQ.data]);
 
   // Derive the list of cities from results so the dropdown only offers
   // cities that actually have listings — no dead options.
@@ -134,6 +165,31 @@ export function BrowsePage() {
   );
 
   const activeChips = describeActiveFilters(filters, q);
+  const { isAuthenticated } = useAuthStore();
+
+  /**
+   * Save-this-search → POST to /properties/saved-searches with the
+   * current filter state mapped to the backend's predicate shape.
+   * Sign-in is required (the controller reads the user id from
+   * X-Auth-User-Id) — for anonymous visitors the CTA collapses to
+   * a "Sign in to save" link.
+   */
+  const saveMut = useMutation({
+    mutationFn: () => savedSearchesApi.create(filtersToSavedSearch(filters)),
+    onSuccess: () =>
+      toast({
+        title: "Alert saved!",
+        description:
+          "We'll email you when new homes match this search. Manage alerts under My Saved Searches.",
+      }),
+    onError: () =>
+      toast({
+        variant: "destructive",
+        title: "Couldn't save",
+        description: "Please try again in a moment.",
+      }),
+  });
+  const canSaveSearch = activeChips.length > 0; // pointless to save an empty search
 
   function resetAll() {
     setFilters(DEFAULT_FILTERS);
@@ -176,6 +232,9 @@ export function BrowsePage() {
           }),
       );
       const { latitude, longitude } = position.coords;
+      // Stash the precise coords for the map view — the city filter
+      // is coarse, but the map can centre exactly on the user.
+      setUserCoords({ lat: latitude, lng: longitude });
       const url = new URL(
         "https://api.bigdatacloud.net/data/reverse-geocode-client",
       );
@@ -391,6 +450,34 @@ export function BrowsePage() {
           >
             Clear all
           </button>
+          {/* Save-this-search CTA. Sits at the end of the chip row so
+              users see it after refining their filters — same flow as
+              99acres / housing.com. */}
+          {canSaveSearch && (
+            isAuthenticated ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="ml-auto gap-1.5 h-7"
+                onClick={() => saveMut.mutate()}
+                disabled={saveMut.isPending}
+              >
+                {saveMut.isPending ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <BellPlus className="size-3.5" />
+                )}
+                Save this search
+              </Button>
+            ) : (
+              <Link
+                to="/login"
+                className="ml-auto inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+              >
+                <BellPlus className="size-3.5" /> Sign in to save this search
+              </Link>
+            )
+          )}
         </div>
       )}
 
@@ -417,14 +504,44 @@ export function BrowsePage() {
 
       {!isLoading && !isError && (
         <>
-          <p className="text-sm text-muted-foreground mb-4">
-            Showing{" "}
-            <span className="font-semibold text-foreground">
-              {filtered.length}
-            </span>{" "}
-            {filtered.length === 1 ? "home" : "homes"}
-            {filters.city !== "any" && <> in {filters.city}</>}
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <p className="text-sm text-muted-foreground">
+              Showing{" "}
+              <span className="font-semibold text-foreground">
+                {filtered.length}
+              </span>{" "}
+              {filtered.length === 1 ? "home" : "homes"}
+              {filters.city !== "any" && <> in {filters.city}</>}
+            </p>
+            {/* List / Map view toggle. Map mode lazy-fetches the
+                buildings catalog (200 max) to resolve geo pins. */}
+            <div className="inline-flex rounded-lg border bg-background p-0.5">
+              <button
+                type="button"
+                onClick={() => setViewMode("list")}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition-colors",
+                  viewMode === "list"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <LayoutGrid className="size-3.5" /> List
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("map")}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition-colors",
+                  viewMode === "map"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <MapIcon className="size-3.5" /> Map
+              </button>
+            </div>
+          </div>
           {filtered.length === 0 ? (
             <Card className="p-12 text-center">
               <p className="font-display font-semibold text-lg">
@@ -444,6 +561,12 @@ export function BrowsePage() {
                 </Button>
               )}
             </Card>
+          ) : viewMode === "map" ? (
+            <PropertyMapView
+              flats={filtered}
+              buildings={buildingsById}
+              userCenter={userCoords}
+            />
           ) : (
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {filtered.map((flat) => (
@@ -609,6 +732,30 @@ function parseNumber(s: string): number | null {
   if (s.trim() === "") return null;
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Map the in-memory filter state to the backend SavedSearchRequest
+ * shape. The backend predicate model is intentionally narrower than
+ * the UI (e.g. no floor band, no availableBy) — those advanced
+ * filters are still applied on the public browse page in real-time,
+ * but the alerter only fires on the core (city / BHK / rent / area /
+ * furnishing / pet) predicates that 99% of renters actually use.
+ */
+function filtersToSavedSearch(f: Filters) {
+  const [lo, hi] = f.budget !== "any" ? f.budget.split("-").map(Number) : [];
+  const rentMin = parseNumber(f.rentMin) ?? (Number.isFinite(lo) ? lo! : null);
+  const rentMax = parseNumber(f.rentMax) ?? (Number.isFinite(hi) ? hi! : null);
+  return {
+    city: f.city !== "any" ? f.city : null,
+    bedrooms: f.bhk !== "any" ? Number(f.bhk) : null,
+    minRent: rentMin,
+    maxRent: rentMax,
+    minAreaSqft: parseNumber(f.areaMin),
+    furnishingStatus: f.furnishing !== "any" ? f.furnishing : null,
+    petFriendly: f.petPolicy === "allowed" ? true : null,
+    isActive: true,
+  };
 }
 
 interface Chip {

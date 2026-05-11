@@ -56,6 +56,7 @@ import { AdminVisitRequestsPage } from "@/pages/admin/visit-requests";
 import { NotificationsInboxPage } from "@/pages/notifications-inbox";
 import { NotificationPreferencesPage } from "@/pages/notifications-preferences";
 import { SavedListingsPage } from "@/pages/tenant/saved";
+import { SavedSearchesPage } from "@/pages/tenant/saved-searches";
 import { ComparePage } from "@/pages/tenant/compare";
 
 export const router = createBrowserRouter([
@@ -91,6 +92,10 @@ export const router = createBrowserRouter([
       // tenant browsing for their NEXT home (no flat assigned yet)
       // can still wishlist and receive registration emails.
       { path: "saved", element: <SavedListingsPage /> },
+      // /app/saved-searches is the manage-alerts page. Kept outside
+      // FlatRequiredOutlet — a tenant who hasn't been assigned a flat
+      // yet is exactly the audience for saved-search alerts.
+      { path: "saved-searches", element: <SavedSearchesPage /> },
       { path: "compare", element: <ComparePage /> },
       // Channel-toggle UI — lives outside FlatRequiredOutlet so any
       // user (even pre-flat-assignment) can dial in their delivery
