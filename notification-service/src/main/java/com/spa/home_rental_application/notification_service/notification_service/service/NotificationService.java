@@ -33,15 +33,18 @@ public class NotificationService {
     private final PreferenceService preferenceService;
     private final NotificationDispatcher dispatcher;
     private final NotificationLogRepository logRepo;
+    private final NotificationStreamRegistry streamRegistry;
 
     public NotificationService(TemplateService templateService,
                                PreferenceService preferenceService,
                                NotificationDispatcher dispatcher,
-                               NotificationLogRepository logRepo) {
+                               NotificationLogRepository logRepo,
+                               NotificationStreamRegistry streamRegistry) {
         this.templateService = templateService;
         this.preferenceService = preferenceService;
         this.dispatcher = dispatcher;
         this.logRepo = logRepo;
+        this.streamRegistry = streamRegistry;
     }
 
     /* ------------- Manual sends ------------- */
@@ -112,6 +115,48 @@ public class NotificationService {
     public NotificationResponse getById(String id) {
         return NotificationMapper.toResponse(logRepo.findById(id).orElseThrow(
                 () -> new NotificationNotFoundException("Notification not found: " + id)));
+    }
+
+    /* ------------- Read tracking ------------- */
+
+    /**
+     * Flip a single notification to {@link NotificationStatus#READ}.
+     * Idempotent — calling on an already-read row is a no-op. Skips
+     * terminal states (FAILED / SKIPPED) since they shouldn't be in
+     * the bell anyway.
+     */
+    public NotificationResponse markAsRead(String id) {
+        NotificationLog n = logRepo.findById(id).orElseThrow(
+                () -> new NotificationNotFoundException("Notification not found: " + id));
+        if (n.getStatus() == NotificationStatus.READ) {
+            return NotificationMapper.toResponse(n);
+        }
+        if (n.getStatus() == NotificationStatus.FAILED
+                || n.getStatus() == NotificationStatus.SKIPPED) {
+            // Operational rows aren't "read-able" — leave the status
+            // alone so the audit log stays truthful.
+            return NotificationMapper.toResponse(n);
+        }
+        n.setStatus(NotificationStatus.READ);
+        return NotificationMapper.toResponse(logRepo.save(n));
+    }
+
+    /**
+     * Bulk: mark every unread (PENDING / SENT) notification for the
+     * given user as READ. Powers the "open the bell, badge clears"
+     * UX in one round trip.
+     */
+    public int markAllAsRead(String userId) {
+        List<NotificationLog> unread = logRepo.findByUserIdAndStatusIn(
+                userId,
+                List.of(NotificationStatus.PENDING, NotificationStatus.SENT));
+        if (unread.isEmpty()) return 0;
+        for (NotificationLog n : unread) {
+            n.setStatus(NotificationStatus.READ);
+        }
+        logRepo.saveAll(unread);
+        log.info("Marked {} notifications as read for userId={}", unread.size(), userId);
+        return unread.size();
     }
 
     /* ------------- Internal ------------- */
@@ -215,7 +260,7 @@ public class NotificationService {
                                     String recipient, String subject, String body,
                                     NotificationStatus status, String error,
                                     Map<String, Object> vars) {
-        NotificationLog log = NotificationLog.builder()
+        NotificationLog logRow = NotificationLog.builder()
                 .userId(userId)
                 .type(type)
                 .category(category != null ? category : NotificationCategory.GENERIC)
@@ -227,7 +272,20 @@ public class NotificationService {
                 .retryCount(0)
                 .metadata(vars == null ? new HashMap<>() : new HashMap<>(vars))
                 .build();
-        return logRepo.save(log);
+        NotificationLog saved = logRepo.save(logRow);
+        // Real-time push. INAPP rows are the bell-facing ones; the
+        // others are operational. Pushing only the INAPP rows keeps
+        // the SSE stream user-facing and avoids the FAILED-channel
+        // noise from showing up in the bell.
+        if (type == NotificationType.INAPP) {
+            try {
+                streamRegistry.pushToUser(saved);
+            } catch (Exception ex) {
+                log.warn("SSE push failed for notificationId={} (proceeding): {}",
+                        saved.getId(), ex.getMessage());
+            }
+        }
+        return saved;
     }
 
     private boolean channelEnabled(NotificationType t, UserNotificationPreference pref) {

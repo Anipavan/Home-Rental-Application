@@ -81,6 +81,19 @@ public class NotificationController {
         return ResponseEntity.ok(service.getById(id));
     }
 
+    @Operation(summary = "Mark a single notification as READ (decrements the bell badge)")
+    @PutMapping("/{id}/read")
+    public ResponseEntity<NotificationResponse> markAsRead(@PathVariable String id) {
+        return ResponseEntity.ok(service.markAsRead(id));
+    }
+
+    @Operation(summary = "Bulk: mark every unread notification for a user as READ")
+    @PutMapping("/user/{userId}/read-all")
+    public ResponseEntity<java.util.Map<String, Integer>> markAllAsRead(@PathVariable String userId) {
+        int updated = service.markAllAsRead(userId);
+        return ResponseEntity.ok(java.util.Map.of("updated", updated));
+    }
+
     /** The /send/email|sms|push endpoints all share one DTO; force the type from the path. */
     private SendNotificationRequest forced(SendNotificationRequest req, NotificationType t) {
         return new SendNotificationRequest(

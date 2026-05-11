@@ -33,6 +33,25 @@ export const notificationsApi = {
     api
       .get<NotificationResponse[]>(`/notifications/user/${userId}`)
       .then((r) => r.data),
+
+  /**
+   * Flip one notification to READ. Called when the user opens the bell
+   * and individual rows scroll into view (or universally on dropdown
+   * open via {@link markAllAsRead}).
+   */
+  markAsRead: (id: string) =>
+    api
+      .put<NotificationResponse>(`/notifications/${id}/read`)
+      .then((r) => r.data),
+
+  /**
+   * Bulk-mark every unread row for the user as READ. The bell calls
+   * this on dropdown open so the badge clears in one round trip.
+   */
+  markAllAsRead: (userId: string) =>
+    api
+      .put<{ updated: number }>(`/notifications/user/${userId}/read-all`)
+      .then((r) => r.data),
 };
 
 /* ────────────────── Support tickets (Day 2–3 stabilization) ────────────────── */
