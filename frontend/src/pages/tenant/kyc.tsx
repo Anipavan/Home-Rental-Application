@@ -3,6 +3,7 @@ import { ShieldCheck, AlertTriangle, CheckCircle2, Loader2 } from "lucide-react"
 import { useState } from "react";
 import { useAuthStore } from "@/stores/auth-store";
 import { kycApi } from "@/lib/api/kyc";
+import { isKycDisabled } from "@/lib/feature-flags";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,17 +27,24 @@ export function KycPage() {
   // available the moment the user is logged in.
   const userId = authUserId ?? undefined;
 
+  // When KYC is paused platform-wide we still let the page mount
+  // (the route-level FeatureDisabledOutlet handles the overlay) but
+  // skip every backing query so the disabled-page UX doesn't fire
+  // requests at a service the team has nominally turned off.
+  const kycPaused = isKycDisabled();
+
   const statusQ = useQuery({
     queryKey: ["kyc", userId],
     queryFn: () => kycApi.status(userId!),
-    enabled: !!userId,
+    enabled: !!userId && !kycPaused,
     retry: false,
   });
 
   const reportQ = useQuery({
     queryKey: ["kyc-report", userId],
     queryFn: () => kycApi.report(userId!),
-    enabled: !!userId && statusQ.data?.verificationStatus === "VERIFIED",
+    enabled:
+      !!userId && !kycPaused && statusQ.data?.verificationStatus === "VERIFIED",
     retry: false,
   });
 

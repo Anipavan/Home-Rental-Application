@@ -37,6 +37,7 @@ import { ContactSupport } from "./contact-support";
 import { GlobalSearch } from "./global-search";
 import { useAuthStore } from "@/stores/auth-store";
 import { authApi } from "@/lib/api/auth";
+import { isKycDisabled } from "@/lib/feature-flags";
 import { cn, initials } from "@/lib/utils";
 import type { Role } from "@/types/api";
 
@@ -60,10 +61,10 @@ const tenantNav: NavItem[] = [
   { to: "/app/payments", label: "Payments", icon: Receipt },
   { to: "/app/maintenance", label: "Maintenance", icon: Wrench },
   { to: "/app/complaints", label: "Complaints", icon: MessageSquareWarning },
-  // KYC is temporarily paused platform-wide. Route-level gate lives
-  // in router.tsx; this pausedBadge surfaces the state in the nav so
-  // users see it before clicking.
-  { to: "/app/kyc", label: "KYC", icon: BadgeCheck, pausedBadge: true },
+  // KYC pill mirrors the feature flag — single source of truth in
+  // lib/feature-flags.ts. Flipping that flag back to false removes
+  // the pill automatically, no further code change.
+  { to: "/app/kyc", label: "KYC", icon: BadgeCheck, pausedBadge: isKycDisabled() },
   { to: "/app/documents", label: "Documents", icon: FileText },
   { to: "/app/reviews", label: "Reviews", icon: Star },
   { to: "/app/profile", label: "Profile", icon: Settings },

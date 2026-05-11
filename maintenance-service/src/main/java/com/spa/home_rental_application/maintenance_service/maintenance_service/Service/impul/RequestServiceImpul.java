@@ -183,23 +183,40 @@ public class RequestServiceImpul implements RequestService {
         return repo.findByOwnerId(ownerId).stream().map(MaintenanceMapper::toResponse).toList();
     }
 
-    /* ---------- Kind-scoped lookups (complaints feature) ---------- */
+    /* ---------- Kind-scoped lookups (complaints feature) ----------
+     *
+     * For MAINTENANCE we use the "including legacy" variants which
+     * also match documents written before the `kind` field existed
+     * (those have no `kind` key at all). Without this, every pre-
+     * migration ticket would silently disappear from the tenant /
+     * owner / admin maintenance pages.
+     *
+     * For COMPLAINT we use the strict variants — complaints are a
+     * post-migration concept, so there's no legacy class to absorb.
+     */
 
     @Override
     public Page<MaintenanceRequestResponse> getAllByKind(Kind kind, Pageable pageable) {
-        return repo.findByKind(kind, pageable).map(MaintenanceMapper::toResponse);
+        Page<MaintenanceRequest> page = (kind == Kind.MAINTENANCE)
+                ? repo.findByKindIncludingLegacy(kind, pageable)
+                : repo.findByKind(kind, pageable);
+        return page.map(MaintenanceMapper::toResponse);
     }
 
     @Override
     public List<MaintenanceRequestResponse> getByTenantAndKind(String tenantId, Kind kind) {
-        return repo.findByTenantIdAndKind(tenantId, kind).stream()
-                .map(MaintenanceMapper::toResponse).toList();
+        List<MaintenanceRequest> rows = (kind == Kind.MAINTENANCE)
+                ? repo.findByTenantIdAndKindIncludingLegacy(tenantId, kind)
+                : repo.findByTenantIdAndKind(tenantId, kind);
+        return rows.stream().map(MaintenanceMapper::toResponse).toList();
     }
 
     @Override
     public List<MaintenanceRequestResponse> getByOwnerAndKind(String ownerId, Kind kind) {
-        return repo.findByOwnerIdAndKind(ownerId, kind).stream()
-                .map(MaintenanceMapper::toResponse).toList();
+        List<MaintenanceRequest> rows = (kind == Kind.MAINTENANCE)
+                ? repo.findByOwnerIdAndKindIncludingLegacy(ownerId, kind)
+                : repo.findByOwnerIdAndKind(ownerId, kind);
+        return rows.stream().map(MaintenanceMapper::toResponse).toList();
     }
 
     /* ---------- Actions ---------- */
@@ -331,7 +348,9 @@ public class RequestServiceImpul implements RequestService {
 
     @Override
     public long getPendingCountByKind(Kind kind) {
-        return repo.countByKindAndStatusIn(kind, PENDING_STATUSES);
+        return (kind == Kind.MAINTENANCE)
+                ? repo.countByKindAndStatusInIncludingLegacy(kind, PENDING_STATUSES)
+                : repo.countByKindAndStatusIn(kind, PENDING_STATUSES);
     }
 
     @Override

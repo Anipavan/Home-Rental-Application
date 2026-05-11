@@ -21,6 +21,7 @@ import { agreementsApi } from "@/lib/api/agreements";
 import { documentsApi } from "@/lib/api/documents";
 import { propertiesApi } from "@/lib/api/properties";
 import { kycApi } from "@/lib/api/kyc";
+import { isKycDisabled } from "@/lib/feature-flags";
 import { useUserByAuth } from "@/hooks/use-user-by-auth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -88,13 +89,18 @@ export function TenantDetailPage() {
     enabled: !!userServiceId,
   });
 
+  // Skip the KYC lookup entirely when the feature is paused platform-
+  // wide. Otherwise the owner page hammers a service we've nominally
+  // turned off and renders a "loading" badge forever (or worse, stale
+  // data from before the pause).
+  const kycPaused = isKycDisabled();
   const kycQ = useQuery({
     // KYC service keys records on authUserId (matches the tenant-side KYC
     // page), not on the user-service profile id. Querying with the route
     // param directly is the canonical lookup.
     queryKey: ["tenant-kyc", authUserId],
     queryFn: () => kycApi.status(authUserId),
-    enabled: !!authUserId,
+    enabled: !!authUserId && !kycPaused,
     retry: false,
   });
 
@@ -152,7 +158,9 @@ export function TenantDetailPage() {
                       : "No active lease"
                   }
                 />
-                <KycBadge status={kycQ.data?.verificationStatus} />
+                {!kycPaused && (
+                  <KycBadge status={kycQ.data?.verificationStatus} />
+                )}
               </div>
               <div className="flex flex-wrap gap-2">
                 {userQ.user?.phone && (

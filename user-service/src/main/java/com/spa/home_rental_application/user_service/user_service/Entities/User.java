@@ -45,15 +45,19 @@ public class User {
     // Pre-signed download URLs from document-service. With expires +
     // HMAC signature query params they run ~150-250 chars on the local
     // backend and can grow well past Oracle's default VARCHAR2(255)
-    // behind a proxy / ngrok / longer host. @Lob avoids the silent
-    // overflow that surfaces as an "An unexpected error occurred"
-    // INTERNAL_ERROR when JPA tries to save the row.
-    @Lob
-    @Column(name = "profile_picture_url")
+    // behind a proxy / ngrok / longer host.
+    //
+    // We deliberately use length=4000 (Oracle VARCHAR2 max in standard
+    // mode) instead of @Lob (CLOB). Reason: Hibernate `ddl-auto=update`
+    // adds NEW columns and WIDENS existing VARCHAR2 columns, but does
+    // NOT convert VARCHAR2 → CLOB on existing schemas. The @Lob path
+    // would only take effect on fresh databases; existing deployments
+    // would keep the VARCHAR2(255) column and the overflow would
+    // persist. length=4000 works on both fresh AND existing schemas.
+    @Column(name = "profile_picture_url", length = 4000)
     private String profilePictureUrl;
 
-    @Lob
-    @Column(name = "id_proof_url")
+    @Column(name = "id_proof_url", length = 4000)
     private String idProofUrl;
 
     @Column(name = "created_at", nullable = false, updatable = false)
