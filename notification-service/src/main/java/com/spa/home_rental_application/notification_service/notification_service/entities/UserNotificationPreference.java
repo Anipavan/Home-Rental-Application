@@ -48,6 +48,17 @@ public class UserNotificationPreference {
     private boolean pushEnabled = true;
 
     /**
+     * WhatsApp uses the same phone-number recipient as SMS but routes
+     * via Twilio's WhatsApp Business API. Off by default — many users
+     * prefer SMS for transactional pings and WhatsApp for richer
+     * messaging; opting in is an explicit choice on the preferences
+     * page.
+     */
+    @Builder.Default
+    @Field("whatsapp_enabled")
+    private boolean whatsappEnabled = false;
+
+    /**
      * In-app channel is always on by default. Powers the notification
      * bell. Users can mute it through the standard preferences flow if
      * they really want to.

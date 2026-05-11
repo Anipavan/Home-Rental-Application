@@ -40,6 +40,23 @@
             <artifactId>spring-boot-starter-mail</artifactId>
         </dependency>
 
+        <!--
+          Twilio Java SDK — powers BOTH SMS and WhatsApp delivery
+          (Twilio sends WhatsApp messages through the same
+          Message API with a "whatsapp:" prefix on the from/to
+          numbers, so a single dependency covers both channels).
+
+          The adapters are gated by app.notification.delivery-enabled
+          and by placeholder credentials, so production keys aren't
+          required to start the service. Stub log lines fire instead
+          until real keys land.
+        -->
+        <dependency>
+            <groupId>com.twilio.sdk</groupId>
+            <artifactId>twilio</artifactId>
+            <version>10.6.5</version>
+        </dependency>
+
         <!-- Spring Cloud: discovery + central config -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>

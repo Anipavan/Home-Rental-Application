@@ -14,6 +14,7 @@ public record PreferenceRequest(
         @Size(max = 500) String deviceToken,
         Boolean emailEnabled,
         Boolean smsEnabled,
+        Boolean whatsappEnabled,
         Boolean pushEnabled,
         Set<NotificationCategory> mutedCategories
 ) {}

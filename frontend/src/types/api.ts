@@ -482,7 +482,7 @@ export interface CreateRequestDto {
  * cross-role event so the SPA bell stays accurate regardless of
  * whether SMTP / Twilio are configured.
  */
-export type NotificationType = "EMAIL" | "SMS" | "PUSH" | "INAPP";
+export type NotificationType = "EMAIL" | "SMS" | "WHATSAPP" | "PUSH" | "INAPP";
 
 export type NotificationCategory =
   | "USER_REGISTRATION"

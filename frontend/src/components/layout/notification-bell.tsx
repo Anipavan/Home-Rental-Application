@@ -433,6 +433,11 @@ function iconFor(t: NotificationType) {
     case "EMAIL":
       return Mail;
     case "SMS":
+    case "WHATSAPP":
+      // Same glyph for both phone-channel deliveries — the row's
+      // .type label disambiguates ("SMS" vs "WHATSAPP") and keeping
+      // one icon avoids the lucide bundle picking up a brand glyph
+      // for a single use site.
       return MessageSquare;
     case "PUSH":
       return Smartphone;

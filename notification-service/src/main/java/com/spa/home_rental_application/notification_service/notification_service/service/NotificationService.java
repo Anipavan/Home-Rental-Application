@@ -290,26 +290,30 @@ public class NotificationService {
 
     private boolean channelEnabled(NotificationType t, UserNotificationPreference pref) {
         return switch (t) {
-            case EMAIL -> pref.isEmailEnabled();
-            case SMS   -> pref.isSmsEnabled();
-            case PUSH  -> pref.isPushEnabled();
+            case EMAIL    -> pref.isEmailEnabled();
+            case SMS      -> pref.isSmsEnabled();
+            case WHATSAPP -> pref.isWhatsappEnabled();
+            case PUSH     -> pref.isPushEnabled();
             // In-app respects its own toggle; default for new users is
             // true (see PreferenceService.findOrDefault). Mute by
             // setting inappEnabled=false through the preferences API.
-            case INAPP -> pref.isInappEnabled();
+            case INAPP    -> pref.isInappEnabled();
         };
     }
 
     private String recipientFor(NotificationType t, UserNotificationPreference pref, String override) {
         if (override != null && !override.isBlank()) return override;
         return switch (t) {
-            case EMAIL -> pref.getEmail();
-            case SMS   -> pref.getPhone();
-            case PUSH  -> pref.getDeviceToken();
+            case EMAIL    -> pref.getEmail();
+            // SMS + WhatsApp both use the user's phone. The Twilio
+            // WhatsApp adapter prepends "whatsapp:" itself; we store
+            // the bare E.164 number on the preference row.
+            case SMS, WHATSAPP -> pref.getPhone();
+            case PUSH     -> pref.getDeviceToken();
             // In-app is its own delivery — the userId is the recipient.
             // We never need an external address; the SPA bell reads
             // the NotificationLog directly via /notifications/user/{userId}.
-            case INAPP -> pref.getUserId();
+            case INAPP    -> pref.getUserId();
         };
     }
 }

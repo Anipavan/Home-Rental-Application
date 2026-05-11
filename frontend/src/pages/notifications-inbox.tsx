@@ -336,6 +336,9 @@ function iconFor(t: NotificationType) {
     case "EMAIL":
       return Mail;
     case "SMS":
+    case "WHATSAPP":
+      // Both phone-channel deliveries share the speech-bubble glyph;
+      // the row's badge label disambiguates which one fired.
       return MessageSquare;
     case "PUSH":
       return Smartphone;

@@ -54,7 +54,12 @@ app:
   twilio:
     account-sid: ${TWILIO_SID:placeholder}
     auth-token:  ${TWILIO_TOKEN:placeholder}
+    # Sender for SMS — plain E.164 number.
     from-number: ${TWILIO_FROM:+10000000000}
+    # Sender for WhatsApp — plain E.164 number; the adapter prepends
+    # "whatsapp:" itself. Production uses your pre-registered sender;
+    # Twilio sandbox uses +14155238886 (set via env var TWILIO_WHATSAPP_FROM).
+    whatsapp-from-number: ${TWILIO_WHATSAPP_FROM:+14155238886}
 
   fcm:
     server-key: ${FCM_SERVER_KEY:placeholder}

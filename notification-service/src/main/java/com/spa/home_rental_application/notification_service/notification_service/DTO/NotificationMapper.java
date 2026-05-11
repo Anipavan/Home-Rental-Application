@@ -25,8 +25,8 @@ public final class NotificationMapper {
         if (p == null) return null;
         return new PreferenceResponse(
                 p.getUserId(), p.getEmail(), p.getPhone(), p.getDeviceToken(),
-                p.isEmailEnabled(), p.isSmsEnabled(), p.isPushEnabled(),
-                p.getMutedCategories()
+                p.isEmailEnabled(), p.isSmsEnabled(), p.isWhatsappEnabled(),
+                p.isPushEnabled(), p.getMutedCategories()
         );
     }
 

@@ -102,6 +102,82 @@ public class TemplateSeeder {
                 "Welcome to your new home!",
                 "Welcome! You've moved into flat {{flatId}}. Your monthly rent is ₹{{rentAmount}} starting {{startDate}}.",
                 List.of("flatId", "rentAmount", "startDate"));
+
+        /* ─────────── SMS templates ───────────
+         * Kept under 160 chars where possible so a single segment
+         * goes out instead of a multipart split. WhatsApp templates
+         * (next block) can be longer + use emoji safely.
+         */
+        seedIfAbsent("user-registration-sms", NotificationCategory.USER_REGISTRATION,
+                NotificationType.SMS, null,
+                "Welcome to Hearth, {{userName}}! Sign in to find your next home or list yours.",
+                List.of("userName"));
+
+        seedIfAbsent("payment-reminder-sms", NotificationCategory.PAYMENT_REMINDER,
+                NotificationType.SMS, null,
+                "Hearth: rent ₹{{amount}} due in {{daysUntilDue}}d. Pay via the app to avoid late fees.",
+                List.of("amount", "daysUntilDue"));
+
+        seedIfAbsent("payment-receipt-sms", NotificationCategory.PAYMENT_RECEIPT,
+                NotificationType.SMS, null,
+                "Hearth: payment of ₹{{amount}} received via {{method}}. Txn {{transactionId}}.",
+                List.of("amount", "method", "transactionId"));
+
+        seedIfAbsent("maintenance-created-sms", NotificationCategory.MAINTENANCE_CREATED,
+                NotificationType.SMS, null,
+                "Hearth: maintenance ticket {{requestNumber}} ({{category}}) opened. Track it in the app.",
+                List.of("requestNumber", "category"));
+
+        seedIfAbsent("maintenance-resolved-sms", NotificationCategory.MAINTENANCE_RESOLVED,
+                NotificationType.SMS, null,
+                "Hearth: ticket {{requestId}} resolved. Reply in the app if anything's still wrong.",
+                List.of("requestId"));
+
+        seedIfAbsent("complaint-created-sms", NotificationCategory.COMPLAINT_CREATED,
+                NotificationType.SMS, null,
+                "Hearth: complaint {{requestNumber}} filed. A manager will reply via the app.",
+                List.of("requestNumber"));
+
+        /* ─────────── WhatsApp templates ───────────
+         * Twilio WhatsApp accepts the same template format as SMS.
+         * Production-grade messaging would use Twilio-approved
+         * templates; for now we lean on the session-window so any
+         * inbound reply opens a 24h send window — enough for
+         * transactional rentals flows.
+         */
+        seedIfAbsent("payment-reminder-whatsapp", NotificationCategory.PAYMENT_REMINDER,
+                NotificationType.WHATSAPP, null,
+                "Hi {{userName}} 👋\n\nYour rent of *₹{{amount}}* is due in *{{daysUntilDue}} days*.\n\n"
+                        + "Tap the Pay Rent button in the Hearth app to settle it instantly. "
+                        + "Reply STOP to mute these reminders.",
+                List.of("userName", "amount", "daysUntilDue"));
+
+        seedIfAbsent("payment-receipt-whatsapp", NotificationCategory.PAYMENT_RECEIPT,
+                NotificationType.WHATSAPP, null,
+                "Hi {{userName}} ✅\n\nWe've received your rent of *₹{{amount}}* via {{method}}.\n\n"
+                        + "Transaction id: `{{transactionId}}`\nDate: {{paidDate}}\n\nThanks!",
+                List.of("userName", "amount", "method", "transactionId", "paidDate"));
+
+        seedIfAbsent("maintenance-created-whatsapp", NotificationCategory.MAINTENANCE_CREATED,
+                NotificationType.WHATSAPP, null,
+                "Hi 🛠️\n\nYour maintenance request *{{requestNumber}}* ({{category}}, "
+                        + "{{priority}} priority) has been logged. A technician will be in touch shortly.\n\n"
+                        + "Track or comment on it in the Hearth app under *Maintenance*.",
+                List.of("requestNumber", "category", "priority"));
+
+        seedIfAbsent("complaint-created-whatsapp", NotificationCategory.COMPLAINT_CREATED,
+                NotificationType.WHATSAPP, null,
+                "Hi 🔔\n\nWe've registered your complaint *{{requestNumber}}* about {{complaintCategory}}.\n\n"
+                        + "A property manager will review it and reply through the Hearth in-app thread. "
+                        + "You'll get a WhatsApp ping the moment they do.",
+                List.of("requestNumber", "complaintCategory"));
+
+        seedIfAbsent("lease-welcome-whatsapp", NotificationCategory.LEASE_WELCOME,
+                NotificationType.WHATSAPP, null,
+                "Welcome home {{userName}} 🏡\n\nYou've moved into *{{flatId}}*. "
+                        + "Monthly rent is *₹{{rentAmount}}* starting {{startDate}}.\n\n"
+                        + "Tap *Maintenance* in the app any time something needs fixing.",
+                List.of("userName", "flatId", "rentAmount", "startDate"));
     }
 
     private void seedIfAbsent(String name,

@@ -11,6 +11,7 @@ public record PreferenceResponse(
         String deviceToken,
         boolean emailEnabled,
         boolean smsEnabled,
+        boolean whatsappEnabled,
         boolean pushEnabled,
         Set<NotificationCategory> mutedCategories
 ) {}
