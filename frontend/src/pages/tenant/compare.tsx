@@ -344,19 +344,51 @@ export function ComparePage() {
 
 /* ────────────────────── helpers ────────────────────── */
 
+/**
+ * Always-fixed-arity hook calls. The previous implementation called
+ * {@code useQuery} inside {@code ids.map(...)} which violates React's
+ * rules-of-hooks the moment {@code ids.length} changes between
+ * renders (the user removing a column would white-screen the page
+ * with "Rendered fewer hooks than during the previous render").
+ *
+ * <p>Fix: always call exactly {@link MAX_COMPARE} useQuery instances.
+ * Slots past the current ids list are disabled via {@code enabled: false}
+ * so they don't fire requests; the hook still runs, keeping React's
+ * internal hook-slot index stable across renders.
+ */
 function useFlats(ids: string[]) {
-  // One query per id so the data parallelizes + a stale flat doesn't
-  // break the page. React Query batches the renders.
-  const queries = ids.map((id) =>
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    useQuery({
-      queryKey: ["flat", id],
-      queryFn: () => propertiesApi.flats.get(id),
-      enabled: !!id,
-      retry: 0,
-      staleTime: 30_000,
-    }),
-  );
+  // Pad to MAX_COMPARE so we ALWAYS issue the same number of hook calls.
+  const padded: (string | undefined)[] = [];
+  for (let i = 0; i < MAX_COMPARE; i++) padded[i] = ids[i];
+
+  // Three fixed-position useQuery calls. Each is independently
+  // enabled based on whether that slot currently has an id.
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const q0 = useQuery({
+    queryKey: ["flat", padded[0] ?? "__empty0__"],
+    queryFn: () => propertiesApi.flats.get(padded[0]!),
+    enabled: !!padded[0],
+    retry: 0,
+    staleTime: 30_000,
+  });
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const q1 = useQuery({
+    queryKey: ["flat", padded[1] ?? "__empty1__"],
+    queryFn: () => propertiesApi.flats.get(padded[1]!),
+    enabled: !!padded[1],
+    retry: 0,
+    staleTime: 30_000,
+  });
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const q2 = useQuery({
+    queryKey: ["flat", padded[2] ?? "__empty2__"],
+    queryFn: () => propertiesApi.flats.get(padded[2]!),
+    enabled: !!padded[2],
+    retry: 0,
+    staleTime: 30_000,
+  });
+  const queries = [q0, q1, q2];
+
   const data: FlatResponseDTO[] = queries
     .map((q) => q.data)
     .filter((f): f is FlatResponseDTO => !!f);

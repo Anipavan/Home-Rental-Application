@@ -30,18 +30,33 @@ public class PropertyImage {
      * marked cover at any time — the service enforces that on
      * {@code setCover()}. The PropertyCard / property-detail hero
      * uses the cover image; the rest become the gallery thumbnails.
+     *
+     * <p>{@code columnDefinition} carries an explicit Oracle DEFAULT
+     * so Hibernate's {@code ddl-auto=update} can ALTER an existing
+     * populated {@code propertyimages} table to add this column.
+     * Without the DEFAULT clause Oracle rejects the ALTER with
+     * ORA-01758 (cannot add a NOT NULL column to a table that
+     * already has data), which crashes property-service on startup
+     * and 502s every wishlist / browse / image call downstream.
+     * {@code @Builder.Default} is Java-side only — it has no effect
+     * on DDL emission.
      */
-    @Column(name = "is_cover", nullable = false)
+    @Column(name = "is_cover", nullable = false,
+            columnDefinition = "NUMBER(1) DEFAULT 0 NOT NULL")
     @Builder.Default
     private Boolean isCover = false;
 
     /**
      * Ascending sort order for the gallery view. Lower = earlier.
-     * Owner-side editor exposes drag-reorder to mutate this.
-     * Defaults to a large number on insert so newly-uploaded images
-     * land at the end of the gallery until the owner reorders.
+     * Owner-side editor exposes drag-reorder to mutate this. Defaults
+     * to a large number on insert so newly-uploaded images land at
+     * the end of the gallery until the owner reorders.
+     *
+     * <p>See {@link #isCover} for the columnDefinition rationale —
+     * same Oracle ORA-01758 trap on populated tables.
      */
-    @Column(name = "sort_order", nullable = false)
+    @Column(name = "sort_order", nullable = false,
+            columnDefinition = "NUMBER(10) DEFAULT 1000 NOT NULL")
     @Builder.Default
     private Integer sortOrder = 1000;
 }
