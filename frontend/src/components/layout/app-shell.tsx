@@ -91,6 +91,7 @@ const ownerNav: NavItem[] = [
   { to: "/owner/enquiries", label: "Enquiries", icon: Inbox },
   { to: "/owner/compliance", label: "Compliance", icon: Stamp },
   { to: "/owner/analytics", label: "Analytics", icon: BarChart3 },
+  { to: "/owner/profile", label: "Profile", icon: Settings },
 ];
 
 const adminNav: NavItem[] = [
@@ -103,6 +104,7 @@ const adminNav: NavItem[] = [
   { to: "/admin/reviews", label: "Reviews", icon: Star },
   { to: "/admin/support", label: "Support", icon: FileText },
   { to: "/admin/visit-requests", label: "Visit requests", icon: Calendar },
+  { to: "/admin/profile", label: "Profile", icon: Settings },
 ];
 
 function navFor(role: Role | null): NavItem[] {
@@ -236,9 +238,9 @@ export function AppShell() {
                     <Link
                       to={
                         role === "OWNER"
-                          ? "/owner"
+                          ? "/owner/profile"
                           : role === "ADMIN"
-                            ? "/admin"
+                            ? "/admin/profile"
                             : "/app/profile"
                       }
                     >

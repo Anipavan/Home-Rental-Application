@@ -39,6 +39,23 @@ public class DocumentProperties {
     /** HMAC secret for signing pre-signed URLs. */
     private String downloadUrlSecret = "change-me-in-prod";
 
+    /**
+     * Public base URL the BROWSER will use to fetch document blobs.
+     *
+     * <p>Critical: this MUST be the gateway's externally-reachable URL,
+     * NOT the document-service's internal hostname. Spring Cloud
+     * Gateway routes via {@code lb://HRA-document-service}, which
+     * means {@code request.getServerName()} on this side resolves to
+     * the internal Eureka-registered host (e.g. {@code localhost:8091}).
+     * If we built the pre-signed URL from that, the browser would try
+     * to fetch a URL the gateway can't proxy, and the avatar / document
+     * download would 404 / be blocked by the internal-auth filter.
+     *
+     * <p>Defaults to the local gateway. Override via environment in
+     * any non-local environment (e.g. {@code PUBLIC_BASE_URL=https://api.hearth.app/rentals/v1}).
+     */
+    private String publicBaseUrl = "http://localhost:8080/rentals/v1";
+
     /** Allow-list of multipart content-types we'll accept. */
     private List<String> allowedContentTypes = List.of(
             "application/pdf", "image/png", "image/jpeg", "image/jpg");

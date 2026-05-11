@@ -411,6 +411,16 @@ app:
       - GET /api/properties/buildings
       - GET /api/properties/buildings/**
       - GET /api/properties/images/**
+      # ─── Document blob streaming (HMAC pre-signed URL is the auth) ───
+      # The /documents/{id}/blob endpoint verifies its own
+      # expires + signature query params (HMAC-SHA256). That IS the
+      # auth — the JWT layer would be redundant and worse, would
+      # break <img src=…> rendering in the browser (avatars,
+      # ID-proof previews) because <img> can't send the Authorization
+      # header. Open ONLY the GET so anonymous reads with a valid
+      # signature stream the file; mutations stay locked.
+      - GET /rentals/v1/documents/*/blob
+      - GET /api/documents/*/blob
       - /actuator/**
       - /v3/api-docs/**
       - /swagger-ui/**

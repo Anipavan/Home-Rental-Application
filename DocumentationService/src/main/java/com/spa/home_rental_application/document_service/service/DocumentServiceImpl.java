@@ -136,7 +136,19 @@ public class DocumentServiceImpl implements DocumentService {
     public PreSignedUrlDto buildDownloadUrl(String documentId, HttpServletRequest req) {
         Document doc = mustFind(documentId);
         PreSignedUrlSigner.Signed signed = urlSigner.sign(doc.getId());
-        String url = UriComponentsBuilder.fromUriString(reconstructBase(req))
+        // Use the externally-reachable base URL from config — NOT
+        // req.getServerName(), which on the document-service side
+        // resolves to the internal Eureka-registered hostname (e.g.
+        // localhost:8091). A URL built from that wouldn't go through
+        // the gateway, so the browser couldn't reach it and the
+        // internal-auth filter would block direct hits. See
+        // DocumentProperties.publicBaseUrl for the rationale + env
+        // override pattern.
+        String base = props.getPublicBaseUrl();
+        if (base == null || base.isBlank()) {
+            base = reconstructBase(req); // belt-and-braces local fallback
+        }
+        String url = UriComponentsBuilder.fromUriString(base)
                 .path("/documents/{id}/blob")
                 .queryParam("expires", signed.expiresEpochSec())
                 .queryParam("signature", signed.signature())

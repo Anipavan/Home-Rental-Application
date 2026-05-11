@@ -94,6 +94,13 @@ app:
     download-url-ttl-seconds: ${DOCUMENT_DOWNLOAD_TTL:900}
     # Pre-signed download HMAC secret — keep out of source control in prod.
     download-url-secret: ${DOCUMENT_DOWNLOAD_SECRET:change-me-in-prod-doc-download-secret}
+    # Externally-reachable base for pre-signed download URLs — MUST be
+    # the API Gateway URL the browser uses, not the document-service's
+    # internal hostname. Without this, the URL embedded in the
+    # user.profilePictureUrl column points at lb://-resolved internal
+    # ports the browser can't reach and avatars never render. See
+    # DocumentProperties.publicBaseUrl for the full rationale.
+    public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080/rentals/v1}
     allowed-content-types:
       - application/pdf
       - image/png

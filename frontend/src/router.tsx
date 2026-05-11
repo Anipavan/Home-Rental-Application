@@ -162,6 +162,10 @@ export const router = createBrowserRouter([
       { path: "compliance", element: <OwnerCompliancePage /> },
       { path: "analytics", element: <OwnerAnalyticsPage /> },
       { path: "notifications", element: <NotificationsInboxPage /> },
+      // Owners get the same Profile page as tenants — the user-service
+      // schema is role-agnostic (first/last name, email, phone, photo,
+      // address). Same component, just a different route.
+      { path: "profile", element: <ProfilePage /> },
     ],
   },
   {
@@ -182,6 +186,10 @@ export const router = createBrowserRouter([
       { path: "support", element: <AdminSupportPage /> },
       { path: "visit-requests", element: <AdminVisitRequestsPage /> },
       { path: "notifications", element: <NotificationsInboxPage /> },
+      // Admin profile mirrors the owner/tenant Profile page — same UI,
+      // same User Service backend. Lets admins set their own photo +
+      // contact info instead of being stuck with auth-tier initials.
+      { path: "profile", element: <ProfilePage /> },
     ],
   },
   { path: "*", element: <NotFoundPage /> },
