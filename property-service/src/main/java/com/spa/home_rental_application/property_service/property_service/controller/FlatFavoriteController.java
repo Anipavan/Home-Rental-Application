@@ -63,6 +63,7 @@ public class FlatFavoriteController {
     public ResponseEntity<Map<String, Object>> add(
             @PathVariable @NotBlank String flatId,
             @RequestHeader(AUTH_USER_ID_HEADER) String authUserId) {
+        requireAuth(authUserId);
         log.info("Wishlist add userId={} flatId={}", authUserId, flatId);
         // Validate the flat exists — guards against poisoning the
         // wishlist with dead ids. Throws RecordNotFound which the
@@ -93,6 +94,7 @@ public class FlatFavoriteController {
     public ResponseEntity<Void> remove(
             @PathVariable @NotBlank String flatId,
             @RequestHeader(AUTH_USER_ID_HEADER) String authUserId) {
+        requireAuth(authUserId);
         long n = repo.deleteByUserIdAndFlatId(authUserId, flatId);
         log.info("Wishlist remove userId={} flatId={} deletedRows={}", authUserId, flatId, n);
         return ResponseEntity.noContent().build();
@@ -108,6 +110,7 @@ public class FlatFavoriteController {
     @GetMapping
     public ResponseEntity<List<FlatResponseDTO>> list(
             @RequestHeader(AUTH_USER_ID_HEADER) String authUserId) {
+        requireAuth(authUserId);
         List<FlatFavorite> rows = repo.findByUserIdOrderByCreatedAtDesc(authUserId);
         if (rows.isEmpty()) return ResponseEntity.ok(List.of());
 
@@ -137,10 +140,26 @@ public class FlatFavoriteController {
     @GetMapping("/ids")
     public ResponseEntity<Set<String>> ids(
             @RequestHeader(AUTH_USER_ID_HEADER) String authUserId) {
+        requireAuth(authUserId);
         return ResponseEntity.ok(new java.util.HashSet<>(repo.findFlatIdsByUserId(authUserId)));
     }
 
     /* ───────────── helpers ───────────── */
+
+    /**
+     * Defensive guard against a blank {@code X-Auth-User-Id} header.
+     * The gateway sets this from the JWT's {@code uid} claim — when
+     * the claim is missing (legacy tokens, mis-minted JWTs), the
+     * header arrives as an empty string. Oracle treats {@code ""} as
+     * {@code NULL}, so any per-user INSERT (favourite, etc.) explodes
+     * with ORA-01400 unless we reject the request here first.
+     */
+    private static void requireAuth(String authUserId) {
+        if (authUserId == null || authUserId.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Authenticated user id is missing — please sign in again");
+        }
+    }
 
     private FlatResponseDTO hydrateSafe(FlatFavorite f) {
         try {

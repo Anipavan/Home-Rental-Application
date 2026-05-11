@@ -165,7 +165,13 @@ public class AuthServiceImpl implements AuthService {
         UserDetails user = userRepository.findByUserName(req.userName())
                 .orElseThrow(() -> new AuthRecordNotFoundException("User not found: " + req.userName()));
 
-        String accessToken = jwtUtil.generateToken(authenticated);
+        // Pass user.getId() so the JWT carries a `uid` claim — the
+        // gateway reads it to stamp X-Auth-User-Id on every downstream
+        // request. Without that claim, services keyed on auth user id
+        // (wishlist favourites, notification prefs, owner-scoped
+        // queries) see an empty string and Oracle INSERTs fail with
+        // ORA-01400 ("" is NULL in Oracle).
+        String accessToken = jwtUtil.generateToken(authenticated, user.getId());
         RefreshToken refresh = persistNewRefreshToken(user.getId());
 
         authEvents.sendUserLogin(UserLoginEvent.builder()
@@ -204,10 +210,13 @@ public class AuthServiceImpl implements AuthService {
         refreshTokenRepository.save(existing);
         RefreshToken next = persistNewRefreshToken(user.getId());
 
-        // Mint a new access token using the user's stored authorities.
+        // Mint a new access token using the user's stored authorities,
+        // carrying the uid claim so the gateway can stamp
+        // X-Auth-User-Id on downstream requests. See login() for the
+        // full ORA-01400 rationale.
         Authentication auth = new UsernamePasswordAuthenticationToken(
                 user.getUsername(), null, user.getAuthorities());
-        String accessToken = jwtUtil.generateToken(auth);
+        String accessToken = jwtUtil.generateToken(auth, user.getId());
 
         return AuthResponse.bearer(accessToken, next.getToken(),
                 jwtProperties.getAccessTokenValiditySeconds(),
