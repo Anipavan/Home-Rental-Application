@@ -1,13 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <defs>
     <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#6366f1" />
-      <stop offset="100%" stop-color="#8b5cf6" />
+      <!-- Matches .gradient-brand in src/index.css: emerald → teal → sky. -->
+      <stop offset="0%" stop-color="#10b981" />
+      <stop offset="55%" stop-color="#14b8a6" />
+      <stop offset="100%" stop-color="#0284c7" />
     </linearGradient>
   </defs>
   <rect width="64" height="64" rx="14" fill="url(#g)" />
+  <!-- Stylised house — same silhouette as the in-app Logo so the
+       favicon and header brand mark stay visually identical. -->
   <path
     d="M14 30 L32 14 L50 30 V48 a3 3 0 0 1-3 3 H37 V38 H27 V51 H17 a3 3 0 0 1-3-3 Z"
     fill="white"
   />
+  <!-- Door highlight for a touch of depth. -->
+  <rect x="29" y="41" width="6" height="10" rx="1" fill="rgba(16,185,129,0.18)" />
 </svg>

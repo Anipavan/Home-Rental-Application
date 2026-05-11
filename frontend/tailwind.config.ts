@@ -12,8 +12,7 @@ export default {
     },
     extend: {
       fontFamily: {
-        // Body: Inter stays — it's a workhorse. The editorial flourish
-        // comes from the display face below.
+        // Body: Inter stays — it's a workhorse for UI text.
         sans: [
           "Inter",
           "ui-sans-serif",
@@ -22,15 +21,20 @@ export default {
           "Segoe UI",
           "sans-serif",
         ],
-        // Display: Fraunces, a variable serif with optical-size + soft
-        // axes. Gives Hearth's headings a warm, editorial voice — much
-        // more "home" than the previous Plus Jakarta Sans which read as
-        // generic SaaS-tech. Falls back to system serifs.
+        // Display: Plus Jakarta Sans — modern geometric sans. Pairs
+        // cleanly with Inter (no awkward contrast) and reads as
+        // "fresh product" rather than the editorial-magazine voice
+        // of the previous Fraunces serif. Falls back to the same
+        // system stack as `sans` so display headings degrade
+        // gracefully when Google Fonts is blocked.
         display: [
-          "'Fraunces'",
-          "'Georgia'",
-          "'Times New Roman'",
-          "serif",
+          "'Plus Jakarta Sans'",
+          "Inter",
+          "ui-sans-serif",
+          "system-ui",
+          "-apple-system",
+          "Segoe UI",
+          "sans-serif",
         ],
       },
       colors: {
@@ -82,22 +86,25 @@ export default {
         sm: "calc(var(--radius) - 4px)",
       },
       boxShadow: {
-        // Warm-tinted shadows — the old "lift" used indigo at 0.18α
-        // which looked off-brand under the cream backgrounds. These
-        // mirror the terracotta primary so cards subtly carry the
-        // brand colour through.
-        soft: "0 1px 2px 0 rgb(60 30 20 / 0.06), 0 1px 3px 0 rgb(60 30 20 / 0.05)",
-        lift: "0 12px 32px -12px rgb(192 92 60 / 0.20), 0 4px 10px -4px rgb(60 30 20 / 0.10)",
-        glow: "0 0 0 4px hsl(var(--primary) / 0.14)",
+        // Slate-tinted shadows aligned with the new accent so cards
+        // subtly read as "lifted off a cool surface" without the
+        // off-brand warm-umber tone of the previous theme.
+        soft: "0 1px 2px 0 rgb(15 25 40 / 0.06), 0 1px 3px 0 rgb(15 25 40 / 0.05)",
+        lift: "0 12px 32px -12px rgb(16 132 92 / 0.22), 0 4px 10px -4px rgb(15 25 40 / 0.10)",
+        glow: "0 0 0 4px hsl(var(--primary) / 0.18)",
       },
       backgroundImage: {
-        // Soft grid for hero / empty-state textures, in warm umber.
+        // Soft grid for hero / empty-state textures, in cool slate.
         "grid-light":
-          "linear-gradient(to right, rgb(60 30 20 / 0.05) 1px, transparent 1px), linear-gradient(to bottom, rgb(60 30 20 / 0.05) 1px, transparent 1px)",
-        // Hero radial — terracotta wash up from the top of the page.
+          "linear-gradient(to right, rgb(15 25 40 / 0.05) 1px, transparent 1px), linear-gradient(to bottom, rgb(15 25 40 / 0.05) 1px, transparent 1px)",
+        // Hero radial — emerald wash up from the top of the page.
         // Auto-retints if the --primary token ever changes.
         "hero-radial":
-          "radial-gradient(60% 80% at 50% 0%, hsl(var(--primary) / 0.18), transparent 70%)",
+          "radial-gradient(60% 80% at 50% 0%, hsl(var(--primary) / 0.20), transparent 70%)",
+        // Secondary radial — slate accent from bottom-right. Layered
+        // with hero-radial gives pages a true two-colour ambient wash.
+        "hero-radial-accent":
+          "radial-gradient(60% 60% at 100% 100%, hsl(var(--accent) / 0.10), transparent 70%)",
       },
       keyframes: {
         "fade-in": {

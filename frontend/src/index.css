@@ -3,97 +3,102 @@
 @tailwind utilities;
 
 /* ────────────────────────────────────────────────────────────────────────── *
- * Hearth · "Warm Home" design tokens
+ * Hearth · "Verdant" design tokens
  *
- * Direction: lean into the brand name. Warm cream backgrounds, deep
- * terracotta primary, sage green accent, and an editorial Fraunces
- * display face. Far less "SaaS purple", far more "you'd actually want
- * to live here".
+ * Direction: fresh + modern, anchored on a vivid emerald primary and a
+ * deep slate accent — the two-colour combination renters/owners reliably
+ * read as "trustworthy + green-tech" without the saccharine feel of
+ * pure sage. Background is a near-white with a faint mint cast that
+ * stops everything feeling clinical-white in long sessions.
+ *
+ * Two-colour core:
+ *   Primary  · Emerald  (hsl 158)  — vibrant, action, CTAs, highlights
+ *   Accent   · Slate    (hsl 215)  — calm complement, secondary nav,
+ *                                    info banners, dark mode chrome
  *
  * Tokens — never hardcoded colours in components — so future theme
- * swaps stay a single-file change. The .gradient-brand and
- * .gradient-brand-soft utilities replace the old hardcoded
- * indigo→violet→fuchsia stacks that used to bleed brand into the
- * pages directly.
+ * swaps stay a single-file change. {.gradient-brand,
+ * .gradient-brand-soft, .gradient-text} resolve via these tokens so a
+ * brand shift never requires touching component code.
  * ────────────────────────────────────────────────────────────────────────── */
 
 @layer base {
   :root {
-    /* Surfaces */
-    --background: 30 50% 98%;          /* warm cream */
-    --foreground: 20 25% 12%;          /* deep warm charcoal */
+    /* Surfaces — faint mint cast on white keeps things calm. */
+    --background: 150 30% 98%;         /* mint-tinted off-white */
+    --foreground: 215 28% 12%;         /* deep slate */
 
     --card: 0 0% 100%;
-    --card-foreground: 20 25% 12%;
+    --card-foreground: 215 28% 12%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 20 25% 12%;
+    --popover-foreground: 215 28% 12%;
 
-    /* Brand */
-    --primary: 14 75% 47%;             /* terracotta */
+    /* Brand — Emerald + Slate two-colour */
+    --primary: 158 64% 38%;            /* vibrant emerald */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 30 30% 94%;           /* warm beige */
-    --secondary-foreground: 20 25% 12%;
+    --secondary: 150 22% 95%;          /* soft mint surface */
+    --secondary-foreground: 215 28% 12%;
 
-    --muted: 30 25% 94%;
-    --muted-foreground: 25 12% 42%;
+    --muted: 150 18% 95%;
+    --muted-foreground: 215 12% 42%;
 
-    --accent: 158 45% 36%;             /* deep sage */
+    --accent: 215 32% 22%;             /* deep slate accent */
     --accent-foreground: 0 0% 100%;
 
     /* States */
-    --success: 152 50% 35%;
+    --success: 145 60% 38%;            /* slightly cooler than primary */
     --success-foreground: 0 0% 100%;
 
-    --warning: 35 92% 50%;             /* warm amber */
-    --warning-foreground: 20 25% 12%;
+    --warning: 38 92% 50%;             /* warm amber stays for contrast */
+    --warning-foreground: 215 28% 12%;
 
-    --destructive: 358 70% 50%;        /* warm red */
+    --destructive: 358 72% 52%;
     --destructive-foreground: 0 0% 100%;
 
     /* Chrome */
-    --border: 30 15% 88%;
-    --input: 30 15% 88%;
-    --ring: 14 75% 47%;
+    --border: 150 14% 88%;
+    --input: 150 14% 88%;
+    --ring: 158 64% 38%;
 
     --radius: 0.875rem;
   }
 
   .dark {
-    --background: 20 25% 8%;
-    --foreground: 30 30% 96%;
+    --background: 215 32% 8%;          /* deep slate */
+    --foreground: 150 22% 96%;
 
-    --card: 20 25% 11%;
-    --card-foreground: 30 30% 96%;
+    --card: 215 28% 11%;
+    --card-foreground: 150 22% 96%;
 
-    --popover: 20 25% 11%;
-    --popover-foreground: 30 30% 96%;
+    --popover: 215 28% 11%;
+    --popover-foreground: 150 22% 96%;
 
-    --primary: 14 75% 58%;
-    --primary-foreground: 20 25% 8%;
+    --primary: 158 60% 52%;            /* brighter emerald in dark */
+    --primary-foreground: 215 32% 8%;
 
-    --secondary: 20 20% 18%;
-    --secondary-foreground: 30 30% 96%;
+    --secondary: 215 22% 18%;
+    --secondary-foreground: 150 22% 96%;
 
-    --muted: 20 20% 18%;
-    --muted-foreground: 30 12% 65%;
+    --muted: 215 22% 18%;
+    --muted-foreground: 150 12% 65%;
 
-    --accent: 158 45% 50%;
-    --accent-foreground: 20 25% 8%;
+    --accent: 158 50% 60%;             /* primary-tinted accent in dark */
+    --accent-foreground: 215 32% 8%;
 
-    --success: 152 45% 50%;
-    --success-foreground: 20 25% 8%;
+    --success: 145 55% 50%;
+    --success-foreground: 215 32% 8%;
 
-    --warning: 35 92% 60%;
-    --warning-foreground: 20 25% 8%;
+    --warning: 38 90% 60%;
+    --warning-foreground: 215 32% 8%;
 
     --destructive: 358 65% 55%;
-    --destructive-foreground: 30 30% 96%;
+    --destructive-foreground: 150 22% 96%;
 
-    --border: 20 15% 22%;
-    --input: 20 15% 22%;
-    --ring: 14 75% 58%;
+    --border: 215 18% 22%;
+    --input: 215 18% 22%;
+    --ring: 158 60% 52%;
   }
 
   * {
@@ -108,53 +113,66 @@
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1;
     -webkit-font-smoothing: antialiased;
+    /* Subtle aurora wash sitting behind every page — emerald top-left,
+       slate top-right, fading out by mid-screen. Fixed so it doesn't
+       move with scroll. Low opacity so it never competes with content. */
+    background-image:
+      radial-gradient(60% 50% at 0% 0%, hsl(158 70% 80% / 0.18), transparent 60%),
+      radial-gradient(60% 50% at 100% 0%, hsl(215 40% 55% / 0.12), transparent 60%);
+    background-attachment: fixed;
   }
-  /* Headings use the editorial Fraunces display face. The optical-size
-     axis lets larger headings render with the higher-contrast variant
-     while smaller H3s stay readable. */
+  .dark body {
+    background-image:
+      radial-gradient(60% 50% at 0% 0%, hsl(158 70% 30% / 0.22), transparent 60%),
+      radial-gradient(60% 50% at 100% 0%, hsl(215 40% 30% / 0.22), transparent 60%);
+  }
+  /* Headings: Plus Jakarta Sans — modern geometric sans that pairs
+     cleanly with Inter for body. Replaces the editorial Fraunces serif;
+     the new direction is "fresh tech product" rather than "warm cabin". */
   h1,
   h2,
   h3 {
     @apply font-display tracking-tight;
-    font-optical-sizing: auto;
   }
 }
 
 @layer components {
   /*
-   * .gradient-brand — the "primary CTA / hero" gradient. Warm sunset
-   * palette (orange → rose → deep rose) that suits the Hearth name.
-   * Use this anywhere you previously had
-   *   from-indigo-600 via-violet-600 to-fuchsia-600
-   * Both light and dark mode look correct because the stops are
-   * concrete colours rather than theme tokens — keeps the brand
-   * recognisable regardless of scheme.
+   * .gradient-brand — the "primary CTA / hero" gradient. Emerald →
+   * teal → sky. The teal pivot keeps the transition vibrant without
+   * jumping to a saturated indigo at the end. Looks correct on both
+   * light cream and dark slate backgrounds because the stops are
+   * concrete colours rather than tokens.
    */
   .gradient-brand {
-    @apply bg-gradient-to-br from-orange-600 via-rose-600 to-rose-800;
+    @apply bg-gradient-to-br from-emerald-500 via-teal-500 to-sky-600;
   }
 
   /*
    * .gradient-brand-soft — the "wash / surface accent" variant. Use
-   * for sidebar promo cards, hero ambient washes, etc. — anywhere
-   * the previous theme used heavily-alphaed gradients.
+   * for sidebar promo cards, hero ambient washes, "Need help?" panels —
+   * anywhere the previous theme used heavily-alphaed gradients.
    */
   .gradient-brand-soft {
-    @apply bg-gradient-to-br from-orange-500/10 via-rose-500/10 to-amber-500/10;
+    @apply bg-gradient-to-br from-emerald-400/10 via-teal-400/10 to-sky-400/10;
   }
 
   /*
-   * .gradient-text — heading flourish. Tinted by the primary so it
-   * naturally re-themes if the brand hue ever shifts. The rose stop
-   * keeps the warm endpoint visible against light cream backgrounds.
+   * .gradient-text — heading flourish. Anchored on the primary token
+   * so it auto-retints if the brand hue ever shifts. The teal middle
+   * stop keeps the gradient legible against the mint-tinted surface.
    */
   .gradient-text {
-    @apply bg-gradient-to-br from-primary via-orange-600 to-rose-700 bg-clip-text text-transparent;
+    @apply bg-gradient-to-br from-primary via-teal-600 to-sky-700 bg-clip-text text-transparent;
   }
 
   .glass {
     @apply bg-white/70 backdrop-blur-xl border border-white/40;
   }
+  .dark .glass {
+    @apply bg-slate-900/60 border-white/10;
+  }
+
   .skeleton {
     @apply relative overflow-hidden bg-muted rounded-md;
   }
