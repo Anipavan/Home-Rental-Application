@@ -18,7 +18,15 @@ export const documentsApi = {
     fd.append("file", file);
     return api
       .post<DocumentResponse>("/documents/upload", fd, {
-        headers: { "Content-Type": "multipart/form-data" },
+        // IMPORTANT: leave Content-Type unset (we even force-undefined
+        // to override the axios-instance default of application/json).
+        // axios + the browser then auto-set
+        //   `multipart/form-data; boundary=----WebKitFormBoundary...`
+        // for FormData bodies — the boundary parameter is what Spring's
+        // multipart parser keys off. Setting Content-Type to a literal
+        // "multipart/form-data" (no boundary) is the textbook bug that
+        // makes Spring reject the body as malformed.
+        headers: { "Content-Type": undefined },
       })
       .then((r) => r.data);
   },

@@ -53,7 +53,10 @@ export const agreementsApi = {
       .post<AgreementResponseDTO>(
         `/properties/agreements/${id}/signed-deed`,
         form,
-        { headers: { "Content-Type": "multipart/form-data" } },
+        // Let axios + the browser set Content-Type with the boundary —
+        // see documentsApi.upload for why a literal "multipart/form-data"
+        // (no boundary) makes Spring reject the body as malformed.
+        { headers: { "Content-Type": undefined } },
       )
       .then((r) => r.data);
   },

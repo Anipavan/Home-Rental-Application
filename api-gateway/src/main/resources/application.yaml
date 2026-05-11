@@ -8,6 +8,15 @@ spring:
   lifecycle:
     timeout-per-shutdown-phase: 20s
 
+  # Spring Cloud Gateway / WebFlux defaults `spring.codec.max-in-memory-size`
+  # to 256KB, which is fine for JSON request/response bodies but truncates
+  # any multipart upload larger than that — the downstream service sees a
+  # malformed body and 400s. Documents (Aadhaar / PAN / agreement scans /
+  # profile photos) routinely run 1-8MB, so bump to 10MB to match the
+  # downstream services' own `spring.servlet.multipart.max-file-size`.
+  codec:
+    max-in-memory-size: 10MB
+
   cloud:
     loadbalancer:
       retry:

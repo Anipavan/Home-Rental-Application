@@ -43,7 +43,10 @@ export const usersApi = {
     return api
       .put<UserResponseDto>(`/users/${userId}/documents`, fd, {
         params: { type },
-        headers: { "Content-Type": "multipart/form-data" },
+        // See documentsApi.upload for the full rationale — never set
+        // a literal "multipart/form-data" Content-Type; axios + the
+        // browser will add the boundary parameter automatically.
+        headers: { "Content-Type": undefined },
       })
       .then((r) => r.data);
   },

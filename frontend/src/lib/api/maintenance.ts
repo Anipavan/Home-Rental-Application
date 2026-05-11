@@ -64,7 +64,8 @@ export const maintenanceApi = {
       .post<MaintenanceRequestResponse>(
         `/maintenance/requests/${id}/images`,
         fd,
-        { headers: { "Content-Type": "multipart/form-data" } },
+        // axios + the browser handle the boundary; see documentsApi.upload.
+        { headers: { "Content-Type": undefined } },
       )
       .then((r) => r.data);
   },
