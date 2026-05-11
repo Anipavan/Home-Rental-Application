@@ -1,4 +1,5 @@
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import {
   Home,
   Building2,
@@ -22,7 +23,7 @@ import {
   Search,
 } from "lucide-react";
 import { Logo } from "./logo";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -38,6 +39,7 @@ import { ContactSupport } from "./contact-support";
 import { GlobalSearch } from "./global-search";
 import { useAuthStore } from "@/stores/auth-store";
 import { authApi } from "@/lib/api/auth";
+import { usersApi } from "@/lib/api/users";
 import { isKycDisabled } from "@/lib/feature-flags";
 import { cn, initials } from "@/lib/utils";
 import type { Role } from "@/types/api";
@@ -110,9 +112,30 @@ function navFor(role: Role | null): NavItem[] {
 }
 
 export function AppShell() {
-  const { role, userName, refreshToken, clear } = useAuthStore();
+  const { role, userName, authUserId, refreshToken, clear } = useAuthStore();
   const navigate = useNavigate();
   const items = navFor(role);
+
+  // Fetch the signed-in user's profile so the header avatar can render
+  // their uploaded photo (Instagram / WhatsApp style — name next to a
+  // round picture, not just initials). Shares the same ["me", authUserId]
+  // cache key the Profile page uses, so as soon as the user uploads a
+  // new photo there and that page invalidates the query, this avatar
+  // re-renders too without any extra wiring.
+  const meQ = useQuery({
+    queryKey: ["me", authUserId],
+    queryFn: () => usersApi.byAuthId(authUserId!),
+    enabled: !!authUserId,
+    staleTime: 60_000,
+    // 404 means the user-service profile hasn't been bootstrapped yet —
+    // we fall back to initials, no retry needed.
+    retry: (failureCount, err) => {
+      const status = (err as { response?: { status?: number } })?.response
+        ?.status;
+      return status !== 404 && failureCount < 1;
+    },
+  });
+  const photoUrl = meQ.data?.profilePictureUrl;
 
   const onLogout = async () => {
     try {
@@ -194,6 +217,11 @@ export function AppShell() {
                 <DropdownMenuTrigger asChild>
                   <button className="flex items-center gap-2 rounded-full hover:bg-secondary p-1 pr-3 transition-colors">
                     <Avatar className="size-8">
+                      {/* AvatarImage falls back to AvatarFallback if the
+                          src is empty, fails to load, or returns 4xx —
+                          so a broken pre-signed URL (expired, deleted
+                          on disk, etc.) gracefully shows initials. */}
+                      {photoUrl && <AvatarImage src={photoUrl} alt={userName ?? "Profile photo"} />}
                       <AvatarFallback>{initials(userName ?? "")}</AvatarFallback>
                     </Avatar>
                     <span className="text-sm font-medium hidden sm:block">
