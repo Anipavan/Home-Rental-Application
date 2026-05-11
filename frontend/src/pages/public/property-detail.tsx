@@ -26,6 +26,7 @@ import { ReviewList } from "@/components/reviews/review-list";
 import { formatINR, formatDate } from "@/lib/utils";
 import { getPlaceholderImage } from "@/components/property/property-card";
 import { PropertyEnquiryDialog } from "@/components/property/property-enquiry-dialog";
+import { FavoriteButton } from "@/components/property/favorite-button";
 
 const amenities = [
   { icon: Wifi, label: "High-speed Wi-Fi" },
@@ -224,6 +225,9 @@ export function PropertyDetailPage() {
             >
               Schedule a visit
             </Button>
+            <div className="mt-3">
+              <FavoriteButton flatId={flat.id} variant="detail" className="w-full justify-center" />
+            </div>
             <p className="text-xs text-muted-foreground text-center mt-4">
               You won't be charged anything to enquire.
             </p>

@@ -54,6 +54,7 @@ import { AdminReviewsPage } from "@/pages/admin/reviews";
 import { AdminSupportPage } from "@/pages/admin/support";
 import { AdminVisitRequestsPage } from "@/pages/admin/visit-requests";
 import { NotificationsInboxPage } from "@/pages/notifications-inbox";
+import { SavedListingsPage } from "@/pages/tenant/saved";
 
 export const router = createBrowserRouter([
   {
@@ -84,9 +85,10 @@ export const router = createBrowserRouter([
       { index: true, element: <TenantDashboard /> },
       { path: "my-flat", element: <MyFlatPage /> },
       { path: "profile", element: <ProfilePage /> },
-      // Inbox available always — even pre-flat-assignment, a tenant
-      // can still receive notifications (welcome email, password
-      // reset, etc.) so it must not be gated behind FlatRequiredOutlet.
+      // Saved + notifications stay outside FlatRequiredOutlet so a
+      // tenant browsing for their NEXT home (no flat assigned yet)
+      // can still wishlist and receive registration emails.
+      { path: "saved", element: <SavedListingsPage /> },
       { path: "notifications", element: <NotificationsInboxPage /> },
       // Browse listings is always available — a tenant with a flat
       // assigned should still be able to look at other homes (longer

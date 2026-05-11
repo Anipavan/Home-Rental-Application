@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
-import { Bed, Bath, Square, MapPin, Heart } from "lucide-react";
+import { Bed, Bath, Square, MapPin } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { FavoriteButton } from "@/components/property/favorite-button";
 import { formatINR } from "@/lib/utils";
 import type { FlatResponseDTO } from "@/types/api";
 
@@ -43,16 +44,11 @@ export function PropertyCard({
           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-        <button
-          type="button"
-          aria-label="Save"
-          onClick={(e) => {
-            e.preventDefault();
-          }}
-          className="absolute top-3 right-3 size-9 grid place-items-center rounded-full bg-white/90 backdrop-blur shadow-soft text-muted-foreground hover:text-destructive transition-colors"
-        >
-          <Heart className="size-4" />
-        </button>
+        <FavoriteButton
+          flatId={flat.id}
+          variant="card"
+          className="absolute top-3 right-3"
+        />
         <Badge
           variant={flat.isOccupied ? "secondary" : "success"}
           className="absolute top-3 left-3 bg-white/90 backdrop-blur"

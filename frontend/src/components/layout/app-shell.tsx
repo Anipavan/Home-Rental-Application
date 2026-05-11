@@ -21,6 +21,7 @@ import {
   Inbox,
   MessageSquareWarning,
   Search,
+  Heart,
 } from "lucide-react";
 import { Logo } from "./logo";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -60,6 +61,10 @@ interface NavItem {
 const tenantNav: NavItem[] = [
   { to: "/app", label: "Overview", icon: Home },
   { to: "/app/my-flat", label: "My Home", icon: Building2 },
+  // Wishlist of homes the tenant has hearted. Sits high in the nav
+  // because it's a frequent re-entry point — users come back to
+  // re-open the same shortlist multiple times during their search.
+  { to: "/app/saved", label: "Saved", icon: Heart },
   // Always visible — even after a flat is assigned, tenants should be
   // able to look at other listings (planning ahead, longer lease,
   // recommending to a friend, etc.). The route lives outside the

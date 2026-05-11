@@ -124,3 +124,29 @@ export const propertiesApi = {
         .then((r) => r.data),
   },
 };
+
+/**
+ * Wishlist API — the "save for later" feature on browse / property
+ * detail pages. Backend keys favourites on the gateway-supplied
+ * X-Auth-User-Id header so we never have to pass userId from the FE.
+ *
+ *  - {@link add} / {@link remove} are idempotent — calling add twice
+ *    or remove on a never-saved flat both succeed silently. Lets the
+ *    heart-toggle stay optimistic without a "have I saved this?"
+ *    preflight.
+ *  - {@link ids} is the cheap projection that powers the heart-icon
+ *    filled-vs-outlined state on every flat card. The full
+ *    {@link list} hydrates the saved flats for the /app/saved page.
+ */
+export const favoritesApi = {
+  add: (flatId: string) =>
+    api.post(`/properties/favorites/${flatId}`).then((r) => r.data),
+  remove: (flatId: string) =>
+    api.delete(`/properties/favorites/${flatId}`).then((r) => r.data),
+  list: () =>
+    api
+      .get<FlatResponseDTO[]>("/properties/favorites")
+      .then((r) => r.data),
+  ids: () =>
+    api.get<string[]>("/properties/favorites/ids").then((r) => r.data),
+};
