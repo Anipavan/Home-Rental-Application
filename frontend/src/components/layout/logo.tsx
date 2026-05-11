@@ -14,7 +14,7 @@ export function Logo({
   return (
     <Link to="/" className={cn("flex items-center gap-2 group", className)}>
       <span
-        className="grid place-items-center rounded-xl bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-600 text-white shadow-soft transition-transform group-hover:rotate-3"
+        className="grid place-items-center rounded-xl gradient-brand text-white shadow-soft transition-transform group-hover:rotate-3"
         style={{ width: dim, height: dim }}
       >
         <svg

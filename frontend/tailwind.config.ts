@@ -12,6 +12,8 @@ export default {
     },
     extend: {
       fontFamily: {
+        // Body: Inter stays — it's a workhorse. The editorial flourish
+        // comes from the display face below.
         sans: [
           "Inter",
           "ui-sans-serif",
@@ -20,7 +22,16 @@ export default {
           "Segoe UI",
           "sans-serif",
         ],
-        display: ["'Plus Jakarta Sans'", "Inter", "sans-serif"],
+        // Display: Fraunces, a variable serif with optical-size + soft
+        // axes. Gives Hearth's headings a warm, editorial voice — much
+        // more "home" than the previous Plus Jakarta Sans which read as
+        // generic SaaS-tech. Falls back to system serifs.
+        display: [
+          "'Fraunces'",
+          "'Georgia'",
+          "'Times New Roman'",
+          "serif",
+        ],
       },
       colors: {
         border: "hsl(var(--border))",
@@ -71,13 +82,20 @@ export default {
         sm: "calc(var(--radius) - 4px)",
       },
       boxShadow: {
-        soft: "0 1px 2px 0 rgb(15 23 42 / 0.04), 0 1px 3px 0 rgb(15 23 42 / 0.06)",
-        lift: "0 10px 30px -10px rgb(79 70 229 / 0.18), 0 4px 8px -4px rgb(15 23 42 / 0.08)",
-        glow: "0 0 0 4px hsl(var(--primary) / 0.12)",
+        // Warm-tinted shadows — the old "lift" used indigo at 0.18α
+        // which looked off-brand under the cream backgrounds. These
+        // mirror the terracotta primary so cards subtly carry the
+        // brand colour through.
+        soft: "0 1px 2px 0 rgb(60 30 20 / 0.06), 0 1px 3px 0 rgb(60 30 20 / 0.05)",
+        lift: "0 12px 32px -12px rgb(192 92 60 / 0.20), 0 4px 10px -4px rgb(60 30 20 / 0.10)",
+        glow: "0 0 0 4px hsl(var(--primary) / 0.14)",
       },
       backgroundImage: {
+        // Soft grid for hero / empty-state textures, in warm umber.
         "grid-light":
-          "linear-gradient(to right, rgb(15 23 42 / 0.04) 1px, transparent 1px), linear-gradient(to bottom, rgb(15 23 42 / 0.04) 1px, transparent 1px)",
+          "linear-gradient(to right, rgb(60 30 20 / 0.05) 1px, transparent 1px), linear-gradient(to bottom, rgb(60 30 20 / 0.05) 1px, transparent 1px)",
+        // Hero radial — terracotta wash up from the top of the page.
+        // Auto-retints if the --primary token ever changes.
         "hero-radial":
           "radial-gradient(60% 80% at 50% 0%, hsl(var(--primary) / 0.18), transparent 70%)",
       },

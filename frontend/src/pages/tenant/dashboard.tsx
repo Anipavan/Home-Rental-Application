@@ -63,7 +63,7 @@ export function TenantDashboard() {
       </div>
 
       {pending ? (
-        <Card className="mb-6 overflow-hidden border-0 bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-600 text-white shadow-lift">
+        <Card className="mb-6 overflow-hidden border-0 gradient-brand text-white shadow-lift">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.18),transparent_60%)] pointer-events-none" />
           <CardContent className="relative p-7 sm:p-8 grid gap-6 sm:grid-cols-[1fr_auto] items-center">
             <div>

@@ -124,7 +124,7 @@ export function LoginPage() {
         </div>
       </div>
 
-      <div className="hidden lg:block relative bg-gradient-to-br from-indigo-700 via-violet-700 to-fuchsia-700 overflow-hidden">
+      <div className="hidden lg:block relative gradient-brand overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(255,255,255,0.18),transparent_60%)]" />
         <div className="absolute inset-0 bg-grid-light bg-[size:48px_48px] opacity-10" />
         <div className="relative h-full flex flex-col justify-end p-12 text-white">

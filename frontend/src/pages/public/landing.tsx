@@ -254,7 +254,7 @@ export function LandingPage() {
             </div>
           </div>
           <div className="relative">
-            <div className="absolute -inset-4 bg-gradient-to-br from-primary/30 to-fuchsia-400/20 blur-3xl rounded-3xl -z-10" />
+            <div className="absolute -inset-4 bg-gradient-to-br from-primary/30 to-rose-400/20 blur-3xl rounded-3xl -z-10" />
             <div className="rounded-3xl overflow-hidden shadow-lift border border-border/60">
               <img
                 src="https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=1200&q=80"
@@ -294,7 +294,7 @@ export function LandingPage() {
       </section>
 
       <section className="container pb-20">
-        <div className="rounded-3xl bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-600 text-white px-6 py-12 sm:px-12 sm:py-16 text-center shadow-lift relative overflow-hidden">
+        <div className="rounded-3xl gradient-brand text-white px-6 py-12 sm:px-12 sm:py-16 text-center shadow-lift relative overflow-hidden">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.18),transparent_50%)]" />
           <div className="relative">
             <h2 className="font-display text-3xl lg:text-4xl font-bold">

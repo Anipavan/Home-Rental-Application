@@ -135,7 +135,7 @@ export function AppShell() {
           ))}
         </nav>
         <div className="p-3 border-t border-border/60">
-          <div className="rounded-xl bg-gradient-to-br from-primary/10 via-violet-500/10 to-fuchsia-500/10 p-4 border border-primary/10">
+          <div className="rounded-xl gradient-brand-soft p-4 border border-primary/15">
             <p className="text-xs font-semibold text-foreground">
               Need help?
             </p>

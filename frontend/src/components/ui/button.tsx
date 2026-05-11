@@ -11,7 +11,7 @@ const buttonVariants = cva(
         default:
           "bg-primary text-primary-foreground shadow-soft hover:shadow-lift hover:-translate-y-px active:translate-y-0",
         gradient:
-          "text-white shadow-lift bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-600 hover:brightness-110",
+          "text-white shadow-lift gradient-brand hover:brightness-110",
         outline:
           "border border-input bg-background hover:bg-secondary hover:text-secondary-foreground",
         secondary:
