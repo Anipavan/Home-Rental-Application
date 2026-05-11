@@ -82,23 +82,19 @@ public class NotificationService {
     public void fanOut(String userId, NotificationCategory category, Map<String, Object> vars) {
         if (userId == null || userId.isBlank()) return;
         // INAPP first — backs the bell, always available, no external
-        // recipient needed.
-        deliver(userId, NotificationType.INAPP, category, null, null, null, vars);
-        // EMAIL: best-effort — if no email on the preference row it
-        // records FAILED with "No recipient configured" and the bell
-        // still shows the INAPP entry above.
-        deliver(userId, NotificationType.EMAIL, category, null, null, null, vars);
-        // SMS: only fires if the user has a phone on the preference row
-        // AND smsEnabled = true (the default). channelEnabled() +
-        // recipientFor() inside deliver() handle the opt-out / no-phone
-        // cases — they record SKIPPED / FAILED rows for the audit trail
-        // and never bring down the parent fan-out.
-        deliver(userId, NotificationType.SMS, category, null, null, null, vars);
-        // WhatsApp: explicit opt-in (whatsappEnabled defaults to false).
-        // Fires nothing for users who haven't opted in, which is the
-        // right behaviour — WhatsApp messaging has stricter consent
-        // requirements than SMS in most jurisdictions.
-        deliver(userId, NotificationType.WHATSAPP, category, null, null, null, vars);
+        // recipient needed. Writes one bell entry.
+        deliver(userId, NotificationType.INAPP, category, null, null, null, vars, true);
+        // EMAIL / SMS / WHATSAPP: pass writeInappSibling=false because
+        // we already wrote an INAPP row above. Without this flag the
+        // bell would show four duplicate entries per fanOut call
+        // (one explicit INAPP + three siblings for the other channels).
+        // sendFromTemplate / sendInapp still default to true so
+        // single-channel callers keep getting their bell entry.
+        deliver(userId, NotificationType.EMAIL, category, null, null, null, vars, false);
+        deliver(userId, NotificationType.SMS, category, null, null, null, vars, false);
+        // WhatsApp is explicit opt-in (whatsappEnabled default false)
+        // — fires nothing for users who haven't opted in.
+        deliver(userId, NotificationType.WHATSAPP, category, null, null, null, vars, false);
     }
 
     /**
@@ -173,6 +169,12 @@ public class NotificationService {
 
     /* ------------- Internal ------------- */
 
+    /**
+     * Backwards-compatible 7-arg overload — defaults
+     * {@code writeInappSibling = true} so existing callers
+     * ({@link #send}, {@link #sendFromTemplate}, {@link #sendInapp})
+     * keep getting the bell entry they relied on.
+     */
     private NotificationLog deliver(String userId,
                                     NotificationType type,
                                     NotificationCategory category,
@@ -180,6 +182,30 @@ public class NotificationService {
                                     String messageOverride,
                                     String recipientOverride,
                                     Map<String, Object> vars) {
+        return deliver(userId, type, category, subjectOverride, messageOverride,
+                recipientOverride, vars, true);
+    }
+
+    /**
+     * Full delivery path. {@code writeInappSibling} controls whether
+     * the function piggybacks an extra INAPP row on a non-INAPP
+     * delivery for the notification bell.
+     *
+     * <p>{@link #fanOut} passes {@code false} for its EMAIL / SMS /
+     * WhatsApp legs because it already explicitly fans an INAPP row
+     * first — without this flag, one fanOut call would produce four
+     * duplicate bell entries (1 explicit + 3 siblings). Single-channel
+     * callers ({@link #sendFromTemplate}) still pass {@code true} so
+     * the bell entry exists.
+     */
+    private NotificationLog deliver(String userId,
+                                    NotificationType type,
+                                    NotificationCategory category,
+                                    String subjectOverride,
+                                    String messageOverride,
+                                    String recipientOverride,
+                                    Map<String, Object> vars,
+                                    boolean writeInappSibling) {
 
         UserNotificationPreference pref = preferenceService.findOrDefault(userId);
 
@@ -217,24 +243,29 @@ public class NotificationService {
 
         String recipient = recipientFor(type, pref, recipientOverride);
         if (recipient == null || recipient.isBlank()) {
-            // EMAIL / SMS / PUSH without a configured recipient → still
-            // record the attempt as FAILED for the audit log, but ALSO
-            // write a sibling INAPP entry so the bell lights up. This
-            // is what gets us cross-role notifications in dev where
-            // nobody has email/phone set in their preferences.
+            // EMAIL / SMS / WHATSAPP / PUSH without a configured
+            // recipient → record the attempt as FAILED for the audit
+            // log, and (when requested) also write a sibling INAPP
+            // entry so the bell lights up. Single-channel callers
+            // depend on the sibling; fanOut explicitly suppresses it
+            // because it already wrote an INAPP row.
             NotificationLog failed = persist(userId, type, category, recipient, subject, body,
                     NotificationStatus.FAILED, "No recipient configured for channel=" + type, vars);
-            ensureInappSibling(userId, type, category, subject, body, pref, vars);
+            if (writeInappSibling) {
+                ensureInappSibling(userId, type, category, subject, body, pref, vars);
+            }
             return failed;
         }
 
         NotificationLog seed = persist(userId, type, category, recipient, subject, body,
                 NotificationStatus.PENDING, null, vars);
         NotificationLog sent = dispatcher.dispatch(seed);
-        // INAPP sibling for the bell — fire-and-forget so even if the
-        // primary channel delivery fails mid-send, the bell entry is
-        // still there.
-        ensureInappSibling(userId, type, category, subject, body, pref, vars);
+        if (writeInappSibling) {
+            // INAPP sibling for the bell — fire-and-forget so even if
+            // the primary channel delivery fails mid-send, the bell
+            // entry still exists.
+            ensureInappSibling(userId, type, category, subject, body, pref, vars);
+        }
         return sent;
     }
 
