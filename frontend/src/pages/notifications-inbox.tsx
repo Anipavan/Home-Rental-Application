@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Bell,
@@ -7,6 +8,7 @@ import {
   Inbox,
   Mail,
   MessageSquare,
+  Settings,
   Smartphone,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
@@ -137,16 +139,26 @@ export function NotificationsInboxPage() {
         title="Notifications"
         description="Every alert from your home, lease, payments, and complaints in one place."
         actions={
-          unread.length > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => markAllReadM.mutate()}
-              disabled={markAllReadM.isPending}
-            >
-              <CheckCheck className="size-4" /> Mark all as read
+          <div className="flex flex-wrap gap-2">
+            {unread.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => markAllReadM.mutate()}
+                disabled={markAllReadM.isPending}
+              >
+                <CheckCheck className="size-4" /> Mark all as read
+              </Button>
+            )}
+            {/* Channel toggles (email / SMS / WhatsApp / push) live one
+                click away so users can dial in delivery without
+                hunting through profile settings. */}
+            <Button asChild variant="outline" size="sm">
+              <Link to={preferencesPath(usePathPrefix())}>
+                <Settings className="size-4" /> Preferences
+              </Link>
             </Button>
-          )
+          </div>
         }
       />
 
@@ -355,4 +367,17 @@ function prettyCategory(c: string): string {
     .split("_")
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ");
+}
+
+/** Returns the role-appropriate prefix ("/app", "/owner", "/admin") so
+ * the inbox header's "Preferences" link routes to the right path tree. */
+function usePathPrefix(): "/app" | "/owner" | "/admin" {
+  const { pathname } = useLocation();
+  if (pathname.startsWith("/owner")) return "/owner";
+  if (pathname.startsWith("/admin")) return "/admin";
+  return "/app";
+}
+
+function preferencesPath(prefix: "/app" | "/owner" | "/admin"): string {
+  return `${prefix}/notifications/preferences`;
 }

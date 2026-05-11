@@ -46,15 +46,24 @@ public class SupportTicketService {
                 .build();
         SupportTicket saved = repository.save(t);
         autoResponder.onSupportTicketCreated(saved);
-        // Bell entry for the owner: a tenant just enquired about
-        // their property. Only when ownerId is set — generic Contact-
-        // Support tickets have no owner to ping.
-        notifications.sendInapp(saved.getOwnerId(),
-                NotificationCategory.GENERIC,
-                "New enquiry: " + safeStr(saved.getSubject()),
-                safeStr(saved.getUserName()) + " sent you a message. Open the "
-                        + "Enquiries inbox to reply.",
-                null);
+        // Multi-channel ping to the owner: in-app bell + email + SMS
+        // + WhatsApp (depending on the owner's prefs + whether they've
+        // set a phone). NoBroker/99acres routinely send all three on
+        // a property enquiry — fast-responding owners convert leads
+        // 3x more often, and the cross-channel ping is the difference
+        // between "noticed in 5 minutes" vs "noticed tomorrow morning".
+        // Skips silently when ownerId is null (generic contact-support
+        // tickets with no owner to ping).
+        if (saved.getOwnerId() != null && !saved.getOwnerId().isBlank()) {
+            notifications.fanOut(saved.getOwnerId(),
+                    NotificationCategory.ENQUIRY_RECEIVED,
+                    java.util.Map.of(
+                            "propertyLabel", safeStr(saved.getSubject()),
+                            "visitorName",   safeStr(saved.getUserName()),
+                            "message",       saved.getMessage() == null
+                                    ? "" : saved.getMessage()
+                    ));
+        }
         return toResponse(saved);
     }
 

@@ -13,6 +13,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.Map;
 
 @Service
 @Slf4j
@@ -49,13 +50,23 @@ public class VisitRequestService {
                 .build();
         VisitRequest saved = repository.save(v);
         autoResponder.onVisitRequestCreated(saved);
-        // Bell entry for the owner: someone wants to see their flat.
-        notifications.sendInapp(saved.getOwnerId(),
-                NotificationCategory.GENERIC,
-                "Visit request for " + safeStr(saved.getPropertyLabel()),
-                safeStr(saved.getVisitorName())
-                        + " wants to see the flat. Open the Enquiries inbox to confirm or reschedule.",
-                null);
+        // Multi-channel ping for the owner: in-app bell + email + SMS
+        // + WhatsApp (last two only fire if the owner has a phone +
+        // matching opt-in). NoBroker/99acres send all three on a
+        // visit request because owners who get pinged across channels
+        // respond noticeably faster than owners on email alone.
+        if (saved.getOwnerId() != null && !saved.getOwnerId().isBlank()) {
+            notifications.fanOut(saved.getOwnerId(),
+                    NotificationCategory.VISIT_REQUESTED,
+                    Map.of(
+                            "propertyLabel", safeStr(saved.getPropertyLabel()),
+                            "visitorName",   safeStr(saved.getVisitorName()),
+                            "preferredAt",   saved.getPreferredAt() == null
+                                    ? "" : saved.getPreferredAt().toString(),
+                            "message",       saved.getMessage() == null
+                                    ? "" : saved.getMessage()
+                    ));
+        }
         return toResponse(saved);
     }
 
@@ -103,19 +114,22 @@ public class VisitRequestService {
         v.setRespondedAt(Instant.now());
         v.setStatus(req.newStatus().toUpperCase());
         VisitRequest saved = repository.save(v);
-        // Bell entry for the visitor — "your visit is {status}". Skip
-        // for PUBLIC_VISITOR (no platform account to ping).
+        // Multi-channel ping for the visitor — confirmed / cancelled /
+        // rescheduled. Skip PUBLIC_VISITOR (anonymous schedule-a-visit
+        // submission with no platform account to address).
         if (saved.getUserId() != null && !"PUBLIC_VISITOR".equals(saved.getUserId())) {
             String statusLine = saved.getStatus() == null
                     ? "updated"
                     : saved.getStatus().toLowerCase();
-            notifications.sendInapp(saved.getUserId(),
-                    NotificationCategory.GENERIC,
-                    "Visit " + statusLine + ": " + safeStr(saved.getPropertyLabel()),
-                    saved.getAdminResponse() == null || saved.getAdminResponse().isBlank()
-                            ? "Your visit request is now " + statusLine + "."
-                            : saved.getAdminResponse(),
-                    null);
+            notifications.fanOut(saved.getUserId(),
+                    NotificationCategory.VISIT_RESPONDED,
+                    Map.of(
+                            "visitorName",    safeStr(saved.getVisitorName()),
+                            "propertyLabel",  safeStr(saved.getPropertyLabel()),
+                            "status",         statusLine,
+                            "adminResponse",  saved.getAdminResponse() == null
+                                    ? "" : saved.getAdminResponse()
+                    ));
         }
         return toResponse(saved);
     }

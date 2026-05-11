@@ -178,6 +178,95 @@ public class TemplateSeeder {
                         + "Monthly rent is *₹{{rentAmount}}* starting {{startDate}}.\n\n"
                         + "Tap *Maintenance* in the app any time something needs fixing.",
                 List.of("userName", "flatId", "rentAmount", "startDate"));
+
+        /* ─────────── Welcome (registration) — SMS + WhatsApp legs ───────────
+         * Email leg is already seeded as "welcome-email" near the top of
+         * this method; adding the other two channels here so a brand-new
+         * user gets a unified ping the moment they sign up.
+         */
+        seedIfAbsent("welcome-whatsapp", NotificationCategory.USER_REGISTRATION,
+                NotificationType.WHATSAPP, null,
+                "Welcome to Hearth, {{userName}}! 🏠\n\nYour account is ready. "
+                        + "Open the app to find your next home or list one of your own.",
+                List.of("userName", "email", "role"));
+
+        /* ─────────── Visit-request flow ───────────
+         * VISIT_REQUESTED  → ping the owner ("someone wants to see your flat")
+         * VISIT_RESPONDED  → ping the visitor (confirmed / rescheduled / cancelled)
+         * ENQUIRY_RECEIVED → ping the owner (contact-owner message)
+         *
+         * All three categories ship across every channel so the user
+         * gets reached however they're configured. The "open the
+         * Enquiries inbox" CTA stays consistent across copy variants.
+         */
+        seedIfAbsent("visit-requested-email", NotificationCategory.VISIT_REQUESTED,
+                NotificationType.EMAIL,
+                "New visit request for {{propertyLabel}}",
+                "Hi,\n\n{{visitorName}} wants to visit {{propertyLabel}}"
+                        + "{{#preferredAt}} on {{preferredAt}}{{/preferredAt}}.\n\n"
+                        + "Open the Enquiries inbox in your Hearth dashboard to confirm "
+                        + "or reschedule. Their message:\n\n\"{{message}}\"\n\n"
+                        + "Reply fast — visitors who hear back within an hour are 3× more "
+                        + "likely to sign a lease.",
+                List.of("propertyLabel", "visitorName", "preferredAt", "message"));
+
+        seedIfAbsent("visit-requested-sms", NotificationCategory.VISIT_REQUESTED,
+                NotificationType.SMS, null,
+                "Hearth: {{visitorName}} requested a visit to {{propertyLabel}}. "
+                        + "Confirm in the app.",
+                List.of("visitorName", "propertyLabel"));
+
+        seedIfAbsent("visit-requested-whatsapp", NotificationCategory.VISIT_REQUESTED,
+                NotificationType.WHATSAPP, null,
+                "Hi 👋\n\n*{{visitorName}}* wants to see your flat — "
+                        + "*{{propertyLabel}}*"
+                        + "{{#preferredAt}} (preferred: {{preferredAt}}){{/preferredAt}}.\n\n"
+                        + "Their message:\n>\n> {{message}}\n\n"
+                        + "Open Enquiries in the Hearth app to confirm or reschedule.",
+                List.of("visitorName", "propertyLabel", "preferredAt", "message"));
+
+        seedIfAbsent("visit-responded-email", NotificationCategory.VISIT_RESPONDED,
+                NotificationType.EMAIL,
+                "Your visit request is {{status}}",
+                "Hi {{visitorName}},\n\nYour request to visit "
+                        + "{{propertyLabel}} is now *{{status}}*."
+                        + "{{#adminResponse}}\n\nThe owner says: \"{{adminResponse}}\"{{/adminResponse}}\n\n"
+                        + "See you soon!",
+                List.of("visitorName", "propertyLabel", "status", "adminResponse"));
+
+        seedIfAbsent("visit-responded-sms", NotificationCategory.VISIT_RESPONDED,
+                NotificationType.SMS, null,
+                "Hearth: your visit to {{propertyLabel}} is {{status}}. "
+                        + "Check the app for details.",
+                List.of("propertyLabel", "status"));
+
+        seedIfAbsent("visit-responded-whatsapp", NotificationCategory.VISIT_RESPONDED,
+                NotificationType.WHATSAPP, null,
+                "Hi {{visitorName}} 👋\n\nYour request to visit *{{propertyLabel}}* "
+                        + "is now *{{status}}*."
+                        + "{{#adminResponse}}\n\nFrom the owner:\n> {{adminResponse}}{{/adminResponse}}\n\n"
+                        + "See you soon!",
+                List.of("visitorName", "propertyLabel", "status", "adminResponse"));
+
+        seedIfAbsent("enquiry-received-email", NotificationCategory.ENQUIRY_RECEIVED,
+                NotificationType.EMAIL,
+                "New enquiry about {{propertyLabel}}",
+                "Hi,\n\n{{visitorName}} just contacted you about "
+                        + "{{propertyLabel}}.\n\nTheir message:\n\n\"{{message}}\"\n\n"
+                        + "Reach out via the Hearth Enquiries inbox or directly "
+                        + "by phone / email — both are in their contact card.",
+                List.of("propertyLabel", "visitorName", "message"));
+
+        seedIfAbsent("enquiry-received-sms", NotificationCategory.ENQUIRY_RECEIVED,
+                NotificationType.SMS, null,
+                "Hearth: new enquiry from {{visitorName}} about {{propertyLabel}}.",
+                List.of("visitorName", "propertyLabel"));
+
+        seedIfAbsent("enquiry-received-whatsapp", NotificationCategory.ENQUIRY_RECEIVED,
+                NotificationType.WHATSAPP, null,
+                "Hi 👋\n\n*{{visitorName}}* contacted you about *{{propertyLabel}}*:\n>\n"
+                        + "> {{message}}\n\nReply via the Hearth Enquiries inbox.",
+                List.of("visitorName", "propertyLabel", "message"));
     }
 
     private void seedIfAbsent(String name,

@@ -251,6 +251,13 @@ public class UserServiceImpul implements UserService {
         userServiceEvent.sendUserProfileUpdated(UserProfileUpdatedEvent.builder()
                 .eventType("user.profile.updated")
                 .userId(saved.getId())
+                // authUserId / email / phone let notification-service
+                // sync its preference row keyed on the JWT subject
+                // without a follow-up Feign call. SMS + WhatsApp light
+                // up as soon as the tenant fills the phone field.
+                .authUserId(saved.getAuthUserId())
+                .email(saved.getEmail())
+                .phone(saved.getPhone())
                 .changes(changes.toString())
                 .timestamp(Instant.now())
                 .build());

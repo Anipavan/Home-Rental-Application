@@ -81,12 +81,24 @@ public class NotificationService {
      */
     public void fanOut(String userId, NotificationCategory category, Map<String, Object> vars) {
         if (userId == null || userId.isBlank()) return;
-        // INAPP first — backs the bell, always available.
+        // INAPP first — backs the bell, always available, no external
+        // recipient needed.
         deliver(userId, NotificationType.INAPP, category, null, null, null, vars);
-        // EMAIL is best-effort: if no email on the preference row it'll
-        // record FAILED with "No recipient configured" and the bell
+        // EMAIL: best-effort — if no email on the preference row it
+        // records FAILED with "No recipient configured" and the bell
         // still shows the INAPP entry above.
         deliver(userId, NotificationType.EMAIL, category, null, null, null, vars);
+        // SMS: only fires if the user has a phone on the preference row
+        // AND smsEnabled = true (the default). channelEnabled() +
+        // recipientFor() inside deliver() handle the opt-out / no-phone
+        // cases — they record SKIPPED / FAILED rows for the audit trail
+        // and never bring down the parent fan-out.
+        deliver(userId, NotificationType.SMS, category, null, null, null, vars);
+        // WhatsApp: explicit opt-in (whatsappEnabled defaults to false).
+        // Fires nothing for users who haven't opted in, which is the
+        // right behaviour — WhatsApp messaging has stricter consent
+        // requirements than SMS in most jurisdictions.
+        deliver(userId, NotificationType.WHATSAPP, category, null, null, null, vars);
     }
 
     /**

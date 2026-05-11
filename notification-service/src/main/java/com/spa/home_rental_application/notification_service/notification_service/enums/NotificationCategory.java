@@ -18,6 +18,13 @@ public enum NotificationCategory {
     COMPLAINT_CREATED,
     COMPLAINT_ACKNOWLEDGED,
     COMPLAINT_RESOLVED,
+    // Visit + enquiry events from the public property-detail page.
+    // VISIT_REQUESTED pings owner; VISIT_RESPONDED pings the visitor
+    // (confirm / reschedule / cancel). ENQUIRY_RECEIVED is the
+    // contact-owner flow.
+    VISIT_REQUESTED,
+    VISIT_RESPONDED,
+    ENQUIRY_RECEIVED,
     LEASE_WELCOME,
     LEASE_EXPIRY,
     // ----- India Compliance Layer -----

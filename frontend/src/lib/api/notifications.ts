@@ -54,6 +54,49 @@ export const notificationsApi = {
       .then((r) => r.data),
 };
 
+/* ────────────────── Notification preferences ────────────────── */
+
+export interface NotificationPreferences {
+  userId: string;
+  email?: string;
+  phone?: string;
+  deviceToken?: string;
+  emailEnabled: boolean;
+  smsEnabled: boolean;
+  whatsappEnabled: boolean;
+  pushEnabled: boolean;
+  mutedCategories?: string[];
+}
+
+export interface NotificationPreferencesUpdate {
+  email?: string;
+  phone?: string;
+  deviceToken?: string;
+  emailEnabled?: boolean;
+  smsEnabled?: boolean;
+  whatsappEnabled?: boolean;
+  pushEnabled?: boolean;
+  mutedCategories?: string[];
+}
+
+/**
+ * Per-user delivery channel preferences. Backed by the notification-
+ * service /preferences endpoints.
+ */
+export const preferencesApi = {
+  get: (userId: string) =>
+    api
+      .get<NotificationPreferences>(`/notifications/preferences/${userId}`)
+      .then((r) => r.data),
+  upsert: (userId: string, body: NotificationPreferencesUpdate) =>
+    api
+      .put<NotificationPreferences>(
+        `/notifications/preferences/${userId}`,
+        body,
+      )
+      .then((r) => r.data),
+};
+
 /* ────────────────── Support tickets (Day 2–3 stabilization) ────────────────── */
 
 export interface SupportTicket {

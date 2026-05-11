@@ -54,6 +54,7 @@ import { AdminReviewsPage } from "@/pages/admin/reviews";
 import { AdminSupportPage } from "@/pages/admin/support";
 import { AdminVisitRequestsPage } from "@/pages/admin/visit-requests";
 import { NotificationsInboxPage } from "@/pages/notifications-inbox";
+import { NotificationPreferencesPage } from "@/pages/notifications-preferences";
 import { SavedListingsPage } from "@/pages/tenant/saved";
 import { ComparePage } from "@/pages/tenant/compare";
 
@@ -91,6 +92,10 @@ export const router = createBrowserRouter([
       // can still wishlist and receive registration emails.
       { path: "saved", element: <SavedListingsPage /> },
       { path: "compare", element: <ComparePage /> },
+      // Channel-toggle UI — lives outside FlatRequiredOutlet so any
+      // user (even pre-flat-assignment) can dial in their delivery
+      // preferences right after registration.
+      { path: "notifications/preferences", element: <NotificationPreferencesPage /> },
       { path: "notifications", element: <NotificationsInboxPage /> },
       // Browse listings is always available — a tenant with a flat
       // assigned should still be able to look at other homes (longer
@@ -166,6 +171,7 @@ export const router = createBrowserRouter([
       { path: "compliance", element: <OwnerCompliancePage /> },
       { path: "analytics", element: <OwnerAnalyticsPage /> },
       { path: "notifications", element: <NotificationsInboxPage /> },
+      { path: "notifications/preferences", element: <NotificationPreferencesPage /> },
       // Owners get the same Profile page as tenants — the user-service
       // schema is role-agnostic (first/last name, email, phone, photo,
       // address). Same component, just a different route.
@@ -190,6 +196,7 @@ export const router = createBrowserRouter([
       { path: "support", element: <AdminSupportPage /> },
       { path: "visit-requests", element: <AdminVisitRequestsPage /> },
       { path: "notifications", element: <NotificationsInboxPage /> },
+      { path: "notifications/preferences", element: <NotificationPreferencesPage /> },
       // Admin profile mirrors the owner/tenant Profile page — same UI,
       // same User Service backend. Lets admins set their own photo +
       // contact info instead of being stuck with auth-tier initials.
