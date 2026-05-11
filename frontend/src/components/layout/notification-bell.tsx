@@ -10,6 +10,7 @@ import {
 import { useAuthStore } from "@/stores/auth-store";
 import { notificationsApi } from "@/lib/api/notifications";
 import { useNotificationStream } from "@/hooks/use-notification-stream";
+import { toast } from "@/hooks/use-toast";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -55,10 +56,22 @@ export function NotificationBell() {
     retry: 1,
   });
 
-  // Real-time push subscription. Calls back when the backend pushes
-  // an event for this user — we just refetch the query.
-  useNotificationStream(authUserId, () => {
+  // Real-time push subscription. On every server push we:
+  //   1. Invalidate the bell query so the dropdown re-renders.
+  //   2. Surface a small toast with the new notification's subject +
+  //      message snippet so the user sees activity even when the
+  //      bell is closed. Falls back to a generic copy if the
+  //      server-sent payload is missing fields (malformed SSE
+  //      payload, JSON parse error, etc.).
+  useNotificationStream(authUserId, (payload) => {
     qc.invalidateQueries({ queryKey: ["notifications", authUserId] });
+    toast({
+      title: payload.subject?.trim() || "New notification",
+      description:
+        typeof payload.message === "string" && payload.message.trim().length > 0
+          ? payload.message
+          : "Open the bell to read it.",
+    });
   });
 
   // Mark-all-as-read mutation with optimistic cache update.
