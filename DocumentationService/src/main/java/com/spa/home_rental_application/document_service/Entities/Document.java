@@ -2,6 +2,7 @@ package com.spa.home_rental_application.document_service.Entities;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.springframework.data.domain.Persistable;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -11,6 +12,22 @@ import java.time.LocalDateTime;
  * storage (local dir or S3); only the {@code storage_url} is persisted here.
  * <p>
  * Soft-delete is preferred over physical delete to preserve audit trail.
+ *
+ * <p><b>Why this implements {@link Persistable}:</b> {@code DocumentServiceImpl.upload()}
+ * generates the UUID itself <em>before</em> calling {@code repository.save()} —
+ * the storage layer needs the id to build the on-disk filename, so we
+ * can't defer it to {@code @GeneratedValue}. With a pre-assigned id,
+ * Spring Data JPA's default {@code isNew()} check ({@code id == null})
+ * returns {@code false}, so {@code save()} calls {@code em.merge()}
+ * instead of {@code em.persist()}. Merge then can't find the not-yet-
+ * inserted row and throws
+ * {@code StaleObjectStateException: "unsaved-value mapping was incorrect"}.
+ *
+ * <p>Implementing {@link Persistable} lets us override that check via
+ * a transient {@code isNewEntity} flag that flips to {@code false} on
+ * the first persist or load — so new rows go through {@code persist()}
+ * and subsequent updates go through {@code merge()}, both behaving
+ * correctly.
  */
 @Entity
 @Table(name = "documents",
@@ -23,10 +40,9 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class Document {
+public class Document implements Persistable<String> {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
     private String id;
 
     @Column(name = "user_id", nullable = false)
@@ -85,6 +101,18 @@ public class Document {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
+    /**
+     * Transient marker that drives {@link #isNew()}. Starts {@code true}
+     * for builder-constructed instances (the upload path), flips to
+     * {@code false} the first time the entity is persisted or loaded
+     * from the database. Not a column, never serialized.
+     */
+    @Transient
+    @Builder.Default
+    @Setter(AccessLevel.NONE)
+    @Getter(AccessLevel.NONE)
+    private boolean isNewEntity = true;
+
     @PrePersist
     void onCreate() {
         LocalDateTime now = LocalDateTime.now();
@@ -95,5 +123,21 @@ public class Document {
     @PreUpdate
     void onUpdate() {
         this.updatedAt = LocalDateTime.now();
+    }
+
+    /**
+     * After the entity is loaded from DB or persisted for the first
+     * time, it's no longer "new" — subsequent saves should merge
+     * rather than persist.
+     */
+    @PostLoad
+    @PostPersist
+    void markNotNew() {
+        this.isNewEntity = false;
+    }
+
+    @Override
+    public boolean isNew() {
+        return isNewEntity;
     }
 }
