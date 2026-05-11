@@ -19,4 +19,11 @@ public interface FlatService {
     FlatResponseDTO makeFlatVacate(String flatId);
     FlatResponseDTO updateFlat(String flatId, FlatRequestDTO flatRequestDTO);
     FlatResponseDTO assignFlat(String flatId, AssignFlatRequest req);
+
+    /**
+     * Geosearch: every non-deleted, non-occupied flat whose parent
+     * building has a geo-pin within {@code radiusKm} kilometres of
+     * the given coordinates. Pin-less buildings are excluded.
+     */
+    List<FlatResponseDTO> findFlatsNear(double lat, double lng, double radiusKm);
 }

@@ -91,6 +91,32 @@ public class FlatController {
         return ResponseEntity.ok(flatService.getAllVacentFlats());
     }
 
+    /**
+     * "Near me" geosearch: flats whose parent building has a geo-pin
+     * within {@code radiusKm} of (lat, lng). Computed via the
+     * Haversine great-circle formula — accurate enough for rental
+     * radius queries (sub-200km), zero new dependencies.
+     *
+     * <p>Buildings without coordinates are excluded; the future map
+     * view should show them as a city-centroid fallback if the
+     * non-geo filter set is otherwise empty.
+     *
+     * <p>Public GET — the gateway already opens
+     * {@code GET /rentals/v1/properties/flats/**} for anonymous
+     * browse, so a logged-out visitor on the public site can run
+     * "show me flats near my current location" without signing in.
+     */
+    @Operation(summary = "Flats within {radiusKm} of (lat, lng) — Haversine distance")
+    @GetMapping("/flats/near")
+    public ResponseEntity<List<FlatResponseDTO>> nearFlats(
+            @RequestParam double lat,
+            @RequestParam double lng,
+            @RequestParam(defaultValue = "5.0") double radiusKm) {
+        log.info("GET /properties/flats/near lat={} lng={} radiusKm={}",
+                lat, lng, radiusKm);
+        return ResponseEntity.ok(flatService.findFlatsNear(lat, lng, radiusKm));
+    }
+
     @Operation(summary = "Mark a flat as vacant (publishes flat.vacated)")
     @PostMapping("/flats/{flatId}/vacate")
     public ResponseEntity<FlatResponseDTO> vacateFlat(@PathVariable String flatId) {

@@ -38,6 +38,10 @@ public class BuildingMapper {
                 // null when the request comes from an old client / a script.
                 .stateId(dto.stateId())
                 .cityId(dto.cityId())
+                // Optional geo pin — null is fine; geosearch excludes
+                // pin-less buildings, map view falls back to centroid.
+                .latitude(dto.latitude())
+                .longitude(dto.longitude())
                 .createdDt(LocalDateTime.now().toString())
                 .updatedDt(LocalDateTime.now().toString())
                 .build();
@@ -74,6 +78,8 @@ public class BuildingMapper {
                 occupied,
                 Math.max(0, active - occupied),
                 building.getAmenities(),
+                building.getLatitude(),
+                building.getLongitude(),
                 parseDateTimeSafe(building.getCreatedDt()),
                 parseDateTimeSafe(building.getUpdatedDt())
         );

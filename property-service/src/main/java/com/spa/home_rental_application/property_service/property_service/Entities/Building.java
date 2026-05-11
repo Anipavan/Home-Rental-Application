@@ -40,6 +40,24 @@
         @Column(name = "city_id")
         private Long cityId;
 
+        /**
+         * Geographic coordinates — power the future map view + the
+         * {@code GET /flats/near?lat=&lng=&radiusKm=} Haversine-distance
+         * filter. Nullable so legacy rows / owners who don't know their
+         * coordinates still create buildings; the geosearch endpoint
+         * simply excludes them.
+         *
+         * <p>Owners pick a point on the map at create-time; reverse-
+         * geocoding the {@code buildingAddress} via a one-shot
+         * geocoding call (Nominatim / OpenCage / Mapbox) is a planned
+         * follow-up to back-fill legacy rows.
+         */
+        @Column(name = "latitude")
+        private Double latitude;
+
+        @Column(name = "longitude")
+        private Double longitude;
+
         @Column(name = "is_deleted", nullable = false)
         @Builder.Default
         private Boolean isDeleted = false;

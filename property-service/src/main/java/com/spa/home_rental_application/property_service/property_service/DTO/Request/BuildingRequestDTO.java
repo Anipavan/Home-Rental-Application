@@ -50,5 +50,14 @@ public record BuildingRequestDTO(
          */
         Long stateId,
 
-        Long cityId
+        Long cityId,
+
+        /**
+         * Optional geographic coordinates for map view + "near me"
+         * geosearch. Owners pick a point on the map in the building-
+         * create form. Legacy listings without a pin still create
+         * fine; they're simply omitted from the geosearch endpoint.
+         */
+        Double latitude,
+        Double longitude
 ) {}

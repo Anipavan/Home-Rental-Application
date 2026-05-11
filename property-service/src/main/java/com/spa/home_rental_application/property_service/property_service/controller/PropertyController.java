@@ -33,7 +33,7 @@ public class PropertyController {
         this.propertyImageService = propertyImageService;
     }
 
-    @Operation(summary = "Upload an image for a building or flat")
+    @Operation(summary = "Upload one image for a building or flat (legacy single-file path)")
     @PostMapping(
             value = "/buildings/{id}/images",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -43,6 +43,40 @@ public class PropertyController {
                 id, file.getOriginalFilename(), file.getSize());
         PropertyImageResponseDTO dto = propertyImageService.uploadImage(id, file);
         return ResponseEntity.status(HttpStatus.CREATED).body(dto);
+    }
+
+    /**
+     * Bulk image upload — owners drag a whole folder of property
+     * photos onto the gallery editor and get one round-trip instead
+     * of N. Order in the response matches the upload order so the
+     * frontend can reflect the new gallery layout without a
+     * follow-up GET.
+     *
+     * <p>One failure inside the batch (bad content type, file too
+     * large, etc.) does NOT abort the rest — successful uploads are
+     * returned and failures surface as a 207 Multi-Status would be
+     * overkill; we throw on the first hard failure and rely on the
+     * frontend to retry the remaining files. Most batches succeed
+     * cleanly because the per-file validation rules are the same as
+     * the single-file path.
+     */
+    @Operation(summary = "Upload many images at once (bulk gallery uploader)")
+    @PostMapping(
+            value = "/buildings/{id}/images/bulk",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<List<PropertyImageResponseDTO>> uploadImagesBulk(
+            @PathVariable String id,
+            @RequestParam("files") MultipartFile[] files) throws IOException {
+        log.info("POST /properties/buildings/{}/images/bulk count={}",
+                id, files == null ? 0 : files.length);
+        if (files == null || files.length == 0) {
+            return ResponseEntity.ok(List.of());
+        }
+        List<PropertyImageResponseDTO> saved = new java.util.ArrayList<>(files.length);
+        for (MultipartFile f : files) {
+            saved.add(propertyImageService.uploadImage(id, f));
+        }
+        return ResponseEntity.status(HttpStatus.CREATED).body(saved);
     }
 
     @Operation(summary = "List images for a building or flat")

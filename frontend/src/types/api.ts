@@ -135,6 +135,9 @@ export interface BuildingResponseDTO {
   occupiedFlatsCount?: number;
   vacantFlatsCount?: number;
   amenities?: string;
+  /** Geographic coordinates — null for legacy buildings without a pin. */
+  latitude?: number | null;
+  longitude?: number | null;
   createdDt?: string;
   updatedDt?: string;
 }

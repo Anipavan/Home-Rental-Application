@@ -95,6 +95,24 @@ export const propertiesApi = {
         .then((r) => r.data);
     },
     /**
+     * Bulk upload — owners drag many photos onto the gallery editor
+     * at once. Each file is validated server-side (content type, size)
+     * the same way the single-file endpoint validates. The response
+     * preserves upload order so the FE can update the gallery view
+     * without a refetch.
+     */
+    uploadImagesBulk: (id: number | string, files: File[]) => {
+      const fd = new FormData();
+      for (const f of files) fd.append("files", f);
+      return api
+        .post<PropertyImageResponseDTO[]>(
+          `/properties/buildings/${id}/images/bulk`,
+          fd,
+          { headers: { "Content-Type": undefined } },
+        )
+        .then((r) => r.data);
+    },
+    /**
      * Promote {@code imageId} to be the cover for its property. The
      * server atomically unsets the previous cover so we never need
      * a follow-up "unset". Idempotent.
@@ -131,6 +149,18 @@ export const propertiesApi = {
         .then((r) => r.data),
     vacant: () =>
       api.get<FlatResponseDTO[]>("/properties/flats/vacant").then((r) => r.data),
+    /**
+     * Haversine geosearch — vacant flats whose parent building's
+     * geo-pin is within {@code radiusKm} of (lat, lng). Pin-less
+     * buildings are excluded by the backend. Public GET, callable
+     * without sign-in via the gateway's open property routes.
+     */
+    near: (lat: number, lng: number, radiusKm = 5) =>
+      api
+        .get<FlatResponseDTO[]>("/properties/flats/near", {
+          params: { lat, lng, radiusKm },
+        })
+        .then((r) => r.data),
     create: (body: FlatRequestDTO) =>
       api
         .post<FlatResponseDTO>("/properties/flats/create/flat", body)

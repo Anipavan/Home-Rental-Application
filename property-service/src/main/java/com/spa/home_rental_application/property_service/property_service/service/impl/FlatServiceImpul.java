@@ -135,6 +135,54 @@ public class FlatServiceImpul implements FlatService {
         return flatMapper.toResponseList(flatRepo.findActiveByTenantId(tenantId));
     }
 
+    /**
+     * Haversine-distance "near me" geosearch.
+     *
+     * <p>We hydrate every vacant flat, look up its parent building's
+     * coordinates, and compute the great-circle distance in
+     * application code. For the current catalog scale (~hundreds of
+     * listings) this is fine and avoids dragging in PostGIS or
+     * Oracle Spatial. When the catalog grows past ~10k, swap to a
+     * native spatial index (Oracle SDO_GEOMETRY or a Postgres
+     * migration with the {@code earthdistance} extension).
+     *
+     * <p>Excludes occupied flats and buildings without geo-pins.
+     */
+    @Override
+    public List<FlatResponseDTO> findFlatsNear(double lat, double lng, double radiusKm) {
+        List<Flat> vacant = flatRepo.findByIsOccupiedFalse();
+        if (vacant.isEmpty()) return List.of();
+
+        // Cache parent-building lookups so we don't N+1 the DB if
+        // many flats share a building.
+        java.util.Map<String, Building> buildingCache = new java.util.HashMap<>();
+        java.util.List<Flat> matches = new java.util.ArrayList<>();
+        for (Flat f : vacant) {
+            String bid = f.getBuildingId();
+            if (bid == null) continue;
+            Building b = buildingCache.computeIfAbsent(bid,
+                    id -> buildingRepo.findById(id).orElse(null));
+            if (b == null || b.getLatitude() == null || b.getLongitude() == null) {
+                continue;
+            }
+            double d = haversineKm(lat, lng, b.getLatitude(), b.getLongitude());
+            if (d <= radiusKm) matches.add(f);
+        }
+        return flatMapper.toResponseList(matches);
+    }
+
+    /** Great-circle distance in km between two lat/lng pairs. */
+    private static double haversineKm(double lat1, double lon1,
+                                       double lat2, double lon2) {
+        final double R = 6371.0088;          // Earth mean radius in km
+        double dLat = Math.toRadians(lat2 - lat1);
+        double dLon = Math.toRadians(lon2 - lon1);
+        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
+                * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
     @Override
     @Transactional
     public FlatResponseDTO makeFlatVacate(String flatId) {
