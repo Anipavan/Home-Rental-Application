@@ -3,6 +3,7 @@ import { PublicLayout } from "@/components/layout/public-layout";
 import { AppShell } from "@/components/layout/app-shell";
 import { ProtectedRoute } from "@/components/auth/protected-route";
 import { FlatRequiredOutlet } from "@/components/auth/flat-required-outlet";
+import { FeatureDisabledOutlet } from "@/components/auth/feature-disabled-outlet";
 import { LandingPage } from "@/pages/public/landing";
 import { BrowsePage } from "@/pages/public/browse";
 import { PropertyDetailPage } from "@/pages/public/property-detail";
@@ -99,7 +100,22 @@ export const router = createBrowserRouter([
           { path: "complaints/new", element: <ComplaintsNewPage /> },
           { path: "complaints/:id", element: <ComplaintDetailPage /> },
           { path: "lease", element: <TenantLeasePage /> },
-          { path: "kyc", element: <KycPage /> },
+          // KYC is temporarily disabled platform-wide while we tune the
+          // provider integration. The page still renders behind the
+          // overlay so the URL/nav highlight stays consistent, and
+          // re-enabling is a one-line change (remove the wrapping
+          // FeatureDisabledOutlet element). The matching sidebar item
+          // shows a "Paused" pill in AppShell so users see the state
+          // before clicking.
+          {
+            element: (
+              <FeatureDisabledOutlet
+                feature="KYC"
+                reason="We've paused identity verification while we upgrade the provider integration. You can continue using the rest of the app — paying rent, raising tickets, and signing leases — without it for now."
+              />
+            ),
+            children: [{ path: "kyc", element: <KycPage /> }],
+          },
           { path: "documents", element: <DocumentsPage /> },
           { path: "reviews", element: <TenantReviewsPage /> },
         ],

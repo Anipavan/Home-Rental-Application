@@ -44,6 +44,13 @@ interface NavItem {
   to: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
+  /**
+   * Optional small pill rendered next to the label — used to flag
+   * features that are temporarily disabled so the user knows before
+   * they click. The route itself still resolves; the gate (see
+   * {@link FeatureDisabledOutlet}) decides whether the page renders.
+   */
+  pausedBadge?: boolean;
 }
 
 const tenantNav: NavItem[] = [
@@ -53,7 +60,10 @@ const tenantNav: NavItem[] = [
   { to: "/app/payments", label: "Payments", icon: Receipt },
   { to: "/app/maintenance", label: "Maintenance", icon: Wrench },
   { to: "/app/complaints", label: "Complaints", icon: MessageSquareWarning },
-  { to: "/app/kyc", label: "KYC", icon: BadgeCheck },
+  // KYC is temporarily paused platform-wide. Route-level gate lives
+  // in router.tsx; this pausedBadge surfaces the state in the nav so
+  // users see it before clicking.
+  { to: "/app/kyc", label: "KYC", icon: BadgeCheck, pausedBadge: true },
   { to: "/app/documents", label: "Documents", icon: FileText },
   { to: "/app/reviews", label: "Reviews", icon: Star },
   { to: "/app/profile", label: "Profile", icon: Settings },
@@ -134,7 +144,12 @@ export function AppShell() {
               }
             >
               <item.icon className="size-4" />
-              {item.label}
+              <span className="flex-1">{item.label}</span>
+              {item.pausedBadge && (
+                <span className="rounded-full bg-warning/15 text-warning text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5">
+                  Paused
+                </span>
+              )}
             </NavLink>
           ))}
         </nav>
