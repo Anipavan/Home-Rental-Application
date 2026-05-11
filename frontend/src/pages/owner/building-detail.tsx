@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Loader2, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Loader2, Plus, Star, Trash2 } from "lucide-react";
 import { propertiesApi } from "@/lib/api/properties";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -64,6 +64,22 @@ export function BuildingDetailPage() {
       toast({
         variant: "destructive",
         title: "Couldn't delete photo",
+        description: extractErrorMessage(e),
+      }),
+  });
+
+  // Promote a photo to the cover. The backend atomically unsets the
+  // previous cover, so we just invalidate the gallery on success.
+  const setCoverM = useMutation({
+    mutationFn: (imageId: string) => propertiesApi.buildings.setCover(imageId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["building-images", buildingId] });
+      toast({ title: "Cover photo updated" });
+    },
+    onError: (e) =>
+      toast({
+        variant: "destructive",
+        title: "Couldn't set cover",
         description: extractErrorMessage(e),
       }),
   });
@@ -131,8 +147,13 @@ export function BuildingDetailPage() {
                   key={img.id}
                   imageId={img.id}
                   alt={`Photo of ${b.buildingName}`}
+                  isCover={Boolean(img.isCover)}
                   onDelete={() => deleteM.mutate(img.id)}
+                  onSetCover={() => setCoverM.mutate(img.id)}
                   deleting={deleteM.isPending && deleteM.variables === img.id}
+                  settingCover={
+                    setCoverM.isPending && setCoverM.variables === img.id
+                  }
                 />
               ))}
               <FileUpload
@@ -227,13 +248,19 @@ function Stat({ label, value }: { label: string; value: string }) {
 function PhotoTile({
   imageId,
   alt,
+  isCover,
   onDelete,
+  onSetCover,
   deleting,
+  settingCover,
 }: {
   imageId: string;
   alt: string;
+  isCover: boolean;
   onDelete: () => void;
+  onSetCover: () => void;
   deleting: boolean;
+  settingCover: boolean;
 }) {
   const [confirming, setConfirming] = useState(false);
 
@@ -241,24 +268,53 @@ function PhotoTile({
     <div className="aspect-square rounded-xl overflow-hidden bg-muted border relative group">
       <PropertyImage imageId={imageId} alt={alt} className="w-full h-full" />
 
-      {/* Hover overlay with trash button */}
+      {/* Cover badge — always visible when this image is the cover so
+          the owner sees the state without hovering. */}
+      {isCover && (
+        <span className="absolute top-2 left-2 inline-flex items-center gap-1 rounded-full bg-amber-400/95 text-amber-950 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 shadow-soft">
+          <Star className="size-3 fill-current" /> Cover
+        </span>
+      )}
+
+      {/* Hover overlay action row */}
       {!confirming && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.preventDefault();
-            setConfirming(true);
-          }}
-          className="absolute top-2 right-2 size-8 rounded-full bg-black/60 text-white grid place-items-center opacity-0 group-hover:opacity-100 hover:bg-destructive transition"
-          aria-label="Delete photo"
-          disabled={deleting}
-        >
-          {deleting ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <Trash2 className="size-4" />
+        <div className="absolute top-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition">
+          {!isCover && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                onSetCover();
+              }}
+              className="size-8 rounded-full bg-black/60 text-white grid place-items-center hover:bg-amber-500"
+              aria-label="Set as cover photo"
+              title="Set as cover photo"
+              disabled={settingCover}
+            >
+              {settingCover ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Star className="size-4" />
+              )}
+            </button>
           )}
-        </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              setConfirming(true);
+            }}
+            className="size-8 rounded-full bg-black/60 text-white grid place-items-center hover:bg-destructive"
+            aria-label="Delete photo"
+            disabled={deleting}
+          >
+            {deleting ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Trash2 className="size-4" />
+            )}
+          </button>
+        </div>
       )}
 
       {/* Confirmation overlay */}

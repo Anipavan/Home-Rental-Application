@@ -67,6 +67,18 @@ export const propertiesApi = {
       api
         .get<Blob>(`/properties/images/${imageId}/raw`, { responseType: "blob" })
         .then((r) => r.data),
+    /**
+     * Loadable URL for an <img src=…>. The /images/*\/raw endpoint is
+     * in the gateway's GET public-paths list, so anonymous browsers
+     * can render the image without a JWT (and without the Blob
+     * round-trip imageRaw() does — that one is for download links).
+     */
+    imageRawUrl: (imageId: string) => {
+      const base =
+        (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
+        "http://localhost:8080/rentals/v1";
+      return `${base.replace(/\/$/, "")}/properties/images/${imageId}/raw`;
+    },
     /** Hard-delete a property image (removes DB row + on-disk file). */
     deleteImage: (imageId: string) =>
       api.delete(`/properties/images/${imageId}`).then((r) => r.data),
@@ -82,6 +94,23 @@ export const propertiesApi = {
         )
         .then((r) => r.data);
     },
+    /**
+     * Promote {@code imageId} to be the cover for its property. The
+     * server atomically unsets the previous cover so we never need
+     * a follow-up "unset". Idempotent.
+     */
+    setCover: (imageId: string) =>
+      api
+        .put<PropertyImageResponseDTO>(`/properties/images/${imageId}/cover`)
+        .then((r) => r.data),
+    /** Drag-reorder. Body is the new ordered list of image ids. */
+    reorderImages: (buildingId: string, orderedIds: string[]) =>
+      api
+        .put<PropertyImageResponseDTO[]>(
+          `/properties/buildings/${buildingId}/images/reorder`,
+          orderedIds,
+        )
+        .then((r) => r.data),
   },
   flats: {
     list: (page = 0, size = 20) =>

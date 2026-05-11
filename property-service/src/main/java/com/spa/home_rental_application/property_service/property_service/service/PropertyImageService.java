@@ -26,4 +26,21 @@ public interface PropertyImageService {
      * exists; the row is still removed.
      */
     void deleteImage(String imageId) throws IOException;
+
+    /**
+     * Mark this image as the cover for its property and unmark every
+     * other image of the same property. Returns the updated DTO.
+     * Idempotent — calling on the already-cover image is a no-op
+     * apart from the response trip.
+     */
+    PropertyImageResponseDTO setCover(String imageId);
+
+    /**
+     * Persist a new ordering. {@code orderedIds} must contain ids
+     * that all belong to {@code propertyId}; any id that doesn't is
+     * skipped. New sortOrder = 10, 20, 30… so future inserts /
+     * partial reorders have room to slot in without renumbering
+     * everything.
+     */
+    List<PropertyImageResponseDTO> reorder(String propertyId, List<String> orderedIds);
 }

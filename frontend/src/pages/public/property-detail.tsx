@@ -24,8 +24,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { ReviewList } from "@/components/reviews/review-list";
 import { formatINR, formatDate } from "@/lib/utils";
-import { getPlaceholderImage } from "@/components/property/property-card";
 import { PropertyEnquiryDialog } from "@/components/property/property-enquiry-dialog";
+import { PropertyGallery } from "@/components/property/property-gallery";
 import { FavoriteButton } from "@/components/property/favorite-button";
 
 const amenities = [
@@ -85,8 +85,6 @@ export function PropertyDetailPage() {
 
   const flat = flatQ.data;
   const b = buildingQ.data;
-  const heroImg = getPlaceholderImage(flat.id);
-  const galleryImgs = [1, 2, 3, 4].map((i) => getPlaceholderImage(`${flat.id}-${i}`));
 
   return (
     <div className="container py-6 lg:py-8">
@@ -96,26 +94,21 @@ export function PropertyDetailPage() {
         </Link>
       </Button>
 
-      <div className="grid gap-3 lg:grid-cols-[2fr_1fr] aspect-[16/9] lg:aspect-auto lg:h-[480px]">
-        <div className="rounded-2xl overflow-hidden bg-muted relative">
-          <img src={heroImg} alt="Hero" className="w-full h-full object-cover" />
-          <Badge
-            variant={flat.isOccupied ? "secondary" : "success"}
-            className="absolute top-4 left-4 bg-white/90 backdrop-blur"
-          >
-            {flat.isOccupied ? "Occupied" : "Available now"}
-          </Badge>
-        </div>
-        <div className="hidden lg:grid grid-cols-2 gap-3">
-          {galleryImgs.map((img, i) => (
-            <div
-              key={i}
-              className="rounded-2xl overflow-hidden bg-muted aspect-square"
-            >
-              <img src={img} alt={`Gallery ${i}`} className="w-full h-full object-cover" />
-            </div>
-          ))}
-        </div>
+      {/* Hero gallery — real images from the building when present,
+          deterministic placeholder set otherwise. Clicking any tile
+          opens a keyboard-navigable lightbox. */}
+      <div className="relative">
+        <PropertyGallery
+          buildingId={flat.buildingId}
+          flatSeed={flat.id}
+          alt={b?.buildingName ?? flat.flatNumber}
+        />
+        <Badge
+          variant={flat.isOccupied ? "secondary" : "success"}
+          className="absolute top-4 left-4 bg-white/90 backdrop-blur"
+        >
+          {flat.isOccupied ? "Occupied" : "Available now"}
+        </Badge>
       </div>
 
       <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_360px]">

@@ -1,7 +1,9 @@
 import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { Bed, Bath, Square, MapPin } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { FavoriteButton } from "@/components/property/favorite-button";
+import { propertiesApi } from "@/lib/api/properties";
 import { formatINR } from "@/lib/utils";
 import type { FlatResponseDTO } from "@/types/api";
 
@@ -30,7 +32,24 @@ export function PropertyCard({
   buildingName?: string;
   city?: string;
 }) {
-  const img = pickImage(flat.id);
+  // Pull the building's gallery so we can use the cover image when
+  // the owner has uploaded one. Falls back to the deterministic
+  // Unsplash placeholder so listings without photos still render
+  // visually distinct cards. The query is cached for 5min — the
+  // browse grid renders many cards but they all share parent buildings,
+  // so React Query dedupes the fetches.
+  const imgsQ = useQuery({
+    queryKey: ["building", flat.buildingId, "images"],
+    queryFn: () => propertiesApi.buildings.images(flat.buildingId),
+    enabled: !!flat.buildingId,
+    staleTime: 5 * 60_000,
+  });
+
+  const cover = imgsQ.data?.find((img) => img.isCover) ?? imgsQ.data?.[0];
+  const img = cover
+    ? propertiesApi.buildings.imageRawUrl(cover.id)
+    : pickImage(flat.id);
+
   return (
     <Link
       to={`/property/${flat.id}`}

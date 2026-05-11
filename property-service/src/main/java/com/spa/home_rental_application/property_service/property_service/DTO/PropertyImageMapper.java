@@ -13,7 +13,9 @@ public final class PropertyImageMapper {
                 image.getId(),
                 image.getPropertyId(),
                 image.getImageUrl(),
-                image.getType()
+                image.getType(),
+                image.getIsCover(),
+                image.getSortOrder()
         );
     }
 }

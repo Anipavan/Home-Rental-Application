@@ -57,20 +57,91 @@ public class PropertyImageServiceImpul implements PropertyImageService {
         Path target = dir.resolve(fileName);
         Files.write(target, file.getBytes());
 
+        // First image uploaded for a property is auto-promoted to
+        // cover so the listing card has a hero immediately without
+        // requiring an extra "set cover" click. Subsequent uploads
+        // stay non-cover until the owner explicitly promotes one.
+        boolean firstImage = repo.findByPropertyId(propertyId).isEmpty();
+
         PropertyImage saved = repo.save(PropertyImage.builder()
                 .propertyId(propertyId)
                 .imageUrl(target.toString())
                 .type(contentType)
+                .isCover(firstImage)
+                .sortOrder(firstImage ? 10 : 1000)
                 .build());
-        log.info("Stored image for property={} at {}", propertyId, target);
+        log.info("Stored image for property={} at {} (cover={})",
+                propertyId, target, firstImage);
         return PropertyImageMapper.toDTO(saved);
     }
 
     @Override
     public List<PropertyImageResponseDTO> getImages(String propertyId) {
+        // Cover first (so the gallery hero is deterministic), then
+        // by sortOrder ascending for the rest. We sort in-memory
+        // because the existing repo method doesn't take a Sort spec
+        // and adding one would be a larger change to its callers.
         return repo.findByPropertyId(propertyId).stream()
+                .sorted((a, b) -> {
+                    boolean ac = Boolean.TRUE.equals(a.getIsCover());
+                    boolean bc = Boolean.TRUE.equals(b.getIsCover());
+                    if (ac != bc) return ac ? -1 : 1;
+                    int as = a.getSortOrder() == null ? 1000 : a.getSortOrder();
+                    int bs = b.getSortOrder() == null ? 1000 : b.getSortOrder();
+                    return Integer.compare(as, bs);
+                })
                 .map(PropertyImageMapper::toDTO)
                 .toList();
+    }
+
+    @Override
+    @org.springframework.transaction.annotation.Transactional
+    public PropertyImageResponseDTO setCover(String imageId) {
+        PropertyImage target = repo.findById(imageId)
+                .orElseThrow(() -> new IllegalArgumentException("No image with id=" + imageId));
+        if (Boolean.TRUE.equals(target.getIsCover())) {
+            // Already cover — no-op.
+            return PropertyImageMapper.toDTO(target);
+        }
+        // Unset the previous cover(s) on the same property, then
+        // promote the new one. Doing this in a single transaction
+        // means a viewer never sees a moment with zero covers.
+        List<PropertyImage> siblings = repo.findByPropertyId(target.getPropertyId());
+        for (PropertyImage s : siblings) {
+            if (Boolean.TRUE.equals(s.getIsCover()) && !s.getId().equals(imageId)) {
+                s.setIsCover(false);
+                repo.save(s);
+            }
+        }
+        target.setIsCover(true);
+        // Cover also gets the lowest sortOrder so it stays first if
+        // the owner later toggles cover off without reordering.
+        target.setSortOrder(0);
+        PropertyImage saved = repo.save(target);
+        log.info("Set cover image {} for property {}", imageId, target.getPropertyId());
+        return PropertyImageMapper.toDTO(saved);
+    }
+
+    @Override
+    @org.springframework.transaction.annotation.Transactional
+    public List<PropertyImageResponseDTO> reorder(String propertyId, List<String> orderedIds) {
+        if (orderedIds == null || orderedIds.isEmpty()) return getImages(propertyId);
+        List<PropertyImage> siblings = repo.findByPropertyId(propertyId);
+        java.util.Map<String, PropertyImage> byId = new java.util.HashMap<>();
+        for (PropertyImage s : siblings) byId.put(s.getId(), s);
+
+        // Gaps of 10 leave room to slot a future image between two
+        // existing ones without a full renumber.
+        int step = 10;
+        int nextOrder = step;
+        for (String id : orderedIds) {
+            PropertyImage img = byId.get(id);
+            if (img == null) continue; // foreign id — silently skip
+            img.setSortOrder(nextOrder);
+            repo.save(img);
+            nextOrder += step;
+        }
+        return getImages(propertyId);
     }
 
     /**

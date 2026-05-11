@@ -8,5 +8,7 @@ public record PropertyImageResponseDTO(
         String id,
         String propertyId,
         String imageUrl,
-        String type
+        String type,
+        Boolean isCover,
+        Integer sortOrder
 ) {}

@@ -56,6 +56,10 @@ export interface PropertyImageResponseDTO {
   /** Server-side filesystem path; not loadable from a browser as-is. */
   imageUrl: string;
   type?: string;
+  /** Cover image of the property (exactly one row carries this flag). */
+  isCover?: boolean;
+  /** Ascending sort order in the gallery view; lower = earlier. */
+  sortOrder?: number;
 }
 
 export interface Page<T> {

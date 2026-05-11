@@ -80,4 +80,32 @@ public class PropertyController {
         propertyImageService.deleteImage(imageId);
         return ResponseEntity.noContent().build();
     }
+
+    /**
+     * Promote this image to the cover for its property. The previous
+     * cover (if any) is unset in the same transaction so the
+     * gallery always has exactly one cover. Idempotent.
+     */
+    @Operation(summary = "Set this image as the cover for its property")
+    @PutMapping("/images/{imageId}/cover")
+    public ResponseEntity<PropertyImageResponseDTO> setCover(@PathVariable String imageId) {
+        log.info("PUT /properties/images/{}/cover", imageId);
+        return ResponseEntity.ok(propertyImageService.setCover(imageId));
+    }
+
+    /**
+     * Drag-reorder endpoint. Body is the ordered list of image ids
+     * for ONE property; unknown ids are silently skipped so a stale
+     * client doesn't corrupt the sortOrder.
+     */
+    @Operation(summary = "Reorder this property's gallery — body is the new id sequence")
+    @PutMapping(value = "/buildings/{id}/images/reorder",
+                consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<List<PropertyImageResponseDTO>> reorder(
+            @PathVariable String id,
+            @RequestBody List<String> orderedIds) {
+        log.info("PUT /properties/buildings/{}/images/reorder count={}",
+                id, orderedIds == null ? 0 : orderedIds.size());
+        return ResponseEntity.ok(propertyImageService.reorder(id, orderedIds));
+    }
 }
