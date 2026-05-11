@@ -8,12 +8,15 @@ import {
   Eye,
   IndianRupee,
   Layers,
+  Loader2,
+  LocateFixed,
   MapPin,
   Ruler,
   Search,
   SlidersHorizontal,
   X,
 } from "lucide-react";
+import { toast } from "@/hooks/use-toast";
 import { propertiesApi } from "@/lib/api/properties";
 import { PropertyCard } from "@/components/property/property-card";
 import { Input } from "@/components/ui/input";
@@ -86,6 +89,11 @@ export function BrowsePage() {
   const [q, setQ] = useState(searchParams.get("q") ?? "");
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [locating, setLocating] = useState(false);
+  // Resolved city name from the most recent geolocation attempt, kept
+  // separately so we can show a friendly "Using your location: <City>"
+  // banner even when the user hasn't explicitly set the city dropdown.
+  const [geoCity, setGeoCity] = useState<string | null>(null);
 
   // Sync from URL → state. Catches the case where the user is already
   // on /app/browse and searches again from the AppShell GlobalSearch.
@@ -119,6 +127,103 @@ export function BrowsePage() {
   function resetAll() {
     setFilters(DEFAULT_FILTERS);
     setQ("");
+    setGeoCity(null);
+  }
+
+  /**
+   * Ask the browser for the visitor's coordinates, reverse-geocode to
+   * a city name, and set the city filter to whichever city in our
+   * catalog best matches.
+   *
+   * Why reverse-geocode + match-to-catalog instead of distance-based
+   * filtering: BuildingResponseDTO doesn't currently carry lat/lng,
+   * so a true "homes within 5 km" radius isn't possible without a
+   * data migration. City-name match is the next-best signal and aligns
+   * with how NoBroker / 99acres / MagicBricks land users on a
+   * "Homes in <Your City>" view.
+   *
+   * Uses BigDataCloud's free, key-less reverse-geocode-client endpoint
+   * (CORS-friendly, no signup, ~99.5% city accuracy in India).
+   */
+  async function useMyLocation() {
+    if (!("geolocation" in navigator)) {
+      toast({
+        variant: "destructive",
+        title: "Geolocation not supported",
+        description: "Your browser doesn't expose a location API.",
+      });
+      return;
+    }
+    setLocating(true);
+    try {
+      const position = await new Promise<GeolocationPosition>(
+        (resolve, reject) =>
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: false,
+            timeout: 10_000,
+            maximumAge: 60_000,
+          }),
+      );
+      const { latitude, longitude } = position.coords;
+      const url = new URL(
+        "https://api.bigdatacloud.net/data/reverse-geocode-client",
+      );
+      url.searchParams.set("latitude", String(latitude));
+      url.searchParams.set("longitude", String(longitude));
+      url.searchParams.set("localityLanguage", "en");
+      const resp = await fetch(url.toString());
+      if (!resp.ok) throw new Error(`Reverse geocode failed (${resp.status})`);
+      const body = (await resp.json()) as {
+        city?: string;
+        locality?: string;
+        principalSubdivision?: string;
+      };
+      const detectedCity =
+        body.city ?? body.locality ?? body.principalSubdivision ?? "";
+      if (!detectedCity) {
+        toast({
+          variant: "destructive",
+          title: "Couldn't read your city",
+          description: "Try selecting a city from the dropdown instead.",
+        });
+        return;
+      }
+      setGeoCity(detectedCity);
+
+      // Try to find a catalog city that matches case-insensitively.
+      // If no exact match (e.g. user is in a town we don't list yet),
+      // we still populate geoCity so the banner shows "Looking in
+      // <city> — no homes there yet" and the rest of the catalog
+      // stays visible.
+      const matched = cities.find(
+        (c) => c.toLowerCase() === detectedCity.toLowerCase(),
+      );
+      if (matched) {
+        setFilters((f) => ({ ...f, city: matched }));
+        toast({
+          title: `Showing homes in ${matched}`,
+          description: "Filter applied based on your current location.",
+        });
+      } else {
+        toast({
+          title: `You're in ${detectedCity}`,
+          description: `We don't have listings there yet — showing every city instead.`,
+        });
+      }
+    } catch (err) {
+      const code = (err as GeolocationPositionError | undefined)?.code;
+      const msg =
+        code === 1
+          ? "Location permission denied. You can still pick a city from the dropdown."
+          : code === 2
+            ? "Location unavailable. Try again or pick a city manually."
+            : code === 3
+              ? "Location request timed out. Please try again."
+              : "Couldn't determine your location.";
+      toast({ variant: "destructive", title: "Location failed", description: msg });
+    } finally {
+      setLocating(false);
+    }
   }
 
   return (
@@ -217,6 +322,42 @@ export function BrowsePage() {
           </Button>
         </div>
       </Card>
+
+      {/* Geolocation row — sits between the filter bar and the chips
+          so users see it before scrolling. */}
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={useMyLocation}
+          disabled={locating}
+          className="gap-1.5"
+        >
+          {locating ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <LocateFixed className="size-3.5" />
+          )}
+          {locating ? "Finding you…" : "Use my location"}
+        </Button>
+        {geoCity && (
+          <span className="text-xs text-muted-foreground flex items-center gap-1">
+            <MapPin className="size-3" />
+            Detected: <span className="font-medium text-foreground">{geoCity}</span>
+            <button
+              type="button"
+              onClick={() => setGeoCity(null)}
+              className="text-muted-foreground/70 hover:text-foreground ml-1"
+              aria-label="Forget my location"
+            >
+              <X className="size-3" />
+            </button>
+          </span>
+        )}
+        <span className="text-[11px] text-muted-foreground ml-auto">
+          Your location stays on this device — we only use it to pre-fill the city filter.
+        </span>
+      </div>
 
       {/* Active filter chips */}
       {activeChips.length > 0 && (

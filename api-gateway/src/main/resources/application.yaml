@@ -379,6 +379,11 @@ app:
       allowed-methods: GET,POST,PUT,PATCH,DELETE,OPTIONS
       allowed-headers: Authorization,Content-Type,Accept,X-Requested-With
       max-age-seconds: 3600
+    # Patterns can be method-scoped ("GET /path/**") or any-method
+    # (legacy bare path). Method scoping is essential for routes where
+    # public READS are intentional but WRITES must stay locked behind
+    # JWT — e.g. property listings (public browse) vs property mutations
+    # (owner-only). See JWTAuthenticationFilter.isPublicPath.
     public-paths:
       - /rentals/v1/auth/login
       - /rentals/v1/auth/register
@@ -390,6 +395,22 @@ app:
       - /api/auth/refresh
       - /api/auth/forgot-password
       - /api/auth/reset-password
+      # ─── Public property browse (read-only) ───
+      # Buildings + flats + their images are world-readable so the
+      # landing / browse pages render without sign-in. Same model as
+      # NoBroker / 99acres / Zillow — listings are SEO-friendly and
+      # indexable. Only GETs are public; POST / PUT / DELETE still
+      # require a valid JWT.
+      - GET /rentals/v1/properties/flats
+      - GET /rentals/v1/properties/flats/**
+      - GET /rentals/v1/properties/buildings
+      - GET /rentals/v1/properties/buildings/**
+      - GET /rentals/v1/properties/images/**
+      - GET /api/properties/flats
+      - GET /api/properties/flats/**
+      - GET /api/properties/buildings
+      - GET /api/properties/buildings/**
+      - GET /api/properties/images/**
       - /actuator/**
       - /v3/api-docs/**
       - /swagger-ui/**

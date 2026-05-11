@@ -55,7 +55,10 @@ public class JWTAuthenticationFilter implements GlobalFilter, Ordered {
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         String path = exchange.getRequest().getURI().getPath();
-        if (isPublicPath(path)) {
+        String method = exchange.getRequest().getMethod() == null
+                ? ""
+                : exchange.getRequest().getMethod().name();
+        if (isPublicPath(path, method)) {
             // Strip any client-supplied X-Auth-* headers — we don't want spoofing
             ServerHttpRequest scrubbed = exchange.getRequest().mutate()
                     .headers(h -> {
@@ -112,10 +115,34 @@ public class JWTAuthenticationFilter implements GlobalFilter, Ordered {
         };
     }
 
-    private boolean isPublicPath(String path) {
+    /**
+     * Public-path patterns can optionally be method-scoped:
+     *   "GET /rentals/v1/properties/flats/**"     → only anonymous GETs allowed
+     *   "/rentals/v1/auth/login"                  → any method (backwards-compatible)
+     *
+     * Method-scoping is critical for routes where READS are public but
+     * WRITES must still be authenticated (e.g. property listings —
+     * anyone can browse, only the owner can edit / delete). Without
+     * the method check, opening `/rentals/v1/properties/**` to
+     * anonymous traffic would let unauthenticated DELETE through too.
+     */
+    private boolean isPublicPath(String path, String method) {
         List<String> patterns = gatewayProperties.getPublicPaths();
         if (patterns == null) return false;
-        for (String p : patterns) if (MATCHER.match(p, path)) return true;
+        for (String p : patterns) {
+            // Strip optional leading "METHOD " prefix.
+            int sp = p.indexOf(' ');
+            if (sp > 0 && sp < 8) {
+                String patMethod = p.substring(0, sp).trim().toUpperCase();
+                String patPath = p.substring(sp + 1).trim();
+                if (patMethod.equals(method) && MATCHER.match(patPath, path)) {
+                    return true;
+                }
+            } else {
+                // Unprefixed pattern: applies to every method (legacy behaviour).
+                if (MATCHER.match(p, path)) return true;
+            }
+        }
         return false;
     }
 
