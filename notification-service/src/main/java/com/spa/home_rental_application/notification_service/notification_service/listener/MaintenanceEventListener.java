@@ -35,12 +35,17 @@ public class MaintenanceEventListener {
     public void onCreated(MaintenanceCreatedEvent e) {
         if (e == null || !"maintenance.created".equals(e.getEventType())) return;
         log.info("Received {} for requestId={}", e.getEventType(), e.getRequestId());
-        // Send to tenant: "we got your request"
-        notifications.sendFromTemplate(e.getTenantId(), NotificationType.EMAIL,
-                NotificationCategory.MAINTENANCE_CREATED,
-                Map.of("requestNumber", safe(e.getRequestNumber()),
-                        "category",     safe(e.getCategory()),
-                        "priority",     safe(e.getPriority())));
+        Map<String, Object> vars = Map.of(
+                "requestNumber", safe(e.getRequestNumber()),
+                "category",     safe(e.getCategory()),
+                "priority",     safe(e.getPriority()));
+        // Tenant gets the "we got your request" via INAPP (bell) +
+        // EMAIL (if SMTP set up). The owner gets pinged separately on
+        // MaintenanceAssignedEvent — maintenance-service auto-routes
+        // the ticket to the building owner and fires that event right
+        // after MaintenanceCreatedEvent.
+        notifications.fanOut(e.getTenantId(),
+                NotificationCategory.MAINTENANCE_CREATED, vars);
     }
 
     @KafkaListener(
@@ -51,13 +56,14 @@ public class MaintenanceEventListener {
     public void onAssigned(MaintenanceAssignedEvent e) {
         if (e == null || !"maintenance.assigned".equals(e.getEventType())) return;
         log.info("Received {} for requestId={}", e.getEventType(), e.getRequestId());
-        // Notify both tenant + the technician/owner
+        // Notify both tenant + the technician/owner. Each side gets an
+        // INAPP entry (bell) plus EMAIL (if SMTP up).
         Map<String, Object> vars = Map.of(
                 "requestId", safe(e.getRequestId()),
                 "assignedTo", safe(e.getAssignedTo()));
-        notifications.sendFromTemplate(e.getTenantId(),  NotificationType.EMAIL,
+        notifications.fanOut(e.getTenantId(),
                 NotificationCategory.MAINTENANCE_ASSIGNED, vars);
-        notifications.sendFromTemplate(e.getAssignedTo(), NotificationType.EMAIL,
+        notifications.fanOut(e.getAssignedTo(),
                 NotificationCategory.MAINTENANCE_ASSIGNED, vars);
     }
 
@@ -69,7 +75,9 @@ public class MaintenanceEventListener {
     public void onResolved(MaintenanceResolvedEvent e) {
         if (e == null || !"maintenance.resolved".equals(e.getEventType())) return;
         log.info("Received {} for requestId={}", e.getEventType(), e.getRequestId());
-        notifications.sendFromTemplate(e.getTenantId(), NotificationType.EMAIL,
+        // Tenant gets the bell-and-email "your ticket is resolved" ping.
+        // (Owner doesn't need one — they resolved it themselves.)
+        notifications.fanOut(e.getTenantId(),
                 NotificationCategory.MAINTENANCE_RESOLVED,
                 Map.of("requestId", safe(e.getRequestId()),
                         "resolutionTimeMinutes", safe(e.getResolutionTimeMinutes())));

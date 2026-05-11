@@ -409,7 +409,14 @@ export interface CreateRequestDto {
   description: string;
 }
 
-export type NotificationType = "EMAIL" | "SMS" | "PUSH";
+/**
+ * Notification delivery channel. {@code INAPP} is the bell-only channel
+ * — backed by the NotificationLog itself, no external recipient
+ * required. Backend listeners fan out an INAPP sibling for every
+ * cross-role event so the SPA bell stays accurate regardless of
+ * whether SMTP / Twilio are configured.
+ */
+export type NotificationType = "EMAIL" | "SMS" | "PUSH" | "INAPP";
 
 export type NotificationCategory =
   | "USER_REGISTRATION"

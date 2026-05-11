@@ -4,6 +4,7 @@ import com.spa.home_rental_application.notification_service.notification_service
 import com.spa.home_rental_application.notification_service.notification_service.DTO.Request.RespondToVisitRequest;
 import com.spa.home_rental_application.notification_service.notification_service.DTO.Response.VisitRequestResponse;
 import com.spa.home_rental_application.notification_service.notification_service.entities.VisitRequest;
+import com.spa.home_rental_application.notification_service.notification_service.enums.NotificationCategory;
 import com.spa.home_rental_application.notification_service.notification_service.exception.NotificationNotFoundException;
 import com.spa.home_rental_application.notification_service.notification_service.repository.VisitRequestRepository;
 import lombok.extern.slf4j.Slf4j;
@@ -19,11 +20,14 @@ public class VisitRequestService {
 
     private final VisitRequestRepository repository;
     private final EnquiryAutoResponder autoResponder;
+    private final NotificationService notifications;
 
     public VisitRequestService(VisitRequestRepository repository,
-                               EnquiryAutoResponder autoResponder) {
+                               EnquiryAutoResponder autoResponder,
+                               NotificationService notifications) {
         this.repository = repository;
         this.autoResponder = autoResponder;
+        this.notifications = notifications;
     }
 
     public VisitRequestResponse create(CreateVisitRequest req) {
@@ -45,6 +49,13 @@ public class VisitRequestService {
                 .build();
         VisitRequest saved = repository.save(v);
         autoResponder.onVisitRequestCreated(saved);
+        // Bell entry for the owner: someone wants to see their flat.
+        notifications.sendInapp(saved.getOwnerId(),
+                NotificationCategory.GENERIC,
+                "Visit request for " + safeStr(saved.getPropertyLabel()),
+                safeStr(saved.getVisitorName())
+                        + " wants to see the flat. Open the Enquiries inbox to confirm or reschedule.",
+                null);
         return toResponse(saved);
     }
 
@@ -91,7 +102,26 @@ public class VisitRequestService {
         v.setRespondedBy(req.respondedBy());
         v.setRespondedAt(Instant.now());
         v.setStatus(req.newStatus().toUpperCase());
-        return toResponse(repository.save(v));
+        VisitRequest saved = repository.save(v);
+        // Bell entry for the visitor — "your visit is {status}". Skip
+        // for PUBLIC_VISITOR (no platform account to ping).
+        if (saved.getUserId() != null && !"PUBLIC_VISITOR".equals(saved.getUserId())) {
+            String statusLine = saved.getStatus() == null
+                    ? "updated"
+                    : saved.getStatus().toLowerCase();
+            notifications.sendInapp(saved.getUserId(),
+                    NotificationCategory.GENERIC,
+                    "Visit " + statusLine + ": " + safeStr(saved.getPropertyLabel()),
+                    saved.getAdminResponse() == null || saved.getAdminResponse().isBlank()
+                            ? "Your visit request is now " + statusLine + "."
+                            : saved.getAdminResponse(),
+                    null);
+        }
+        return toResponse(saved);
+    }
+
+    private static String safeStr(String s) {
+        return s == null || s.isBlank() ? "the property" : s;
     }
 
     public VisitRequestResponse getById(String id) {

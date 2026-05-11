@@ -47,6 +47,15 @@ public class UserNotificationPreference {
     @Field("push_enabled")
     private boolean pushEnabled = true;
 
+    /**
+     * In-app channel is always on by default. Powers the notification
+     * bell. Users can mute it through the standard preferences flow if
+     * they really want to.
+     */
+    @Builder.Default
+    @Field("inapp_enabled")
+    private boolean inappEnabled = true;
+
     /** Categories the user has explicitly opted OUT of. */
     @Builder.Default
     @Field("muted_categories")

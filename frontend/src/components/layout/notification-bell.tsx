@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   Bell,
+  BellRing,
   Mail,
   MessageSquare,
   Smartphone,
@@ -38,11 +39,30 @@ export function NotificationBell() {
     retry: 1,
   });
 
-  const items = (q.data ?? []).slice(0, 10);
-  // Status values: PENDING / SENT / DELIVERED / FAILED / SKIPPED. We treat
-  // the absence of an explicit "read" flag as "unread = anything sent today
-  // and not delivered yet." A first-pass heuristic — replace with a real
-  // read marker on the server when we add per-user read state.
+  // Hide the operational noise so the bell only shows user-facing
+  // notifications:
+  //   - FAILED: usually "no recipient for channel=EMAIL" — the INAPP
+  //     sibling carries the same content, so the FAILED row is a
+  //     duplicate from the user's perspective.
+  //   - SKIPPED: opt-out audit (e.g. "channel SMS disabled by user").
+  // Status values that DO show: PENDING / SENT / DELIVERED / READ.
+  const visible = (q.data ?? []).filter(
+    (n) => n.status !== "FAILED" && n.status !== "SKIPPED",
+  );
+  // Sort newest-first by sentAt so freshly-fanned cross-role events
+  // float to the top of the dropdown.
+  visible.sort((a, b) => {
+    const ta = a.sentAt ? new Date(a.sentAt).getTime() : 0;
+    const tb = b.sentAt ? new Date(b.sentAt).getTime() : 0;
+    return tb - ta;
+  });
+  const items = visible.slice(0, 10);
+  // We treat the absence of an explicit "read" flag as "unread =
+  // anything not yet delivered". A first-pass heuristic — replace
+  // with a real read marker on the server when we add per-user read
+  // state. INAPP entries land as SENT (the dispatcher's Inapp adapter
+  // is synchronous-success), so they count as unread until the user
+  // opens them.
   const unreadCount = items.filter(
     (n) => n.status !== "DELIVERED" && n.status !== "READ",
   ).length;
@@ -156,6 +176,11 @@ function iconFor(t: NotificationType) {
       return MessageSquare;
     case "PUSH":
       return Smartphone;
+    case "INAPP":
+      // The default channel for cross-role events. A different bell
+      // glyph from the trigger button so the row icon doesn't visually
+      // collide with the header.
+      return BellRing;
     default:
       return Bell;
   }

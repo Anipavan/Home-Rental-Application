@@ -46,8 +46,25 @@ public class NoopChannelAdapter {
         }
     }
 
-    /** Convenience for tests that just want all three at once. */
+    /**
+     * INAPP doesn't actually need a noop — the real InappChannelAdapter
+     * has no external dependency, so it's always available. The Noop
+     * entry exists only when delivery-enabled=false to keep behaviour
+     * symmetric with the other channels (no chance of a missing
+     * dispatcher entry for INAPP).
+     */
+    @Component("noopInappAdapter")
+    @ConditionalOnProperty(prefix = "app.notification", name = "delivery-enabled", havingValue = "false")
+    @Slf4j
+    public static class Inapp implements NotificationChannelAdapter {
+        @Override public NotificationType type() { return NotificationType.INAPP; }
+        @Override public void send(NotificationLog n) {
+            log.info("[NOOP-INAPP] userId={} subject={}", n.getUserId(), n.getSubject());
+        }
+    }
+
+    /** Convenience for tests that just want all four at once. */
     public static List<Class<?>> allClasses() {
-        return List.of(Email.class, Sms.class, Push.class);
+        return List.of(Email.class, Sms.class, Push.class, Inapp.class);
     }
 }

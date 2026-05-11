@@ -66,6 +66,39 @@ public class NotificationService {
         return deliver(userId, type, category, null, null, null, vars);
     }
 
+    /**
+     * Fan a notification out to a user via the in-app channel AND any
+     * other channels that have a configured recipient. Listeners
+     * should prefer this over single-channel
+     * {@link #sendFromTemplate} so cross-role events always surface in
+     * the bell even when SMTP / Twilio isn't wired up in dev.
+     *
+     * <p>{@code userId} blank → no-op (lets call sites pass a possibly-
+     * null id from an event without a guard).
+     */
+    public void fanOut(String userId, NotificationCategory category, Map<String, Object> vars) {
+        if (userId == null || userId.isBlank()) return;
+        // INAPP first — backs the bell, always available.
+        deliver(userId, NotificationType.INAPP, category, null, null, null, vars);
+        // EMAIL is best-effort: if no email on the preference row it'll
+        // record FAILED with "No recipient configured" and the bell
+        // still shows the INAPP entry above.
+        deliver(userId, NotificationType.EMAIL, category, null, null, null, vars);
+    }
+
+    /**
+     * In-app-only convenience for ad-hoc cross-role pings that don't
+     * have a template (e.g. "owner replied to your enquiry"). Pass
+     * literal subject + message — bypasses template rendering.
+     */
+    public void sendInapp(String userId, NotificationCategory category,
+                          String subject, String message,
+                          Map<String, Object> vars) {
+        if (userId == null || userId.isBlank()) return;
+        deliver(userId, NotificationType.INAPP, category, subject, message, null,
+                vars == null ? java.util.Map.of() : vars);
+    }
+
     /* ------------- Lookups ------------- */
 
     public Page<NotificationResponse> list(Pageable pageable) {
@@ -127,13 +160,55 @@ public class NotificationService {
 
         String recipient = recipientFor(type, pref, recipientOverride);
         if (recipient == null || recipient.isBlank()) {
-            return persist(userId, type, category, recipient, subject, body,
+            // EMAIL / SMS / PUSH without a configured recipient → still
+            // record the attempt as FAILED for the audit log, but ALSO
+            // write a sibling INAPP entry so the bell lights up. This
+            // is what gets us cross-role notifications in dev where
+            // nobody has email/phone set in their preferences.
+            NotificationLog failed = persist(userId, type, category, recipient, subject, body,
                     NotificationStatus.FAILED, "No recipient configured for channel=" + type, vars);
+            ensureInappSibling(userId, type, category, subject, body, pref, vars);
+            return failed;
         }
 
         NotificationLog seed = persist(userId, type, category, recipient, subject, body,
                 NotificationStatus.PENDING, null, vars);
-        return dispatcher.dispatch(seed);
+        NotificationLog sent = dispatcher.dispatch(seed);
+        // INAPP sibling for the bell — fire-and-forget so even if the
+        // primary channel delivery fails mid-send, the bell entry is
+        // still there.
+        ensureInappSibling(userId, type, category, subject, body, pref, vars);
+        return sent;
+    }
+
+    /**
+     * Writes an INAPP sibling for non-INAPP deliveries so the SPA's
+     * notification bell sees every cross-role event regardless of
+     * whether EMAIL / SMS / PUSH actually went out. No-op when the
+     * primary type is already INAPP (avoid infinite recursion) or
+     * when INAPP is muted on the recipient's preference.
+     */
+    private void ensureInappSibling(String userId, NotificationType primary,
+                                    NotificationCategory category,
+                                    String subject, String body,
+                                    UserNotificationPreference pref,
+                                    Map<String, Object> vars) {
+        if (primary == NotificationType.INAPP) return;
+        if (!pref.isInappEnabled()) return;
+        if (category != null && pref.getMutedCategories() != null
+                && pref.getMutedCategories().contains(category)) {
+            return;
+        }
+        try {
+            NotificationLog inapp = persist(userId, NotificationType.INAPP, category,
+                    userId, subject, body, NotificationStatus.PENDING, null, vars);
+            dispatcher.dispatch(inapp);
+        } catch (Exception ex) {
+            // Bell-sibling is best-effort — never let it propagate and
+            // kill the primary notification path.
+            log.warn("INAPP sibling write failed for userId={} category={}: {}",
+                    userId, category, ex.getMessage());
+        }
     }
 
     private NotificationLog persist(String userId, NotificationType type, NotificationCategory category,
@@ -160,6 +235,10 @@ public class NotificationService {
             case EMAIL -> pref.isEmailEnabled();
             case SMS   -> pref.isSmsEnabled();
             case PUSH  -> pref.isPushEnabled();
+            // In-app respects its own toggle; default for new users is
+            // true (see PreferenceService.findOrDefault). Mute by
+            // setting inappEnabled=false through the preferences API.
+            case INAPP -> pref.isInappEnabled();
         };
     }
 
@@ -169,6 +248,10 @@ public class NotificationService {
             case EMAIL -> pref.getEmail();
             case SMS   -> pref.getPhone();
             case PUSH  -> pref.getDeviceToken();
+            // In-app is its own delivery — the userId is the recipient.
+            // We never need an external address; the SPA bell reads
+            // the NotificationLog directly via /notifications/user/{userId}.
+            case INAPP -> pref.getUserId();
         };
     }
 }

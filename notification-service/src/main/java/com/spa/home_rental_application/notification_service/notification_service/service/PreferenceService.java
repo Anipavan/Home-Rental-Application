@@ -29,6 +29,9 @@ public class PreferenceService {
                 UserNotificationPreference.builder()
                         .userId(userId)
                         .emailEnabled(true).smsEnabled(true).pushEnabled(true)
+                        // In-app on by default — backs the notification bell
+                        // and never needs an external recipient.
+                        .inappEnabled(true)
                         .mutedCategories(new HashSet<>())
                         .build());
     }

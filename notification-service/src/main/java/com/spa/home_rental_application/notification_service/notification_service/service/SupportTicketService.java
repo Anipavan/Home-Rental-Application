@@ -4,6 +4,7 @@ import com.spa.home_rental_application.notification_service.notification_service
 import com.spa.home_rental_application.notification_service.notification_service.DTO.Request.RespondToTicketRequest;
 import com.spa.home_rental_application.notification_service.notification_service.DTO.Response.SupportTicketResponse;
 import com.spa.home_rental_application.notification_service.notification_service.entities.SupportTicket;
+import com.spa.home_rental_application.notification_service.notification_service.enums.NotificationCategory;
 import com.spa.home_rental_application.notification_service.notification_service.exception.NotificationNotFoundException;
 import com.spa.home_rental_application.notification_service.notification_service.repository.SupportTicketRepository;
 import lombok.extern.slf4j.Slf4j;
@@ -19,11 +20,14 @@ public class SupportTicketService {
 
     private final SupportTicketRepository repository;
     private final EnquiryAutoResponder autoResponder;
+    private final NotificationService notifications;
 
     public SupportTicketService(SupportTicketRepository repository,
-                                EnquiryAutoResponder autoResponder) {
+                                EnquiryAutoResponder autoResponder,
+                                NotificationService notifications) {
         this.repository = repository;
         this.autoResponder = autoResponder;
+        this.notifications = notifications;
     }
 
     public SupportTicketResponse create(CreateSupportTicketRequest req) {
@@ -42,6 +46,15 @@ public class SupportTicketService {
                 .build();
         SupportTicket saved = repository.save(t);
         autoResponder.onSupportTicketCreated(saved);
+        // Bell entry for the owner: a tenant just enquired about
+        // their property. Only when ownerId is set — generic Contact-
+        // Support tickets have no owner to ping.
+        notifications.sendInapp(saved.getOwnerId(),
+                NotificationCategory.GENERIC,
+                "New enquiry: " + safeStr(saved.getSubject()),
+                safeStr(saved.getUserName()) + " sent you a message. Open the "
+                        + "Enquiries inbox to reply.",
+                null);
         return toResponse(saved);
     }
 
@@ -69,6 +82,10 @@ public class SupportTicketService {
         return s == null || s.isBlank() ? null : s;
     }
 
+    private static String safeStr(String s) {
+        return s == null || s.isBlank() ? "(no subject)" : s;
+    }
+
     public SupportTicketResponse respond(String id, RespondToTicketRequest req) {
         SupportTicket t = repository.findById(id)
                 .orElseThrow(() -> new NotificationNotFoundException(
@@ -77,7 +94,19 @@ public class SupportTicketService {
         t.setRespondedBy(req.respondedBy());
         t.setRespondedAt(Instant.now());
         t.setStatus(req.newStatus().toUpperCase());
-        return toResponse(repository.save(t));
+        SupportTicket saved = repository.save(t);
+        // Bell entry for the original submitter — "owner / admin
+        // replied to your enquiry". Skip for PUBLIC_VISITOR (no
+        // platform account to ping).
+        if (saved.getUserId() != null && !"PUBLIC_VISITOR".equals(saved.getUserId())) {
+            notifications.sendInapp(saved.getUserId(),
+                    NotificationCategory.GENERIC,
+                    "Reply to your enquiry",
+                    "We've responded to \"" + safeStr(saved.getSubject())
+                            + "\". Sign in to see the reply.",
+                    null);
+        }
+        return toResponse(saved);
     }
 
     public SupportTicketResponse getById(String id) {
