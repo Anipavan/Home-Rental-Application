@@ -52,6 +52,17 @@ export function MaintenanceNewPage() {
     enabled: !!authUserId,
   });
   const flat = flatsQ.data?.[0];
+  // FlatResponseDTO doesn't carry ownerId — only the parent Building
+  // does. We resolve it so the maintenance.created event carries the
+  // owner, and the notification-service can fan a bell entry out to
+  // them ("new ticket on your property"). Without this, the owner
+  // side of the bell stays empty even after the Kafka deserializer
+  // fix because the event itself has no ownerId.
+  const buildingQ = useQuery({
+    queryKey: ["building", flat?.buildingId],
+    queryFn: () => propertiesApi.buildings.get(flat!.buildingId),
+    enabled: !!flat?.buildingId,
+  });
 
   const [category, setCategory] = useState<MaintenanceCategory>("PLUMBING");
   const [priority, setPriority] = useState<MaintenancePriority>("MEDIUM");
@@ -99,6 +110,11 @@ export function MaintenanceNewPage() {
     mutation.mutate({
       flatId: flat.id,
       tenantId: authUserId,
+      // Carry the owner id so the maintenance.created event includes it
+      // and notification-service can ping the owner's bell. Falls back
+      // to undefined when the building lookup is still in flight — the
+      // notification listener handles a missing ownerId gracefully.
+      ownerId: buildingQ.data?.ownerId ?? undefined,
       category,
       priority,
       title: String(fd.get("title") ?? ""),

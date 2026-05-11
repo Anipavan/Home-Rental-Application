@@ -13,6 +13,18 @@ spring:
     consumer:
       group-id: hra-notification-service
       auto-offset-reset: earliest
+      # Mirror of the baseline in notification-service/application.yaml.
+      # Required so @KafkaListener can deserialize JSON events from the
+      # other services (auth/payment/maintenance/kyc/etc) — without it
+      # values arrive as raw Strings and the listener parameter binding
+      # silently fails, which is the visible "no notifications" bug.
+      key-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      properties:
+        spring.deserializer.key.delegate.class: org.apache.kafka.common.serialization.StringDeserializer
+        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
+        spring.json.trusted.packages: "com.spa.home_rental_application.KafkaEvents.*"
+        spring.json.use.type.headers: false
 
   # SMTP settings — override in prod via env vars
   mail:

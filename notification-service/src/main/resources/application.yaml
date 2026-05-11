@@ -15,6 +15,33 @@ spring:
         max-interval: 5000
         max-attempts: 3
 
+  # Kafka — baseline so listeners can deserialize JSON events even when
+  # Config Server is unreachable on cold start. Without this block,
+  # value-deserializer defaults to StringDeserializer, the JSON payloads
+  # arrive as raw Strings, Spring can't bind them to the listener's
+  # typed parameter (MaintenanceCreatedEvent etc.), and every @KafkaListener
+  # silently fails to invoke — bell stays empty, root cause of the
+  # "notifications not working" symptom.
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9093}
+    consumer:
+      group-id: hra-notification-service
+      auto-offset-reset: earliest
+      # ErrorHandlingDeserializer wraps the real deserializer so a
+      # poison-pill record is logged + skipped instead of killing the
+      # whole listener container.
+      key-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      properties:
+        spring.deserializer.key.delegate.class: org.apache.kafka.common.serialization.StringDeserializer
+        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
+        # Producer side sets spring.json.add.type.headers=false so we
+        # need to ignore type headers and rely on each @KafkaListener's
+        # `properties = {"spring.json.value.default.type=..."}` to bind
+        # the payload to the correct event class.
+        spring.json.trusted.packages: "com.spa.home_rental_application.KafkaEvents.*"
+        spring.json.use.type.headers: false
+
 # Operational endpoints + structured logging are kept here so they're
 # available even if Config Server is unreachable on first boot.
 server:
