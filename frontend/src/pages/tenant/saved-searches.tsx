@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BellRing, Pause, Play, Search, Trash2 } from "lucide-react";
@@ -133,6 +134,30 @@ function SavedSearchRow({
   onDelete: () => void;
   busy: boolean;
 }) {
+  /**
+   * Audit M31: gate the delete behind a click-to-confirm in the
+   * same button. First click swaps the label to "Confirm delete";
+   * the second click (within 4s) actually deletes. Lighter-weight
+   * than a modal but still saves the user from a one-click oops.
+   */
+  const [confirming, setConfirming] = useState(false);
+  // Auto-reset after 4 seconds so a missed second-click doesn't
+  // leave the button stuck in the danger state.
+  useEffect(() => {
+    if (!confirming) return;
+    const t = setTimeout(() => setConfirming(false), 4000);
+    return () => clearTimeout(t);
+  }, [confirming]);
+
+  function handleDeleteClick() {
+    if (!confirming) {
+      setConfirming(true);
+      return;
+    }
+    setConfirming(false);
+    onDelete();
+  }
+
   return (
     <Card className="p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -164,18 +189,21 @@ function SavedSearchRow({
             onClick={onToggle}
             disabled={busy}
             className="gap-1.5"
+            aria-label={s.isActive ? "Pause this alert" : "Resume this alert"}
           >
             {s.isActive ? <Pause className="size-3.5" /> : <Play className="size-3.5" />}
             {s.isActive ? "Pause" : "Resume"}
           </Button>
           <Button
             size="sm"
-            variant="ghost"
-            onClick={onDelete}
+            variant={confirming ? "destructive" : "ghost"}
+            onClick={handleDeleteClick}
             disabled={busy}
-            className="text-destructive hover:text-destructive gap-1.5"
+            className={confirming ? "gap-1.5" : "text-destructive hover:text-destructive gap-1.5"}
+            aria-label={confirming ? "Confirm delete this alert" : "Delete this alert"}
           >
-            <Trash2 className="size-3.5" /> Delete
+            <Trash2 className="size-3.5" />
+            {confirming ? "Confirm delete" : "Delete"}
           </Button>
         </div>
       </div>

@@ -437,10 +437,15 @@ export function BrowsePage() {
               key={chip.key}
               type="button"
               onClick={() => clearOne(chip.key, setFilters, setQ)}
+              // Audit M30: chip buttons mix label text + an X icon
+              // — explicit aria-label tells screen readers what
+              // clicking the chip does. The X glyph alone is
+              // ambiguous out of context.
+              aria-label={`Remove filter: ${chip.label}`}
               className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 text-primary text-xs font-medium pl-3 pr-2 py-1 hover:bg-primary/15 transition-colors"
             >
               {chip.label}
-              <X className="size-3.5" />
+              <X className="size-3.5" aria-hidden="true" />
             </button>
           ))}
           <button
@@ -562,11 +567,34 @@ export function BrowsePage() {
               )}
             </Card>
           ) : viewMode === "map" ? (
-            <PropertyMapView
-              flats={filtered}
-              buildings={buildingsById}
-              userCenter={userCoords}
-            />
+            // Audit M23: handle the map's buildings-query failure /
+            // empty-state explicitly. Without this the map renders
+            // with zero pins and no signal to the user that something
+            // went wrong upstream.
+            buildingsQ.isError ? (
+              <Card className="p-12 text-center">
+                <p className="font-display font-semibold text-lg">
+                  Couldn't load the map data
+                </p>
+                <p className="text-muted-foreground text-sm mt-1">
+                  Try the list view, or refresh the page in a minute.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-4"
+                  onClick={() => setViewMode("list")}
+                >
+                  Switch to list view
+                </Button>
+              </Card>
+            ) : (
+              <PropertyMapView
+                flats={filtered}
+                buildings={buildingsById}
+                userCenter={userCoords}
+              />
+            )
           ) : (
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {filtered.map((flat) => (

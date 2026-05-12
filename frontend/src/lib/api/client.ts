@@ -122,7 +122,13 @@ api.interceptors.response.use(
         return api(original);
       } catch {
         refreshing = null;
-        if (typeof window !== "undefined") {
+        // Audit M27: redirect to /login ONLY when we're not already
+        // there. Otherwise a 401 on the login page itself (or on a
+        // queued request during the redirect) re-triggers the same
+        // assignment and we loop forever. window.location.href
+        // assignment in a tight loop will eventually crash the tab.
+        if (typeof window !== "undefined"
+            && window.location.pathname !== "/login") {
           window.location.href = "/login";
         }
         return Promise.reject(error);
@@ -132,6 +138,13 @@ api.interceptors.response.use(
   },
 );
 
+/**
+ * Audit M28: extract a user-facing error message from an Axios error,
+ * REDACTING anything that looks like internal infrastructure leakage
+ * (SQL table names, stack-trace fragments, JDBC class names). The
+ * raw backend message goes through {@link sanitizeForUser} before
+ * being returned.
+ */
 export function extractErrorMessage(err: unknown, fallback = "Something went wrong"): string {
   if (axios.isAxiosError(err)) {
     const data = err.response?.data as
@@ -159,8 +172,45 @@ export function extractErrorMessage(err: unknown, fallback = "Something went wro
       parts.push("— please retry, or contact support if it persists.");
       return parts.join(" ");
     }
-    return message || err.message || fallback;
+    return sanitizeForUser(message) || err.message || fallback;
   }
   if (err instanceof Error) return err.message;
   return fallback;
+}
+
+/**
+ * Drop leaked infrastructure detail from a backend error message
+ * before showing it in a toast. Catches the common bleeds:
+ *   - "Hibernate: ..."
+ *   - "ORA-NNNNN: ..." Oracle codes
+ *   - "java.lang.NullPointerException" + class FQNs
+ *   - SQL constraint names like "UQ_FAV_USER_FLAT"
+ *   - stack-trace lines starting with "\tat com.spa..."
+ * If we'd redact more than 30% of the message, fall back to a generic
+ * copy — leftover punctuation/whitespace looks worse than a clean
+ * fallback.
+ */
+function sanitizeForUser(message: string | undefined): string {
+  if (!message) return "";
+  const original = message;
+  let s = message
+    // Strip stack-trace lines (Java + JS)
+    .replace(/\s*\tat\s+[\w$.]+\([^)]*\)/g, "")
+    // Strip Java exception class FQNs
+    .replace(/\b(java|jakarta|org|com)\.[\w.$]+Exception(:\s+)?/g, "")
+    .replace(/\b[\w.$]+Exception:\s+/g, "")
+    // Strip Oracle codes
+    .replace(/\bORA-\d{4,5}:\s*[^.\n]*\.?/g, "")
+    // Strip "Hibernate:" preamble + the SQL that follows
+    .replace(/\bHibernate:\s*[^\n]*/g, "")
+    // Strip explicit SQL keywords (heuristic) when followed by a
+    // table-like name
+    .replace(/\b(SELECT|INSERT INTO|UPDATE|DELETE FROM)\s+[\w$.]+/gi, "")
+    .trim();
+  if (s.length === 0 || s.length < original.length * 0.7) {
+    // Lost too much — fall back to a generic message instead of a
+    // confusing fragment.
+    return "Something went wrong on our side. Please retry or contact support.";
+  }
+  return s;
 }

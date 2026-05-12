@@ -21,29 +21,63 @@ public class GatewaySignatureVerifier {
     private static final String ALGO = "HmacSHA256";
     private static final HexFormat HEX = HexFormat.of();
 
-    private final byte[] keyBytes;
+    /**
+     * Audit M36: support multi-key verification for zero-downtime
+     * HMAC rotation. The {@code keys} array carries the
+     * "primary,then any fallbacks". The first key signs outbound
+     * traffic; verify accepts a match against ANY key in the list.
+     *
+     * <p>Operational flow for a rotation:
+     *   1. Day 0 — config has one key {@code [KEY_A]}. Signing + verify both use A.
+     *   2. Day 1 — push new config with {@code [KEY_B, KEY_A]} to verifying
+     *      services first (gateway + downstream). They sign new traffic with
+     *      B but still accept signatures made with A.
+     *   3. Day 1 (slightly later) — push {@code [KEY_B, KEY_A]} to signing
+     *      callers too. Everyone signs with B now; in-flight requests still
+     *      verify under A.
+     *   4. Day 7 (after the longest cache + token TTL) — drop A from the
+     *      list, leaving {@code [KEY_B]}. Rotation complete.
+     *
+     * <p>The constructor accepts either a single secret (back-compat) or a
+     * comma-separated list. The first key is always the signer.
+     */
+    private final byte[][] keys;
     private final long allowedClockSkewSeconds;
 
     public GatewaySignatureVerifier(String secret, long allowedClockSkewSeconds) {
         if (secret == null || secret.isBlank()) {
             throw new IllegalStateException("app.internal-auth.secret must be configured");
         }
-        // Accept either base64 or raw text — be lenient.
-        byte[] decoded;
-        try {
-            decoded = Base64.getDecoder().decode(secret);
-        } catch (IllegalArgumentException ex) {
-            decoded = secret.getBytes(StandardCharsets.UTF_8);
+        String[] parts = secret.split(",");
+        byte[][] decoded = new byte[parts.length][];
+        for (int i = 0; i < parts.length; i++) {
+            String p = parts[i].trim();
+            if (p.isBlank()) {
+                throw new IllegalStateException(
+                        "app.internal-auth.secret contains an empty entry (index " + i + ")");
+            }
+            byte[] bytes;
+            try {
+                bytes = Base64.getDecoder().decode(p);
+            } catch (IllegalArgumentException ex) {
+                bytes = p.getBytes(StandardCharsets.UTF_8);
+            }
+            if (bytes.length < 16) {
+                throw new IllegalStateException(
+                        "Internal-auth secret #" + i + " must be at least 128 bits (16 bytes) once decoded");
+            }
+            decoded[i] = bytes;
         }
-        if (decoded.length < 16) {
-            throw new IllegalStateException("Internal-auth secret must be at least 128 bits (16 bytes) once decoded");
-        }
-        this.keyBytes = decoded;
+        this.keys = decoded;
         this.allowedClockSkewSeconds = allowedClockSkewSeconds;
     }
 
-    /** Compute the hex-encoded signature for a given request. */
+    /** Compute the hex-encoded signature with the PRIMARY key (index 0). */
     public String sign(long timestamp, String method, String path) {
+        return signWith(keys[0], timestamp, method, path);
+    }
+
+    private static String signWith(byte[] keyBytes, long timestamp, String method, String path) {
         try {
             Mac mac = Mac.getInstance(ALGO);
             mac.init(new SecretKeySpec(keyBytes, ALGO));
@@ -55,7 +89,9 @@ public class GatewaySignatureVerifier {
     }
 
     /**
-     * Constant-time signature verification with timestamp freshness check.
+     * Constant-time signature verification with timestamp freshness
+     * check. Tries each configured key in order and returns OK on
+     * the first match (audit M36).
      */
     public Outcome verify(String tsHeader, String sigHeader, String method, String path) {
         if (tsHeader == null || tsHeader.isBlank())   return Outcome.MISSING;
@@ -73,10 +109,12 @@ public class GatewaySignatureVerifier {
             return Outcome.STALE;
         }
 
-        String expected = sign(ts, method, path);
-        byte[] a = expected.getBytes(StandardCharsets.UTF_8);
-        byte[] b = sigHeader.getBytes(StandardCharsets.UTF_8);
-        return MessageDigest.isEqual(a, b) ? Outcome.OK : Outcome.MISMATCH;
+        byte[] presented = sigHeader.getBytes(StandardCharsets.UTF_8);
+        for (byte[] key : keys) {
+            byte[] expected = signWith(key, ts, method, path).getBytes(StandardCharsets.UTF_8);
+            if (MessageDigest.isEqual(expected, presented)) return Outcome.OK;
+        }
+        return Outcome.MISMATCH;
     }
 
     public enum Outcome {

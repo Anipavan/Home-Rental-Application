@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuthStore } from "@/stores/auth-store";
 import { authApi } from "@/lib/api/auth";
-import { extractErrorMessage } from "@/lib/api/client";
 import { toast } from "@/hooks/use-toast";
 
 export function LoginPage() {
@@ -28,11 +27,15 @@ export function LoginPage() {
       toast({ title: `Welcome back, ${data.userName}` });
       navigate(dest, { replace: true });
     },
-    onError: (e) => {
+    onError: () => {
+      // Audit M22: never relay backend specifics on login failure —
+      // a clear distinction between "user not found" and "wrong
+      // password" lets an attacker enumerate valid usernames. Always
+      // a single generic copy regardless of HTTP status / errorCode.
       toast({
         variant: "destructive",
         title: "Sign-in failed",
-        description: extractErrorMessage(e, "Check your username and password."),
+        description: "Check your username and password and try again.",
       });
     },
   });
