@@ -50,26 +50,36 @@ public class TemplateSeeder {
                 });
 
         // ── LEASE_WELCOME templates: switched from {{flatId}} (raw UUID)
-        // to {{flatNumber}} (human-readable, e.g. "A-301"). Same narrow-
-        // delete pattern as the password-reset cleanup above: only nuke
-        // rows that still embed the old {{flatId}} placeholder, so any
-        // admin who edited the template via TemplateController to use
-        // {{flatNumber}} themselves stays untouched. Covers all three
-        // channel rows (EMAIL, SMS, WHATSAPP) — seedIfAbsent below re-
-        // creates each with the new copy. Triggered when the user
-        // reported "the SMS shows Flat FLT-90f89b90-... instead of A-301".
-        for (NotificationType ch : List.of(NotificationType.EMAIL,
-                                            NotificationType.SMS,
-                                            NotificationType.WHATSAPP)) {
-            repo.findByCategoryAndType(NotificationCategory.LEASE_WELCOME, ch)
-                    .filter(t -> t.getBodyTemplate() != null
-                            && t.getBodyTemplate().contains("{{flatId}}"))
-                    .ifPresent(t -> {
-                        log.info("Deleting stale lease-welcome {} template (still references flatId UUID) — will be re-seeded to use flatNumber",
-                                ch);
-                        repo.delete(t);
-                    });
-        }
+        // to {{flatNumber}} (human-readable, e.g. "A-301"). UPDATE the
+        // existing row in place rather than DELETE-then-INSERT — the
+        // previous delete+re-seed approach occasionally left the row
+        // missing entirely (an event slipped in between the delete and
+        // the seedIfAbsent insert, falling back to the generic "You
+        // have a new X notification" copy). Updating in place removes
+        // that gap window. Still narrow — only touches rows that still
+        // embed the old {{flatId}} placeholder, so admin-edited templates
+        // already using {{flatNumber}} stay untouched.
+        refreshLeaseWelcomeIfStale(NotificationCategory.LEASE_WELCOME,
+                NotificationType.EMAIL,
+                "welcome-flat-email",
+                "Welcome to your new home!",
+                "Welcome! You've moved into flat {{flatNumber}}. Your monthly rent is ₹{{rentAmount}} starting {{startDate}}.",
+                List.of("flatNumber", "rentAmount", "startDate"));
+        refreshLeaseWelcomeIfStale(NotificationCategory.LEASE_WELCOME,
+                NotificationType.SMS,
+                "lease-welcome-sms",
+                null,
+                "Welcome to your new home! Flat {{flatNumber}} is yours from {{startDate}}. "
+                        + "Rent: Rs.{{rentAmount}}/mo. Manage everything in the Hearth app.",
+                List.of("flatNumber", "rentAmount", "startDate"));
+        refreshLeaseWelcomeIfStale(NotificationCategory.LEASE_WELCOME,
+                NotificationType.WHATSAPP,
+                "lease-welcome-whatsapp",
+                null,
+                "Welcome home 🏡\n\nYou've moved into *flat {{flatNumber}}*. "
+                        + "Monthly rent is *₹{{rentAmount}}* starting {{startDate}}.\n\n"
+                        + "Tap *Maintenance* in the app any time something needs fixing.",
+                List.of("flatNumber", "rentAmount", "startDate"));
 
         seedIfAbsent("welcome-email", NotificationCategory.USER_REGISTRATION, NotificationType.EMAIL,
                 "Welcome to Home Rental, {{userName}}",
@@ -509,6 +519,50 @@ public class TemplateSeeder {
                         + "Not happy with the outcome? Reply in the Hearth app within 7 days "
                         + "and we'll re-open it.",
                 List.of("requestNumber"));
+    }
+
+    /**
+     * Update an existing template row in place when its body still
+     * embeds the legacy {@code {{flatId}}} placeholder, OR create a
+     * fresh row if none exists. Used by the LEASE_WELCOME cleanup pass
+     * — UPDATE is preferred over DELETE-then-INSERT because the latter
+     * has a window where the row is briefly missing, during which a
+     * concurrent {@code flat.occupied} event would render the generic
+     * "You have a new LEASE_WELCOME notification" fallback copy.
+     *
+     * <p>Idempotent: rows already using {@code {{flatNumber}}} are
+     * left alone, so admin edits via TemplateController survive.
+     */
+    private void refreshLeaseWelcomeIfStale(NotificationCategory category,
+                                             NotificationType type,
+                                             String name,
+                                             String subject,
+                                             String bodyTemplate,
+                                             List<String> variables) {
+        repo.findByCategoryAndType(category, type)
+                .ifPresentOrElse(existing -> {
+                    String body = existing.getBodyTemplate();
+                    if (body == null || body.contains("{{flatId}}")) {
+                        log.info("Refreshing stale {} / {} template in place (was missing flatNumber placeholder)",
+                                category, type);
+                        existing.setSubject(subject);
+                        existing.setBodyTemplate(bodyTemplate);
+                        existing.setVariables(variables);
+                        repo.save(existing);
+                    }
+                }, () -> {
+                    // Row was missing entirely (e.g. the previous
+                    // delete+re-seed left it nuked). Recreate it.
+                    log.info("Re-creating missing {} / {} template", category, type);
+                    repo.save(NotificationTemplate.builder()
+                            .name(name)
+                            .category(category)
+                            .type(type)
+                            .subject(subject)
+                            .bodyTemplate(bodyTemplate)
+                            .variables(variables)
+                            .build());
+                });
     }
 
     private void seedIfAbsent(String name,

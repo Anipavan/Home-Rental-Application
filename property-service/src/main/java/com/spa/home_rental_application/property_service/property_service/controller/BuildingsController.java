@@ -36,10 +36,19 @@ public class BuildingsController {
     @GetMapping("/buildings")
     public ResponseEntity<Page<BuildingResponseDTO>> getAllBuildings(
             @RequestParam(defaultValue = "0") @Min(0) int page,
-            // Audit M11: cap page size at 100. Without this an
-            // attacker (or buggy client) can request ?size=999999 and
-            // force a multi-MB payload + full-table scan.
-            @RequestParam(defaultValue = "10") @Min(1) @jakarta.validation.constraints.Max(100) int size) {
+            // Audit M11 originally capped size at 100 to stop ?size=999999
+            // abuse. Bumped to 500 because the map view (browse.tsx → "Map"
+            // toggle) legitimately needs to render every active building's
+            // lat/lng pin at once and was calling /buildings?size=200 —
+            // 100 rejected that with a 400, breaking the map with a
+            // "Couldn't load the map data" error. 500 is still small
+            // enough to bound payload size (each BuildingResponseDTO is
+            // ~1 KB → ~500 KB worst case) while letting the map work for
+            // typical city-scale catalogues. For metropolitan deployments
+            // with thousands of buildings, follow up with a dedicated
+            // /buildings/map endpoint that takes a bounding-box and
+            // returns lat/lng-only mini-DTOs.
+            @RequestParam(defaultValue = "10") @Min(1) @jakarta.validation.constraints.Max(500) int size) {
         log.info("GET /properties/buildings page={} size={}", page, size);
         Pageable pageable = PageRequest.of(page, size);
         return ResponseEntity.ok().body(building_service.getBuildings(pageable));
