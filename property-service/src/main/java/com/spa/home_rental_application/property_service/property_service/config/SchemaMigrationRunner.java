@@ -77,10 +77,75 @@ public class SchemaMigrationRunner {
         this.jdbc = jdbc;
     }
 
+    /**
+     * CREATE TABLE statements for entirely-new tables. Hibernate's
+     * {@code ddl-auto=update} usually creates these on first boot but
+     * has shipped silently-skipped tables in multiple environments;
+     * these run as a deterministic backstop. Wrapped in PL/SQL
+     * EXCEPTION blocks so re-runs against an already-created table
+     * (ORA-00955) are no-ops.
+     */
+    private static final List<String> CREATE_TABLES = List.of(
+            // ── saved_searches (the "Save this search" alerts feature) ──
+            "CREATE TABLE saved_searches (" +
+            "  id                  VARCHAR2(64) PRIMARY KEY," +
+            "  user_id             VARCHAR2(64) NOT NULL," +
+            "  name                VARCHAR2(200)," +
+            "  city                VARCHAR2(100)," +
+            "  bedrooms            NUMBER(10)," +
+            "  max_rent            NUMBER(12,2)," +
+            "  min_rent            NUMBER(12,2)," +
+            "  min_area_sqft       NUMBER(15,2)," +
+            "  furnishing_status   VARCHAR2(32)," +
+            "  pet_friendly        NUMBER(1)," +
+            "  is_active           NUMBER(1) DEFAULT 1 NOT NULL," +
+            "  last_matched_at     TIMESTAMP," +
+            "  created_at          TIMESTAMP NOT NULL" +
+            ")",
+            "CREATE INDEX idx_savedsearch_user ON saved_searches (user_id)",
+            "CREATE INDEX idx_savedsearch_active ON saved_searches (is_active)",
+
+            // ── flat_favorites (wishlist) — same backstop logic ──
+            "CREATE TABLE flat_favorites (" +
+            "  id          VARCHAR2(64) PRIMARY KEY," +
+            "  user_id     VARCHAR2(64) NOT NULL," +
+            "  flat_id     VARCHAR2(64) NOT NULL," +
+            "  created_at  TIMESTAMP NOT NULL," +
+            "  CONSTRAINT uq_fav_user_flat UNIQUE (user_id, flat_id)" +
+            ")",
+            "CREATE INDEX idx_fav_user ON flat_favorites (user_id)",
+            "CREATE INDEX idx_fav_flat ON flat_favorites (flat_id)"
+    );
+
     @PostConstruct
     public void run() {
         log.info("property-service SchemaMigrationRunner: applying {} idempotent migration(s)",
-                MIGRATIONS.size());
+                MIGRATIONS.size() + CREATE_TABLES.size());
+
+        // Pass 1 — CREATE TABLE (idempotent: ORA-00955 = "name already
+        // used by an existing object" is the expected no-op on re-runs).
+        int created = 0;
+        int createSkipped = 0;
+        for (String ddl : CREATE_TABLES) {
+            try {
+                jdbc.execute(ddl);
+                String snippet = ddl.length() > 80 ? ddl.substring(0, 80) + "…" : ddl;
+                log.info("Executed: {}", snippet);
+                created++;
+            } catch (Exception ex) {
+                String msg = ex.getMessage() == null ? "" : ex.getMessage();
+                if (msg.contains("ORA-00955")) {
+                    log.debug("Already exists: {}", ddl.split("\\s+")[2]);
+                    createSkipped++;
+                    continue;
+                }
+                log.error("CREATE TABLE failed: {} — {}",
+                        ddl.split("\\s+")[2], msg);
+            }
+        }
+        log.info("CREATE pass: created={}, skipped={}", created, createSkipped);
+
+        // Pass 2 — ALTER TABLE ADD COLUMN
         int added = 0;
         int skipped = 0;
         for (Migration m : MIGRATIONS) {
