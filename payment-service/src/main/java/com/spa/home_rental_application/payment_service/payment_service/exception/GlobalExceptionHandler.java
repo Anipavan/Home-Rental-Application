@@ -26,6 +26,14 @@ import java.util.NoSuchElementException;
 @Slf4j
 public class GlobalExceptionHandler {
 
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<APIErrorResponse> handleForbidden(ForbiddenException ex, HttpServletRequest req) {
+        // 403 with no leakage of internal details — message is the
+        // generic copy raised by CallerSecurity.
+        log.warn("Forbidden at {}: {}", req.getRequestURI(), ex.getMessage());
+        return build(HttpStatus.FORBIDDEN, ex.getMessage(), "FORBIDDEN", req);
+    }
+
     @ExceptionHandler(PaymentNotFoundException.class)
     public ResponseEntity<APIErrorResponse> handleNotFound(PaymentNotFoundException ex, HttpServletRequest req) {
         log.warn("Payment not found at {}: {}", req.getRequestURI(), ex.getMessage());

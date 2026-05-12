@@ -7,6 +7,8 @@ import com.spa.home_rental_application.auth_service.Repository.UserRepository;
 import com.spa.home_rental_application.auth_service.enums.Roles;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,8 +39,22 @@ import java.util.List;
  * against a fresh schema for the demo data to line up.
  *
  * Disable by setting `app.demo-seed.enabled=false`.
+ *
+ * <p>Double-gated for prod safety:
+ *   1. Active only when the active Spring profile is dev/local/test/empty.
+ *      Production deployments must set {@code SPRING_PROFILES_ACTIVE=prod}
+ *      (or any non-dev value) and the seeder won't even be instantiated.
+ *   2. Explicit on/off via {@code app.demo-seed.enabled} (default true in
+ *      dev). Setting it false in any environment is also sufficient.
+ *
+ * <p>Both gates exist so an accidentally-set {@code prod} profile without
+ * the explicit flag still keeps demo accounts out of the database, and
+ * an accidentally-set {@code app.demo-seed.enabled=true} in prod still
+ * can't activate because the profile filter strips the bean.
  */
 @Component
+@Profile({"dev", "local", "test", "default"})
+@ConditionalOnProperty(prefix = "app.demo-seed", name = "enabled", havingValue = "true", matchIfMissing = true)
 @Slf4j
 public class DemoDataSeeder implements CommandLineRunner {
 

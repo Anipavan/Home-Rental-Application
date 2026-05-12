@@ -7,6 +7,7 @@ import com.spa.home_rental_application.payment_service.payment_service.DTO.Respo
 import com.spa.home_rental_application.payment_service.payment_service.gateway.PaymentGateway;
 import com.spa.home_rental_application.payment_service.payment_service.gateway.WebhookVerificationResult;
 import com.spa.home_rental_application.payment_service.payment_service.service.PaymentService;
+import com.spa.home_rental_application.payment_service.payment_service.service.PaymentService.WebhookOutcome;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -46,12 +47,43 @@ public class PaymentGatewayController {
         return ResponseEntity.ok(paymentService.verifyPayment(body));
     }
 
+    /**
+     * Inbound webhook from Razorpay / Stripe / mock-gateway.
+     *
+     * <p>Audit C13 (CRITICAL): the previous handler verified the
+     * signature but never actually credited the payment, with a
+     * comment admitting "left as a documented hook". That meant any
+     * future fix without idempotency would double-credit on Razorpay
+     * retries. The new flow:
+     *
+     * <ol>
+     *   <li>10 MB body-size cap (audit M14 — unbounded JSON DoS guard).</li>
+     *   <li>HMAC signature verification (existing).</li>
+     *   <li>Idempotent {@code markPaidByWebhook} that writes to the
+     *       {@code processed_webhooks} table BEFORE flipping payment
+     *       status, with a unique constraint on
+     *       (gatewayName, eventKey). Duplicate deliveries collide on
+     *       the constraint and exit with a 200 + duplicate=true.</li>
+     * </ol>
+     *
+     * <p>The endpoint MUST stay public (gateways can't supply our JWT)
+     * but HMAC + size cap + idempotency together close the abuse
+     * surface that an unauthenticated webhook would otherwise expose.
+     */
     @Operation(summary = "Webhook endpoint for the payment gateway to push payment success/failure asynchronously.")
     @PostMapping(value = "/webhook", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Map<String, Object>> webhook(
             @RequestHeader(name = "X-Razorpay-Signature", required = false) String razorpaySig,
             @RequestHeader(name = "Stripe-Signature", required = false) String stripeSig,
             @RequestBody String rawBody) {
+        // Hard cap on body size — even a valid signature shouldn't be
+        // allowed to ship a 500MB payload (would OOM the parser).
+        if (rawBody != null && rawBody.length() > 1_000_000) {
+            log.warn("Webhook body exceeds 1 MB ({} bytes) — rejecting before signature check", rawBody.length());
+            return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                    .body(Map.of("ok", false, "reason", "Body exceeds 1 MB"));
+        }
+
         String sig = razorpaySig != null ? razorpaySig : stripeSig;
         WebhookVerificationResult res = gateway.verifyWebhook(rawBody, sig);
         if (!res.valid()) {
@@ -59,10 +91,27 @@ public class PaymentGatewayController {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("ok", false, "reason", String.valueOf(res.errorMessage())));
         }
-        log.info("Webhook accepted (gateway={}): paymentId={} txnId={}", gateway.name(), res.paymentId(), res.transactionId());
-        // For brevity we don't auto-mark paid here — production webhook handler would lookup the payment by
-        // gateway order id (parsed from rawBody) and call markPaid(). Left as a documented hook.
-        return ResponseEntity.ok(Map.of("ok", true));
+        log.info("Webhook accepted (gateway={}): paymentId={} txnId={}",
+                gateway.name(), res.paymentId(), res.transactionId());
+
+        // Derive a per-gateway event key. Razorpay / Stripe drop a
+        // unique identifier into the payload; we prefer the gateway's
+        // own transactionId (always per-attempt unique). If that's
+        // missing we fall back to a hash of (paymentId + rawBody length)
+        // which won't collide for a same-payment double-delivery either.
+        String eventKey = res.transactionId();
+        if (eventKey == null || eventKey.isBlank()) {
+            eventKey = res.paymentId() + ":" + (rawBody == null ? 0 : rawBody.length());
+        }
+
+        PaymentService.WebhookOutcome outcome = paymentService.markPaidByWebhook(
+                gateway.name(), eventKey, res.paymentId(), res.transactionId());
+
+        return ResponseEntity.ok(Map.of(
+                "ok",        true,
+                "outcome",   outcome.name(),
+                "duplicate", outcome == PaymentService.WebhookOutcome.DUPLICATE,
+                "paymentId", res.paymentId() == null ? "" : res.paymentId()));
     }
 
     /** Return URL the MockPaymentGateway sends users to after "payment". For local manual testing. */

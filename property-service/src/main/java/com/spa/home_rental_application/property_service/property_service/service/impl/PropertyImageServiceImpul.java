@@ -3,6 +3,8 @@ package com.spa.home_rental_application.property_service.property_service.servic
 import com.spa.home_rental_application.property_service.property_service.DTO.PropertyImageMapper;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.PropertyImageResponseDTO;
 import com.spa.home_rental_application.property_service.property_service.Entities.PropertyImage;
+import com.spa.home_rental_application.property_service.property_service.repository.BuildingRepo;
+import com.spa.home_rental_application.property_service.property_service.repository.FlatRepo;
 import com.spa.home_rental_application.property_service.property_service.repository.PropertyImageRepo;
 import com.spa.home_rental_application.property_service.property_service.service.PropertyImageService;
 import lombok.extern.slf4j.Slf4j;
@@ -27,11 +29,17 @@ public class PropertyImageServiceImpul implements PropertyImageService {
     private static final long MAX_BYTES = 5L * 1024 * 1024;
 
     private final PropertyImageRepo repo;
+    private final BuildingRepo buildingRepo;
+    private final FlatRepo flatRepo;
     private final String uploadDir;
 
     public PropertyImageServiceImpul(PropertyImageRepo repo,
+                                     BuildingRepo buildingRepo,
+                                     FlatRepo flatRepo,
                                      @Value("${app.uploads.dir:uploads}") String uploadDir) {
         this.repo = repo;
+        this.buildingRepo = buildingRepo;
+        this.flatRepo = flatRepo;
         this.uploadDir = uploadDir;
     }
 
@@ -182,6 +190,23 @@ public class PropertyImageServiceImpul implements PropertyImageService {
     public RawImage readRaw(String imageId) throws IOException {
         PropertyImage img = repo.findById(imageId)
                 .orElseThrow(() -> new IllegalArgumentException("No image with id=" + imageId));
+
+        // Hide images whose parent (Building or Flat) has been
+        // soft-deleted. Without this guard, an attacker who once
+        // scraped imageIds from a live listing could continue
+        // downloading the photos after the property was taken down —
+        // and the endpoint is intentionally anonymous (it's wired
+        // into the gateway's GET public-paths list so /browse can
+        // render images without a JWT). Adding the parent check here
+        // is the right place: it's the single choke-point for raw
+        // bytes, and we don't have to widen the auth model to
+        // preserve the anonymous public-listing UX.
+        if (isOrphaned(img.getPropertyId())) {
+            // 404 is the friendlier signal — don't leak whether the
+            // image-id existed in the past.
+            throw new IllegalArgumentException("No image with id=" + imageId);
+        }
+
         String url = img.getImageUrl();
         if (url == null || url.isBlank()) {
             throw new IOException("Image " + imageId + " has no on-disk path");
@@ -196,5 +221,19 @@ public class PropertyImageServiceImpul implements PropertyImageService {
             ct = "application/octet-stream";
         }
         return new RawImage(bytes, ct);
+    }
+
+    /**
+     * Property images are keyed on a string that could be either a
+     * buildingId or a flatId (legacy design). Check both stores and
+     * report true only when neither has an active (non-deleted) row.
+     */
+    private boolean isOrphaned(String propertyId) {
+        if (propertyId == null || propertyId.isBlank()) return true;
+        var building = buildingRepo.findById(propertyId).orElse(null);
+        if (building != null && !Boolean.TRUE.equals(building.getIsDeleted())) return false;
+        var flat = flatRepo.findById(propertyId).orElse(null);
+        if (flat != null && !Boolean.TRUE.equals(flat.getIsDeleted())) return false;
+        return true;
     }
 }

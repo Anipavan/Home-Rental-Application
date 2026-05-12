@@ -14,8 +14,32 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 public interface FlatRepo extends JpaRepository<Flat,String> {
-    List<Flat> findByBuildingId(String buildingId);
-    List<Flat> findByIsOccupiedFalse();
+
+    /**
+     * Active flats belonging to a building. Soft-deleted rows are
+     * excluded — previous {@code findByBuildingId} silently returned
+     * deleted flats and they would leak into the public listing and
+     * (worse) re-appear in the assignment picker. The filter clause
+     * is the canonical "(isDeleted = false OR isDeleted IS NULL)" so
+     * legacy rows where the column is null still count as active.
+     */
+    @Query("SELECT f FROM Flat f " +
+           "WHERE f.buildingId = :buildingId " +
+           "AND (f.isDeleted = false OR f.isDeleted IS NULL)")
+    List<Flat> findByBuildingId(@Param("buildingId") String buildingId);
+
+    /**
+     * Vacant flats (across the entire catalog) — used by the public
+     * "Browse vacant" endpoint. Soft-deleted rows are excluded; the
+     * old derived query {@code findByIsOccupiedFalse} was returning
+     * deleted flats and they were re-assignable through {@code POST
+     * /flats/{id}/assign} because the assign call didn't re-check
+     * isDeleted either.
+     */
+    @Query("SELECT f FROM Flat f " +
+           "WHERE f.isOccupied = false " +
+           "AND (f.isDeleted = false OR f.isDeleted IS NULL)")
+    List<Flat> findVacant();
 
     /**
      * Vacant flats listed after a watermark — used by

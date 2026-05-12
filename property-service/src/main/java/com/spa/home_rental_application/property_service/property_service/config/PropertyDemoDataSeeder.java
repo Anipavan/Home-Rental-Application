@@ -6,6 +6,8 @@ import com.spa.home_rental_application.property_service.property_service.reposit
 import com.spa.home_rental_application.property_service.property_service.repository.FlatRepo;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,8 +32,15 @@ import java.util.List;
  *   DEMO_TENANT_FRAN_ID, DEMO_TENANT_GABE_ID
  *
  * Disable entirely with -Dapp.demo-seed.enabled=false.
+ *
+ * <p>Double-gated for prod safety: active only under dev/local/test
+ * profiles AND when {@code app.demo-seed.enabled=true} (default true in
+ * dev). A prod deployment with {@code SPRING_PROFILES_ACTIVE=prod}
+ * cannot accidentally seed demo data.
  */
 @Component
+@Profile({"dev", "local", "test", "default"})
+@ConditionalOnProperty(prefix = "app.demo-seed", name = "enabled", havingValue = "true", matchIfMissing = true)
 @Slf4j
 public class PropertyDemoDataSeeder implements CommandLineRunner {
 

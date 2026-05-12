@@ -1,6 +1,14 @@
 package com.spa.home_rental_application.analytics_service.analytics_service.service;
 
-import com.lowagie.text.*;
+// Explicit imports rather than com.lowagie.text.* — POI's
+// usermodel exports types of the same names (Font, Cell, Row, Document)
+// and the wildcard collision used to break the compile.
+import com.lowagie.text.Document;
+import com.lowagie.text.DocumentException;
+import com.lowagie.text.Element;
+import com.lowagie.text.PageSize;
+import com.lowagie.text.Paragraph;
+import com.lowagie.text.Phrase;
 import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
@@ -69,7 +77,11 @@ public class ReportExportService {
             PdfWriter.getInstance(document, out);
             document.open();
 
-            Font titleFont = new Font(Font.HELVETICA, 16, Font.BOLD);
+            // FQN'd because `Font` is the one name that ALWAYS collides
+            // between POI usermodel and com.lowagie.text — we want the
+            // OpenPDF one here.
+            com.lowagie.text.Font titleFont = new com.lowagie.text.Font(
+                    com.lowagie.text.Font.HELVETICA, 16, com.lowagie.text.Font.BOLD);
             Paragraph title = new Paragraph("Revenue Report", titleFont);
             title.setAlignment(Element.ALIGN_CENTER);
             title.setSpacingAfter(12f);
@@ -79,7 +91,8 @@ public class ReportExportService {
             table.setWidthPercentage(100);
             String[] headers = {"Owner ID", "Year", "Month", "Total Revenue",
                     "Total Paid", "Total Pending", "Total Overdue", "Payments"};
-            Font hf = new Font(Font.HELVETICA, 10, Font.BOLD);
+            com.lowagie.text.Font hf = new com.lowagie.text.Font(
+                    com.lowagie.text.Font.HELVETICA, 10, com.lowagie.text.Font.BOLD);
             for (String h : headers) {
                 PdfPCell c = new PdfPCell(new Phrase(h, hf));
                 c.setHorizontalAlignment(Element.ALIGN_CENTER);

@@ -179,6 +179,16 @@ public class TemplateSeeder {
                         + "Tap *Maintenance* in the app any time something needs fixing.",
                 List.of("userName", "flatId", "rentAmount", "startDate"));
 
+        // SMS leg of the lease-welcome — keeps the channel parity intact
+        // (email + WhatsApp + SMS + bell) when an owner assigns a tenant
+        // to a flat. Shorter copy because Twilio SMS is metered per 160
+        // chars.
+        seedIfAbsent("lease-welcome-sms", NotificationCategory.LEASE_WELCOME,
+                NotificationType.SMS, null,
+                "Welcome to your new home! Flat {{flatId}} is yours from {{startDate}}. "
+                        + "Rent: Rs.{{rentAmount}}/mo. Manage everything in the Hearth app.",
+                List.of("flatId", "rentAmount", "startDate"));
+
         /* ─────────── Welcome (registration) — SMS + WhatsApp legs ───────────
          * Email leg is already seeded as "welcome-email" near the top of
          * this method; adding the other two channels here so a brand-new

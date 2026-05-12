@@ -47,6 +47,15 @@ public class JWTUtil {
     public Validation validate(String token) {
         try {
             Jws<Claims> jws = Jwts.parser().verifyWith(key).build().parseSignedClaims(token);
+            // Algorithm pinning. JJWT 0.12 selects the verifier based on the
+            // key type (SecretKey → HMAC-SHA*), but does NOT refuse a token
+            // whose `alg` header claims something weaker (e.g. "none"). We
+            // inspect the header explicitly so a "alg:none" forgery —
+            // historically the most common JWT bypass — is hard-rejected.
+            String alg = jws.getHeader().getAlgorithm();
+            if (alg == null || !"HS256".equalsIgnoreCase(alg)) {
+                return Validation.invalid("Unsupported JWT algorithm: " + alg);
+            }
             Claims c = jws.getPayload();
             if (expectedIssuer != null && !expectedIssuer.equals(c.getIssuer())) {
                 return Validation.invalid("Issuer mismatch");

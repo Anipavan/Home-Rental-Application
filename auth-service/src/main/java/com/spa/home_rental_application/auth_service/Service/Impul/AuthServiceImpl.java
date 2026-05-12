@@ -141,13 +141,19 @@ public class AuthServiceImpl implements AuthService {
             throw ex;
         }
 
-        // Audit event
+        // Audit + welcome-fanout event. The phone goes on the event so
+        // notification-service can seed the user's preferences row with
+        // a real recipient and the welcome message fans across SMS +
+        // WhatsApp on top of email + bell — addressing the user's
+        // requirement that registration alerts cover all channels, not
+        // just email.
         authEvents.sendUserRegistered(UserRegisteredEvent.builder()
                 .eventType("user.registered")
                 .authUserId(saved.getId().toString())
                 .userName(saved.getUsername())
                 .role(role.name())
                 .email(saved.getEmail())
+                .phone(req.phone())
                 .timestamp(Instant.now())
                 .build());
 

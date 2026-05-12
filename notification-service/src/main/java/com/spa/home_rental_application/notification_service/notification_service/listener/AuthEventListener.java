@@ -49,38 +49,44 @@ public class AuthEventListener {
         log.info("Received {} for authUserId={}", e.getEventType(), e.getAuthUserId());
 
         // Seed (or update) the UserNotificationPreference row from the
-        // registration event. Without this, the user's first welcome
-        // email would record "FAILED: No recipient configured" because
-        // findOrDefault() returns a blank row. UserRegisteredEvent
-        // carries email (mandatory at register-time) but not phone, so
-        // SMS + WhatsApp light up only after the user adds a phone via
-        // the preferences UI.
+        // registration event. UserRegisteredEvent now carries the
+        // phone the user typed at /auth/register (audit fix +
+        // feature request: registration confirmation must reach the
+        // user's mobile via WhatsApp + SMS, not just email).
+        //
+        // WhatsApp is enabled-by-default when a phone is present —
+        // earlier code defaulted it OFF "explicit opt-in", which
+        // meant registration confirmations never reached WhatsApp.
+        // The product requirement is the opposite: welcome the user
+        // on every channel they're reachable on; they can opt out
+        // from the preferences page later. SMS and EMAIL stay on.
+        boolean hasPhone = e.getPhone() != null && !e.getPhone().isBlank();
         try {
             preferences.upsert(e.getAuthUserId(), new PreferenceRequest(
                     e.getEmail(),
-                    null,            // phone — not in the event
-                    null,            // deviceToken
-                    Boolean.TRUE,    // emailEnabled
-                    Boolean.TRUE,    // smsEnabled (off in effect until phone is set)
-                    Boolean.FALSE,   // whatsappEnabled — explicit opt-in
-                    Boolean.TRUE,    // pushEnabled
-                    null             // muted categories
+                    e.getPhone(),                  // phone — now in the event
+                    null,                          // deviceToken
+                    Boolean.TRUE,                  // emailEnabled
+                    Boolean.TRUE,                  // smsEnabled
+                    hasPhone ? Boolean.TRUE
+                             : Boolean.FALSE,      // whatsappEnabled — on iff we have a number
+                    Boolean.TRUE,                  // pushEnabled
+                    null                           // muted categories
             ));
         } catch (Exception ex) {
-            // Don't kill the welcome flow over a prefs-seed hiccup —
-            // the deliver() path will still fan INAPP + record a
-            // FAILED email for the audit log.
             log.warn("Couldn't seed preferences for new user {}: {}",
                     e.getAuthUserId(), ex.getMessage());
         }
 
         // Welcome: fan across INAPP + EMAIL + SMS + WhatsApp. fanOut
-        // handles opt-out / no-recipient gracefully — no extra branches
-        // here.
+        // handles opt-out / no-recipient gracefully so we don't have
+        // to branch on hasPhone here — channels with no recipient just
+        // record a SKIPPED row.
         notifications.fanOut(e.getAuthUserId(),
                 NotificationCategory.USER_REGISTRATION,
                 Map.of("userName", safe(e.getUserName()),
                         "email",   safe(e.getEmail()),
+                        "phone",   safe(e.getPhone()),
                         "role",    safe(e.getRole())));
     }
 

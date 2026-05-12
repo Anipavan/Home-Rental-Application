@@ -8,6 +8,7 @@ import com.spa.home_rental_application.payment_service.payment_service.DTO.Respo
 import com.spa.home_rental_application.payment_service.payment_service.config.PaymentProperties;
 import com.spa.home_rental_application.payment_service.payment_service.entities.Invoice;
 import com.spa.home_rental_application.payment_service.payment_service.entities.Payment;
+import com.spa.home_rental_application.payment_service.payment_service.entities.ProcessedWebhook;
 import com.spa.home_rental_application.payment_service.payment_service.entities.Receipt;
 import com.spa.home_rental_application.payment_service.payment_service.enums.*;
 import com.spa.home_rental_application.payment_service.payment_service.exception.PaymentAlreadyPaidException;
@@ -18,6 +19,7 @@ import com.spa.home_rental_application.payment_service.payment_service.gateway.P
 import com.spa.home_rental_application.payment_service.payment_service.gateway.PaymentVerificationResult;
 import com.spa.home_rental_application.payment_service.payment_service.repository.InvoiceRepository;
 import com.spa.home_rental_application.payment_service.payment_service.repository.PaymentRepository;
+import com.spa.home_rental_application.payment_service.payment_service.repository.ProcessedWebhookRepository;
 import com.spa.home_rental_application.payment_service.payment_service.repository.ReceiptRepository;
 import com.spa.home_rental_application.payment_service.payment_service.service.PaymentService;
 import lombok.extern.slf4j.Slf4j;
@@ -43,6 +45,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final PaymentRepository paymentRepo;
     private final InvoiceRepository invoiceRepo;
     private final ReceiptRepository receiptRepo;
+    private final ProcessedWebhookRepository webhookRepo;
     private final PaymentGateway gateway;
     private final PaymentServiceEvents events;
     private final PaymentProperties props;
@@ -51,6 +54,7 @@ public class PaymentServiceImpl implements PaymentService {
     public PaymentServiceImpl(PaymentRepository paymentRepo,
                               InvoiceRepository invoiceRepo,
                               ReceiptRepository receiptRepo,
+                              ProcessedWebhookRepository webhookRepo,
                               PaymentGateway gateway,
                               PaymentServiceEvents events,
                               PaymentProperties props,
@@ -58,6 +62,7 @@ public class PaymentServiceImpl implements PaymentService {
         this.paymentRepo = paymentRepo;
         this.invoiceRepo = invoiceRepo;
         this.receiptRepo = receiptRepo;
+        this.webhookRepo = webhookRepo;
         this.gateway = gateway;
         this.events = events;
         this.props = props;
@@ -222,6 +227,80 @@ public class PaymentServiceImpl implements PaymentService {
                 .build());
         log.info("Payment {} completed via {} (receipt {}, txn {})",
                 p.getId(), p.getPaymentMethod(), receipt.getReceiptNumber(), transactionId);
+    }
+
+    @Override
+    @Transactional
+    public WebhookOutcome markPaidByWebhook(String gatewayName,
+                                            String eventKey,
+                                            String paymentId,
+                                            String transactionId) {
+        // Idempotency fast-path. The unique constraint on
+        // (gateway_name, event_key) is the real guarantor — this is
+        // just the cheap optimistic read.
+        if (gatewayName == null || eventKey == null || eventKey.isBlank()) {
+            log.warn("Webhook missing gatewayName/eventKey — refusing to credit; gw={} key={}",
+                    gatewayName, eventKey);
+            return WebhookOutcome.IGNORED;
+        }
+        Optional<ProcessedWebhook> existing =
+                webhookRepo.findByGatewayNameAndEventKey(gatewayName, eventKey);
+        if (existing.isPresent()) {
+            log.info("Webhook DUPLICATE: gateway={} eventKey={} previousOutcome={}",
+                    gatewayName, eventKey, existing.get().getOutcome());
+            return WebhookOutcome.DUPLICATE;
+        }
+
+        if (paymentId == null || paymentId.isBlank()) {
+            // Couldn't extract a local payment id from the payload —
+            // record the event anyway so we don't re-process it, but
+            // mark it IGNORED so ops can investigate.
+            persistWebhookLog(gatewayName, eventKey, null, transactionId, "IGNORED");
+            log.warn("Webhook accepted but no resolvable paymentId — gw={} eventKey={}",
+                    gatewayName, eventKey);
+            return WebhookOutcome.IGNORED;
+        }
+
+        Payment p = paymentRepo.findById(paymentId).orElse(null);
+        if (p == null) {
+            persistWebhookLog(gatewayName, eventKey, paymentId, transactionId, "IGNORED");
+            log.warn("Webhook {} for unknown paymentId={} — ignored", eventKey, paymentId);
+            return WebhookOutcome.IGNORED;
+        }
+
+        if (p.getStatus() == PaymentStatus.PAID) {
+            // Already paid — still record the webhook so retries collide.
+            persistWebhookLog(gatewayName, eventKey, paymentId, transactionId, "IGNORED");
+            log.info("Webhook {} for already-PAID payment {} — no-op", eventKey, paymentId);
+            return WebhookOutcome.IGNORED;
+        }
+
+        // Happy path: persist the dedupe row inside the same transaction
+        // as the markPaid() so a race resolves cleanly. If two concurrent
+        // webhook deliveries reach this point, the second will fail the
+        // unique-constraint insert and Spring will roll back; we catch
+        // that and report DUPLICATE.
+        try {
+            persistWebhookLog(gatewayName, eventKey, paymentId, transactionId, "PROCESSED");
+            markPaid(p, transactionId == null ? "WEBHOOK-" + eventKey : transactionId);
+            return WebhookOutcome.PROCESSED;
+        } catch (org.springframework.dao.DataIntegrityViolationException dup) {
+            log.info("Webhook race lost: gateway={} eventKey={} — another delivery won the insert.",
+                    gatewayName, eventKey);
+            return WebhookOutcome.DUPLICATE;
+        }
+    }
+
+    private void persistWebhookLog(String gatewayName, String eventKey,
+                                   String paymentId, String transactionId, String outcome) {
+        webhookRepo.save(ProcessedWebhook.builder()
+                .gatewayName(gatewayName)
+                .eventKey(eventKey)
+                .paymentId(paymentId)
+                .transactionId(transactionId)
+                .outcome(outcome)
+                .processedAt(Instant.now())
+                .build());
     }
 
     /* ---------------- Documents ---------------- */

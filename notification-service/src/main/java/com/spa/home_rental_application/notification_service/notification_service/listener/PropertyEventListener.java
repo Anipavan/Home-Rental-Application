@@ -2,7 +2,6 @@ package com.spa.home_rental_application.notification_service.notification_servic
 
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyServiceEvents.FlatOccupiedEvent;
 import com.spa.home_rental_application.notification_service.notification_service.enums.NotificationCategory;
-import com.spa.home_rental_application.notification_service.notification_service.enums.NotificationType;
 import com.spa.home_rental_application.notification_service.notification_service.service.NotificationService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -11,8 +10,15 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 /**
- * Subscribes to {@code property-events} for the welcome-email trigger
- * when a tenant moves into a flat.
+ * Subscribes to {@code property-events} for the welcome trigger when a
+ * tenant moves into a flat.
+ *
+ * <p>The lease-welcome notification fans across EMAIL + SMS + WhatsApp
+ * + INAPP (bell). Previous code was email-only — but the product
+ * requirement is "tell the tenant on every channel they're reachable
+ * on" the moment they're assigned a flat. {@link NotificationService#fanOut}
+ * does the channel-by-channel dispatch + opt-out / recipient-missing
+ * handling; no branching needed here.
  */
 @Component
 @Slf4j
@@ -32,10 +38,11 @@ public class PropertyEventListener {
     public void onFlatOccupied(FlatOccupiedEvent e) {
         if (e == null || !"flat.occupied".equals(e.getEventType())) return;
         log.info("Received {} for flatId={} tenantId={}", e.getEventType(), e.getFlatId(), e.getTenantId());
-        notifications.sendFromTemplate(e.getTenantId(), NotificationType.EMAIL,
+        notifications.fanOut(e.getTenantId(),
                 NotificationCategory.LEASE_WELCOME,
                 Map.of("flatId",     e.getFlatId() == null ? "" : e.getFlatId(),
-                        "rentAmount",e.getRentAmount() == null ? "" : e.getRentAmount(),
-                        "startDate", e.getStartDate() == null ? "" : e.getStartDate()));
+                        "buildingId", e.getBuildingId() == null ? "" : e.getBuildingId(),
+                        "rentAmount", e.getRentAmount() == null ? "" : e.getRentAmount(),
+                        "startDate",  e.getStartDate() == null ? "" : e.getStartDate()));
     }
 }

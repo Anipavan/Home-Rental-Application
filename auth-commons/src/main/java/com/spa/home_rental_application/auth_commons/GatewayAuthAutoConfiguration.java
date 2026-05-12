@@ -33,6 +33,18 @@ public class GatewayAuthAutoConfiguration {
         return new GatewaySignatureVerifier(props.getSecret(), props.getAllowedClockSkewSeconds());
     }
 
+    /**
+     * Refuse to serve traffic if the canned dev placeholder secrets are
+     * still in play under a non-dev profile. Bean is unconditional —
+     * every service that depends on auth-commons gets the check, which
+     * is exactly the goal.
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public SecretsBootstrapValidator secretsBootstrapValidator() {
+        return new SecretsBootstrapValidator();
+    }
+
     @Bean
     @ConditionalOnMissingBean
     public GatewayAuthFilter gatewayAuthFilter(GatewaySignatureProperties props,

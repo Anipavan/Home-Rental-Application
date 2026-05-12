@@ -39,4 +39,28 @@ public interface PaymentService {
     /* --- cross-service consumers --- */
     void onFlatOccupied(String flatId, String tenantId, BigDecimal rentAmount, LocalDate leaseStartDate);
     void onFlatVacated(String flatId, String tenantId);
+
+    /**
+     * Idempotent webhook → mark-paid path. Used by
+     * {@link com.spa.home_rental_application.payment_service.payment_service.controller.PaymentGatewayController#webhook}.
+     *
+     * <p>The {@code gatewayName}+{@code eventKey} tuple uniquely
+     * identifies an inbound webhook event. We persist it before
+     * touching the payment row so retries (Razorpay retries failed
+     * deliveries up to 24h, with exponential backoff) collide on the
+     * unique constraint and exit early without double-crediting.
+     *
+     * @return {@code WebhookOutcome.PROCESSED} if this is the first
+     *         time we've seen the event AND the payment was flipped to
+     *         PAID; {@code DUPLICATE} if we've already processed it;
+     *         {@code IGNORED} if there's no resolvable payment or the
+     *         payment is already PAID.
+     */
+    WebhookOutcome markPaidByWebhook(String gatewayName,
+                                     String eventKey,
+                                     String paymentId,
+                                     String transactionId);
+
+    /** Outcome of a webhook → mark-paid attempt. */
+    enum WebhookOutcome { PROCESSED, DUPLICATE, IGNORED }
 }

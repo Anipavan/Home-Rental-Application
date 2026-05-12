@@ -368,10 +368,13 @@ spring:
 # ---------- App-specific config ----------
 app:
   jwt:
-    secret: ${JWT_SECRET:U3VwZXJTZWNyZXRLZXlGb3JKV1RUb2tlbkdlbmVyYXRpb24xMjM0NTY3ODkwIQ==}
+    # MUST be set via env in prod. Length-padded placeholder accepted in
+    # dev for HMAC-SHA256; SecretsBootstrapValidator refuses placeholder
+    # outside dev profiles.
+    secret: ${JWT_SECRET:CHANGE_ME_LOCAL_DEV_JWT_SECRET_PLACEHOLDER_AT_LEAST_32_BYTES_LONG_ABC}
     issuer: ${JWT_ISSUER:home-rental-auth}
   internal-auth:
-    secret: ${INTERNAL_AUTH_SECRET:Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+    secret: ${INTERNAL_AUTH_SECRET:CHANGE_ME_LOCAL_DEV_INTERNAL_AUTH_SECRET_PLACEHOLDER_AT_LEAST_32_BYTES_LONG}
     allowed-clock-skew-seconds: 60
   gateway:
     cors:

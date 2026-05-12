@@ -12,7 +12,11 @@ spring:
   datasource:
     url: ${DB_URL:jdbc:oracle:thin:@//localhost:1521/orcl}
     username: ${DB_USERNAME:siva}
-    password: ${DB_PASSWORD:Pavan@123}
+    # Hard placeholder so a missed env var blows up at startup via
+    # SecretsBootstrapValidator instead of silently using a known weak
+    # password. Set DB_PASSWORD in your shell/.env for local dev or in
+    # Vault/K8s secrets for prod.
+    password: ${DB_PASSWORD:CHANGE_ME_LOCAL_DEV_PLACEHOLDER}
     driver-class-name: oracle.jdbc.OracleDriver
     hikari:
       maximum-pool-size: 10
@@ -49,12 +53,16 @@ app:
     auth-topic: auth-events
   internal-auth:
     enabled: ${INTERNAL_AUTH_ENABLED:true}
-    secret: ${INTERNAL_AUTH_SECRET:Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+    # Validated at startup by SecretsBootstrapValidator. The placeholder
+    # below is recognised + refused in prod profiles — must be replaced.
+    secret: ${INTERNAL_AUTH_SECRET:CHANGE_ME_LOCAL_DEV_INTERNAL_AUTH_SECRET_PLACEHOLDER_AT_LEAST_32_BYTES_LONG}
     allowed-clock-skew-seconds: 60
 
   jwt:
     # Override in prod via JWT_SECRET env / Vault. Must be at least 256 bits.
-    secret: ${JWT_SECRET:U3VwZXJTZWNyZXRLZXlGb3JKV1RUb2tlbkdlbmVyYXRpb24xMjM0NTY3ODkwIQ==}
+    # Default below is a length-padded placeholder so HMAC-SHA256 accepts it
+    # for local dev; SecretsBootstrapValidator refuses it in prod profiles.
+    secret: ${JWT_SECRET:CHANGE_ME_LOCAL_DEV_JWT_SECRET_PLACEHOLDER_AT_LEAST_32_BYTES_LONG_ABC}
     # Stabilization sprint: tightened from 1h / 30d to 15min / 7d to enforce
     # real session expiry. Frontend additionally enforces a 30-min idle timeout.
     access-token-validity-seconds: ${JWT_ACCESS_TTL:900}          # 15 minutes

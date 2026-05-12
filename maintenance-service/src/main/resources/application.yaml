@@ -50,7 +50,7 @@ spring:
 app:
   internal-auth:
     enabled: ${INTERNAL_AUTH_ENABLED:true}
-    secret: ${INTERNAL_AUTH_SECRET:Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+    secret: ${INTERNAL_AUTH_SECRET:CHANGE_ME_LOCAL_DEV_INTERNAL_AUTH_SECRET_PLACEHOLDER_AT_LEAST_32_BYTES_LONG}
     allowed-clock-skew-seconds: 60
   kafka:
     property-topic: property-events

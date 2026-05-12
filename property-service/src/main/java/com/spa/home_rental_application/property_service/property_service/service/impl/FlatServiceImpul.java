@@ -127,7 +127,7 @@ public class FlatServiceImpul implements FlatService {
 
     @Override
     public List<FlatResponseDTO> getAllVacentFlats() {
-        return flatMapper.toResponseList(flatRepo.findByIsOccupiedFalse());
+        return flatMapper.toResponseList(flatRepo.findVacant());
     }
 
     @Override
@@ -150,7 +150,7 @@ public class FlatServiceImpul implements FlatService {
      */
     @Override
     public List<FlatResponseDTO> findFlatsNear(double lat, double lng, double radiusKm) {
-        List<Flat> vacant = flatRepo.findByIsOccupiedFalse();
+        List<Flat> vacant = flatRepo.findVacant();
         if (vacant.isEmpty()) return List.of();
 
         // Cache parent-building lookups so we don't N+1 the DB if
@@ -299,6 +299,16 @@ public class FlatServiceImpul implements FlatService {
         Flat flat = flatRepo.findById(flatId).orElseThrow(
                 () -> new RecordNotFoundException("Flat not found with id: " + flatId));
 
+        // Hide soft-deleted flats from the assignment surface — without
+        // this a stale client (or an attacker holding a known deleted
+        // flatId) could re-occupy a deleted listing. The new
+        // findByBuildingId filters deleted rows from the listing
+        // surface but POST /flats/{id}/assign loads the row by primary
+        // key, so we need an explicit guard here.
+        if (Boolean.TRUE.equals(flat.getIsDeleted())) {
+            throw new RecordNotFoundException("Flat not found with id: " + flatId);
+        }
+
         // Ownership guard: only the building's owner (or an admin) can
         // assign a tenant. Resolved before the occupancy check so a
         // poacher gets a clean 403 instead of leaking which flats are
@@ -306,6 +316,21 @@ public class FlatServiceImpul implements FlatService {
         Building assigningBuilding = buildingRepo.findById(flat.getBuildingId()).orElse(null);
         if (assigningBuilding != null) {
             CallerSecurity.requireOwnerOrAdmin(assigningBuilding.getOwnerId());
+        }
+
+        // Refuse if the same tenant is already assigned to another active
+        // (non-deleted) flat. Without this guard the same user could be
+        // double-billed for two flats and the dashboard "My flat" page
+        // would alternate which flat it surfaces.
+        if (req.tenantId() != null && !req.tenantId().isBlank()) {
+            List<Flat> tenantOther = flatRepo.findActiveByTenantId(req.tenantId());
+            for (Flat other : tenantOther) {
+                if (!other.getId().equals(flatId) && Boolean.TRUE.equals(other.getIsOccupied())) {
+                    throw new FlatOccupiedException(
+                            "Tenant " + req.tenantId() + " is already assigned to flat " + other.getId()
+                                    + " — vacate it first before re-assigning.");
+                }
+            }
         }
 
         if (Boolean.TRUE.equals(flat.getIsOccupied())) {

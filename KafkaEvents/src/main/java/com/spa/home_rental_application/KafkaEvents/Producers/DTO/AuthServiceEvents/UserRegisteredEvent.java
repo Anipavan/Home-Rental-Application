@@ -20,5 +20,14 @@ public class UserRegisteredEvent {
     private String userName;
     private String role;        // ADMIN | OWNER | TENANT
     private String email;
+    /**
+     * Mobile number captured at registration. Optional — but when
+     * present, notification-service seeds it into the user's
+     * NotificationPreference row so the registration welcome can
+     * actually fan out to SMS + WhatsApp instead of email-only.
+     * Format is whatever the user typed (we keep it tolerant: +91 …,
+     * 10-digit local, etc.); Twilio adapters do the E.164 normalisation.
+     */
+    private String phone;
     private Instant timestamp;
 }
