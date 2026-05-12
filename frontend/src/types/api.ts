@@ -155,6 +155,10 @@ export interface BuildingRequestDTO {
   stateId?: number;
   /** Optional FK id from `ref_cities` — sent when the cascading dropdown is used. */
   cityId?: number;
+  /** Geographic pin (H30). Optional — building lists without a pin
+   *  just hide from the geosearch + map view. */
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 /* Reference dropdown data — Day 7 stabilization */

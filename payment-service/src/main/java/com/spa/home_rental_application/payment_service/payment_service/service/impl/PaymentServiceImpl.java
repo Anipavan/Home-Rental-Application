@@ -74,6 +74,22 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     @Transactional
     public PaymentResponse createPayment(CreatePaymentRequest dto) {
+        // Audit H21: service-level guard on amount. The DTO already
+        // has @Positive, but defence-in-depth — every code path that
+        // reaches createPayment (REST, internal Feign, scheduled rent
+        // cycles) must produce a row with amount > 0.
+        if (dto.amount() == null || dto.amount().signum() <= 0) {
+            throw new IllegalArgumentException(
+                    "Payment amount must be strictly positive. Received: " + dto.amount());
+        }
+        // Audit H23: refuse to persist a payment with no dueDate.
+        // Without this the late-fee scheduler crashed on the first
+        // bad row and stopped processing every other overdue
+        // payment in the same run.
+        if (dto.dueDate() == null) {
+            throw new IllegalArgumentException("Payment dueDate is required.");
+        }
+
         Payment p = Payment.builder()
                 .tenantId(dto.tenantId())
                 .flatId(dto.flatId())
@@ -136,6 +152,21 @@ public class PaymentServiceImpl implements PaymentService {
     public InitiatePaymentResponse initiatePayment(InitiatePaymentRequest dto) {
         Payment p = mustFind(dto.paymentId());
         guardNotPaid(p);
+
+        // Audit H22: refuse re-initiation if another concurrent thread
+        // already moved the payment past PENDING/OVERDUE. Without this
+        // guard two simultaneous "Pay" clicks could each generate a
+        // gateway order and the tenant would be double-charged. The
+        // status check inside the @Transactional block + SELECT FOR
+        // UPDATE-style re-load makes the transition atomic at the
+        // application layer (Oracle SERIALIZABLE-equivalent under the
+        // default isolation).
+        PaymentStatus current = p.getStatus();
+        if (current != null && current != PaymentStatus.PENDING && current != PaymentStatus.OVERDUE) {
+            throw new IllegalStateException(
+                    "Payment " + p.getId() + " cannot be initiated from status " + current
+                            + ". Refresh the page — another tab may already be processing it.");
+        }
 
         // Snapshot the chosen method onto the entity so the receipt + analytics
         // know how the tenant paid.

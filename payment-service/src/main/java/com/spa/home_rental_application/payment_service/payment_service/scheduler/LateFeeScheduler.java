@@ -92,7 +92,19 @@ public class LateFeeScheduler {
         List<Payment> candidates = repo.findOverdueCandidates(PaymentStatus.PENDING, today);
         if (candidates.isEmpty()) return;
         log.info("LateFeeScheduler: promoting {} PENDING payment(s) to OVERDUE", candidates.size());
+        int skipped = 0;
         for (Payment p : candidates) {
+            // Audit H23: skip rows whose dueDate slipped through the
+            // service-level non-null guard (legacy data). Without
+            // this the next ChronoUnit.DAYS.between call NPEs and
+            // halts the entire batch — meaning every OTHER overdue
+            // payment in the run also misses its fee bump.
+            if (p.getDueDate() == null || p.getAmount() == null) {
+                log.warn("LateFeeScheduler: skipping paymentId={} (null dueDate or amount)", p.getId());
+                skipped++;
+                continue;
+            }
+
             long daysOverdue = ChronoUnit.DAYS.between(p.getDueDate(), today);
             BigDecimal newFee = computeLateFee(p.getAmount(), daysOverdue);
             p.setLateFee(newFee);
@@ -103,7 +115,9 @@ public class LateFeeScheduler {
             // Best-effort Kafka emit. If broker is unreachable the
             // scheduler logs + moves on; the next run will pick the
             // same payment up because OVERDUE rows still match the
-            // "grow existing" pass.
+            // "grow existing" pass — net effect is the same flat
+            // total but with an extra day of fee. Long-term fix is
+            // the transactional-outbox pattern (tracked separately).
             try {
                 events.sendPaymentOverdue(PaymentOverdueEvent.builder()
                         .eventType("payment.overdue")
@@ -119,6 +133,9 @@ public class LateFeeScheduler {
                         p.getId(), ex.getMessage());
             }
         }
+        if (skipped > 0) {
+            log.warn("LateFeeScheduler: {} payment(s) skipped due to null fields", skipped);
+        }
     }
 
     /**
@@ -132,6 +149,8 @@ public class LateFeeScheduler {
         // returns all OVERDUE rows).
         List<Payment> overdue = repo.findOverdueCandidates(PaymentStatus.OVERDUE, today);
         for (Payment p : overdue) {
+            // H23 — same null-skip protection as promotePending.
+            if (p.getDueDate() == null || p.getAmount() == null) continue;
             long daysOverdue = ChronoUnit.DAYS.between(p.getDueDate(), today);
             BigDecimal recomputed = computeLateFee(p.getAmount(), daysOverdue);
             if (recomputed.compareTo(p.getLateFee() == null ? BigDecimal.ZERO : p.getLateFee()) != 0) {

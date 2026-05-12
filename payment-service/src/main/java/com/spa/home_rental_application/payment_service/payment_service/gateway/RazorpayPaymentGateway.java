@@ -8,6 +8,7 @@ import com.spa.home_rental_application.payment_service.payment_service.DTO.Reque
 import com.spa.home_rental_application.payment_service.payment_service.config.RazorpayProperties;
 import com.spa.home_rental_application.payment_service.payment_service.entities.Payment;
 import com.spa.home_rental_application.payment_service.payment_service.enums.UpiApp;
+import com.spa.home_rental_application.payment_service.payment_service.repository.PaymentRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.json.JSONObject;
 
@@ -48,9 +49,11 @@ public class RazorpayPaymentGateway implements PaymentGateway {
 
     private final RazorpayProperties props;
     private final RazorpayClient client;
+    private final PaymentRepository paymentRepository;
 
-    public RazorpayPaymentGateway(RazorpayProperties props) {
+    public RazorpayPaymentGateway(RazorpayProperties props, PaymentRepository paymentRepository) {
         this.props = props;
+        this.paymentRepository = paymentRepository;
         try {
             this.client = new RazorpayClient(props.getKeyId(), props.getKeySecret());
             log.info("RazorpayPaymentGateway: initialized with keyId={}", props.getKeyId());
@@ -151,18 +154,35 @@ public class RazorpayPaymentGateway implements PaymentGateway {
             return new WebhookVerificationResult(false, null, null, "Webhook signature mismatch");
         }
 
-        // Real impl: Razorpay sends a payload like:
+        // Audit H25: Razorpay sends a payload like:
         //   { event: "payment.captured",
         //     payload: { payment: { entity: { id: "pay_xxx", order_id: "order_xxx", ... } } } }
-        // We parse that out so the caller can mark the local Payment row paid.
+        //
+        // The previous code (incorrectly) used `order_id` as our local
+        // paymentId — but that's Razorpay's gateway order id, NOT our
+        // ID. The lookup-by-paymentId in PaymentServiceImpl always
+        // failed silently and the payment never got credited.
+        //
+        // Correct: return the Razorpay order_id verbatim. The webhook
+        // handler caller resolves it to a local paymentId via
+        // {@code paymentRepository.findByGatewayOrderId}, which is
+        // stamped onto the Payment row at initiate-time. {@code id}
+        // (Razorpay's payment id) is the transactionId we record.
         try {
             JSONObject body = new JSONObject(rawBody);
             JSONObject pmt = body.getJSONObject("payload")
                                   .getJSONObject("payment")
                                   .getJSONObject("entity");
-            String paymentId = pmt.optString("order_id", null);
-            String txnId     = pmt.optString("id",       null);
-            return new WebhookVerificationResult(true, paymentId, txnId, null);
+            String gatewayOrderId = pmt.optString("order_id", null);
+            String txnId          = pmt.optString("id",       null);
+            String localPaymentId = paymentRepository.findByGatewayOrderId(gatewayOrderId)
+                    .map(com.spa.home_rental_application.payment_service.payment_service.entities.Payment::getId)
+                    .orElse(null);
+            if (localPaymentId == null) {
+                log.warn("Razorpay webhook for unknown gatewayOrderId={} (no local payment matched)",
+                        gatewayOrderId);
+            }
+            return new WebhookVerificationResult(true, localPaymentId, txnId, null);
         } catch (Exception ex) {
             log.warn("Razorpay webhook signature OK but body parse failed: {}", ex.getMessage());
             return new WebhookVerificationResult(true, null, null, null);

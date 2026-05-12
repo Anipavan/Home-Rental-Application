@@ -25,8 +25,10 @@ public class PaymentGatewayConfig {
 
     @Bean
     @ConditionalOnProperty(prefix = "app.payment", name = "gateway", havingValue = "razorpay")
-    public PaymentGateway razorpayPaymentGateway(RazorpayProperties props) {
+    public PaymentGateway razorpayPaymentGateway(
+            RazorpayProperties props,
+            com.spa.home_rental_application.payment_service.payment_service.repository.PaymentRepository paymentRepository) {
         log.info("Active payment gateway: razorpay (keyId={})", props.getKeyId());
-        return new RazorpayPaymentGateway(props);
+        return new RazorpayPaymentGateway(props, paymentRepository);
     }
 }

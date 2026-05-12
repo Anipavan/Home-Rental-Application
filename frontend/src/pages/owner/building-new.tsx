@@ -92,6 +92,34 @@ export function BuildingNewPage() {
       return;
     }
     const fd = new FormData(e.currentTarget);
+
+    // Audit H30: optional lat/lng — fed through to the geosearch +
+    // map view. Empty = building hides from /browse?nearMe and from
+    // the Map view (Haversine on null is fine; the backend just
+    // excludes pin-less rows). Validate range up-front so the
+    // backend's blanket String columns aren't tasked with
+    // semantic checks.
+    const latRaw = String(fd.get("latitude") ?? "").trim();
+    const lngRaw = String(fd.get("longitude") ?? "").trim();
+    let latitude: number | null = null;
+    let longitude: number | null = null;
+    if (latRaw || lngRaw) {
+      const latN = Number(latRaw);
+      const lngN = Number(lngRaw);
+      if (!Number.isFinite(latN) || latN < -90 || latN > 90
+          || !Number.isFinite(lngN) || lngN < -180 || lngN > 180) {
+        toast({
+          variant: "destructive",
+          title: "Coordinates look off",
+          description:
+            "Latitude must be between −90 and 90, longitude between −180 and 180. Leave both blank to skip.",
+        });
+        return;
+      }
+      latitude = latN;
+      longitude = lngN;
+    }
+
     createM.mutate({
       ownerId: authUserId,
       buildingName: String(fd.get("buildingName") ?? ""),
@@ -103,6 +131,8 @@ export function BuildingNewPage() {
       buildingTotalFloors: Number(fd.get("buildingTotalFloors") ?? 0),
       buildingTotalFlats: Number(fd.get("buildingTotalFlats") ?? 0),
       amenities: String(fd.get("amenities") ?? ""),
+      latitude,
+      longitude,
     });
   }
 
@@ -175,6 +205,34 @@ export function BuildingNewPage() {
               />
             </div>
 
+            {/* Audit H30: optional geo-pin. Powers the /browse?nearMe
+                geosearch and the Map view. Owners can leave blank — the
+                building still lists, just without a map pin. We
+                deliberately don't try to reverse-geocode the address
+                client-side; OSM Nominatim has aggressive rate limits
+                and a bad pin is worse than no pin. */}
+            <div className="grid sm:grid-cols-2 gap-4">
+              <Field
+                label="Latitude (optional)"
+                name="latitude"
+                type="number"
+                step="0.000001"
+                placeholder="12.971599"
+              />
+              <Field
+                label="Longitude (optional)"
+                name="longitude"
+                type="number"
+                step="0.000001"
+                placeholder="77.594566"
+              />
+            </div>
+            <p className="text-[11px] text-muted-foreground -mt-3">
+              Drop the pin to enable map-view discovery. Easiest source:
+              Google Maps → right-click on the building → "What's here?" →
+              copy the two numbers.
+            </p>
+
             <div>
               <Label htmlFor="amenities">Amenities</Label>
               <Textarea
@@ -211,6 +269,8 @@ function Field({
   required,
   min,
   max,
+  step,
+  placeholder,
 }: {
   label: string;
   name: string;
@@ -218,6 +278,8 @@ function Field({
   required?: boolean;
   min?: number;
   max?: number;
+  step?: string;
+  placeholder?: string;
 }) {
   return (
     <div>
@@ -229,6 +291,8 @@ function Field({
         required={required}
         min={min}
         max={max}
+        step={step}
+        placeholder={placeholder}
         className="mt-1.5"
       />
     </div>

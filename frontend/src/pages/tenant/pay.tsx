@@ -539,6 +539,12 @@ function RedirectCheckout({
   const [phase, setPhase] = useState<"idle" | "starting">("idle");
 
   async function start() {
+    // Audit H29: re-entrancy guard in addition to the disabled button
+    // — between a fast double-click and React's commit phase there's
+    // a microsecond window where the click handler can fire twice. A
+    // synchronous bail on `phase !== "idle"` makes that race
+    // impossible, regardless of any rendering lag.
+    if (phase !== "idle") return;
     setPhase("starting");
     try {
       const res = await paymentGateway.initiate({
@@ -587,7 +593,17 @@ function RedirectCheckout({
               You'll be redirected to a secure checkout page. After paying, we'll
               bring you back here automatically.
             </p>
-            <Button variant="gradient" size="lg" onClick={start}>
+            {/* Audit H29: disable on click. Without this a fast
+                double-click fires two paymentGateway.initiate() calls,
+                each generating a separate gateway order — a real risk
+                of the user being double-charged. The state transition
+                + disabled prop together close the gap. */}
+            <Button
+              variant="gradient"
+              size="lg"
+              onClick={start}
+              disabled={(phase as string) !== "idle"}
+            >
               <Lock /> Continue to checkout
             </Button>
           </div>

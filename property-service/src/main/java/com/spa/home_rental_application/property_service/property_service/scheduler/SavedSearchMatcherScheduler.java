@@ -92,6 +92,7 @@ public class SavedSearchMatcherScheduler {
 
         Instant now = Instant.now();
         int alertsFired = 0;
+        List<SavedSearch> dirty = new ArrayList<>();
         for (SavedSearch s : active) {
             Instant watermark = s.getLastMatchedAt() == null
                     ? earliestWatermark
@@ -105,13 +106,35 @@ public class SavedSearchMatcherScheduler {
                     matches.add(f);
                 }
             }
+
+            // Audit H26: only advance the watermark when dispatch
+            // actually succeeded. Previous code advanced unconditionally
+            // — meaning a notification-service outage during fireAlert
+            // would swallow the matches and the user would never get an
+            // alert for those flats (the next run wouldn't reconsider
+            // them because the watermark already moved past their
+            // createdAt).
+            boolean dispatchOk = true;
             if (!matches.isEmpty()) {
-                fireAlert(s, matches, buildingsById);
-                alertsFired++;
+                dispatchOk = fireAlertReturningSuccess(s, matches, buildingsById);
+                if (dispatchOk) alertsFired++;
             }
-            s.setLastMatchedAt(now);
+
+            if (matches.isEmpty() || dispatchOk) {
+                // No matches → still bump the watermark so the next run
+                // doesn't re-scan the same window. Successful dispatch
+                // → same thing. Failed dispatch → keep the old watermark
+                // so the next run gets another shot.
+                s.setLastMatchedAt(now);
+                dirty.add(s);
+            } else {
+                log.warn("SavedSearchMatcher: keeping watermark for searchId={} (dispatch failed; will retry)",
+                        s.getId());
+            }
         }
-        savedSearchRepo.saveAll(active);
+        if (!dirty.isEmpty()) {
+            savedSearchRepo.saveAll(dirty);
+        }
         log.info("SavedSearchMatcher: scanned {} active search(es), fired {} alert(s) over {} new flat(s)",
                 active.size(), alertsFired, candidates.size());
     }
@@ -156,6 +179,23 @@ public class SavedSearchMatcherScheduler {
      * housing.com handle their batch alerts and it's the right
      * tradeoff for inbox hygiene.
      */
+    /**
+     * Wrapper used by the post-H26 main loop. Calls fireAlert, returns
+     * true on a successful dispatch (no exception) and false otherwise
+     * so the caller can decide whether to advance the watermark.
+     */
+    private boolean fireAlertReturningSuccess(SavedSearch s, List<Flat> matches,
+                                              Map<String, Building> buildingsById) {
+        try {
+            fireAlert(s, matches, buildingsById);
+            return true;
+        } catch (Exception ex) {
+            log.warn("SavedSearchMatcher: fireAlert threw for searchId={}: {}",
+                    s.getId(), ex.getMessage());
+            return false;
+        }
+    }
+
     private void fireAlert(SavedSearch s, List<Flat> matches, Map<String, Building> buildingsById) {
         String subject = "New match for your search: " + safeName(s) + " (" + matches.size() + " new)";
         StringBuilder body = new StringBuilder();
@@ -185,9 +225,14 @@ public class SavedSearchMatcherScheduler {
             log.info("SavedSearchMatcher: alert sent userId={} searchId={} matchCount={}",
                     s.getUserId(), s.getId(), matches.size());
         } catch (Exception ex) {
-            // Fallback already logs; this is for the (rare) non-fallback exceptions.
+            // Rethrow so fireAlertReturningSuccess can refuse to
+            // advance the watermark (H26). The notification-service
+            // fallback already absorbs broker outages — exceptions
+            // that bubble this far indicate the dispatch genuinely
+            // didn't happen.
             log.warn("SavedSearchMatcher: alert dispatch failed userId={} searchId={}: {}",
                     s.getUserId(), s.getId(), ex.getMessage());
+            throw ex instanceof RuntimeException re ? re : new RuntimeException(ex);
         }
     }
 

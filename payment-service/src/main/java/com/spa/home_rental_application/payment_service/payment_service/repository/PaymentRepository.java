@@ -26,4 +26,13 @@ public interface PaymentRepository extends JpaRepository<Payment, String> {
 
     @Query("SELECT p FROM Payment p WHERE p.status = com.spa.home_rental_application.payment_service.payment_service.enums.PaymentStatus.PENDING AND p.dueDate = :date")
     List<Payment> findPendingDueOn(LocalDate date);
+
+    /**
+     * Audit H25: lookup by the gateway-assigned order id. Razorpay
+     * webhooks carry the order_id (the gateway's id, not ours) in
+     * the payment entity, so we use it to find the matching local
+     * payment row instead of relying on the broken {@code order_id ==
+     * paymentId} assumption the previous code had.
+     */
+    java.util.Optional<Payment> findByGatewayOrderId(String gatewayOrderId);
 }
