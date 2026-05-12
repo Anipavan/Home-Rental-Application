@@ -6,6 +6,15 @@ spring:
   application:
     name: HRA-auth-service
 
+  # Default to the `dev` profile so a no-config local run picks up
+  # the application-dev.yaml secrets (DB password etc.) instead of
+  # hitting Oracle with the placeholder string and ORA-01017'ing.
+  # Set SPRING_PROFILES_ACTIVE=prod (or any non-dev value) to disable
+  # the dev profile — SecretsBootstrapValidator then enforces that
+  # real env-var secrets are supplied.
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+
   lifecycle:
     timeout-per-shutdown-phase: 20s
 

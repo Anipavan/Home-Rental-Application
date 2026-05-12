@@ -1,0 +1,9 @@
+# Local-dev secrets. See auth-service/application-dev.yaml for the
+# rationale.
+spring:
+  datasource:
+    password: Pavan@123
+
+app:
+  internal-auth:
+    secret: CHANGE_ME_LOCAL_DEV_INTERNAL_AUTH_SECRET_PLACEHOLDER_AT_LEAST_32_BYTES_LONG

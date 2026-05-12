@@ -1,0 +1,19 @@
+# Local-dev secrets. See auth-service/application-dev.yaml for the
+# rationale.
+spring:
+  datasource:
+    password: Pavan@123
+
+app:
+  internal-auth:
+    secret: CHANGE_ME_LOCAL_DEV_INTERNAL_AUTH_SECRET_PLACEHOLDER_AT_LEAST_32_BYTES_LONG
+  # Mock gateway in dev — real Razorpay/Stripe creds only land in prod.
+  payment:
+    gateway: mock
+  razorpay:
+    key-id: CHANGE_ME_RAZORPAY_KEY_ID_PLACEHOLDER
+    key-secret: CHANGE_ME_RAZORPAY_KEY_SECRET_PLACEHOLDER
+    webhook-secret: CHANGE_ME_RAZORPAY_WEBHOOK_SECRET_PLACEHOLDER
+  stripe:
+    secret-key: CHANGE_ME_STRIPE_SECRET_KEY_PLACEHOLDER
+    webhook-secret: CHANGE_ME_STRIPE_WEBHOOK_SECRET_PLACEHOLDER

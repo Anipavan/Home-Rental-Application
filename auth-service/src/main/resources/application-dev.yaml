@@ -1,0 +1,19 @@
+# Local-dev secrets. Active when SPRING_PROFILES_ACTIVE is unset or =dev.
+#
+# Keep these values realistic for the typical local stack:
+#   - Oracle Free 23 on localhost:1521 (service `orcl`), user `siva` / pass `Pavan@123`
+#   - JWT + internal-auth secrets long enough for HMAC-SHA256
+#
+# These ARE the placeholder values from the main yaml — having them in
+# a profile-specific file (a) lets the boot succeed without env vars,
+# and (b) lets SecretsBootstrapValidator stay loud about them in prod
+# profiles (it bypasses the check for dev/local/test/default profiles).
+spring:
+  datasource:
+    password: Pavan@123
+
+app:
+  internal-auth:
+    secret: CHANGE_ME_LOCAL_DEV_INTERNAL_AUTH_SECRET_PLACEHOLDER_AT_LEAST_32_BYTES_LONG
+  jwt:
+    secret: CHANGE_ME_LOCAL_DEV_JWT_SECRET_PLACEHOLDER_AT_LEAST_32_BYTES_LONG_ABC

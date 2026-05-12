@@ -5,6 +5,13 @@ server:
 spring:
   application:
     name: HRA-payment-service
+
+  # Default to dev profile — see auth-service/application.yaml for
+  # the full rationale. Prod set SPRING_PROFILES_ACTIVE=prod (or any
+  # non-dev value) and supply real env vars.
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+
   lifecycle:
     timeout-per-shutdown-phase: 20s
 
