@@ -25,4 +25,15 @@ public interface PasswordResetTokenRepository extends JpaRepository<PasswordRese
     @Transactional
     @Query("DELETE FROM PasswordResetToken p WHERE p.expiresAt < :cutoff")
     int deleteAllExpired(@Param("cutoff") Instant cutoff);
+
+    /**
+     * Audit H7: hard-delete every live reset token for a user. Used by
+     * {@code completePasswordReset} so a successful reset wipes any
+     * other tokens the attacker may have triggered for the same
+     * account during the window.
+     */
+    @Modifying
+    @Transactional
+    @Query("DELETE FROM PasswordResetToken p WHERE p.userId = :userId")
+    int deleteAllForUser(@Param("userId") Long userId);
 }

@@ -55,6 +55,42 @@ public class UserDetails implements org.springframework.security.core.userdetail
     @Builder.Default
     private Boolean accountNonLocked = true;
 
+    /**
+     * Audit H4: counter for consecutive failed logins. Reset to zero
+     * after a successful login or after the lock expires. We use it
+     * to gate the lock-out check in {@code AuthServiceImpl.login}
+     * without persisting a separate audit row per attempt.
+     *
+     * <p>Column-definition includes an Oracle DEFAULT 0 so that
+     * Hibernate's {@code ddl-auto=update} can ADD this column to an
+     * already-populated {@code user_details_table} without hitting
+     * the ORA-01758 trap that crashed the service when we added
+     * the {@code is_cover} column to PropertyImage.
+     */
+    @Column(name = "failed_login_attempts", nullable = false,
+            columnDefinition = "NUMBER(10) DEFAULT 0 NOT NULL")
+    @Builder.Default
+    private Integer failedLoginAttempts = 0;
+
+    /**
+     * Audit H4: timestamp this account is locked until. Null = not
+     * locked. The lockout helper sets this to now()+15 minutes after
+     * the 5th consecutive failure; a successful login (or 15-minute
+     * timeout) clears it.
+     */
+    @Column(name = "locked_until")
+    private Instant lockedUntil;
+
+    /**
+     * Audit H3: monotonic instant — every JWT issued before this point
+     * is considered revoked. {@code logout} bumps it to now() so the
+     * access tokens still in tenants' hands are invalidated immediately.
+     * The gateway enforces this via {@code iat &gt;= tokensRevokedBefore}
+     * on every request (cached for 60s).
+     */
+    @Column(name = "tokens_revoked_before")
+    private Instant tokensRevokedBefore;
+
     @Column(name = "record_created_date", nullable = false, updatable = false)
     private Instant recordCreatedDate;
 

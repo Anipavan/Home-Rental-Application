@@ -63,10 +63,16 @@ app:
     # Default below is a length-padded placeholder so HMAC-SHA256 accepts it
     # for local dev; SecretsBootstrapValidator refuses it in prod profiles.
     secret: ${JWT_SECRET:CHANGE_ME_LOCAL_DEV_JWT_SECRET_PLACEHOLDER_AT_LEAST_32_BYTES_LONG_ABC}
-    # Stabilization sprint: tightened from 1h / 30d to 15min / 7d to enforce
-    # real session expiry. Frontend additionally enforces a 30-min idle timeout.
-    access-token-validity-seconds: ${JWT_ACCESS_TTL:900}          # 15 minutes
-    refresh-token-validity-seconds: ${JWT_REFRESH_TTL:604800}     # 7 days
+    # Audit H3: tightened from 15min → 5min so the worst-case post-
+    # logout JWT-still-valid window shrinks from 15 to 5 minutes. The
+    # frontend's idle timer + refresh-token rotation handle the UX
+    # impact (silent re-mint as long as the user is active).
+    # Refresh: tightened from 7d to 24h to limit blast radius of an
+    # XSS-stolen refresh token (audit H5 + M34). Browsers stay
+    # signed-in via the rolling 24h refresh; longer sessions require
+    # an explicit re-login.
+    access-token-validity-seconds: ${JWT_ACCESS_TTL:300}          # 5 minutes
+    refresh-token-validity-seconds: ${JWT_REFRESH_TTL:86400}      # 24 hours
     issuer: ${JWT_ISSUER:home-rental-auth}
   password-reset:
     token-validity-minutes: ${PASSWORD_RESET_TTL_MINUTES:15}
@@ -144,7 +150,7 @@ eureka:
     register-with-eureka: true
     fetch-registry: true
     service-url:
-      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka}
+      defaultZone: ${EUREKA_URL:http://${EUREKA_USERNAME:eureka}:${EUREKA_PASSWORD:CHANGE_ME_LOCAL_DEV_EUREKA_PLACEHOLDER}@localhost:8761/eureka}
 
 management:
   endpoints:

@@ -29,6 +29,14 @@
             <artifactId>spring-cloud-starter-netflix-eureka-server</artifactId>
         </dependency>
 
+        <!-- Audit H8: basic-auth on the Eureka registry. Without this,
+             any host on the network could register a fake service
+             (e.g. HRA-payment-service) and intercept Feign calls. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
         <!-- Operational endpoints + Prometheus metrics -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

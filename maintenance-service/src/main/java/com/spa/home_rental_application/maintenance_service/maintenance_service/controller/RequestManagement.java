@@ -1,5 +1,6 @@
 package com.spa.home_rental_application.maintenance_service.maintenance_service.controller;
 
+import com.spa.home_rental_application.auth_commons.GatewayAuthFilter;
 import com.spa.home_rental_application.maintenance_service.maintenance_service.DTO.Request.CreateRequestDto;
 import com.spa.home_rental_application.maintenance_service.maintenance_service.DTO.Request.UpdateRequestDto;
 import com.spa.home_rental_application.maintenance_service.maintenance_service.DTO.Response.MaintenanceRequestResponse;
@@ -10,9 +11,13 @@ import com.spa.home_rental_application.maintenance_service.maintenance_service.e
 import com.spa.home_rental_application.maintenance_service.maintenance_service.enums.Status;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -40,10 +45,44 @@ public class RequestManagement {
     @Operation(summary = "Create a maintenance request OR a complaint (kind discriminator)",
             description = "Default kind = MAINTENANCE. Set kind=COMPLAINT plus complaintCategory to file a grievance.")
     @PostMapping(value = "/requests", consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<MaintenanceRequestResponse> create(@Valid @RequestBody CreateRequestDto body) {
+    public ResponseEntity<MaintenanceRequestResponse> create(@Valid @RequestBody CreateRequestDto body,
+                                                             HttpServletRequest req) {
+        // Audit H10: the caller can only file a ticket as themselves.
+        // Earlier code accepted whatever tenantId was in the body so any
+        // logged-in user could create a "maintenance request" for any
+        // other tenant on any flat — perfect for spamming or framing.
+        // Admins keep the override (e.g. concierge raising a ticket on a
+        // tenant's behalf) because they're trusted to specify the
+        // tenantId explicitly.
+        requireBodyMatchesCallerOrAdmin(body.tenantId(), req);
         log.info("POST /maintenance/requests kind={} tenant={} flat={}",
                 body.kind(), body.tenantId(), body.flatId());
         return ResponseEntity.status(HttpStatus.CREATED).body(requestService.createRequest(body));
+    }
+
+    /**
+     * H10 helper: refuse unless the body's tenantId equals the gateway-
+     * stamped X-Auth-User-Id OR the caller is an admin. System calls
+     * (Feign, schedulers — no gateway header) bypass the check.
+     */
+    private static void requireBodyMatchesCallerOrAdmin(String tenantId, HttpServletRequest req) {
+        if (isAdmin()) return;
+        String caller = req.getHeader(GatewayAuthFilter.HDR_UID);
+        if (caller == null || caller.isBlank()) return;     // system path
+        if (tenantId == null || !tenantId.equals(caller)) {
+            throw new AccessDeniedException(
+                    "You can only file maintenance requests as yourself.");
+        }
+    }
+
+    private static boolean isAdmin() {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null) return false;
+        for (GrantedAuthority ga : auth.getAuthorities()) {
+            String a = ga.getAuthority();
+            if ("ADMIN".equalsIgnoreCase(a) || "ROLE_ADMIN".equalsIgnoreCase(a)) return true;
+        }
+        return false;
     }
 
     @Operation(summary = "List all requests (paginated, optionally filtered by kind)")

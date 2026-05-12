@@ -54,8 +54,12 @@ public class AuthController {
 
     @Operation(summary = "Rotate refresh token. Returns a new access JWT + new refresh token")
     @PostMapping(value = "/refresh", consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<AuthResponse> refresh(@Valid @RequestBody RefreshTokenRequest req) {
-        return ResponseEntity.ok(authService.refresh(req));
+    public ResponseEntity<AuthResponse> refresh(@Valid @RequestBody RefreshTokenRequest req,
+                                                HttpServletRequest httpReq) {
+        // Pass through client fingerprint so AuthService can enforce
+        // the H5 IP/UA binding on the stored refresh token.
+        return ResponseEntity.ok(authService.refresh(req,
+                clientIp(httpReq), httpReq.getHeader("User-Agent")));
     }
 
     @Operation(summary = "Log out. Revokes the supplied refresh token")
@@ -114,6 +118,29 @@ public class AuthController {
     @PreAuthorize("hasAnyRole('ADMIN','OWNER')")
     public ResponseEntity<AuthUserResponse> lookupById(@PathVariable Long id) {
         return ResponseEntity.ok(authService.getById(id));
+    }
+
+    /**
+     * Audit H3: per-user "tokens issued before this instant are dead"
+     * timestamp. Read by api-gateway's JWT validator (with a Caffeine
+     * cache) to enforce immediate logout — any access JWT whose
+     * {@code iat} is older than this value is rejected.
+     *
+     * <p>Returns -1 if the user has never logged out (never bumped the
+     * watermark) so the gateway can skip the {@code iat} check
+     * cheaply.
+     *
+     * <p>Open to authenticated callers — every JWT-bearing request
+     * needs this; rate-limited by the gateway's per-route bucket
+     * (audit H1) so it can't be used to enumerate user ids.
+     */
+    @Operation(summary = "Per-user tokens-revoked-before watermark (internal — used by gateway JWT validator)")
+    @GetMapping("/internal/tokens-revoked-before/{userId}")
+    public ResponseEntity<java.util.Map<String, Long>> tokensRevokedBefore(@PathVariable Long userId) {
+        java.time.Instant when = authService.tokensRevokedBefore(userId);
+        return ResponseEntity.ok(java.util.Map.of(
+                "userId",  userId,
+                "epochMs", when == null ? -1L : when.toEpochMilli()));
     }
 
 

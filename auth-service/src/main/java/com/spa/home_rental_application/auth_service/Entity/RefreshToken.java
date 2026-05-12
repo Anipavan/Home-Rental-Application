@@ -39,6 +39,23 @@ public class RefreshToken {
     @Builder.Default
     private Boolean revoked = false;
 
+    /**
+     * Audit H5: client-fingerprint columns. The refresh-then-rotate
+     * call compares these against the live request — a token presented
+     * from a different IP / user-agent is refused. This narrows the
+     * blast radius of an XSS-stolen refresh token (the attacker would
+     * also need to match the victim's network + browser fingerprint).
+     *
+     * <p>The fingerprint check is advisory by default
+     * ({@code app.auth.refresh.bind-mode=warn}); flip to {@code strict}
+     * via env var for prod-hardened deployments.
+     */
+    @Column(name = "ip_address", length = 64)
+    private String ipAddress;
+
+    @Column(name = "user_agent_hash", length = 64)
+    private String userAgentHash;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 

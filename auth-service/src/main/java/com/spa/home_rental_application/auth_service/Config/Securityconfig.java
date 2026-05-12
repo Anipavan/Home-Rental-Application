@@ -56,6 +56,23 @@ public class Securityconfig {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                // Audit H6: enable HSTS + standard security headers so any
+                // direct HTTP (not gateway-fronted) traffic hardens
+                // automatically. Browsers will refuse to downgrade to
+                // plain HTTP once they've seen the HSTS header. The
+                // gateway terminates TLS in prod; setting these here is
+                // defence-in-depth in case the load balancer is ever
+                // bypassed.
+                .headers(headers -> headers
+                        .httpStrictTransportSecurity(hsts -> hsts
+                                .includeSubDomains(true)
+                                .preload(true)
+                                .maxAgeInSeconds(31_536_000))   // 1 year
+                        .contentTypeOptions(c -> {})            // X-Content-Type-Options: nosniff
+                        .frameOptions(f -> f.deny())            // X-Frame-Options: DENY
+                        .referrerPolicy(r -> r.policy(
+                                org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter
+                                        .ReferrerPolicy.NO_REFERRER)))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.POST, "/auth/register", "/auth/login",
                                 "/auth/refresh", "/auth/forgot-password", "/auth/reset-password").permitAll()

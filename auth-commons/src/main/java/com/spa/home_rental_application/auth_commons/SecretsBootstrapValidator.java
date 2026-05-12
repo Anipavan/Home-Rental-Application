@@ -83,6 +83,24 @@ public class SecretsBootstrapValidator implements ApplicationListener<Applicatio
             }
         }
 
+        // Audit H9: prod profiles must NOT boot with internal-auth disabled.
+        // The flag exists so unit tests can short-circuit the HMAC check,
+        // but flipping it in prod leaves every downstream service open
+        // to direct hits that bypass the gateway entirely.
+        if (!devProfile) {
+            String internalAuthEnabled = env.getProperty("app.internal-auth.enabled", "true");
+            if ("false".equalsIgnoreCase(internalAuthEnabled)) {
+                String msg = "Refusing to start: app.internal-auth.enabled=false in non-dev profile '"
+                        + String.join(",", env.getActiveProfiles()) + "'. "
+                        + "Disabling gateway-signature verification in prod lets any host on the network "
+                        + "talk directly to downstream services. Remove the override, or set "
+                        + "SPRING_PROFILES_ACTIVE=dev for local work.";
+                log.error(msg);
+                event.getApplicationContext().close();
+                throw new IllegalStateException(msg);
+            }
+        }
+
         if (offenders.isEmpty()) {
             log.info("SecretsBootstrapValidator: all sensitive secrets passed — no placeholder leakage detected.");
             return;

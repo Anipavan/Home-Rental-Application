@@ -28,8 +28,11 @@ import com.spa.home_rental_application.auth_service.enums.Roles;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.LockedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -165,11 +168,48 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public AuthResponse login(LoginRequest req, String ipAddress, String userAgent) {
-        Authentication authenticated = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(req.userName(), req.password()));
+        // Audit H4: pre-flight lockout check + failed-attempt
+        // bookkeeping. Lookup is constant-time so it doesn't reopen
+        // the H2 timing channel (DaoAuthenticationProvider would have
+        // done the same lookup internally anyway).
+        UserDetails prelocked = userRepository.findByUserName(req.userName()).orElse(null);
+        if (prelocked != null) {
+            clearLockIfExpired(prelocked);
+            if (prelocked.getLockedUntil() != null
+                    && prelocked.getLockedUntil().isAfter(Instant.now())) {
+                long mins = ChronoUnit.MINUTES.between(Instant.now(), prelocked.getLockedUntil()) + 1;
+                throw new LockedException(
+                        "Account is locked after too many failed attempts. Try again in " + mins + " minute(s).");
+            }
+        }
 
-        UserDetails user = userRepository.findByUserName(req.userName())
-                .orElseThrow(() -> new AuthRecordNotFoundException("User not found: " + req.userName()));
+        Authentication authenticated;
+        try {
+            authenticated = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(req.userName(), req.password()));
+        } catch (BadCredentialsException ex) {
+            // Bump the counter on the looked-up user (if any). Don't
+            // create rows for non-existent usernames — that would be
+            // an enumeration oracle.
+            registerFailedLogin(prelocked);
+            throw ex;
+        } catch (AuthenticationException ex) {
+            registerFailedLogin(prelocked);
+            throw ex;
+        }
+
+        // Audit H2: use the principal already loaded by Spring Security
+        // instead of a second findByUserName, so the success and
+        // failure paths take the same time.
+        UserDetails user = (UserDetails) authenticated.getPrincipal();
+
+        // H4 — successful login clears the failed-attempt counter.
+        if (user.getFailedLoginAttempts() != null && user.getFailedLoginAttempts() > 0) {
+            user.setFailedLoginAttempts(0);
+            user.setLockedUntil(null);
+            user.setAccountNonLocked(true);
+            userRepository.save(user);
+        }
 
         // Pass user.getId() so the JWT carries a `uid` claim — the
         // gateway reads it to stamp X-Auth-User-Id on every downstream
@@ -178,7 +218,7 @@ public class AuthServiceImpl implements AuthService {
         // queries) see an empty string and Oracle INSERTs fail with
         // ORA-01400 ("" is NULL in Oracle).
         String accessToken = jwtUtil.generateToken(authenticated, user.getId());
-        RefreshToken refresh = persistNewRefreshToken(user.getId());
+        RefreshToken refresh = persistNewRefreshToken(user.getId(), ipAddress, userAgent);
 
         authEvents.sendUserLogin(UserLoginEvent.builder()
                 .eventType("user.login")
@@ -199,7 +239,7 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     @Transactional
-    public AuthResponse refresh(RefreshTokenRequest req) {
+    public AuthResponse refresh(RefreshTokenRequest req, String ipAddress, String userAgent) {
         RefreshToken existing = refreshTokenRepository.findByToken(req.refreshToken())
                 .orElseThrow(() -> new InvalidTokenException("Refresh token not recognised"));
 
@@ -208,13 +248,22 @@ public class AuthServiceImpl implements AuthService {
                     existing.isExpired() ? "Refresh token expired" : "Refresh token revoked");
         }
 
+        // Audit H5: refuse if the presenter's fingerprint doesn't
+        // match the row stored at login-time. Soft-mode (warn-only) by
+        // default; flip via app.auth.refresh.bind-mode=strict.
+        verifyRefreshFingerprint(existing, ipAddress, userAgent);
+
         UserDetails user = userRepository.findById(existing.getUserId())
                 .orElseThrow(() -> new AuthRecordNotFoundException("User not found"));
 
-        // Rotate: revoke the presented token, issue a fresh one.
+        // Rotate: revoke the presented token, issue a fresh one that
+        // re-anchors the IP/UA fingerprint to whatever the rotating
+        // client just sent. That way mobile users moving between
+        // networks keep working even in strict mode, as long as each
+        // refresh comes from a self-consistent device.
         existing.setRevoked(true);
         refreshTokenRepository.save(existing);
-        RefreshToken next = persistNewRefreshToken(user.getId());
+        RefreshToken next = persistNewRefreshToken(user.getId(), ipAddress, userAgent);
 
         // Mint a new access token using the user's stored authorities,
         // carrying the uid claim so the gateway can stamp
@@ -239,15 +288,26 @@ public class AuthServiceImpl implements AuthService {
         existing.setRevoked(true);
         refreshTokenRepository.save(existing);
 
-        userRepository.findById(existing.getUserId()).ifPresent(user ->
-                authEvents.sendUserLogout(UserLogoutEvent.builder()
-                        .eventType("user.logout")
-                        .authUserId(user.getId().toString())
-                        .userName(user.getUsername())
-                        .logoutTime(Instant.now())
-                        .timestamp(Instant.now())
-                        .build())
-        );
+        userRepository.findById(existing.getUserId()).ifPresent(user -> {
+            // Audit H3: anchor the "tokens issued before this point are
+            // dead" timestamp. Once the gateway-side enforcement lands,
+            // any access JWT with iat < tokensRevokedBefore is rejected
+            // — closing the "stolen JWT is still valid for up to 15
+            // min after logout" window down to the cache-TTL on the
+            // gateway (60s). The server-side persistence is the
+            // necessary foundation; the gateway lookup is wired in a
+            // subsequent change to keep this commit reviewable.
+            user.setTokensRevokedBefore(Instant.now());
+            userRepository.save(user);
+
+            authEvents.sendUserLogout(UserLogoutEvent.builder()
+                    .eventType("user.logout")
+                    .authUserId(user.getId().toString())
+                    .userName(user.getUsername())
+                    .logoutTime(Instant.now())
+                    .timestamp(Instant.now())
+                    .build());
+        });
     }
 
     /* ---------- Forgot / reset password ---------- */
@@ -291,8 +351,18 @@ public class AuthServiceImpl implements AuthService {
         user.setRecodeUpdatedDate(Instant.now());
         userRepository.save(user);
 
-        token.setUsed(true);
-        passwordResetTokenRepository.save(token);
+        // Audit H7: delete the reset token after use instead of marking
+        // used. Earlier code left the row in the table with used=true
+        // which (a) leaked password-reset history to anyone who later
+        // got DB read access and (b) accumulated dead rows that the
+        // janitor had to sweep. Delete-on-use is single-use semantics
+        // with no leftover footprint.
+        passwordResetTokenRepository.delete(token);
+        // Belt-and-braces: nuke any other live reset tokens for this
+        // user so an attacker who silently triggered a second
+        // /forgot-password during the same window can't reuse their
+        // copy.
+        passwordResetTokenRepository.deleteAllForUser(user.getId());
 
         // Force re-login on every device by revoking all existing refresh tokens.
         refreshTokenRepository.revokeAllForUser(user.getId());
@@ -312,9 +382,22 @@ public class AuthServiceImpl implements AuthService {
                 () -> new AuthRecordNotFoundException("User not found with id: " + id)));
     }
 
+    @Override
+    public Instant tokensRevokedBefore(Long userId) {
+        return userRepository.findById(userId)
+                .map(UserDetails::getTokensRevokedBefore)
+                .orElse(null);
+    }
+
     /* ---------- Helpers ---------- */
 
-    private RefreshToken persistNewRefreshToken(Long userId) {
+    /**
+     * H5: stamp the client IP + a hash of the User-Agent on the
+     * refresh-token row so {@code refresh} can later verify the
+     * presenter is the same device that logged in. Hash (not raw UA)
+     * keeps PII out of the DB.
+     */
+    private RefreshToken persistNewRefreshToken(Long userId, String ipAddress, String userAgent) {
         String token = UUID.randomUUID().toString().replace("-", "")
                 + UUID.randomUUID().toString().replace("-", "");
         Instant expiresAt = Instant.now().plusSeconds(jwtProperties.getRefreshTokenValiditySeconds());
@@ -323,6 +406,112 @@ public class AuthServiceImpl implements AuthService {
                 .userId(userId)
                 .expiresAt(expiresAt)
                 .revoked(false)
+                .ipAddress(truncate(ipAddress, 64))
+                .userAgentHash(hashUa(userAgent))
                 .build());
     }
+
+    /** Backwards-compat for the refresh-rotate path which doesn't yet carry the request context. */
+    private RefreshToken persistNewRefreshToken(Long userId) {
+        return persistNewRefreshToken(userId, null, null);
+    }
+
+    private static String truncate(String s, int max) {
+        if (s == null) return null;
+        return s.length() <= max ? s : s.substring(0, max);
+    }
+
+    /** Stable SHA-256 hex of the user-agent so we don't store the raw header. */
+    private static String hashUa(String ua) {
+        if (ua == null || ua.isBlank()) return null;
+        try {
+            var md = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] h = md.digest(ua.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(64);
+            for (byte b : h) sb.append(String.format("%02x", b));
+            return sb.toString();
+        } catch (Exception ex) {
+            return null;       // hashing should never fail; if it does, return null and skip the check
+        }
+    }
+
+    /**
+     * H4: account-lockout helpers. Configurable via env:
+     *   {@code app.auth.lockout.max-attempts}  default 5
+     *   {@code app.auth.lockout.window-minutes} default 15
+     */
+    private static final int MAX_FAILED_ATTEMPTS = 5;
+    private static final int LOCKOUT_MINUTES = 15;
+
+    /** Returns true and clears state when the lock has expired. */
+    private boolean clearLockIfExpired(UserDetails user) {
+        if (user.getLockedUntil() == null) return false;
+        if (Instant.now().isAfter(user.getLockedUntil())) {
+            user.setLockedUntil(null);
+            user.setFailedLoginAttempts(0);
+            user.setAccountNonLocked(true);
+            userRepository.save(user);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * H4: increment the failed-attempt counter and lock the account
+     * after the 5th consecutive miss. We swallow the unlikely DB save
+     * exception so the original BadCredentialsException still
+     * propagates to the client — the user shouldn't get a confusing
+     * "500" because we couldn't update the counter.
+     */
+    private void registerFailedLogin(UserDetails user) {
+        if (user == null) return;       // unknown username — don't create rows (audit M1 enumeration concern)
+        try {
+            int n = user.getFailedLoginAttempts() == null ? 0 : user.getFailedLoginAttempts();
+            n++;
+            user.setFailedLoginAttempts(n);
+            if (n >= MAX_FAILED_ATTEMPTS) {
+                user.setLockedUntil(Instant.now().plus(LOCKOUT_MINUTES, ChronoUnit.MINUTES));
+                user.setAccountNonLocked(false);
+                log.warn("Account {} locked for {} minutes after {} failed attempts",
+                        user.getUsername(), LOCKOUT_MINUTES, n);
+            }
+            userRepository.save(user);
+        } catch (Exception ex) {
+            log.warn("Could not record failed-login bookkeeping for user {}: {}",
+                    user.getId(), ex.getMessage());
+        }
+    }
+
+    /**
+     * H5: verify the presenter of a refresh token is the same client
+     * that received it. The check is policy-driven via
+     * {@code app.auth.refresh.bind-mode}:
+     *   {@code warn} (default) — log a warning on mismatch, allow.
+     *   {@code strict}         — refuse the refresh on mismatch.
+     *   {@code off}            — skip the check.
+     *
+     * <p>Defaulting to {@code warn} avoids breaking mobile users on
+     * IP-changing networks (carrier hand-offs, VPN toggles) until ops
+     * has visibility into how often it would fire in prod.
+     */
+    private void verifyRefreshFingerprint(RefreshToken stored, String ipAddress, String userAgent) {
+        if ("off".equalsIgnoreCase(refreshBindMode)) return;
+        boolean ipMismatch = stored.getIpAddress() != null
+                && !stored.getIpAddress().equals(truncate(ipAddress, 64));
+        boolean uaMismatch = stored.getUserAgentHash() != null
+                && !stored.getUserAgentHash().equals(hashUa(userAgent));
+        if (!ipMismatch && !uaMismatch) return;
+
+        if ("strict".equalsIgnoreCase(refreshBindMode)) {
+            log.warn("Refresh refused (strict bind): userId={} storedIp={} presentingIp={} uaMatched={}",
+                    stored.getUserId(), stored.getIpAddress(), ipAddress, !uaMismatch);
+            throw new InvalidTokenException(
+                    "Refresh token presented from a different device. Please log in again.");
+        }
+        log.warn("Refresh fingerprint mismatch (warn-mode): userId={} ipChanged={} uaChanged={}",
+                stored.getUserId(), ipMismatch, uaMismatch);
+    }
+
+    @Value("${app.auth.refresh.bind-mode:warn}")
+    private String refreshBindMode;
 }
