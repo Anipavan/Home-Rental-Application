@@ -2,7 +2,6 @@ package com.spa.home_rental_application.notification_service.notification_servic
 
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PaymentServiceEvents.*;
 import com.spa.home_rental_application.notification_service.notification_service.enums.NotificationCategory;
-import com.spa.home_rental_application.notification_service.notification_service.enums.NotificationType;
 import com.spa.home_rental_application.notification_service.notification_service.service.NotificationService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -11,9 +10,19 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 /**
- * Subscribes to {@code payment-events}. Each event becomes one or more
- * notifications via the {@code NotificationService}, which renders the
- * matching template and dispatches it through the user's preferred channel(s).
+ * Subscribes to {@code payment-events}. Each event fans across the
+ * user's reachable channels via {@link NotificationService#fanOut} —
+ * the user hears about money on every channel they've configured
+ * (in-app bell + email + SMS + WhatsApp), with opt-outs and
+ * missing-recipient handling delegated to the service.
+ *
+ * <p>Earlier code used {@code sendFromTemplate(EMAIL, ...)} which
+ * limited every payment-event to email-only — fine when email was
+ * the only configured channel, wrong now that we want SMS + WhatsApp
+ * coverage. fanOut is the canonical "tell the user on every channel"
+ * helper; it writes one INAPP bell entry and one per-channel attempt,
+ * so we never duplicate the bell while picking up SMS/WhatsApp legs
+ * for free.
  */
 @Component
 @Slf4j
@@ -33,7 +42,7 @@ public class PaymentEventListener {
     public void onCreated(PaymentCreatedEvent e) {
         if (e == null || !"payment.created".equals(e.getEventType())) return;
         log.info("Received {} for paymentId={}", e.getEventType(), e.getPaymentId());
-        notifications.sendFromTemplate(e.getTenantId(), NotificationType.EMAIL,
+        notifications.fanOut(e.getTenantId(),
                 NotificationCategory.PAYMENT_CREATED,
                 Map.of("invoiceNumber", safe(e.getInvoiceNumber()),
                         "amount",       safe(e.getAmount()),
@@ -48,7 +57,7 @@ public class PaymentEventListener {
     public void onCompleted(PaymentCompletedEvent e) {
         if (e == null || !"payment.completed".equals(e.getEventType())) return;
         log.info("Received {} for paymentId={}", e.getEventType(), e.getPaymentId());
-        notifications.sendFromTemplate(e.getTenantId(), NotificationType.EMAIL,
+        notifications.fanOut(e.getTenantId(),
                 NotificationCategory.PAYMENT_RECEIPT,
                 Map.of("amount",        safe(e.getAmount()),
                         "method",       safe(e.getPaymentMethod()),
@@ -64,15 +73,13 @@ public class PaymentEventListener {
     public void onOverdue(PaymentOverdueEvent e) {
         if (e == null || !"payment.overdue".equals(e.getEventType())) return;
         log.info("Received {} for paymentId={}", e.getEventType(), e.getPaymentId());
-        // Send on BOTH email and SMS — overdue is high-priority
-        Map<String, Object> vars = Map.of(
-                "amount",      safe(e.getAmount()),
-                "lateFee",     safe(e.getLateFee()),
-                "daysOverdue", safe(e.getDaysOverdue()));
-        notifications.sendFromTemplate(e.getTenantId(), NotificationType.EMAIL,
-                NotificationCategory.PAYMENT_OVERDUE, vars);
-        notifications.sendFromTemplate(e.getTenantId(), NotificationType.SMS,
-                NotificationCategory.PAYMENT_OVERDUE, vars);
+        // Overdue is high-priority — fan across every channel so the
+        // user can't miss it. (Previously: EMAIL + SMS only.)
+        notifications.fanOut(e.getTenantId(),
+                NotificationCategory.PAYMENT_OVERDUE,
+                Map.of("amount",      safe(e.getAmount()),
+                        "lateFee",    safe(e.getLateFee()),
+                        "daysOverdue",safe(e.getDaysOverdue())));
     }
 
     @KafkaListener(
@@ -83,9 +90,10 @@ public class PaymentEventListener {
     public void onReminder(PaymentReminderEvent e) {
         if (e == null || !"payment.reminder".equals(e.getEventType())) return;
         log.info("Received {} for paymentId={}", e.getEventType(), e.getPaymentId());
-        notifications.sendFromTemplate(e.getTenantId(), NotificationType.EMAIL,
+        notifications.fanOut(e.getTenantId(),
                 NotificationCategory.PAYMENT_REMINDER,
-                Map.of("daysUntilDue", safe(e.getDaysUntilDue())));
+                Map.of("daysUntilDue", safe(e.getDaysUntilDue()),
+                        "amount",     safe(e.getAmount())));
     }
 
     private static String safe(Object o) { return o == null ? "" : o.toString(); }

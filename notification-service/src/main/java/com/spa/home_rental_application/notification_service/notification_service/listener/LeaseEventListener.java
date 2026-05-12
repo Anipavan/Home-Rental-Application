@@ -5,7 +5,6 @@ import com.spa.home_rental_application.KafkaEvents.Producers.DTO.LeaseServiceEve
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.LeaseServiceEvents.LeaseSignedEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.LeaseServiceEvents.LeaseTerminatedEvent;
 import com.spa.home_rental_application.notification_service.notification_service.enums.NotificationCategory;
-import com.spa.home_rental_application.notification_service.notification_service.enums.NotificationType;
 import com.spa.home_rental_application.notification_service.notification_service.service.NotificationService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -15,12 +14,21 @@ import java.util.Map;
 
 /**
  * Subscribes to {@code lease-events} (published by Lease Service).
+ * Every lease milestone fans across {@code INAPP + EMAIL + SMS + WhatsApp}
+ * via {@link NotificationService#fanOut} so the tenant hears about the
+ * change on whichever channel they've configured.
  * <ul>
- *   <li>{@code lease.signed}     → welcome email + SMS to tenant</li>
- *   <li>{@code lease.expiring}   → warning to tenant (cron-driven, 60 days before)</li>
- *   <li>{@code lease.renewed}    → confirmation to tenant</li>
- *   <li>{@code lease.terminated} → confirmation to tenant</li>
+ *   <li>{@code lease.signed}     → tenant just got assigned a flat</li>
+ *   <li>{@code lease.expiring}   → 60-day warning (cron-driven)</li>
+ *   <li>{@code lease.renewed}    → renewal confirmation</li>
+ *   <li>{@code lease.terminated} → end-of-tenancy confirmation</li>
  * </ul>
+ *
+ * <p>Earlier code used {@code sendFromTemplate(EMAIL, ...)} (and
+ * sometimes also {@code SMS}) which limited each event to a hand-picked
+ * subset of channels. Replaced with {@code fanOut} for the same reason
+ * as PaymentEventListener — the product requirement is "tell the tenant
+ * on every channel they're reachable on" for material lease changes.
  */
 @Component
 @Slf4j
@@ -40,16 +48,13 @@ public class LeaseEventListener {
     public void onSigned(LeaseSignedEvent e) {
         if (e == null || !"lease.signed".equals(e.getEventType())) return;
         log.info("Received {} for leaseId={}", e.getEventType(), e.getLeaseId());
-        Map<String, Object> vars = Map.of(
-                "leaseNumber", safe(e.getLeaseNumber()),
-                "startDate",   safe(e.getStartDate()),
-                "endDate",     safe(e.getEndDate()),
-                "rentAmount",  safe(e.getRentAmount()),
-                "deposit",     safe(e.getSecurityDeposit()));
-        notifications.sendFromTemplate(e.getTenantId(), NotificationType.EMAIL,
-                NotificationCategory.LEASE_SIGNED, vars);
-        notifications.sendFromTemplate(e.getTenantId(), NotificationType.SMS,
-                NotificationCategory.LEASE_SIGNED, vars);
+        notifications.fanOut(e.getTenantId(),
+                NotificationCategory.LEASE_SIGNED,
+                Map.of("leaseNumber", safe(e.getLeaseNumber()),
+                        "startDate",  safe(e.getStartDate()),
+                        "endDate",    safe(e.getEndDate()),
+                        "rentAmount", safe(e.getRentAmount()),
+                        "deposit",    safe(e.getSecurityDeposit())));
     }
 
     @KafkaListener(
@@ -61,14 +66,11 @@ public class LeaseEventListener {
         if (e == null || !"lease.expiring".equals(e.getEventType())) return;
         log.info("Received {} for leaseId={} daysLeft={}",
                 e.getEventType(), e.getLeaseId(), e.getDaysUntilExpiry());
-        Map<String, Object> vars = Map.of(
-                "endDate",         safe(e.getEndDate()),
-                "daysUntilExpiry", safe(e.getDaysUntilExpiry()),
-                "rentAmount",      safe(e.getRentAmount()));
-        notifications.sendFromTemplate(e.getTenantId(), NotificationType.EMAIL,
-                NotificationCategory.LEASE_EXPIRY, vars);
-        notifications.sendFromTemplate(e.getTenantId(), NotificationType.SMS,
-                NotificationCategory.LEASE_EXPIRY, vars);
+        notifications.fanOut(e.getTenantId(),
+                NotificationCategory.LEASE_EXPIRY,
+                Map.of("endDate",         safe(e.getEndDate()),
+                        "daysUntilExpiry",safe(e.getDaysUntilExpiry()),
+                        "rentAmount",     safe(e.getRentAmount())));
     }
 
     @KafkaListener(
@@ -79,7 +81,7 @@ public class LeaseEventListener {
     public void onRenewed(LeaseRenewedEvent e) {
         if (e == null || !"lease.renewed".equals(e.getEventType())) return;
         log.info("Received {} for leaseId={}", e.getEventType(), e.getLeaseId());
-        notifications.sendFromTemplate(e.getTenantId(), NotificationType.EMAIL,
+        notifications.fanOut(e.getTenantId(),
                 NotificationCategory.LEASE_RENEWED,
                 Map.of("previousEndDate", safe(e.getPreviousEndDate()),
                         "newEndDate",     safe(e.getNewEndDate()),
@@ -96,7 +98,7 @@ public class LeaseEventListener {
         if (e == null || !"lease.terminated".equals(e.getEventType())) return;
         log.info("Received {} for leaseId={} reason={}",
                 e.getEventType(), e.getLeaseId(), e.getTerminationReason());
-        notifications.sendFromTemplate(e.getTenantId(), NotificationType.EMAIL,
+        notifications.fanOut(e.getTenantId(),
                 NotificationCategory.LEASE_TERMINATED,
                 Map.of("terminationReason", safe(e.getTerminationReason()),
                         "terminatedOn",     safe(e.getTerminatedOn())));

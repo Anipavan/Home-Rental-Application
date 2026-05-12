@@ -303,6 +303,190 @@ public class TemplateSeeder {
                 "Hi 👋\n\n*{{visitorName}}* contacted you about *{{propertyLabel}}*:\n>\n"
                         + "> {{message}}\n\nReply via the Hearth Enquiries inbox.",
                 List.of("visitorName", "propertyLabel", "message"));
+
+        /* ───────────────────────────────────────────────────────────
+         * Multi-channel fan-out templates for the listeners that
+         * recently moved from sendFromTemplate(EMAIL) to fanOut(...).
+         * Without these, the SMS / WhatsApp legs would fall back to
+         * the generic "You have a new X notification" copy in
+         * NotificationService.deliver (line ~243). Each block below
+         * is in order: EMAIL → SMS → WhatsApp.
+         * ─────────────────────────────────────────────────────────── */
+
+        // ─── PAYMENT_CREATED — invoice just issued ───
+        // EMAIL template already seeded near the top of this method.
+        seedIfAbsent("payment-created-sms", NotificationCategory.PAYMENT_CREATED,
+                NotificationType.SMS, null,
+                "Hearth: new invoice {{invoiceNumber}} ₹{{amount}} due {{dueDate}}. Pay in the app.",
+                List.of("invoiceNumber", "amount", "dueDate"));
+        seedIfAbsent("payment-created-whatsapp", NotificationCategory.PAYMENT_CREATED,
+                NotificationType.WHATSAPP, null,
+                "Hi 👋\n\nA new rent invoice is ready for you.\n\n"
+                        + "*Invoice:* {{invoiceNumber}}\n*Amount:* ₹{{amount}}\n*Due:* {{dueDate}}\n\n"
+                        + "Open the Hearth app to pay via UPI, card, net-banking, or wallet.",
+                List.of("invoiceNumber", "amount", "dueDate"));
+
+        // ─── PAYMENT_OVERDUE — completing the channel set ───
+        // EMAIL + SMS already seeded. WhatsApp filled in here so the
+        // fanOut leg renders proper copy instead of generic fallback.
+        seedIfAbsent("payment-overdue-whatsapp", NotificationCategory.PAYMENT_OVERDUE,
+                NotificationType.WHATSAPP, null,
+                "⚠️ *Rent overdue*\n\nYour rent is *{{daysOverdue}}* day(s) late.\n"
+                        + "*Now owing:* ₹{{amount}} (rent) + ₹{{lateFee}} (late fee)\n\n"
+                        + "Tap *Pay Rent* in the Hearth app to settle it before further charges accrue.",
+                List.of("amount", "lateFee", "daysOverdue"));
+
+        /* ─── LEASE_SIGNED — tenant just got a flat assigned ───
+         * Variables come from LeaseEventListener.onSigned: leaseNumber,
+         * startDate, endDate, rentAmount, deposit.
+         */
+        seedIfAbsent("lease-signed-email", NotificationCategory.LEASE_SIGNED,
+                NotificationType.EMAIL,
+                "Your lease {{leaseNumber}} is signed",
+                "Congratulations — your tenancy is officially on.\n\n"
+                        + "Lease number: {{leaseNumber}}\nStarts: {{startDate}}\n"
+                        + "Ends:   {{endDate}}\nMonthly rent: ₹{{rentAmount}}\n"
+                        + "Security deposit: ₹{{deposit}}\n\n"
+                        + "You can download the signed lease PDF from the Hearth app "
+                        + "under Documents at any time.",
+                List.of("leaseNumber", "startDate", "endDate", "rentAmount", "deposit"));
+        seedIfAbsent("lease-signed-sms", NotificationCategory.LEASE_SIGNED,
+                NotificationType.SMS, null,
+                "Hearth: lease {{leaseNumber}} signed. Starts {{startDate}}. Rent Rs.{{rentAmount}}/mo.",
+                List.of("leaseNumber", "startDate", "rentAmount"));
+        seedIfAbsent("lease-signed-whatsapp", NotificationCategory.LEASE_SIGNED,
+                NotificationType.WHATSAPP, null,
+                "🏡 *Lease signed*\n\nWelcome aboard! Your lease *{{leaseNumber}}* is live.\n\n"
+                        + "*Starts:* {{startDate}}\n*Ends:* {{endDate}}\n"
+                        + "*Rent:* ₹{{rentAmount}}/month\n*Deposit:* ₹{{deposit}}\n\n"
+                        + "Download the signed PDF from *Documents* in the Hearth app.",
+                List.of("leaseNumber", "startDate", "endDate", "rentAmount", "deposit"));
+
+        /* ─── LEASE_EXPIRY — 60-day countdown (cron-driven) ───
+         * Variables: endDate, daysUntilExpiry, rentAmount.
+         */
+        seedIfAbsent("lease-expiry-email", NotificationCategory.LEASE_EXPIRY,
+                NotificationType.EMAIL,
+                "Your lease ends in {{daysUntilExpiry}} days",
+                "Heads-up — your lease is scheduled to end on {{endDate}} "
+                        + "({{daysUntilExpiry}} days away).\n\n"
+                        + "If you'd like to renew, open the Hearth app and tap *Renew lease* "
+                        + "before then. If you're moving out, no action needed — your tenancy "
+                        + "will close automatically and your security deposit refund will "
+                        + "be initiated within 7 working days of move-out.",
+                List.of("endDate", "daysUntilExpiry", "rentAmount"));
+        seedIfAbsent("lease-expiry-sms", NotificationCategory.LEASE_EXPIRY,
+                NotificationType.SMS, null,
+                "Hearth: lease ends {{endDate}} ({{daysUntilExpiry}}d). Renew or move out in the app.",
+                List.of("endDate", "daysUntilExpiry"));
+        seedIfAbsent("lease-expiry-whatsapp", NotificationCategory.LEASE_EXPIRY,
+                NotificationType.WHATSAPP, null,
+                "📅 *Lease ending soon*\n\nYour lease ends on *{{endDate}}* "
+                        + "({{daysUntilExpiry}} days from now).\n\n"
+                        + "Want to stay? Tap *Renew lease* in the Hearth app.\n"
+                        + "Moving on? No action needed — we'll handle the close-out + "
+                        + "deposit refund automatically.",
+                List.of("endDate", "daysUntilExpiry"));
+
+        /* ─── LEASE_RENEWED — renewal confirmation ───
+         * Variables: previousEndDate, newEndDate, previousRent, newRent.
+         */
+        seedIfAbsent("lease-renewed-email", NotificationCategory.LEASE_RENEWED,
+                NotificationType.EMAIL,
+                "Your lease is renewed",
+                "Good news — your lease has been renewed.\n\n"
+                        + "Previous end: {{previousEndDate}}\nNew end:      {{newEndDate}}\n"
+                        + "Previous rent: ₹{{previousRent}}/month\n"
+                        + "New rent:      ₹{{newRent}}/month\n\n"
+                        + "The updated lease PDF is available under *Documents* in the Hearth app.",
+                List.of("previousEndDate", "newEndDate", "previousRent", "newRent"));
+        seedIfAbsent("lease-renewed-sms", NotificationCategory.LEASE_RENEWED,
+                NotificationType.SMS, null,
+                "Hearth: lease renewed until {{newEndDate}}. New rent Rs.{{newRent}}/mo.",
+                List.of("newEndDate", "newRent"));
+        seedIfAbsent("lease-renewed-whatsapp", NotificationCategory.LEASE_RENEWED,
+                NotificationType.WHATSAPP, null,
+                "♻️ *Lease renewed*\n\nWelcome back for another term.\n\n"
+                        + "*New end date:* {{newEndDate}}\n*New rent:* ₹{{newRent}}/month\n\n"
+                        + "Download the updated lease PDF from *Documents* in the Hearth app.",
+                List.of("newEndDate", "newRent"));
+
+        /* ─── LEASE_TERMINATED — used by both LeaseEventListener.onTerminated
+         * (lease-service-driven termination) AND PropertyEventListener.onFlatVacated
+         * (property-service-driven vacate). Common vars: terminatedOn,
+         * terminationReason. Flat-id only present on the flat.vacated path
+         * (Mustache handles the missing var gracefully — empty string).
+         */
+        seedIfAbsent("lease-terminated-email", NotificationCategory.LEASE_TERMINATED,
+                NotificationType.EMAIL,
+                "Your tenancy has ended",
+                "Hi,\n\nWe've recorded that your tenancy ended on {{terminatedOn}} "
+                        + "(reason: {{terminationReason}}).\n\n"
+                        + "Next steps:\n"
+                        + "• If a security deposit was held, refund will be initiated within "
+                        + "7 working days to the bank account on file.\n"
+                        + "• Your final payment statement is now in *Documents* in the Hearth app.\n"
+                        + "• Need anything? Reply to this email or message us in the app.\n\n"
+                        + "Thanks for staying with Hearth.",
+                List.of("terminatedOn", "terminationReason", "flatId"));
+        seedIfAbsent("lease-terminated-sms", NotificationCategory.LEASE_TERMINATED,
+                NotificationType.SMS, null,
+                "Hearth: your tenancy ended {{terminatedOn}}. Deposit refund (if any) in 7 working days.",
+                List.of("terminatedOn"));
+        seedIfAbsent("lease-terminated-whatsapp", NotificationCategory.LEASE_TERMINATED,
+                NotificationType.WHATSAPP, null,
+                "👋 *Tenancy ended*\n\nYour tenancy ended on *{{terminatedOn}}* "
+                        + "(_{{terminationReason}}_).\n\n"
+                        + "If a security deposit was held, we'll refund it to your bank "
+                        + "account on file within 7 working days. Your final statement "
+                        + "is in *Documents* in the Hearth app.\n\nThanks for staying with us. 🙏",
+                List.of("terminatedOn", "terminationReason"));
+
+        /* ─── MAINTENANCE_ASSIGNED / MAINTENANCE_RESOLVED — completing
+         * the channel set for the in-flight maintenance pipeline.
+         * MaintenanceEventListener already uses fanOut for these, so
+         * without SMS/WhatsApp templates the legs render generic copy.
+         */
+        seedIfAbsent("maintenance-assigned-sms", NotificationCategory.MAINTENANCE_ASSIGNED,
+                NotificationType.SMS, null,
+                "Hearth: ticket {{requestId}} assigned to {{assignedTo}}. They'll be in touch.",
+                List.of("requestId", "assignedTo"));
+        seedIfAbsent("maintenance-assigned-whatsapp", NotificationCategory.MAINTENANCE_ASSIGNED,
+                NotificationType.WHATSAPP, null,
+                "🛠️ *Maintenance update*\n\nTicket *{{requestId}}* is assigned to "
+                        + "*{{assignedTo}}*. They'll reach out shortly — track or "
+                        + "comment on it in the Hearth app under *Maintenance*.",
+                List.of("requestId", "assignedTo"));
+        seedIfAbsent("maintenance-resolved-whatsapp", NotificationCategory.MAINTENANCE_RESOLVED,
+                NotificationType.WHATSAPP, null,
+                "✅ *Resolved*\n\nGreat news — ticket *{{requestId}}* is resolved "
+                        + "(turnaround {{resolutionTimeMinutes}} minutes).\n\n"
+                        + "Reply in the Hearth app if anything's still off.",
+                List.of("requestId", "resolutionTimeMinutes"));
+
+        /* ─── COMPLAINT_ACKNOWLEDGED / COMPLAINT_RESOLVED — same
+         * reasoning: MaintenanceEventListener fans these out across
+         * all channels; templates filled in here.
+         */
+        seedIfAbsent("complaint-acknowledged-sms", NotificationCategory.COMPLAINT_ACKNOWLEDGED,
+                NotificationType.SMS, null,
+                "Hearth: complaint {{requestNumber}} is being handled by {{assignedTo}}.",
+                List.of("requestNumber", "assignedTo"));
+        seedIfAbsent("complaint-acknowledged-whatsapp", NotificationCategory.COMPLAINT_ACKNOWLEDGED,
+                NotificationType.WHATSAPP, null,
+                "🔔 *Complaint update*\n\nYour complaint *{{requestNumber}}* is now being "
+                        + "worked on by *{{assignedTo}}*. You'll be pinged when it's resolved.",
+                List.of("requestNumber", "assignedTo"));
+        seedIfAbsent("complaint-resolved-sms", NotificationCategory.COMPLAINT_RESOLVED,
+                NotificationType.SMS, null,
+                "Hearth: complaint {{requestNumber}} resolved. Reply in the app to re-open within 7d.",
+                List.of("requestNumber"));
+        seedIfAbsent("complaint-resolved-whatsapp", NotificationCategory.COMPLAINT_RESOLVED,
+                NotificationType.WHATSAPP, null,
+                "✅ *Complaint resolved*\n\nYour complaint *{{requestNumber}}* is closed.\n\n"
+                        + "Not happy with the outcome? Reply in the Hearth app within 7 days "
+                        + "and we'll re-open it.",
+                List.of("requestNumber"));
     }
 
     private void seedIfAbsent(String name,
