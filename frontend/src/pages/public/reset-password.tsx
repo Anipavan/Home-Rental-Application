@@ -47,8 +47,15 @@ export function ResetPasswordPage() {
     const fd = new FormData(e.currentTarget);
     const pw = String(fd.get("password") ?? "");
     const confirm = String(fd.get("confirm") ?? "");
-    if (pw.length < 6) {
-      toast({ variant: "destructive", title: "Password too short" });
+    // Mirror the backend's strength rule so we don't round-trip on
+    // every typo. Backend enforces this too (audit-side defence).
+    if (!/^(?=.*[A-Z])(?=.*[a-z])(?=.*\d).{8,}$/.test(pw)) {
+      toast({
+        variant: "destructive",
+        title: "Password too weak",
+        description:
+          "Use 8+ characters with at least one uppercase, lowercase, and digit.",
+      });
       return;
     }
     if (pw !== confirm) {
@@ -83,7 +90,16 @@ export function ResetPasswordPage() {
                 Choose a new password
               </h1>
               <p className="text-muted-foreground mt-1.5 text-sm">
-                Make it unique. At least 6 characters.
+                8+ characters with at least one uppercase, lowercase, and digit.
+              </p>
+              {/* Audit H20: communicate TTL up-front so users hitting
+                  an expired link know what to do next without
+                  guessing. The backend deletes the token on use
+                  (audit H7), so reaching this page from a stale
+                  bookmark always fails clearly. */}
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                For your safety, this link expires 15 minutes after the email
+                was sent and can only be used once.
               </p>
               {!token && (
                 <p className="mt-4 rounded-md bg-warning/10 border border-warning/20 text-warning px-3 py-2 text-xs">
@@ -100,7 +116,7 @@ export function ResetPasswordPage() {
                       name="password"
                       type={show ? "text" : "password"}
                       required
-                      minLength={6}
+                      minLength={8}
                       className="pr-10"
                     />
                     <button

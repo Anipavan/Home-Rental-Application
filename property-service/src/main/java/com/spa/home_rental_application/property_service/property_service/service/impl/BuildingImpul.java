@@ -145,12 +145,21 @@ public class BuildingImpul implements BuildingService {
         // hand-off ownership to someone else (or to themselves on a
         // different building) gets a 403 here — gives an explicit
         // signal rather than silently dropping the field.
+        // Audit H16: also logs the transfer for compliance trail. The
+        // request flow goes through the gateway with a JWT-stamped
+        // X-Auth-User-Id, so the caller identity is captured.
         if (building.getOwnerId() != null && !building.getOwnerId().isBlank()
                 && !building.getOwnerId().equals(matchedBuilding.getOwnerId())) {
             if (!CallerSecurity.isAdmin()) {
+                log.warn("Refused building ownership transfer: caller={} buildingId={} from={} to={}",
+                        CallerSecurity.getCurrentAuthUserId().orElse("?"),
+                        buildId, matchedBuilding.getOwnerId(), building.getOwnerId());
                 throw new ForbiddenException(
                         "Only an admin can transfer building ownership.");
             }
+            log.info("ADMIN ownership transfer: buildingId={} from={} to={} actor={}",
+                    buildId, matchedBuilding.getOwnerId(), building.getOwnerId(),
+                    CallerSecurity.getCurrentAuthUserId().orElse("?"));
             matchedBuilding.setOwnerId(building.getOwnerId());
         }
         if (building.getBuildingAddress() != null && !building.getBuildingAddress().isBlank()) {

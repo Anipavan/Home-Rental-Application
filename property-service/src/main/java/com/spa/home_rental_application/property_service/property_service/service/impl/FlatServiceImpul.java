@@ -12,6 +12,7 @@ import com.spa.home_rental_application.property_service.property_service.Entitie
 import com.spa.home_rental_application.property_service.property_service.ExceptionClass.FlatOccupiedException;
 import com.spa.home_rental_application.property_service.property_service.ExceptionClass.InvalidLeasePeriodException;
 import com.spa.home_rental_application.property_service.property_service.ExceptionClass.RecordNotFoundException;
+import com.spa.home_rental_application.property_service.property_service.client.UserClient;
 import com.spa.home_rental_application.property_service.property_service.repository.BuildingRepo;
 import com.spa.home_rental_application.property_service.property_service.repository.FlatRepo;
 import com.spa.home_rental_application.property_service.property_service.security.CallerSecurity;
@@ -39,17 +40,20 @@ public class FlatServiceImpul implements FlatService {
     private final PropertyServiceEvents eventProducer;
     private final FlatMapper flatMapper;
     private final AgreementService agreementService;
+    private final UserClient userClient;
 
     public FlatServiceImpul(FlatRepo flatRepo,
                             BuildingRepo buildingRepo,
                             PropertyServiceEvents eventProducer,
                             FlatMapper flatMapper,
-                            AgreementService agreementService) {
+                            AgreementService agreementService,
+                            UserClient userClient) {
         this.flatRepo = flatRepo;
         this.buildingRepo = buildingRepo;
         this.eventProducer = eventProducer;
         this.flatMapper = flatMapper;
         this.agreementService = agreementService;
+        this.userClient = userClient;
     }
 
     @Override
@@ -323,6 +327,30 @@ public class FlatServiceImpul implements FlatService {
         // double-billed for two flats and the dashboard "My flat" page
         // would alternate which flat it surfaces.
         if (req.tenantId() != null && !req.tenantId().isBlank()) {
+            // Audit H14: verify the tenantId resolves to a real
+            // user-service profile. Without this an owner can pin a
+            // flat to a phantom userId and the resulting lease /
+            // payment chain will silently break later (Feign returns
+            // an "empty" UserSummary via the fallback, and the deed
+            // renders with blanks). 404 here gives the owner
+            // immediate, actionable feedback.
+            try {
+                UserClient.UserSummary u = userClient.getUserById(req.tenantId());
+                if (u == null || u.id() == null || u.id().isBlank()) {
+                    throw new RecordNotFoundException(
+                            "No user found with id " + req.tenantId() + " — pick an existing tenant.");
+                }
+            } catch (RecordNotFoundException ex) {
+                throw ex;
+            } catch (Exception ex) {
+                // user-service unreachable. Don't fail-closed in dev
+                // because the Hystrix fallback returns empty() and
+                // tenant detail pages keep working. Log loudly and
+                // proceed — the owner can retry once user-service is back.
+                log.warn("user-service unreachable while validating tenant {} (proceeding): {}",
+                        req.tenantId(), ex.getMessage());
+            }
+
             List<Flat> tenantOther = flatRepo.findActiveByTenantId(req.tenantId());
             for (Flat other : tenantOther) {
                 if (!other.getId().equals(flatId) && Boolean.TRUE.equals(other.getIsOccupied())) {

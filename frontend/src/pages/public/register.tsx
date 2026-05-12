@@ -13,9 +13,32 @@ import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import type { Role } from "@/types/api";
 
+/**
+ * Audit H19: India-tolerant phone regex. Accepts:
+ *   +91-9876543210
+ *   919876543210
+ *   9876543210     (assumed Indian 10-digit mobile)
+ *   +1 555 123 4567
+ * Rejects anything with letters or fewer than 10 digits.
+ *
+ * The backend already runs a similar regex
+ * ({@code ^\+?[0-9\- ]{7,20}$}) — this mirror catches typos before
+ * the round-trip.
+ */
+const PHONE_REGEX = /^\+?[0-9][0-9\s\-]{8,18}[0-9]$/;
+
+/**
+ * Audit H18: passwords must (a) match confirm-password, (b) meet the
+ * backend's strength rule (1 upper, 1 lower, 1 digit, 8+ chars). The
+ * backend enforces the rule too; mirroring here gives the user an
+ * inline error instead of a round-trip toast.
+ */
+const PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*[a-z])(?=.*\d).{8,}$/;
+
 export function RegisterPage() {
   const navigate = useNavigate();
   const [role, setRole] = useState<Role>("TENANT");
+  const [clientError, setClientError] = useState<string | null>(null);
 
   const mutation = useMutation({
     mutationFn: authApi.register,
@@ -37,15 +60,39 @@ export function RegisterPage() {
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    setClientError(null);
     const fd = new FormData(e.currentTarget);
+    const password = String(fd.get("password") ?? "");
+    const confirmPassword = String(fd.get("confirmPassword") ?? "");
+    const phone = String(fd.get("phone") ?? "").trim();
+
+    // H18 — password rules + confirm-password match.
+    if (!PASSWORD_REGEX.test(password)) {
+      setClientError(
+        "Password needs at least 8 characters, including an uppercase, a lowercase, and a digit.",
+      );
+      return;
+    }
+    if (password !== confirmPassword) {
+      setClientError("Passwords don't match — please retype.");
+      return;
+    }
+    // H19 — phone format (optional field, but if provided must be valid).
+    if (phone && !PHONE_REGEX.test(phone)) {
+      setClientError(
+        "Phone number looks off. Use 10 digits, with country code if international (e.g. +91-9876543210).",
+      );
+      return;
+    }
+
     mutation.mutate({
       userName: String(fd.get("userName") ?? ""),
-      userPassword: String(fd.get("password") ?? ""),
+      userPassword: password,
       userRole: role,
       email: String(fd.get("email") ?? ""),
       firstName: String(fd.get("firstName") ?? ""),
       lastName: String(fd.get("lastName") ?? ""),
-      phone: String(fd.get("phone") ?? ""),
+      phone,
     });
   }
 
@@ -88,10 +135,41 @@ export function RegisterPage() {
             </div>
             <div className="grid sm:grid-cols-2 gap-4">
               <Field label="Username" name="userName" required />
-              <Field label="Phone" name="phone" type="tel" />
+              <Field
+                label="Phone"
+                name="phone"
+                type="tel"
+                placeholder="+91-9876543210"
+                hint="Optional. Used for SMS/WhatsApp alerts."
+              />
             </div>
             <Field label="Email" name="email" type="email" required />
-            <Field label="Password" name="password" type="password" required minLength={6} />
+            <div className="grid sm:grid-cols-2 gap-4">
+              <Field
+                label="Password"
+                name="password"
+                type="password"
+                required
+                minLength={8}
+                hint="8+ chars · upper · lower · digit"
+              />
+              <Field
+                label="Confirm password"
+                name="confirmPassword"
+                type="password"
+                required
+                minLength={8}
+              />
+            </div>
+
+            {clientError && (
+              <p
+                role="alert"
+                className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-3 py-2"
+              >
+                {clientError}
+              </p>
+            )}
 
             <Button
               type="submit"
@@ -159,12 +237,16 @@ function Field({
   type = "text",
   required,
   minLength,
+  placeholder,
+  hint,
 }: {
   label: string;
   name: string;
   type?: string;
   required?: boolean;
   minLength?: number;
+  placeholder?: string;
+  hint?: string;
 }) {
   return (
     <div>
@@ -175,8 +257,12 @@ function Field({
         type={type}
         required={required}
         minLength={minLength}
+        placeholder={placeholder}
         className="mt-1.5"
       />
+      {hint && (
+        <p className="text-[11px] text-muted-foreground mt-1">{hint}</p>
+      )}
     </div>
   );
 }

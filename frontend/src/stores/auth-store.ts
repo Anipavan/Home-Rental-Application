@@ -33,6 +33,26 @@ interface AuthState {
   clear: () => void;
 }
 
+/**
+ * Audit H17: the access token NEVER persists to localStorage anymore.
+ * An XSS attack still has window-scoped access while the page is open,
+ * but a stolen localStorage dump is no longer enough to impersonate
+ * the user.
+ *
+ * Strategy:
+ *   - accessToken / accessTokenExpiresAt live in memory only — gone
+ *     on full page reload.
+ *   - refreshToken still persists (it's opaque + server-rotated + now
+ *     IP/UA-bound thanks to the H5 backend fix) so users don't have
+ *     to re-log-in after every tab close.
+ *   - On app boot, if a refreshToken is present in localStorage but no
+ *     accessToken in memory, the API client transparently calls
+ *     `/auth/refresh` to mint a new access token. UX is unchanged;
+ *     the security boundary shrinks dramatically.
+ *
+ * The {@code partialize} option below is Zustand's way to opt fields
+ * INTO persistence — anything not listed stays in memory only.
+ */
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
@@ -78,6 +98,20 @@ export const useAuthStore = create<AuthState>()(
           lastActivityAt: null,
         }),
     }),
-    { name: "hearth-auth" },
+    {
+      name: "hearth-auth",
+      // Whitelist the non-sensitive bits — the access token is
+      // intentionally excluded so it can't be exfiltrated from a
+      // localStorage dump. On hard refresh the API client uses the
+      // persisted refresh token to mint a new access token.
+      partialize: (state) => ({
+        refreshToken: state.refreshToken,
+        authUserId: state.authUserId,
+        userName: state.userName,
+        role: state.role,
+        isAuthenticated: state.isAuthenticated,
+        lastActivityAt: state.lastActivityAt,
+      }),
+    },
   ),
 );

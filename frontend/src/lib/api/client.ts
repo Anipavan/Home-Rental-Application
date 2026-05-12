@@ -22,8 +22,34 @@ export const api: AxiosInstance = axios.create({
   },
 });
 
-api.interceptors.request.use((config) => {
-  const token = useAuthStore.getState().accessToken;
+api.interceptors.request.use(async (config) => {
+  const state = useAuthStore.getState();
+  let token = state.accessToken;
+
+  // Audit H17: the access token no longer persists. On a hard refresh
+  // we lose it but the refresh token is still on disk. If we're about
+  // to make a request that needs auth, transparently mint a new
+  // access token first so the user experience is identical to the
+  // pre-H17 behaviour. Skip for the /auth/* endpoints themselves to
+  // avoid recursion.
+  const path = (config.url ?? "").toLowerCase();
+  const looksLikeAuthEndpoint = path.includes("/auth/login")
+      || path.includes("/auth/register")
+      || path.includes("/auth/refresh")
+      || path.includes("/auth/forgot-password")
+      || path.includes("/auth/reset-password");
+  if (!token && state.refreshToken && !looksLikeAuthEndpoint) {
+    try {
+      refreshing = refreshing ?? refreshAccessToken();
+      token = await refreshing;
+      refreshing = null;
+    } catch {
+      refreshing = null;
+      // fall through — request will get 401 and the response
+      // interceptor below will redirect to /login.
+    }
+  }
+
   if (token) {
     if (!config.headers) config.headers = new AxiosHeaders();
     config.headers.set("Authorization", `Bearer ${token}`);
