@@ -1,0 +1,4 @@
+# Local-dev secrets — match the value every other service uses in dev.
+app:
+  internal-auth:
+    secret: CHANGE_ME_LOCAL_DEV_INTERNAL_AUTH_SECRET_PLACEHOLDER_AT_LEAST_32_BYTES_LONG

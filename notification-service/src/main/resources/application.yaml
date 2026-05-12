@@ -2,6 +2,13 @@ spring:
   application:
     name: HRA-notification-service
 
+  # Default to dev profile so application-dev.yaml's internal-auth
+  # secret matches the gateway's signing key. Without this, an opaque
+  # HMAC mismatch shows up as "gateway required" 403s from downstream
+  # services.
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+
   # Pull the real config from Config Server. Use optional: so the service
   # still starts during local dev when Config Server is down.
   config:

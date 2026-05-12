@@ -5,6 +5,18 @@ server:
 spring:
   application:
     name: HRA-api-gateway
+
+  # Default to dev profile so the gateway's JWT + internal-auth
+  # secrets pick up application-dev.yaml's values and match the
+  # downstream auth-service / property-service / etc. that already
+  # default to dev. Otherwise a developer setting JWT_SECRET in the
+  # environment (or just having Spring resolve placeholders
+  # differently across two boots) breaks signature verification with
+  # an opaque "Invalid access token" — the gateway holds a different
+  # key than the auth-service that signed.
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+
   lifecycle:
     timeout-per-shutdown-phase: 20s
 

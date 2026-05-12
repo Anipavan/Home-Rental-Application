@@ -1,0 +1,13 @@
+# Local-dev secrets for the gateway. Active when SPRING_PROFILES_ACTIVE
+# is unset or =dev.
+#
+# These MUST match the dev-profile values on auth-service (it issues
+# the JWT) and on every downstream service that depends on auth-commons
+# (they verify the X-Internal-Auth-Sig HMAC). Same string everywhere
+# means a no-config local run boots cleanly without anyone touching
+# env vars.
+app:
+  jwt:
+    secret: CHANGE_ME_LOCAL_DEV_JWT_SECRET_PLACEHOLDER_AT_LEAST_32_BYTES_LONG_ABC
+  internal-auth:
+    secret: CHANGE_ME_LOCAL_DEV_INTERNAL_AUTH_SECRET_PLACEHOLDER_AT_LEAST_32_BYTES_LONG

@@ -2,6 +2,12 @@ spring:
   application:
     name: HRA-analytics-service
 
+  # Default to dev profile so application-dev.yaml supplies the
+  # internal-auth secret matching the gateway. Without it, downstream
+  # service-to-service Feign calls 403 with a generic HMAC mismatch.
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+
   config:
     import: optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}
 
