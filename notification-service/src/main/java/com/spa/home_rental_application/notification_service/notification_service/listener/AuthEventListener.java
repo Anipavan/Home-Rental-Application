@@ -97,25 +97,56 @@ public class AuthEventListener {
     )
     public void onPasswordReset(PasswordResetRequestedEvent e) {
         if (e == null || !"user.password.reset.requested".equals(e.getEventType())) return;
-        // Audit M1: drop decoy events emitted by AuthServiceImpl
-        // when the requested email doesn't map to a user. The decoy
-        // exists to equalize bus-signal timing (defeat enumeration);
-        // dispatching an email to an empty recipient would create a
-        // distinguishable failure pattern.
+        // Defensive: skip events with no resolvable user. After the
+        // forgot-password endpoint change (auth-service now 404s on
+        // unknown emails), we shouldn't see these, but keep the guard
+        // for safety against any future decoy-style emitter.
         if (e.getAuthUserId() == null || e.getAuthUserId().isBlank()
                 || e.getResetToken() == null || e.getResetToken().isBlank()) {
-            log.debug("Ignoring decoy password-reset event (no resolvable user).");
+            log.debug("Ignoring password-reset event with no resolvable user.");
             return;
         }
         log.info("Received {} for authUserId={}", e.getEventType(), e.getAuthUserId());
+
+        // Always log the reset link AT INFO so a developer running
+        // without SMTP configured (no spring.mail.host → no
+        // JavaMailSender bean → EmailChannelAdapter doesn't register)
+        // can still complete the flow by copying the link from the
+        // service log. In prod, a real SMTP server is configured and
+        // this log line just doubles as an audit trail.
+        String resetLink = resetLinkBaseUrl + "?token=" + e.getResetToken();
+        log.info(
+                "\n" +
+                "============================================================\n" +
+                " PASSWORD RESET LINK — copy to the user's browser if SMTP\n" +
+                " isn't wired up (the email-channel falls back to a no-op\n" +
+                " adapter when spring.mail.host is unset).\n" +
+                "   user  : {}  <{}>\n" +
+                "   token : {}\n" +
+                "   link  : {}\n" +
+                "   valid : until {}\n" +
+                "============================================================",
+                safe(e.getUserName()), safe(e.getEmail()),
+                safe(e.getResetToken()), resetLink, safe(e.getExpiresAt()));
+
         // Deliberate single-channel email. See class-level javadoc for why.
         notifications.sendFromTemplate(e.getAuthUserId(), NotificationType.EMAIL,
                 NotificationCategory.PASSWORD_RESET,
                 Map.of("userName",  safe(e.getUserName()),
                         "email",    safe(e.getEmail()),
                         "token",    safe(e.getResetToken()),
+                        "resetLink", resetLink,
                         "expiresAt",safe(e.getExpiresAt())));
     }
+
+    /**
+     * Public base URL the user's browser will hit. Defaults to the
+     * frontend dev origin; override via FRONTEND_URL env var (or
+     * app.frontend.base-url in application.yaml) for staging / prod.
+     */
+    @org.springframework.beans.factory.annotation.Value(
+            "${app.frontend.base-url:http://localhost:5173}/reset-password")
+    private String resetLinkBaseUrl;
 
     private static String safe(Object o) { return o == null ? "" : o.toString(); }
 }

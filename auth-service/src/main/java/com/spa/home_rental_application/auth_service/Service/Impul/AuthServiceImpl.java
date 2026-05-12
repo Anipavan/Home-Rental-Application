@@ -318,61 +318,42 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public void startPasswordReset(ForgotPasswordRequest req) {
-        // Audit M1: defeat email enumeration via the Kafka topic. The
-        // previous flow emitted PasswordResetRequestedEvent ONLY when
-        // the email matched a user — any consumer with read access
-        // to auth-events could enumerate registered emails by
-        // diffing request-vs-event-count.
-        //
-        // Mitigation: equalize external + event-bus behaviour.
-        //   - Real email match  → persist token + emit event with the
-        //     real reset token (consumer = notification-service sends
-        //     the email).
-        //   - No match          → emit an event with a redacted email
-        //     + dummy token + a clear discriminator flag so
-        //     notification-service can drop it silently. The event
-        //     count + timing is identical, defeating bus-level
-        //     enumeration.
-        //
-        // BUT: NotificationService listening to this event would dispatch
-        // an email to the "redacted" address — which fails noisily and
-        // creates a different signal (failure log). The cleaner fix is
-        // a dedicated server-side flag on the event that tells the
-        // consumer "ignore, this is a decoy". Done below.
+        // User explicitly requested the OPPOSITE of the M1 anti-
+        // enumeration shape: fail loudly when the email isn't on
+        // file. End-users typing a wrong address now get a clear
+        // "no account is registered with this email" toast instead
+        // of a misleading "if it's registered we sent a link" while
+        // no link ever arrives. Trade: lose the M1 privacy benefit
+        // (defeating bus-level email enumeration) in exchange for
+        // end-user clarity — the right call for the dev/early-prod
+        // phase. Flip back to the silent path later via a config
+        // flag if public exposure changes the calculus.
         var maybeUser = userRepository.findByEmailIgnoreCase(req.email());
-
-        if (maybeUser.isPresent()) {
-            var user = maybeUser.get();
-            passwordResetTokenRepository.invalidateAllForUser(user.getId());
-            String token = UUID.randomUUID().toString().replace("-", "");
-            Instant expires = Instant.now().plus(passwordResetTtlMinutes, ChronoUnit.MINUTES);
-            passwordResetTokenRepository.save(PasswordResetToken.builder()
-                    .token(token).userId(user.getId()).expiresAt(expires).used(false).build());
-
-            authEvents.sendPasswordResetRequested(PasswordResetRequestedEvent.builder()
-                    .eventType("user.password.reset.requested")
-                    .authUserId(user.getId().toString())
-                    .userName(user.getUsername())
-                    .email(user.getEmail())
-                    .resetToken(token)
-                    .expiresAt(expires)
-                    .timestamp(Instant.now())
-                    .build());
-        } else {
-            // Emit a decoy event for symmetric timing + bus signal.
-            // notification-service's AuthEventListener checks for
-            // missing/empty resetToken and skips dispatch — the row
-            // is logged for observability and discarded.
-            authEvents.sendPasswordResetRequested(PasswordResetRequestedEvent.builder()
-                    .eventType("user.password.reset.requested")
-                    .authUserId("")
-                    .userName("")
-                    .email("")
-                    .resetToken("")           // empty token = decoy
-                    .expiresAt(Instant.now())
-                    .timestamp(Instant.now())
-                    .build());
+        if (maybeUser.isEmpty()) {
+            log.info("Password-reset requested for unregistered email {}", req.email());
+            throw new AuthRecordNotFoundException(
+                    "No account is registered with this email. Double-check the address or create an account.");
         }
+
+        var user = maybeUser.get();
+        passwordResetTokenRepository.invalidateAllForUser(user.getId());
+        String token = UUID.randomUUID().toString().replace("-", "");
+        Instant expires = Instant.now().plus(passwordResetTtlMinutes, ChronoUnit.MINUTES);
+        passwordResetTokenRepository.save(PasswordResetToken.builder()
+                .token(token).userId(user.getId()).expiresAt(expires).used(false).build());
+
+        authEvents.sendPasswordResetRequested(PasswordResetRequestedEvent.builder()
+                .eventType("user.password.reset.requested")
+                .authUserId(user.getId().toString())
+                .userName(user.getUsername())
+                .email(user.getEmail())
+                .resetToken(token)
+                .expiresAt(expires)
+                .timestamp(Instant.now())
+                .build());
+
+        log.info("Password-reset token issued for userId={} email={} (link valid {}min)",
+                user.getId(), user.getEmail(), passwordResetTtlMinutes);
     }
 
     @Override

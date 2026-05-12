@@ -36,8 +36,14 @@ public class TemplateSeeder {
 
         seedIfAbsent("password-reset-email", NotificationCategory.PASSWORD_RESET, NotificationType.EMAIL,
                 "Reset your Home Rental password",
-                "Hi {{userName}},\n\nUse this token to reset your password (valid until {{expiresAt}}):\n\n  {{token}}\n\nIf you didn't request this, ignore this email.",
-                List.of("userName", "token", "expiresAt"));
+                "Hi {{userName}},\n\nWe got a request to reset the password on your Hearth account.\n\n"
+                        + "Click the link below to set a new password (valid until {{expiresAt}}):\n\n"
+                        + "  {{resetLink}}\n\n"
+                        + "If the link doesn't open, paste this token on the reset page instead:\n\n"
+                        + "  {{token}}\n\n"
+                        + "If you didn't request this, you can safely ignore this email — your "
+                        + "current password is unchanged.",
+                List.of("userName", "token", "resetLink", "expiresAt"));
 
         seedIfAbsent("payment-created-email", NotificationCategory.PAYMENT_CREATED, NotificationType.EMAIL,
                 "New invoice {{invoiceNumber}} — ₹{{amount}} due {{dueDate}}",
