@@ -112,14 +112,18 @@ public class PaymentController {
         return ResponseEntity.ok(paymentService.getPaymentsByOwner(ownerId));
     }
 
-    @Operation(summary = "List all currently overdue payments (ADMIN only)")
+    @Operation(summary = "List all currently overdue payments (ADMIN only, paginated)")
     @GetMapping("/overdue")
-    public ResponseEntity<List<PaymentResponse>> overdue() {
+    public ResponseEntity<Page<PaymentResponse>> overdue(
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            // Audit L4: cap page size — same reasoning as M11.
+            @RequestParam(defaultValue = "20") @Min(1) @jakarta.validation.constraints.Max(100) int size) {
         // Cross-tenant operational view — admins use this for collections
         // ops. Tenants/owners get their own overdue rows via the scoped
         // /tenant/{id} and /owner/{id} endpoints which filter status.
         CallerSecurity.requireAdmin();
-        return ResponseEntity.ok(paymentService.getOverduePayments());
+        Pageable pageable = PageRequest.of(page, size);
+        return ResponseEntity.ok(paymentService.getOverduePayments(pageable));
     }
 
     @Operation(summary = "Owner records a cash payment manually (owner of this payment or admin)")

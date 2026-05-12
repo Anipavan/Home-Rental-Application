@@ -21,6 +21,13 @@ public interface PaymentRepository extends JpaRepository<Payment, String> {
 
     List<Payment> findByStatus(PaymentStatus status);
 
+    /**
+     * Audit L4: paginated, deterministically-ordered status lookup
+     * for the collections-ops overdue dashboard. Oldest-overdue first
+     * mirrors the natural triage order.
+     */
+    Page<Payment> findByStatusOrderByDueDateAsc(PaymentStatus status, Pageable pageable);
+
     @Query("SELECT p FROM Payment p WHERE p.status = :status AND p.dueDate < :cutoff")
     List<Payment> findOverdueCandidates(PaymentStatus status, LocalDate cutoff);
 

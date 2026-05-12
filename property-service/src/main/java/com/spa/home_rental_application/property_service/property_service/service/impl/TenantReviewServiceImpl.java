@@ -2,7 +2,12 @@ package com.spa.home_rental_application.property_service.property_service.servic
 
 import com.spa.home_rental_application.property_service.property_service.DTO.Request.CreateTenantReviewRequest;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.TenantReviewResponseDTO;
+import com.spa.home_rental_application.property_service.property_service.Entities.Building;
+import com.spa.home_rental_application.property_service.property_service.Entities.Flat;
 import com.spa.home_rental_application.property_service.property_service.Entities.TenantReview;
+import com.spa.home_rental_application.property_service.property_service.ExceptionClass.RecordNotFoundException;
+import com.spa.home_rental_application.property_service.property_service.repository.BuildingRepo;
+import com.spa.home_rental_application.property_service.property_service.repository.FlatRepo;
 import com.spa.home_rental_application.property_service.property_service.repository.TenantReviewRepo;
 import com.spa.home_rental_application.property_service.property_service.service.TenantReviewService;
 import lombok.extern.slf4j.Slf4j;
@@ -18,14 +23,50 @@ import java.util.UUID;
 public class TenantReviewServiceImpl implements TenantReviewService {
 
     private final TenantReviewRepo repo;
+    private final FlatRepo flatRepo;
+    private final BuildingRepo buildingRepo;
 
-    public TenantReviewServiceImpl(TenantReviewRepo repo) {
+    public TenantReviewServiceImpl(TenantReviewRepo repo,
+                                   FlatRepo flatRepo,
+                                   BuildingRepo buildingRepo) {
         this.repo = repo;
+        this.flatRepo = flatRepo;
+        this.buildingRepo = buildingRepo;
     }
 
     @Override
     @Transactional
     public TenantReviewResponseDTO create(CreateTenantReviewRequest body) {
+        // Audit L2: require proof that the named tenant actually
+        // occupied (or is occupying) the named flat under the named
+        // owner. Without this, anyone could POST a 1-star review for
+        // any tenant on any flat — a real reputational-attack surface.
+        //
+        // We accept either CURRENT occupancy (the flat row still has
+        // the tenant assigned) or HISTORICAL via the lease end-date
+        // being non-null and within a sensible window. For now CURRENT
+        // is enough; historical comes when the lease-history table
+        // lands. The owner check confirms the reviewer matches the
+        // building's owner so an unrelated owner can't slander
+        // tenants on someone else's property.
+        Flat flat = flatRepo.findById(body.flatId()).orElseThrow(
+                () -> new RecordNotFoundException("Flat not found: " + body.flatId()));
+        if (Boolean.TRUE.equals(flat.getIsDeleted())) {
+            throw new RecordNotFoundException("Flat not found: " + body.flatId());
+        }
+        boolean tenantMatch = body.tenantId() != null && body.tenantId().equals(flat.getTenantId());
+        if (!tenantMatch) {
+            throw new IllegalArgumentException(
+                    "Tenant " + body.tenantId() + " is not currently the occupant of flat "
+                            + body.flatId() + " — only the assigned tenant can be reviewed.");
+        }
+        Building building = buildingRepo.findById(flat.getBuildingId()).orElse(null);
+        if (building == null || !body.ownerId().equals(building.getOwnerId())) {
+            throw new IllegalArgumentException(
+                    "Owner " + body.ownerId() + " does not own the building that flat "
+                            + body.flatId() + " belongs to — refusing the review.");
+        }
+
         LocalDateTime now = LocalDateTime.now();
         TenantReview r = TenantReview.builder()
                 .id("REV-" + UUID.randomUUID())

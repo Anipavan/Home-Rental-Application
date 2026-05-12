@@ -29,6 +29,13 @@ public interface PaymentService {
     List<PaymentResponse> getPaymentsByOwner(String ownerId);
     List<PaymentResponse> getOverduePayments();
 
+    /**
+     * Audit L4: paginated overdue listing. At catalog scale (10k+
+     * overdue rows during a payment-cycle blip) the unpaginated
+     * variant 504s; this one streams a page at a time.
+     */
+    Page<PaymentResponse> getOverduePayments(Pageable pageable);
+
     /* --- pay --- */
     InitiatePaymentResponse initiatePayment(InitiatePaymentRequest dto);
     PaymentResponse verifyPayment(VerifyPaymentRequest dto);

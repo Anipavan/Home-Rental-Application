@@ -91,11 +91,19 @@ public class JWTAuthenticationFilter implements GlobalFilter, Ordered {
                 // the new claim with a getSubject() fallback so we don't
                 // break in-flight tokens during the rollover window.
                 String fromClaim = c.get("username", String.class);
-                final String userName = (fromClaim != null && !fromClaim.isBlank())
-                        ? fromClaim
-                        : c.getSubject();
-                final String userId   = Objects.toString(c.get("uid", String.class), "");
-                final String roles    = String.join(",", JWTUtil.extractAuthorities(c));
+                final String userName = sanitizeHeader(
+                        (fromClaim != null && !fromClaim.isBlank()) ? fromClaim : c.getSubject());
+                // Audit L6: drop CR/LF/control chars from JWT claims
+                // before stamping them onto downstream request
+                // headers. JJWT verifies the signature but doesn't
+                // restrict claim content — a compromised auth-service
+                // (or a future multi-issuer world) could ship a uid
+                // claim like "123\r\nX-Admin: true" and inject extra
+                // headers downstream. sanitizeHeader is paranoid: it
+                // strips every char outside the safe printable-ASCII
+                // class and caps length at 200.
+                final String userId   = sanitizeHeader(Objects.toString(c.get("uid", String.class), ""));
+                final String roles    = sanitizeHeader(String.join(",", JWTUtil.extractAuthorities(c)));
 
                 ServerHttpRequest mutated = exchange.getRequest().mutate()
                         .headers(h -> {
@@ -174,6 +182,26 @@ public class JWTAuthenticationFilter implements GlobalFilter, Ordered {
 
     private static String escape(String s) {
         return s == null ? "" : s.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
+    /**
+     * Audit L6: drop control chars + anything outside the printable
+     * ASCII range before using a JWT claim as an HTTP header value.
+     * Reactor-Netty would itself reject a header containing CR/LF on
+     * write (with a 500) — sanitizing quietly here avoids surfacing
+     * that as a server error to the client when the cause is just a
+     * malformed token. Length-capped at 200 so a pathological claim
+     * can't bloat the header table.
+     */
+    private static String sanitizeHeader(String s) {
+        if (s == null || s.isEmpty()) return "";
+        int n = Math.min(s.length(), 200);
+        StringBuilder b = new StringBuilder(n);
+        for (int i = 0; i < n; i++) {
+            char c = s.charAt(i);
+            if (c >= 0x20 && c < 0x7F) b.append(c);     // printable ASCII only
+        }
+        return b.toString();
     }
 
     @Override

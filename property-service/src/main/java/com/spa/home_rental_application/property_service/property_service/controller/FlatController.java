@@ -113,6 +113,24 @@ public class FlatController {
             @RequestParam double lat,
             @RequestParam double lng,
             @RequestParam(defaultValue = "5.0") double radiusKm) {
+        // Audit L1: validate the inputs at the boundary. Without this,
+        // a client could pass lat=999 / lng=-999 / radiusKm=-100 and
+        // the Haversine math would happily return garbage (or, worse,
+        // the radius=Double.MAX_VALUE case would full-scan the
+        // catalog). 400 with a clear message is the right shape — the
+        // backend has no graceful fallback for nonsensical geometry.
+        if (!Double.isFinite(lat) || lat < -90.0 || lat > 90.0) {
+            throw new IllegalArgumentException(
+                    "lat must be a finite number in [-90, 90]; got " + lat);
+        }
+        if (!Double.isFinite(lng) || lng < -180.0 || lng > 180.0) {
+            throw new IllegalArgumentException(
+                    "lng must be a finite number in [-180, 180]; got " + lng);
+        }
+        if (!Double.isFinite(radiusKm) || radiusKm <= 0.0 || radiusKm > 500.0) {
+            throw new IllegalArgumentException(
+                    "radiusKm must be in (0, 500]; got " + radiusKm);
+        }
         log.info("GET /properties/flats/near lat={} lng={} radiusKm={}",
                 lat, lng, radiusKm);
         return ResponseEntity.ok(flatService.findFlatsNear(lat, lng, radiusKm));

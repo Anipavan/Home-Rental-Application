@@ -217,26 +217,23 @@ public class BuildingImpul implements BuildingService {
     @Override
     public List<BuildingResponseDTO> searchBuildings(String q, String ownerId, int limit) {
         if (q == null || q.isBlank()) return List.of();
-        String needle = q.toLowerCase().trim();
+        // Audit L3: push the filter + cap down to the DB so we don't
+        // materialize every active building only to discard most of
+        // them. The needle is lower-cased + wrapped in % here so the
+        // JPQL LIKE matches the same substring semantics the old
+        // in-memory version had.
+        String needle = "%" + q.toLowerCase().trim() + "%";
         int cap = Math.min(Math.max(limit, 1), 50);
+        org.springframework.data.domain.Pageable page =
+                org.springframework.data.domain.PageRequest.of(0, cap);
 
-        List<Building> source = (ownerId != null && !ownerId.isBlank())
-                ? building_repo.findByOwnerId(ownerId)
-                : building_repo.findAll();
+        List<Building> rows = (ownerId != null && !ownerId.isBlank())
+                ? building_repo.searchActiveByOwner(ownerId, needle, page).getContent()
+                : building_repo.searchActive(needle, page).getContent();
 
-        return source.stream()
-                .filter(b -> !Boolean.TRUE.equals(b.getIsDeleted()))
-                .filter(b -> matches(b.getBuildingName(), needle)
-                        || matches(b.getBuildingAddress(), needle)
-                        || matches(b.getBuildingCity(), needle)
-                        || matches(b.getBuildingState(), needle))
-                .limit(cap)
+        return rows.stream()
                 .map(b -> BuildingMapper.toDTO(b, flat_repo))
                 .collect(Collectors.toList());
-    }
-
-    private static boolean matches(String haystack, String needle) {
-        return haystack != null && haystack.toLowerCase().contains(needle);
     }
 
     /**

@@ -192,6 +192,15 @@ public class PaymentServiceImpl implements PaymentService {
         return paymentRepo.findByStatus(PaymentStatus.OVERDUE).stream().map(PaymentMapper::toResponse).toList();
     }
 
+    @Override
+    public Page<PaymentResponse> getOverduePayments(Pageable pageable) {
+        // Audit L4 — paginated overdue listing for the collections-ops
+        // dashboard. Oldest-overdue first mirrors the natural triage
+        // order ops actually works through.
+        return paymentRepo.findByStatusOrderByDueDateAsc(PaymentStatus.OVERDUE, pageable)
+                .map(PaymentMapper::toResponse);
+    }
+
     /* ---------------- Pay ---------------- */
 
     @Override
