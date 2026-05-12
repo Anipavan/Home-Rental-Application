@@ -40,30 +40,48 @@ export function BuildingNewPage() {
   const [pickedCity, setPickedCity] = useState<RefCityDto | null>(null);
   const [images, setImages] = useState<File[]>([]);
   const [uploadingImages, setUploadingImages] = useState(false);
+  /**
+   * Audit M26: per-file upload progress. `uploadedCount` is the
+   * number of FILES finished (each completes atomically — we don't
+   * stream individual byte counts because the underlying axios
+   * POST gives us a Promise, not progress events). `uploadedFailed`
+   * counts failures so the toast can summarize "3 of 5 uploaded".
+   */
+  const [uploadedCount, setUploadedCount] = useState(0);
+  const [uploadedFailed, setUploadedFailed] = useState(0);
 
   const createM = useMutation({
     mutationFn: propertiesApi.buildings.create,
     onSuccess: async (created) => {
       qc.invalidateQueries({ queryKey: ["my-buildings"] });
-      // Sequentially upload images — one at a time so the user sees a
-      // clean error if any single upload fails. Building stays live either way.
+      // Sequentially upload images — one at a time so a single
+      // bad upload doesn't abort the rest. Per-file outcome is
+      // recorded so the user sees real-time progress instead of a
+      // single "uploading…" spinner.
       if (images.length > 0) {
         setUploadingImages(true);
-        try {
-          for (const img of images) {
+        setUploadedCount(0);
+        setUploadedFailed(0);
+        for (const img of images) {
+          try {
             await propertiesApi.buildings.uploadImage(created.buildingId, img);
+            setUploadedCount((n) => n + 1);
+          } catch (e) {
+            setUploadedFailed((n) => n + 1);
+            // Don't abort on one bad upload — the next attempt may
+            // succeed, and the user just sees the failure count grow.
+            // We surface a summary toast at the end.
+            console.warn("Image upload failed:", e);
           }
-        } catch (e) {
+        }
+        setUploadingImages(false);
+        if (uploadedFailed > 0) {
           toast({
             variant: "destructive",
-            title: "Some images didn't upload",
-            description: extractErrorMessage(
-              e,
-              "You can add the rest from the building's detail page.",
-            ),
+            title: `${uploadedFailed} of ${images.length} images didn't upload`,
+            description:
+              "Add the rest from the building's detail page once you land there.",
           });
-        } finally {
-          setUploadingImages(false);
         }
       }
       toast({
@@ -246,13 +264,57 @@ export function BuildingNewPage() {
 
             <ImagePicker images={images} onChange={setImages} />
 
+            {/* Audit M26: live per-file progress. The image upload
+                is sequential (one POST at a time) so a count-based
+                progress is the most useful read; byte-level isn't
+                available without intercepting axios's onUploadProgress
+                per request. */}
+            {uploadingImages && images.length > 0 && (
+              <div
+                role="status"
+                aria-live="polite"
+                className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span>
+                    Uploading photo{" "}
+                    <span className="font-semibold text-foreground">
+                      {Math.min(uploadedCount + uploadedFailed + 1, images.length)}
+                    </span>{" "}
+                    of {images.length}
+                    {uploadedFailed > 0 && (
+                      <>
+                        {" · "}
+                        <span className="text-destructive font-medium">
+                          {uploadedFailed} failed
+                        </span>
+                      </>
+                    )}
+                  </span>
+                  <Loader2 className="size-3.5 animate-spin" />
+                </div>
+                <div className="mt-2 h-1 w-full overflow-hidden rounded bg-muted">
+                  <div
+                    className="h-full bg-primary transition-all"
+                    style={{
+                      width: `${Math.round(
+                        ((uploadedCount + uploadedFailed) / images.length) * 100,
+                      )}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
             <div className="flex justify-end gap-2 pt-2">
               <Button asChild variant="ghost" disabled={submitting}>
                 <Link to="/owner/buildings">Cancel</Link>
               </Button>
               <Button type="submit" variant="gradient" disabled={submitting}>
                 {submitting && <Loader2 className="size-4 animate-spin" />}
-                {uploadingImages ? "Uploading photos…" : "Add building"}
+                {uploadingImages
+                  ? `Uploading… ${uploadedCount + uploadedFailed}/${images.length}`
+                  : "Add building"}
               </Button>
             </div>
           </form>

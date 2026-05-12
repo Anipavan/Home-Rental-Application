@@ -40,6 +40,15 @@ public class Securityconfig {
             "/auth/refresh",
             "/auth/forgot-password",
             "/auth/reset-password",
+            // Audit H3 (gateway side): the gateway calls
+            // /auth/internal/tokens-revoked-before/{userId} on every
+            // request to enforce immediate logout. The call is gated
+            // by the GatewayAuthFilter (HMAC verification) so it
+            // doesn't need an additional JWT — that would actually be
+            // circular (JWT-validate path calling JWT-validate). We
+            // permit it at the Spring Security layer; HMAC is the
+            // real control.
+            "/auth/internal/**",
             "/v3/api-docs/**",
             "/swagger-ui.html",
             "/swagger-ui/**",

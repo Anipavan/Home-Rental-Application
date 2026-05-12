@@ -39,6 +39,17 @@ export function PaymentReturnPage() {
       return;
     }
 
+    // Audit M25: re-entrancy guard for the verify call. The effect
+    // re-runs on every param change (and on remounts during HMR /
+    // back-button navigation). Without a guard, a user who closes
+    // the tab mid-redirect and re-opens it can fire verify() in
+    // parallel with the gateway's webhook + the payment row's
+    // status-poll. The local `cancelled` flag drops late results so
+    // we don't overwrite a SUCCESS phase with a stale FAILED one,
+    // and the backend's idempotent webhook (C13) makes parallel
+    // verify calls safe to begin with.
+    let cancelled = false;
+
     const gatewayOrderId =
       params.get("gatewayOrderId") ?? params.get("razorpay_order_id") ?? "";
     const transactionId =
@@ -52,6 +63,7 @@ export function PaymentReturnPage() {
       paymentsApi
         .get(paymentId)
         .then((p) => {
+          if (cancelled) return;
           if (p.status === "PAID") {
             setPayment(p);
             setPhase("success");
@@ -63,15 +75,19 @@ export function PaymentReturnPage() {
           }
         })
         .catch(() => {
+          if (cancelled) return;
           setPhase("failed");
           setError("Could not verify the payment. Try again from the dashboard.");
         });
-      return;
+      return () => {
+        cancelled = true;
+      };
     }
 
     paymentGateway
       .verify({ paymentId, gatewayOrderId, transactionId, signature })
       .then((p) => {
+        if (cancelled) return;
         setPayment(p);
         if (p.status === "PAID") {
           setPhase("success");
@@ -83,9 +99,35 @@ export function PaymentReturnPage() {
         }
       })
       .catch((e) => {
-        setPhase("failed");
-        setError(extractErrorMessage(e, "Verification failed."));
+        if (cancelled) return;
+        // M25: if the webhook already settled the payment while our
+        // verify() was in flight, the verify call may 4xx/409. Fall
+        // back to a single GET — if the row is PAID, we win
+        // regardless of the verify failure.
+        paymentsApi
+          .get(paymentId)
+          .then((p) => {
+            if (cancelled) return;
+            if (p.status === "PAID") {
+              setPayment(p);
+              setPhase("success");
+              qc.invalidateQueries({ queryKey: ["payment", paymentId] });
+              qc.invalidateQueries({ queryKey: ["my-payments"] });
+              return;
+            }
+            setPhase("failed");
+            setError(extractErrorMessage(e, "Verification failed."));
+          })
+          .catch(() => {
+            if (cancelled) return;
+            setPhase("failed");
+            setError(extractErrorMessage(e, "Verification failed."));
+          });
       });
+
+    return () => {
+      cancelled = true;
+    };
   }, [paymentId, params, qc]);
 
   if (phase === "verifying") {

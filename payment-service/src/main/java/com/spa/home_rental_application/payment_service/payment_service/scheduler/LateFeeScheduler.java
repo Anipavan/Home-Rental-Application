@@ -1,10 +1,10 @@
 package com.spa.home_rental_application.payment_service.payment_service.scheduler;
 
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PaymentServiceEvents.PaymentOverdueEvent;
-import com.spa.home_rental_application.KafkaEvents.Producers.Events.PaymentServiceEvents;
 import com.spa.home_rental_application.payment_service.payment_service.entities.Payment;
 import com.spa.home_rental_application.payment_service.payment_service.enums.PaymentStatus;
 import com.spa.home_rental_application.payment_service.payment_service.repository.PaymentRepository;
+import com.spa.home_rental_application.payment_service.payment_service.service.OutboxPublisher;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -46,7 +46,7 @@ import java.util.List;
 public class LateFeeScheduler {
 
     private final PaymentRepository repo;
-    private final PaymentServiceEvents events;
+    private final OutboxPublisher outbox;
 
     /**
      * Late-fee rate per week, expressed as a percentage of the rent
@@ -65,9 +65,9 @@ public class LateFeeScheduler {
     @Value("${app.payment.late-fee.max-percent:20.0}")
     private double maxPercent;
 
-    public LateFeeScheduler(PaymentRepository repo, PaymentServiceEvents events) {
+    public LateFeeScheduler(PaymentRepository repo, OutboxPublisher outbox) {
         this.repo = repo;
-        this.events = events;
+        this.outbox = outbox;
     }
 
     /**
@@ -112,26 +112,24 @@ public class LateFeeScheduler {
             p.setTotalAmount(p.getAmount().add(newFee));
             repo.save(p);
 
-            // Best-effort Kafka emit. If broker is unreachable the
-            // scheduler logs + moves on; the next run will pick the
-            // same payment up because OVERDUE rows still match the
-            // "grow existing" pass — net effect is the same flat
-            // total but with an extra day of fee. Long-term fix is
-            // the transactional-outbox pattern (tracked separately).
-            try {
-                events.sendPaymentOverdue(PaymentOverdueEvent.builder()
-                        .eventType("payment.overdue")
-                        .paymentId(p.getId())
-                        .tenantId(p.getTenantId())
-                        .amount(p.getAmount())
-                        .lateFee(newFee)
-                        .daysOverdue(daysOverdue)
-                        .timestamp(Instant.now())
-                        .build());
-            } catch (Exception ex) {
-                log.warn("Couldn't publish payment.overdue for paymentId={}: {}",
-                        p.getId(), ex.getMessage());
-            }
+            // Audit H24: stage the event in the OUTBOX (same
+            // transaction as the OVERDUE flip), not Kafka directly.
+            // OutboxPublisher's scheduled job pushes pending rows
+            // to Kafka every 30s — if the broker is unreachable
+            // right now the row stays PENDING and the publisher
+            // retries until it lands. The audit's "Kafka down +
+            // payment flipped = silent" gap is closed: either both
+            // the state change AND the outbox row commit, or
+            // neither does.
+            outbox.stageOverdue(PaymentOverdueEvent.builder()
+                    .eventType("payment.overdue")
+                    .paymentId(p.getId())
+                    .tenantId(p.getTenantId())
+                    .amount(p.getAmount())
+                    .lateFee(newFee)
+                    .daysOverdue(daysOverdue)
+                    .timestamp(Instant.now())
+                    .build());
         }
         if (skipped > 0) {
             log.warn("LateFeeScheduler: {} payment(s) skipped due to null fields", skipped);

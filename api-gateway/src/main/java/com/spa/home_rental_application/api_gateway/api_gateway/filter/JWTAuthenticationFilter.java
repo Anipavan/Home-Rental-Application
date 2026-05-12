@@ -46,10 +46,14 @@ public class JWTAuthenticationFilter implements GlobalFilter, Ordered {
 
     private final JWTUtil jwtUtil;
     private final GatewayProperties gatewayProperties;
+    private final TokenRevocationCheck revocationCheck;
 
-    public JWTAuthenticationFilter(JWTUtil jwtUtil, GatewayProperties gatewayProperties) {
+    public JWTAuthenticationFilter(JWTUtil jwtUtil,
+                                   GatewayProperties gatewayProperties,
+                                   TokenRevocationCheck revocationCheck) {
         this.jwtUtil = jwtUtil;
         this.gatewayProperties = gatewayProperties;
+        this.revocationCheck = revocationCheck;
     }
 
     @Override
@@ -93,27 +97,40 @@ public class JWTAuthenticationFilter implements GlobalFilter, Ordered {
                 String fromClaim = c.get("username", String.class);
                 final String userName = sanitizeHeader(
                         (fromClaim != null && !fromClaim.isBlank()) ? fromClaim : c.getSubject());
-                // Audit L6: drop CR/LF/control chars from JWT claims
-                // before stamping them onto downstream request
-                // headers. JJWT verifies the signature but doesn't
-                // restrict claim content — a compromised auth-service
-                // (or a future multi-issuer world) could ship a uid
-                // claim like "123\r\nX-Admin: true" and inject extra
-                // headers downstream. sanitizeHeader is paranoid: it
-                // strips every char outside the safe printable-ASCII
-                // class and caps length at 200.
+                // Audit L6: sanitize claim values before stamping onto
+                // downstream headers (drops CR/LF + non-printable
+                // chars, caps length at 200).
                 final String userId   = sanitizeHeader(Objects.toString(c.get("uid", String.class), ""));
                 final String roles    = sanitizeHeader(String.join(",", JWTUtil.extractAuthorities(c)));
-
-                ServerHttpRequest mutated = exchange.getRequest().mutate()
-                        .headers(h -> {
-                            // Force-set so any forged client header is clobbered.
-                            h.set("X-Auth-User-Name", userName == null ? "" : userName);
-                            h.set("X-Auth-User-Id", userId);
-                            h.set("X-Auth-Roles", roles);
-                        })
-                        .build();
-                yield chain.filter(exchange.mutate().request(mutated).build());
+                // Audit H3 (gateway side): refuse if the JWT's iat is
+                // older than the user's tokens-revoked-before
+                // watermark. Server-side foundation (auth-service
+                // bump + endpoint) shipped in HIGH Phase 1; the
+                // gateway enforcement is the closing piece. We do the
+                // lookup async via WebClient + cache so the hot path
+                // stays non-blocking under WebFlux.
+                final java.util.Date iat = c.getIssuedAt();
+                yield revocationCheck.revokedBefore(userId)
+                        .flatMap(watermark -> {
+                            if (iat != null && watermark != null
+                                    && iat.toInstant().isBefore(watermark)) {
+                                log.info("JWT rejected — iat {} predates revoke watermark {} for uid={}",
+                                        iat.toInstant(), watermark, userId);
+                                return reject(exchange, HttpStatus.UNAUTHORIZED,
+                                        "Session was logged out. Please sign in again.",
+                                        "TOKEN_REVOKED",
+                                        "X-Token-Revoked", "true");
+                            }
+                            ServerHttpRequest mutated = exchange.getRequest().mutate()
+                                    .headers(h -> {
+                                        // Force-set so any forged client header is clobbered.
+                                        h.set("X-Auth-User-Name", userName == null ? "" : userName);
+                                        h.set("X-Auth-User-Id", userId);
+                                        h.set("X-Auth-Roles", roles);
+                                    })
+                                    .build();
+                            return chain.filter(exchange.mutate().request(mutated).build());
+                        });
             }
             case JWTUtil.Validation.Expired exp -> {
                 log.info("JWT expired on {}: {}", path, exp.message());
