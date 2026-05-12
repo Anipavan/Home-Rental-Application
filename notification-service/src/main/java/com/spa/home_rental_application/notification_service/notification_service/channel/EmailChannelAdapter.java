@@ -48,6 +48,24 @@ public class EmailChannelAdapter implements NotificationChannelAdapter {
     public EmailChannelAdapter(JavaMailSender mailSender, NotificationProperties props) {
         this.mailSender = mailSender;
         this.props = props;
+        // Startup banner — tells the operator at a glance whether the
+        // email channel is live. If you DON'T see this line in
+        // notification-service startup logs, the channel didn't
+        // register (no JavaMailSender bean → no spring.mail.host set
+        // → no MAIL_USERNAME/MAIL_PASSWORD env vars).
+        log.info(
+                "\n" +
+                "============================================================\n" +
+                " EMAIL channel REGISTERED — JavaMailSender wired.\n" +
+                "   fromEmail : {}\n" +
+                "   fromName  : {}\n" +
+                "   sender    : {}\n" +
+                " If outgoing mail fails, check the MAIL_USERNAME /\n" +
+                " MAIL_PASSWORD env vars and that the Gmail account has an\n" +
+                " App Password (NOT a regular login password).\n" +
+                "============================================================",
+                props.getFromEmail(), props.getFromName(),
+                mailSender.getClass().getSimpleName());
     }
 
     @Override

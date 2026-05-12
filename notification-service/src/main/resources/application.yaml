@@ -22,6 +22,32 @@ spring:
         max-interval: 5000
         max-attempts: 3
 
+  # SMTP — set MAIL_USERNAME + MAIL_PASSWORD env vars (and optionally
+  # MAIL_HOST/MAIL_PORT) to enable real email delivery. Without these
+  # env vars MailSenderAutoConfiguration won't create a JavaMailSender
+  # bean → EmailChannelAdapter doesn't register → emails fall through
+  # to NoopChannelAdapter (logs only, no real delivery).
+  #
+  # The MAIL_PASSWORD MUST be a Gmail App Password (generated at
+  # https://myaccount.google.com/apppasswords), NOT your regular Gmail
+  # login password. Gmail rejects plain-password SMTP authentication.
+  mail:
+    host:     ${MAIL_HOST:smtp.gmail.com}
+    port:     ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+          # Time out fast in dev rather than hanging the listener
+          # thread for the default 5 minutes if SMTP is unreachable.
+          connectiontimeout: 5000
+          timeout:           5000
+          writetimeout:      5000
+
   # Kafka — baseline so listeners can deserialize JSON events even when
   # Config Server is unreachable on cold start. Without this block,
   # value-deserializer defaults to StringDeserializer, the JSON payloads
@@ -100,6 +126,14 @@ app:
     enabled: ${INTERNAL_AUTH_ENABLED:true}
     secret: ${INTERNAL_AUTH_SECRET:CHANGE_ME_LOCAL_DEV_INTERNAL_AUTH_SECRET_PLACEHOLDER_AT_LEAST_32_BYTES_LONG}
     allowed-clock-skew-seconds: 60
+
+  # Notification-service runtime properties. from-email defaults to
+  # whatever MAIL_USERNAME is set to (Gmail requires the From header
+  # to match the authenticated account); falls back to the legacy
+  # fake domain if MAIL_USERNAME is unset.
+  notification:
+    from-email: ${APP_NOTIFICATION_FROM_EMAIL:${MAIL_USERNAME:no-reply@homerental.local}}
+    from-name:  ${APP_NOTIFICATION_FROM_NAME:Hearth}
 
   kafka:
     property-topic: property-events
