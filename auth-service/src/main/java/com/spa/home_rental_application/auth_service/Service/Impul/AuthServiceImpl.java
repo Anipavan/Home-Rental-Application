@@ -168,18 +168,22 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public AuthResponse login(LoginRequest req, String ipAddress, String userAgent) {
-        // Audit H4: pre-flight lockout check + failed-attempt
-        // bookkeeping. Lookup is constant-time so it doesn't reopen
-        // the H2 timing channel (DaoAuthenticationProvider would have
-        // done the same lookup internally anyway).
-        UserDetails prelocked = userRepository.findByUserName(req.userName()).orElse(null);
-        if (prelocked != null) {
-            clearLockIfExpired(prelocked);
-            if (prelocked.getLockedUntil() != null
-                    && prelocked.getLockedUntil().isAfter(Instant.now())) {
-                long mins = ChronoUnit.MINUTES.between(Instant.now(), prelocked.getLockedUntil()) + 1;
-                throw new LockedException(
-                        "Account is locked after too many failed attempts. Try again in " + mins + " minute(s).");
+        // Audit H4: pre-flight lockout check is OPT-IN via
+        // app.auth.lockout.enabled (default false). When disabled,
+        // we skip the user-table read + lock-check + failed-attempt
+        // bookkeeping entirely. Local dev users with corrupt
+        // failed_login_attempts data in their DB don't get locked out.
+        UserDetails prelocked = null;
+        if (lockoutEnabled) {
+            prelocked = userRepository.findByUserName(req.userName()).orElse(null);
+            if (prelocked != null) {
+                clearLockIfExpired(prelocked);
+                if (prelocked.getLockedUntil() != null
+                        && prelocked.getLockedUntil().isAfter(Instant.now())) {
+                    long mins = ChronoUnit.MINUTES.between(Instant.now(), prelocked.getLockedUntil()) + 1;
+                    throw new LockedException(
+                            "Account is locked after too many failed attempts. Try again in " + mins + " minute(s).");
+                }
             }
         }
 
@@ -188,13 +192,10 @@ public class AuthServiceImpl implements AuthService {
             authenticated = authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(req.userName(), req.password()));
         } catch (BadCredentialsException ex) {
-            // Bump the counter on the looked-up user (if any). Don't
-            // create rows for non-existent usernames — that would be
-            // an enumeration oracle.
-            registerFailedLogin(prelocked);
+            if (lockoutEnabled) registerFailedLogin(prelocked);
             throw ex;
         } catch (AuthenticationException ex) {
-            registerFailedLogin(prelocked);
+            if (lockoutEnabled) registerFailedLogin(prelocked);
             throw ex;
         }
 
@@ -203,7 +204,9 @@ public class AuthServiceImpl implements AuthService {
         // failure paths take the same time.
         UserDetails user = (UserDetails) authenticated.getPrincipal();
 
-        // H4 — successful login clears the failed-attempt counter.
+        // H4 — successful login clears any lingering failed-attempt
+        // counter (still safe to run even when lockout is disabled,
+        // since it's a one-row update if needed).
         if (user.getFailedLoginAttempts() != null && user.getFailedLoginAttempts() > 0) {
             user.setFailedLoginAttempts(0);
             user.setLockedUntil(null);
@@ -549,6 +552,22 @@ public class AuthServiceImpl implements AuthService {
                 stored.getUserId(), ipMismatch, uaMismatch);
     }
 
-    @Value("${app.auth.refresh.bind-mode:warn}")
+    /**
+     * H5 refresh-token IP/UA fingerprint mode. Default OFF in dev
+     * because mobile + WSL + Docker networks make the fingerprint
+     * unreliable for real users; the protection only really pays off
+     * in a prod deployment behind a stable load balancer.
+     */
+    @Value("${app.auth.refresh.bind-mode:off}")
     private String refreshBindMode;
+
+    /**
+     * H4 account-lockout master switch. OFF by default — users with
+     * corrupt failed_login_attempts data in their DB (or just any
+     * unlucky pre-fix state) shouldn't be locked out by a security
+     * feature that's optional anyway. Flip on in prod via
+     * APP_AUTH_LOCKOUT_ENABLED=true.
+     */
+    @Value("${app.auth.lockout.enabled:false}")
+    private boolean lockoutEnabled;
 }

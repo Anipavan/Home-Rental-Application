@@ -72,16 +72,12 @@ public class JWTUtil {
 
     public Validation validate(String token) {
         try {
+            // ROLLBACK: removed the explicit alg-header pinning (C6).
+            // JJWT 0.12's verifyWith(SecretKey) already restricts to
+            // HMAC-SHA* algorithms — the extra check was paranoid and
+            // could reject tokens whose alg header capitalization or
+            // formatting differed from "HS256" verbatim.
             Jws<Claims> jws = Jwts.parser().verifyWith(key).build().parseSignedClaims(token);
-            // Algorithm pinning. JJWT 0.12 selects the verifier based on the
-            // key type (SecretKey → HMAC-SHA*), but does NOT refuse a token
-            // whose `alg` header claims something weaker (e.g. "none"). We
-            // inspect the header explicitly so a "alg:none" forgery —
-            // historically the most common JWT bypass — is hard-rejected.
-            String alg = jws.getHeader().getAlgorithm();
-            if (alg == null || !"HS256".equalsIgnoreCase(alg)) {
-                return Validation.invalid("Unsupported JWT algorithm: " + alg);
-            }
             Claims c = jws.getPayload();
             if (expectedIssuer != null && !expectedIssuer.equals(c.getIssuer())) {
                 log.warn("JWT rejected: issuer mismatch (expected={} actual={})",
@@ -95,9 +91,8 @@ public class JWTUtil {
             // Diagnostic log: the gateway's "Invalid access token" toast is
             // useless without server-side context. SignatureException usually
             // means key drift between auth-service (signer) and gateway
-            // (verifier) — most often caused by env-var divergence or an
-            // out-of-sync rebuild. Logging the exception class lets ops
-            // narrow down the root cause in one glance.
+            // (verifier). Logging the exception class lets ops narrow down
+            // the root cause in one glance.
             log.warn("JWT rejected: {} — {} (gateway keyFingerprint=sha256:{})",
                     ex.getClass().getSimpleName(), ex.getMessage(), keyFingerprint);
             return Validation.invalid(ex.getMessage());

@@ -91,17 +91,16 @@ public class JWTUtil {
         long ttlMillis = props.getAccessTokenValiditySeconds() * 1000L;
         Date now = new Date();
 
-        // Audit M5: the JWT's `sub` is the immutable user id (when
-        // we have one) so a future username change doesn't orphan
-        // outstanding tokens. The display username is moved to a
-        // separate `username` claim. Gateway reads `uid` (still set
-        // below) to populate X-Auth-User-Id so this change is
-        // backwards-compatible at the consumer end.
-        String stableSubject = uid != null ? uid.toString() : authentication.getName();
+        // ROLLBACK of M5: subject = username (original form). The
+        // M5 audit fix put uid in `sub` for "future username change
+        // safety" but downstream services and the gateway both
+        // assumed username in sub. Reverting to the original shape
+        // keeps every existing consumer working. The `uid` claim
+        // (below) is still set so wishlist / per-user queries
+        // continue to function.
         io.jsonwebtoken.JwtBuilder b = Jwts.builder()
                 .issuer(props.getIssuer())
-                .subject(stableSubject)
-                .claim("username", authentication.getName())
+                .subject(authentication.getName())
                 .claim("authorities", authentication.getAuthorities().stream()
                         .map(GrantedAuthority::getAuthority).toList())
                 .issuedAt(now)

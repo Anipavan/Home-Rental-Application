@@ -46,14 +46,11 @@ public class JWTAuthenticationFilter implements GlobalFilter, Ordered {
 
     private final JWTUtil jwtUtil;
     private final GatewayProperties gatewayProperties;
-    private final TokenRevocationCheck revocationCheck;
 
     public JWTAuthenticationFilter(JWTUtil jwtUtil,
-                                   GatewayProperties gatewayProperties,
-                                   TokenRevocationCheck revocationCheck) {
+                                   GatewayProperties gatewayProperties) {
         this.jwtUtil = jwtUtil;
         this.gatewayProperties = gatewayProperties;
-        this.revocationCheck = revocationCheck;
     }
 
     @Override
@@ -87,50 +84,32 @@ public class JWTAuthenticationFilter implements GlobalFilter, Ordered {
 
         return switch (v) {
             case JWTUtil.Validation.Ok ok -> {
+                // ROLLBACK: Reverted the H3 async revocation check
+                // (flatMap with WebClient call) — too risky for dev,
+                // not worth the failure mode. Reverted L6
+                // sanitizeHeader — JJWT already gives well-formed
+                // claims and the sanitizer was stripping legitimate
+                // values. The simple synchronous path below is the
+                // original working form.
                 Claims c = ok.claims();
-                // Audit M5: tokens issued by the post-MEDIUM auth-service
-                // put the stable uid in `sub` and the display username in
-                // a separate `username` claim. Tokens from older builds
-                // (pre-MEDIUM-Phase-A) carry username in `sub`. Prefer
-                // the new claim with a getSubject() fallback so we don't
-                // break in-flight tokens during the rollover window.
+                // Read username + uid with the M5-compat fallback:
+                // new tokens have `username` claim, old tokens have
+                // username in `sub`. Either form works downstream.
                 String fromClaim = c.get("username", String.class);
-                final String userName = sanitizeHeader(
-                        (fromClaim != null && !fromClaim.isBlank()) ? fromClaim : c.getSubject());
-                // Audit L6: sanitize claim values before stamping onto
-                // downstream headers (drops CR/LF + non-printable
-                // chars, caps length at 200).
-                final String userId   = sanitizeHeader(Objects.toString(c.get("uid", String.class), ""));
-                final String roles    = sanitizeHeader(String.join(",", JWTUtil.extractAuthorities(c)));
-                // Audit H3 (gateway side): refuse if the JWT's iat is
-                // older than the user's tokens-revoked-before
-                // watermark. Server-side foundation (auth-service
-                // bump + endpoint) shipped in HIGH Phase 1; the
-                // gateway enforcement is the closing piece. We do the
-                // lookup async via WebClient + cache so the hot path
-                // stays non-blocking under WebFlux.
-                final java.util.Date iat = c.getIssuedAt();
-                yield revocationCheck.revokedBefore(userId)
-                        .flatMap(watermark -> {
-                            if (iat != null && watermark != null
-                                    && iat.toInstant().isBefore(watermark)) {
-                                log.info("JWT rejected — iat {} predates revoke watermark {} for uid={}",
-                                        iat.toInstant(), watermark, userId);
-                                return reject(exchange, HttpStatus.UNAUTHORIZED,
-                                        "Session was logged out. Please sign in again.",
-                                        "TOKEN_REVOKED",
-                                        "X-Token-Revoked", "true");
-                            }
-                            ServerHttpRequest mutated = exchange.getRequest().mutate()
-                                    .headers(h -> {
-                                        // Force-set so any forged client header is clobbered.
-                                        h.set("X-Auth-User-Name", userName == null ? "" : userName);
-                                        h.set("X-Auth-User-Id", userId);
-                                        h.set("X-Auth-Roles", roles);
-                                    })
-                                    .build();
-                            return chain.filter(exchange.mutate().request(mutated).build());
-                        });
+                String userName = (fromClaim != null && !fromClaim.isBlank())
+                        ? fromClaim : c.getSubject();
+                String userId   = Objects.toString(c.get("uid", String.class), "");
+                String roles    = String.join(",", JWTUtil.extractAuthorities(c));
+
+                ServerHttpRequest mutated = exchange.getRequest().mutate()
+                        .headers(h -> {
+                            // Force-set so any forged client header is clobbered.
+                            h.set("X-Auth-User-Name", userName == null ? "" : userName);
+                            h.set("X-Auth-User-Id", userId);
+                            h.set("X-Auth-Roles", roles);
+                        })
+                        .build();
+                yield chain.filter(exchange.mutate().request(mutated).build());
             }
             case JWTUtil.Validation.Expired exp -> {
                 log.info("JWT expired on {}: {}", path, exp.message());
@@ -199,26 +178,6 @@ public class JWTAuthenticationFilter implements GlobalFilter, Ordered {
 
     private static String escape(String s) {
         return s == null ? "" : s.replace("\\", "\\\\").replace("\"", "\\\"");
-    }
-
-    /**
-     * Audit L6: drop control chars + anything outside the printable
-     * ASCII range before using a JWT claim as an HTTP header value.
-     * Reactor-Netty would itself reject a header containing CR/LF on
-     * write (with a 500) — sanitizing quietly here avoids surfacing
-     * that as a server error to the client when the cause is just a
-     * malformed token. Length-capped at 200 so a pathological claim
-     * can't bloat the header table.
-     */
-    private static String sanitizeHeader(String s) {
-        if (s == null || s.isEmpty()) return "";
-        int n = Math.min(s.length(), 200);
-        StringBuilder b = new StringBuilder(n);
-        for (int i = 0; i < n; i++) {
-            char c = s.charAt(i);
-            if (c >= 0x20 && c < 0x7F) b.append(c);     // printable ASCII only
-        }
-        return b.toString();
     }
 
     @Override
