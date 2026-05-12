@@ -29,6 +29,26 @@ public class TemplateSeeder {
 
     @EventListener(ApplicationReadyEvent.class)
     public void seed() {
+        // ── One-time cleanup of stale seeds ──
+        // The password-reset-email body shape evolved: the original
+        // version only embedded {{token}}, the current version embeds
+        // the full {{resetLink}} (so the recipient can click straight
+        // through instead of pasting). seedIfAbsent below is a no-op
+        // when a row exists, so without this cleanup users who booted
+        // an earlier build keep getting the token-only body forever.
+        //
+        // The filter is deliberately narrow — we only delete the row
+        // when the body is missing {{resetLink}}, so an admin who
+        // edited the template via TemplateController and added the
+        // placeholder themselves is left untouched.
+        repo.findByCategoryAndType(NotificationCategory.PASSWORD_RESET, NotificationType.EMAIL)
+                .filter(t -> t.getBodyTemplate() == null
+                        || !t.getBodyTemplate().contains("{{resetLink}}"))
+                .ifPresent(t -> {
+                    log.info("Deleting stale password-reset-email template (missing resetLink placeholder) — will be re-seeded with the current body");
+                    repo.delete(t);
+                });
+
         seedIfAbsent("welcome-email", NotificationCategory.USER_REGISTRATION, NotificationType.EMAIL,
                 "Welcome to Home Rental, {{userName}}",
                 "Hi {{userName}},\n\nYour Home Rental account ({{email}}, role: {{role}}) is ready. Log in to get started.\n\n— Home Rental Team",

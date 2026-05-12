@@ -7,7 +7,6 @@ import jakarta.mail.MessagingException;
 import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeMessage;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
@@ -25,21 +24,30 @@ import java.nio.charset.StandardCharsets;
  * stack) when the stored {@code message} looks like raw text; pre-
  * rendered HTML (starts with {@code <}) passes through.
  *
- * <p>Two conditions gate this bean's registration:
- * <ul>
- *   <li>{@code app.notification.delivery-enabled} (default {@code true}).
- *       Flip to {@code false} to swap for {@link NoopChannelAdapter}.</li>
- *   <li>A {@link JavaMailSender} must already exist. Spring Boot's
- *       {@code MailSenderAutoConfiguration} only creates one when
- *       {@code spring.mail.host} is set. Without that, this adapter
- *       silently doesn't register — the dispatcher routes EMAIL
- *       deliveries to {@link NoopChannelAdapter} instead.</li>
- * </ul>
+ * <p>Registration is gated on {@code app.notification.delivery-enabled}
+ * (default {@code true}). Flip to {@code false} to swap for
+ * {@link NoopChannelAdapter}. The {@link JavaMailSender} dependency
+ * is satisfied by Spring Boot's {@code MailSenderAutoConfiguration},
+ * which always creates one because our {@code application.yaml}
+ * defaults {@code spring.mail.host} to {@code smtp.gmail.com} — so
+ * the auto-config condition always matches and constructor injection
+ * always succeeds.
+ *
+ * <p><b>History:</b> this used to also have
+ * {@code @ConditionalOnBean(JavaMailSender.class)} as a second gate,
+ * but that's a known Spring Boot gotcha — {@code @ConditionalOnBean}
+ * on user-defined {@code @Component} classes evaluates BEFORE
+ * auto-configurations run, so the JavaMailSender bean wasn't yet in
+ * the context when the condition checked, and the adapter silently
+ * failed to register. The Spring Boot docs explicitly warn against
+ * this pattern. Removed in favour of relying on constructor injection
+ * (Spring will throw a loud "no bean found" error at startup if
+ * {@code spring.mail.host} is somehow unset, which is much easier to
+ * debug than the silent "fall through to noop" we used to have).
  */
 @Component
 @Slf4j
 @ConditionalOnProperty(prefix = "app.notification", name = "delivery-enabled", havingValue = "true", matchIfMissing = true)
-@ConditionalOnBean(JavaMailSender.class)
 public class EmailChannelAdapter implements NotificationChannelAdapter {
 
     private final JavaMailSender mailSender;
