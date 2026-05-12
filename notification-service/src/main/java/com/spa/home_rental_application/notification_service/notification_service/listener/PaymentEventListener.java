@@ -90,10 +90,18 @@ public class PaymentEventListener {
     public void onReminder(PaymentReminderEvent e) {
         if (e == null || !"payment.reminder".equals(e.getEventType())) return;
         log.info("Received {} for paymentId={}", e.getEventType(), e.getPaymentId());
+        // NOTE: PaymentReminderEvent doesn't carry the rent amount today
+        // (it only ships daysUntilDue + paymentId). The existing
+        // payment-reminder-sms template references {{amount}} too —
+        // that's a pre-existing template/event-shape mismatch; Mustache
+        // renders the missing var as an empty string so the SMS reads
+        // "Hearth: rent ₹ due in 5d." which is ugly but not broken.
+        // Proper fix is to add `amount` to PaymentReminderEvent at the
+        // producer side (payment-service); deferred to keep this change
+        // surgical.
         notifications.fanOut(e.getTenantId(),
                 NotificationCategory.PAYMENT_REMINDER,
-                Map.of("daysUntilDue", safe(e.getDaysUntilDue()),
-                        "amount",     safe(e.getAmount())));
+                Map.of("daysUntilDue", safe(e.getDaysUntilDue())));
     }
 
     private static String safe(Object o) { return o == null ? "" : o.toString(); }
