@@ -1,0 +1,9 @@
+# Local-dev secrets — match the canonical dev placeholder used by every
+# other service so the gateway's HMAC + JWT signatures verify cleanly.
+spring:
+  datasource:
+    password: Pavan@123
+
+app:
+  internal-auth:
+    secret: CHANGE_ME_LOCAL_DEV_INTERNAL_AUTH_SECRET_PLACEHOLDER_AT_LEAST_32_BYTES_LONG

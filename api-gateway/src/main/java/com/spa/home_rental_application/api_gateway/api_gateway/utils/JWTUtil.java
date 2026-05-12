@@ -7,11 +7,14 @@ import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Base64;
+import java.util.HexFormat;
 import java.util.List;
 
 /**
@@ -22,10 +25,18 @@ import java.util.List;
  * and "malformed/invalid" (→ client must re-login).
  */
 @Component
+@Slf4j
 public class JWTUtil {
 
     private final SecretKey key;
     private final String expectedIssuer;
+    /**
+     * SHA-256 of the secret bytes, hex-encoded. Logged at startup so an
+     * operator can compare the gateway's key against auth-service's
+     * (auth-service emits the same hash). Logs ONLY the hash, never
+     * the secret itself.
+     */
+    private final String keyFingerprint;
 
     public JWTUtil(JwtProperties props) {
         if (props.getSecret() == null || props.getSecret().isBlank()) {
@@ -42,6 +53,21 @@ public class JWTUtil {
         }
         this.key = Keys.hmacShaKeyFor(bytes);
         this.expectedIssuer = props.getIssuer();
+        this.keyFingerprint = fingerprint(bytes);
+        log.info("JWTUtil initialised: expectedIssuer={} keyFingerprint=sha256:{} keyBytes={}",
+                expectedIssuer, keyFingerprint, bytes.length);
+    }
+
+    private static String fingerprint(byte[] bytes) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] h = md.digest(bytes);
+            // First 8 bytes = 16 hex chars — enough to compare visually,
+            // not enough to brute the key.
+            return HexFormat.of().formatHex(h, 0, 8);
+        } catch (Exception ex) {
+            return "unavailable";
+        }
     }
 
     public Validation validate(String token) {
@@ -58,12 +84,22 @@ public class JWTUtil {
             }
             Claims c = jws.getPayload();
             if (expectedIssuer != null && !expectedIssuer.equals(c.getIssuer())) {
+                log.warn("JWT rejected: issuer mismatch (expected={} actual={})",
+                        expectedIssuer, c.getIssuer());
                 return Validation.invalid("Issuer mismatch");
             }
             return Validation.ok(c);
         } catch (ExpiredJwtException ex) {
             return Validation.expired(ex.getMessage());
         } catch (JwtException ex) {
+            // Diagnostic log: the gateway's "Invalid access token" toast is
+            // useless without server-side context. SignatureException usually
+            // means key drift between auth-service (signer) and gateway
+            // (verifier) — most often caused by env-var divergence or an
+            // out-of-sync rebuild. Logging the exception class lets ops
+            // narrow down the root cause in one glance.
+            log.warn("JWT rejected: {} — {} (gateway keyFingerprint=sha256:{})",
+                    ex.getClass().getSimpleName(), ex.getMessage(), keyFingerprint);
             return Validation.invalid(ex.getMessage());
         }
     }

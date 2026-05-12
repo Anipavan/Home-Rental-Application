@@ -6,14 +6,17 @@ import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Base64;
 import java.util.Date;
+import java.util.HexFormat;
 import java.util.List;
 
 /**
@@ -21,6 +24,7 @@ import java.util.List;
  * Provides generation, signature/expiry validation, and claim extraction.
  */
 @Component
+@Slf4j
 public class JWTUtil {
 
     private final JwtProperties props;
@@ -42,6 +46,18 @@ public class JWTUtil {
             throw new IllegalStateException("JWT secret must be at least 256 bits (32 bytes) once decoded");
         }
         this.key = Keys.hmacShaKeyFor(keyBytes);
+        // Log the SHA-256 fingerprint of the signing key so it can be
+        // compared with the gateway's verifying fingerprint. Identical
+        // hashes = same byte material = signatures will verify. Mismatch
+        // is the #1 source of "Invalid access token" toasts.
+        String fp = "unavailable";
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] h = md.digest(keyBytes);
+            fp = HexFormat.of().formatHex(h, 0, 8);
+        } catch (Exception ignored) { /* */ }
+        log.info("auth-service JWTUtil initialised: issuer={} keyFingerprint=sha256:{} keyBytes={}",
+                props.getIssuer(), fp, keyBytes.length);
     }
 
     /**
