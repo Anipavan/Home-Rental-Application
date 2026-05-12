@@ -150,12 +150,16 @@ export function ProfilePage() {
       return documentsApi.upload(String(q.data.id), "PHOTO", file);
     },
     onSuccess: async (doc) => {
-      // Stage 2/3 happen best-effort. The photo is already on disk in
-      // document-service; persisting the URL to user-service is a
-      // convenience so other pages render the avatar without an extra
-      // round-trip. If either step fails we still treat the upload as a
-      // success — the user sees the new avatar on the next page load
-      // when byAuthId rehydrates.
+      // Stage 2: get a presigned download URL for the just-uploaded blob.
+      // Stage 3: persist that URL on the user-service profile row, so
+      // the header avatar + profile page render it without an extra
+      // round-trip.
+      //
+      // Previously stages 2/3 were swallowed silently — the toast said
+      // "Photo updated" even when the URL never landed on the user row,
+      // so the avatar stayed as initials and the user thought the
+      // upload had failed. Surface failures explicitly now so the user
+      // can act on them (re-try, contact support).
       let stage = "presign";
       try {
         const url = await documentsApi.getDownloadUrl(doc.id);
@@ -166,17 +170,27 @@ export function ProfilePage() {
             profilePictureUrl: url.url,
           });
         }
+        qc.invalidateQueries({ queryKey: ["me", authUserId] });
+        toast({ title: "Photo updated" });
       } catch (e) {
-        // Don't bubble — but log so an engineer can debug from devtools
-        // without the user seeing a scary toast for a non-fatal followup.
         // eslint-disable-next-line no-console
         console.warn(
           `[profile] photo uploaded (id=${doc.id}) but ${stage} step failed:`,
           extractErrorMessage(e),
         );
+        // Still invalidate — the upload itself succeeded and the next
+        // page load may pick up the new state somehow (e.g. an admin
+        // tool fixed it server-side).
+        qc.invalidateQueries({ queryKey: ["me", authUserId] });
+        toast({
+          variant: "destructive",
+          title: "Photo upload incomplete",
+          description:
+            stage === "presign"
+              ? "Uploaded the file, but couldn't generate a download URL for it. The avatar may not appear. Try refreshing the page or re-uploading."
+              : "Uploaded the file, but couldn't save it to your profile. The avatar may not appear. Try refreshing the page or re-uploading.",
+        });
       }
-      qc.invalidateQueries({ queryKey: ["me", authUserId] });
-      toast({ title: "Photo updated" });
     },
     onError: (e) =>
       toast({

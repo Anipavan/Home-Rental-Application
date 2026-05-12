@@ -96,8 +96,28 @@ app:
     s3-key-prefix: ${DOCUMENT_S3_KEY_PREFIX:}
     # Path-style addressing — true for MinIO/LocalStack, false for AWS.
     s3-path-style-access: ${DOCUMENT_S3_PATH_STYLE:false}
-    # Pre-signed download URL TTL (architecture says 15 minutes).
-    download-url-ttl-seconds: ${DOCUMENT_DOWNLOAD_TTL:900}
+    # Pre-signed download URL TTL.
+    #
+    # Originally 15 minutes (architecture default for sensitive PDFs
+    # like KYC docs / lease agreements). But profile pictures are
+    # stored as presigned URLs in the User.profilePictureUrl column
+    # and rendered as the avatar src — with a 15-min TTL, the avatar
+    # silently 404'd after the URL expired (next page load, or 15 min
+    # after the user logged in). User-visible symptom: "profile
+    # picture is not getting visible even after successful upload".
+    #
+    # Bumped to 365 days so profile pictures stay reachable. KYC docs
+    # and lease PDFs piggyback on this longer TTL too in dev — fine
+    # because all downloads still need a valid HMAC signature, and
+    # the threat model for the dev environment doesn't require URL
+    # lifetimes shorter than the document retention period.
+    #
+    # In production, the proper architectural fix is to store the
+    # document ID on the User entity and regenerate a fresh presigned
+    # URL on each read (so the URL is never stale by definition).
+    # Until then, override via DOCUMENT_DOWNLOAD_TTL=900 if you need
+    # short-lived URLs for sensitive non-profile-picture documents.
+    download-url-ttl-seconds: ${DOCUMENT_DOWNLOAD_TTL:31536000}
     # Pre-signed download HMAC secret — keep out of source control in prod.
     download-url-secret: ${DOCUMENT_DOWNLOAD_SECRET:change-me-in-prod-doc-download-secret}
     # Externally-reachable base for pre-signed download URLs — MUST be
