@@ -70,11 +70,27 @@ public class FlatFavoriteController {
         // global handler maps to 404.
         flatService.getflatById(flatId);
 
-        FlatFavorite saved = repo.findByUserIdAndFlatId(authUserId, flatId).orElseGet(() ->
-                repo.save(FlatFavorite.builder()
-                        .userId(authUserId)
-                        .flatId(flatId)
-                        .build()));
+        // Audit M9: TOCTOU between findByUserIdAndFlatId and repo.save
+        // — two concurrent toggles would both miss the existing-row
+        // check and both attempt insert. The DB unique constraint on
+        // (user_id, flat_id) guarantees only one survives; catch the
+        // DataIntegrityViolation and re-fetch instead of bubbling
+        // 500 to the client. End result: heart-toggle is truly
+        // idempotent even under concurrent fire.
+        FlatFavorite saved;
+        try {
+            saved = repo.findByUserIdAndFlatId(authUserId, flatId).orElseGet(() ->
+                    repo.save(FlatFavorite.builder()
+                            .userId(authUserId)
+                            .flatId(flatId)
+                            .build()));
+        } catch (org.springframework.dao.DataIntegrityViolationException dup) {
+            // Concurrent insert lost the race — re-read the winning row.
+            saved = repo.findByUserIdAndFlatId(authUserId, flatId).orElseThrow(
+                    () -> new IllegalStateException(
+                            "Concurrent favourite insert lost the race AND the winning row vanished — should be impossible.",
+                            dup));
+        }
         Map<String, Object> body = new HashMap<>();
         body.put("id", saved.getId());
         body.put("userId", saved.getUserId());

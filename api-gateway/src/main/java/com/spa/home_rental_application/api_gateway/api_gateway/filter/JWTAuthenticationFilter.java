@@ -84,9 +84,18 @@ public class JWTAuthenticationFilter implements GlobalFilter, Ordered {
         return switch (v) {
             case JWTUtil.Validation.Ok ok -> {
                 Claims c = ok.claims();
-                String userName = c.getSubject();
-                String userId   = Objects.toString(c.get("uid", String.class), "");
-                String roles    = String.join(",", JWTUtil.extractAuthorities(c));
+                // Audit M5: tokens issued by the post-MEDIUM auth-service
+                // put the stable uid in `sub` and the display username in
+                // a separate `username` claim. Tokens from older builds
+                // (pre-MEDIUM-Phase-A) carry username in `sub`. Prefer
+                // the new claim with a getSubject() fallback so we don't
+                // break in-flight tokens during the rollover window.
+                String fromClaim = c.get("username", String.class);
+                final String userName = (fromClaim != null && !fromClaim.isBlank())
+                        ? fromClaim
+                        : c.getSubject();
+                final String userId   = Objects.toString(c.get("uid", String.class), "");
+                final String roles    = String.join(",", JWTUtil.extractAuthorities(c));
 
                 ServerHttpRequest mutated = exchange.getRequest().mutate()
                         .headers(h -> {

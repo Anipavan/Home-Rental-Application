@@ -57,14 +57,25 @@ public class PaymentController {
 
     @Operation(summary = "Create a payment record manually (ADMIN only — owners use the scheduler-fed flow)")
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<PaymentResponse> create(@Valid @RequestBody CreatePaymentRequest body) {
+    public ResponseEntity<PaymentResponse> create(
+            @Valid @RequestBody CreatePaymentRequest body,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
         // Manual creation is an admin path — tenants must never be able
         // to mint a payment for themselves (would let them forge a
         // "PAID" record with zero gateway capture). Owners' rent-cycle
         // payments are created by PaymentSchedulerJob, not this endpoint.
         CallerSecurity.requireAdmin();
-        log.info("POST /payments tenant={} flat={} amount={}", body.tenantId(), body.flatId(), body.amount());
-        return ResponseEntity.status(HttpStatus.CREATED).body(paymentService.createPayment(body));
+        // Audit M13: honour the optional Idempotency-Key header
+        // (Stripe convention). Naive client retry mid-network-flap
+        // would otherwise create duplicate Payment rows for the same
+        // tenant + flat + dueDate. With the key, the service either
+        // returns the previously-created Payment or generates a new
+        // one + remembers the key.
+        log.info("POST /payments tenant={} flat={} amount={} idempotencyKey={}",
+                body.tenantId(), body.flatId(), body.amount(),
+                idempotencyKey == null ? "-" : "set");
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(paymentService.createPayment(body, idempotencyKey));
     }
 
     @Operation(summary = "List all payments (ADMIN only, paginated)")

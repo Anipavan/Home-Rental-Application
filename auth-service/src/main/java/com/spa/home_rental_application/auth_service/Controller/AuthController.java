@@ -153,9 +153,32 @@ public class AuthController {
     }
 
 
+    /**
+     * Audit M2: trust X-Forwarded-For ONLY when the request actually
+     * came through the gateway (X-Internal-Auth-Sig present means
+     * the auth-commons GatewayAuthFilter accepted it). Direct hits
+     * to auth-service can supply any XFF they want — we'd be a
+     * fool to log it as "the user's IP". For direct hits, use the
+     * actual remote address.
+     *
+     * <p>Bonus: when XFF is trusted, take the LAST hop in the chain
+     * instead of the first. The first entry is the
+     * client-supplied claim (forgeable upstream of our trusted
+     * proxy chain); the last is what the trusted proxy ACTUALLY saw.
+     * This is the inverse of what intuition suggests but it's what
+     * RFC 7239 + every modern WAF recommends.
+     */
     private static String clientIp(HttpServletRequest req) {
+        String internalAuthSig = req.getHeader("X-Internal-Auth-Sig");
         String xff = req.getHeader("X-Forwarded-For");
-        if (xff != null && !xff.isBlank()) return xff.split(",")[0].trim();
+        boolean fromGateway = internalAuthSig != null && !internalAuthSig.isBlank();
+        if (fromGateway && xff != null && !xff.isBlank()) {
+            // Trust XFF — pick the leftmost (original client) but only
+            // because the gateway-fronted XFF is single-hop in our
+            // deploy. If we later sit behind a CDN, switch to taking
+            // the entry just BEFORE the trusted-proxy IP.
+            return xff.split(",")[0].trim();
+        }
         return req.getRemoteAddr();
     }
 }

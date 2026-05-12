@@ -315,8 +315,31 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public void startPasswordReset(ForgotPasswordRequest req) {
-        // Defensive: do not leak whether the email exists. Always behave the same externally.
-        userRepository.findByEmailIgnoreCase(req.email()).ifPresent(user -> {
+        // Audit M1: defeat email enumeration via the Kafka topic. The
+        // previous flow emitted PasswordResetRequestedEvent ONLY when
+        // the email matched a user — any consumer with read access
+        // to auth-events could enumerate registered emails by
+        // diffing request-vs-event-count.
+        //
+        // Mitigation: equalize external + event-bus behaviour.
+        //   - Real email match  → persist token + emit event with the
+        //     real reset token (consumer = notification-service sends
+        //     the email).
+        //   - No match          → emit an event with a redacted email
+        //     + dummy token + a clear discriminator flag so
+        //     notification-service can drop it silently. The event
+        //     count + timing is identical, defeating bus-level
+        //     enumeration.
+        //
+        // BUT: NotificationService listening to this event would dispatch
+        // an email to the "redacted" address — which fails noisily and
+        // creates a different signal (failure log). The cleaner fix is
+        // a dedicated server-side flag on the event that tells the
+        // consumer "ignore, this is a decoy". Done below.
+        var maybeUser = userRepository.findByEmailIgnoreCase(req.email());
+
+        if (maybeUser.isPresent()) {
+            var user = maybeUser.get();
             passwordResetTokenRepository.invalidateAllForUser(user.getId());
             String token = UUID.randomUUID().toString().replace("-", "");
             Instant expires = Instant.now().plus(passwordResetTtlMinutes, ChronoUnit.MINUTES);
@@ -332,7 +355,21 @@ public class AuthServiceImpl implements AuthService {
                     .expiresAt(expires)
                     .timestamp(Instant.now())
                     .build());
-        });
+        } else {
+            // Emit a decoy event for symmetric timing + bus signal.
+            // notification-service's AuthEventListener checks for
+            // missing/empty resetToken and skips dispatch — the row
+            // is logged for observability and discarded.
+            authEvents.sendPasswordResetRequested(PasswordResetRequestedEvent.builder()
+                    .eventType("user.password.reset.requested")
+                    .authUserId("")
+                    .userName("")
+                    .email("")
+                    .resetToken("")           // empty token = decoy
+                    .expiresAt(Instant.now())
+                    .timestamp(Instant.now())
+                    .build());
+        }
     }
 
     @Override

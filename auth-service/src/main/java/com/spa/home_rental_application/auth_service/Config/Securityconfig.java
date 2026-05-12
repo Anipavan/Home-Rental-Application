@@ -87,9 +87,22 @@ public class Securityconfig {
         return http.build();
     }
 
+    /**
+     * Audit M4: BCrypt cost factor pinned to 12. Default is 10 — fine
+     * for legacy use but the modern recommendation (and OWASP 2023+)
+     * is 12 on commodity hardware. The bump roughly quadruples
+     * hash-time (~100ms → ~400ms on a typical container CPU) which
+     * is imperceptible during real logins but quadruples the cost
+     * of an offline brute-force run against a leaked DB.
+     *
+     * <p>Existing hashes are forward-compatible: BCrypt embeds the
+     * cost factor in the stored hash, so old-cost passwords still
+     * validate. They'll be re-hashed at the next successful login
+     * via a separate upgrade hook (tracked).
+     */
     @Bean
     public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
+        return new BCryptPasswordEncoder(12);
     }
 
     @Bean

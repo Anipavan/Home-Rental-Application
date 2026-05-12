@@ -226,11 +226,17 @@ public class NotificationService {
         String subject = subjectOverride;
         String body    = messageOverride;
         if ((subject == null || body == null) && category != null) {
-            // Render from template
+            // Render from template. M19: HTML-escape variable
+            // substitutions when rendering for the EMAIL channel so
+            // user-supplied template inputs can't inject HTML/JS into
+            // the rendered message. SMS / WhatsApp / INAPP / PUSH
+            // render as plain text so escaping is unnecessary (and
+            // would surface as visible &amp; entities).
+            boolean htmlEscape = (type == NotificationType.EMAIL);
             try {
                 NotificationTemplate tmpl = templateService.findOrThrow(category, type);
-                if (subject == null) subject = templateService.render(tmpl.getSubject(), vars);
-                if (body == null)    body    = templateService.render(tmpl.getBodyTemplate(), vars);
+                if (subject == null) subject = templateService.render(tmpl.getSubject(), vars, htmlEscape);
+                if (body == null)    body    = templateService.render(tmpl.getBodyTemplate(), vars, htmlEscape);
             } catch (Exception ex) {
                 log.warn("Template lookup failed for category={} type={}: {}", category, type, ex.getMessage());
                 // Fall back to a generic message so the user still hears about it.

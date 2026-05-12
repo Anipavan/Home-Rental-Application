@@ -66,6 +66,23 @@ public class TemplateService {
     }
 
     public String render(String template, Map<String, Object> vars) {
+        return render(template, vars, false);
+    }
+
+    /**
+     * Audit M19: HTML-escape variable substitutions when the template
+     * is being rendered for the EMAIL channel. SMS / WhatsApp / INAPP
+     * still get raw values (those channels render as plain text;
+     * escaping there would surface visible {@code &amp;amp;} sequences).
+     *
+     * <p>Without escaping, a template variable carrying user input
+     * (e.g. a complaint description) could inject {@code &lt;script&gt;}
+     * into the email HTML. Outlook + Gmail clients sandbox script
+     * execution, but other clients (and the in-app email preview)
+     * don't necessarily — and an enterprising attacker could still
+     * use it for credible-looking phishing.
+     */
+    public String render(String template, Map<String, Object> vars, boolean htmlEscape) {
         if (template == null) return "";
         if (vars == null) vars = Map.of();
         // Pass 1: resolve sections. Iterate until no more matches so
@@ -95,13 +112,33 @@ public class TemplateService {
         while (m.find()) {
             String key = m.group(1);
             Object value = vars.get(key);
-            String replacement = value == null
-                    ? "[" + key + "]"
-                    : Matcher.quoteReplacement(value.toString());
-            m.appendReplacement(out, replacement);
+            String rendered = value == null ? "[" + key + "]" : value.toString();
+            if (htmlEscape) rendered = escapeHtml(rendered);
+            m.appendReplacement(out, Matcher.quoteReplacement(rendered));
         }
         m.appendTail(out);
         return out.toString();
+    }
+
+    /**
+     * Minimal HTML escape — covers the five reserved chars
+     * (&amp; &lt; &gt; &quot; &#39;). Avoids the full Apache Commons
+     * dep for a five-line escape that's been correct since HTML 4.01.
+     */
+    private static String escapeHtml(String s) {
+        StringBuilder b = new StringBuilder(s.length() + 16);
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '&'  -> b.append("&amp;");
+                case '<'  -> b.append("&lt;");
+                case '>'  -> b.append("&gt;");
+                case '"'  -> b.append("&quot;");
+                case '\'' -> b.append("&#39;");
+                default   -> b.append(c);
+            }
+        }
+        return b.toString();
     }
 
     /**

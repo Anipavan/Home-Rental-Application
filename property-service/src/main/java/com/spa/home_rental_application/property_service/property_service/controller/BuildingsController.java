@@ -36,7 +36,10 @@ public class BuildingsController {
     @GetMapping("/buildings")
     public ResponseEntity<Page<BuildingResponseDTO>> getAllBuildings(
             @RequestParam(defaultValue = "0") @Min(0) int page,
-            @RequestParam(defaultValue = "10") @Min(1) int size) {
+            // Audit M11: cap page size at 100. Without this an
+            // attacker (or buggy client) can request ?size=999999 and
+            // force a multi-MB payload + full-table scan.
+            @RequestParam(defaultValue = "10") @Min(1) @jakarta.validation.constraints.Max(100) int size) {
         log.info("GET /properties/buildings page={} size={}", page, size);
         Pageable pageable = PageRequest.of(page, size);
         return ResponseEntity.ok().body(building_service.getBuildings(pageable));

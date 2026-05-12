@@ -13,7 +13,9 @@ import java.time.Instant;
 @Entity
 @Table(name = "refresh_tokens", indexes = {
         @Index(name = "idx_refresh_tokens_token", columnList = "token", unique = true),
-        @Index(name = "idx_refresh_tokens_user", columnList = "user_id")
+        @Index(name = "idx_refresh_tokens_user", columnList = "user_id"),
+        // Audit M3: ranged-scan support for the janitor's expiry sweep.
+        @Index(name = "idx_refresh_tokens_expires", columnList = "expires_at")
 })
 @Getter
 @Setter

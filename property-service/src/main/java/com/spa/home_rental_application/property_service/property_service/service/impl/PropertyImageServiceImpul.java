@@ -111,16 +111,14 @@ public class PropertyImageServiceImpul implements PropertyImageService {
             // Already cover — no-op.
             return PropertyImageMapper.toDTO(target);
         }
-        // Unset the previous cover(s) on the same property, then
-        // promote the new one. Doing this in a single transaction
-        // means a viewer never sees a moment with zero covers.
-        List<PropertyImage> siblings = repo.findByPropertyId(target.getPropertyId());
-        for (PropertyImage s : siblings) {
-            if (Boolean.TRUE.equals(s.getIsCover()) && !s.getId().equals(imageId)) {
-                s.setIsCover(false);
-                repo.save(s);
-            }
-        }
+        // Audit M10: collapse the unset-then-set sequence into a
+        // single batched UPDATE so the transaction holds at most one
+        // row lock per affected row in one atomic step. The previous
+        // per-row loop opened a window where two concurrent setCover
+        // calls each saw "isCover=true" on the OTHER's target and
+        // unset it — leaving the property with TWO covers. Doing the
+        // bulk unset in one query closes that race.
+        repo.unsetCoverForProperty(target.getPropertyId(), imageId);
         target.setIsCover(true);
         // Cover also gets the lowest sortOrder so it stays first if
         // the owner later toggles cover off without reordering.

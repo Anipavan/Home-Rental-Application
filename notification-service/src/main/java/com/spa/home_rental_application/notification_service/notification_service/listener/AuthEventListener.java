@@ -97,6 +97,16 @@ public class AuthEventListener {
     )
     public void onPasswordReset(PasswordResetRequestedEvent e) {
         if (e == null || !"user.password.reset.requested".equals(e.getEventType())) return;
+        // Audit M1: drop decoy events emitted by AuthServiceImpl
+        // when the requested email doesn't map to a user. The decoy
+        // exists to equalize bus-signal timing (defeat enumeration);
+        // dispatching an email to an empty recipient would create a
+        // distinguishable failure pattern.
+        if (e.getAuthUserId() == null || e.getAuthUserId().isBlank()
+                || e.getResetToken() == null || e.getResetToken().isBlank()) {
+            log.debug("Ignoring decoy password-reset event (no resolvable user).");
+            return;
+        }
         log.info("Received {} for authUserId={}", e.getEventType(), e.getAuthUserId());
         // Deliberate single-channel email. See class-level javadoc for why.
         notifications.sendFromTemplate(e.getAuthUserId(), NotificationType.EMAIL,

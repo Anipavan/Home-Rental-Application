@@ -74,10 +74,17 @@ public class SavedSearchController {
     @Operation(summary = "List the current user's saved searches, newest first")
     @GetMapping
     public ResponseEntity<List<SavedSearchResponse>> list(
-            @RequestHeader(AUTH_USER_ID_HEADER) String authUserId) {
+            @RequestHeader(AUTH_USER_ID_HEADER) String authUserId,
+            @RequestParam(name = "includeInactive", defaultValue = "false") boolean includeInactive) {
         requireAuth(authUserId);
+        // Audit M7: active-only by default. The manage page wants to
+        // see paused alerts too — it passes ?includeInactive=true so
+        // the user can resume them. Default-active matches the
+        // "your alerts" mental model better than "everything you've
+        // ever saved".
         return ResponseEntity.ok(
                 repo.findByUserIdOrderByCreatedAtDesc(authUserId).stream()
+                        .filter(s -> includeInactive || Boolean.TRUE.equals(s.getIsActive()))
                         .map(SavedSearchController::toResponse)
                         .toList());
     }

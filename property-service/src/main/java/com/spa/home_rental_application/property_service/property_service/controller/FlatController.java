@@ -43,7 +43,8 @@ public class FlatController {
     @GetMapping("/flats")
     public ResponseEntity<Page<FlatResponseDTO>> getAllFlats(
             @RequestParam(defaultValue = "0") @Min(0) int page,
-            @RequestParam(defaultValue = "10") @Min(1) int size) {
+            // M11: cap size at 100 to defang ?size=99999 DoS.
+            @RequestParam(defaultValue = "10") @Min(1) @jakarta.validation.constraints.Max(100) int size) {
         log.info("GET /properties/flats page={} size={}", page, size);
         Pageable pageable = PageRequest.of(page, size);
         return ResponseEntity.ok(flatService.getAllFlats(pageable));

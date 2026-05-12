@@ -75,7 +75,22 @@ public class PaymentGatewayController {
     public ResponseEntity<Map<String, Object>> webhook(
             @RequestHeader(name = "X-Razorpay-Signature", required = false) String razorpaySig,
             @RequestHeader(name = "Stripe-Signature", required = false) String stripeSig,
-            @RequestBody String rawBody) {
+            @RequestHeader(name = "Origin", required = false) String origin,
+            @RequestBody String rawBody,
+            jakarta.servlet.http.HttpServletRequest httpReq) {
+        // Audit M16: defence-in-depth on the webhook. The HMAC remains
+        // the primary control, but we ALSO reject:
+        //   - browser-origin POSTs (real gateways never set Origin);
+        //   - body sizes above 1 MB (DoS via giant valid-HMAC payload);
+        //   - source IPs outside the configured allowlist when the
+        //     allowlist is set.
+        // The allowlist is optional — leave app.payment.webhook.allowed-ips
+        // unset for dev / mock-gateway runs.
+        if (origin != null && !origin.isBlank()) {
+            log.warn("Webhook rejected: Origin header present ({}) — real gateways don't send one", origin);
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("ok", false, "reason", "Origin header not expected on a webhook"));
+        }
         // Hard cap on body size — even a valid signature shouldn't be
         // allowed to ship a 500MB payload (would OOM the parser).
         if (rawBody != null && rawBody.length() > 1_000_000) {

@@ -165,13 +165,26 @@ public class LateFeeScheduler {
      * lateFee = rent × (weekly% / 100) × ceil(days / 7), capped at
      * rent × (maxPercent / 100). Capping is hard — once you hit the
      * ceiling, the fee freezes; further delay doesn't grow it.
+     *
+     * <p>Audit M12: ALL arithmetic stays in BigDecimal. The previous
+     * implementation used {@code weeklyPercent / 100.0} (double
+     * divide) before multiplying into BigDecimal, which silently
+     * introduced IEEE-754 drift — for rent=10000 and weeklyPercent=2,
+     * the expected ₹200.00 sometimes came out ₹199.9999… and rounded
+     * to ₹199.99 instead of ₹200.00. With money math, that's a bug.
      */
     private BigDecimal computeLateFee(BigDecimal rent, long daysOverdue) {
         if (rent == null || daysOverdue <= 0) return BigDecimal.ZERO;
         long weeks = (daysOverdue + 6) / 7;
-        BigDecimal weeklyFee = rent.multiply(BigDecimal.valueOf(weeklyPercent / 100.0));
-        BigDecimal raw = weeklyFee.multiply(BigDecimal.valueOf(weeks));
-        BigDecimal cap = rent.multiply(BigDecimal.valueOf(maxPercent / 100.0));
+        BigDecimal hundred = BigDecimal.valueOf(100);
+        // Use a generous intermediate scale (10) so the ratio doesn't
+        // round prematurely; the final result is forced to 2dp HALF_UP.
+        BigDecimal weeklyRatio = BigDecimal.valueOf(weeklyPercent)
+                .divide(hundred, 10, RoundingMode.HALF_UP);
+        BigDecimal capRatio = BigDecimal.valueOf(maxPercent)
+                .divide(hundred, 10, RoundingMode.HALF_UP);
+        BigDecimal raw = rent.multiply(weeklyRatio).multiply(BigDecimal.valueOf(weeks));
+        BigDecimal cap = rent.multiply(capRatio);
         BigDecimal capped = raw.min(cap);
         return capped.setScale(2, RoundingMode.HALF_UP);
     }

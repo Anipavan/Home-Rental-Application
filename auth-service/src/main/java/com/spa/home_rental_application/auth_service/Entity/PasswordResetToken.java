@@ -12,7 +12,11 @@ import java.time.Instant;
  */
 @Entity
 @Table(name = "password_reset_tokens", indexes = {
-        @Index(name = "idx_pw_reset_token", columnList = "token", unique = true)
+        @Index(name = "idx_pw_reset_token", columnList = "token", unique = true),
+        // Audit M3: index the janitor's WHERE clause so the daily
+        // cleanup query (DELETE … WHERE expires_at < :cutoff) is a
+        // ranged-scan instead of a full-table sweep.
+        @Index(name = "idx_pw_reset_expires", columnList = "expires_at")
 })
 @Getter
 @Setter

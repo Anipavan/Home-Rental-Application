@@ -9,6 +9,8 @@ import lombok.*;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.mongodb.core.index.CompoundIndex;
+import org.springframework.data.mongodb.core.index.CompoundIndexes;
 import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 import org.springframework.data.mongodb.core.mapping.Field;
@@ -22,7 +24,24 @@ import java.util.List;
  * Status (validated upfront), tracks audit + status-change history, and
  * keeps comments inline.
  */
+/*
+ * Audit M18: compound indexes for the per-tenant + per-owner queries
+ * that the analytics + listing endpoints run on every request. Without
+ * these Mongo falls back to per-shard scans, and the analytics view
+ * was the audit's specific concern.
+ *
+ *   (tenant_id, status)  → tenant inbox filtered by state
+ *   (owner_id, status)   → owner dashboard by state
+ *   (tenant_id, kind)    → tenant maintenance-vs-complaint split
+ *   (created_at, status) → admin overdue dashboards
+ */
 @Document(collection = "maintenance_requests")
+@CompoundIndexes({
+        @CompoundIndex(name = "idx_tenant_status", def = "{'tenant_id': 1, 'status': 1}"),
+        @CompoundIndex(name = "idx_owner_status",  def = "{'owner_id': 1, 'status': 1}"),
+        @CompoundIndex(name = "idx_tenant_kind",   def = "{'tenant_id': 1, 'kind': 1}"),
+        @CompoundIndex(name = "idx_created_status", def = "{'created_at': 1, 'status': 1}")
+})
 @Getter
 @Setter
 @AllArgsConstructor

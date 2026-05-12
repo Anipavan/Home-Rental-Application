@@ -13,6 +13,14 @@ public interface PaymentService {
 
     /* --- lifecycle --- */
     PaymentResponse createPayment(CreatePaymentRequest dto);
+
+    /**
+     * Idempotency-Key aware overload (audit M13). Re-sending the same
+     * key with the same body returns the previously-created payment
+     * instead of inserting a duplicate. Key is null = no idempotency
+     * (behaves identically to the single-arg overload).
+     */
+    PaymentResponse createPayment(CreatePaymentRequest dto, String idempotencyKey);
     PaymentResponse getPaymentById(String id);
     Page<PaymentResponse> getAllPayments(Pageable pageable);
 

@@ -9,7 +9,18 @@ import org.springframework.data.jpa.repository.Query;
 import java.util.List;
 
 public interface BuildingRepo extends JpaRepository<Building, String> {
-    List<Building> findByOwnerId(String ownerId);
+
+    /**
+     * Audit M8: filter soft-deleted rows at the DB level instead of
+     * loading every building the owner ever had and stream-filtering
+     * in Java. Saves the wire-bytes + JPA materialization for rows
+     * the caller will discard.
+     */
+    @Query("SELECT b FROM Building b " +
+           "WHERE b.ownerId = :ownerId " +
+           "AND (b.isDeleted = false OR b.isDeleted IS NULL)")
+    List<Building> findByOwnerId(@org.springframework.data.repository.query.Param("ownerId") String ownerId);
+
     @Query("SELECT b FROM Building b WHERE b.isDeleted = false OR b.isDeleted IS NULL")
     Page<Building> getActiveBuildings(Pageable pageable);
 }
