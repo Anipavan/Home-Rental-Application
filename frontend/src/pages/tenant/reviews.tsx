@@ -20,7 +20,18 @@ import { ReviewForm } from "@/components/reviews/review-form";
 
 export function TenantReviewsPage() {
   const { authUserId } = useAuthStore();
-  const [writing, setWriting] = useState<{ id: string; type: "PROPERTY" | "OWNER" } | null>(null);
+  // `writing` is keyed by the FLAT id (unique per row), not the
+  // review target (buildingId / ownerId). Earlier we keyed on the
+  // target id, which collided when a tenant occupied two flats in
+  // the same building — clicking "Property" on Flat 1 then matched
+  // BOTH rows' render conditions and the ReviewForm appeared twice.
+  // targetId is carried separately so the form still posts the
+  // review against the right building / owner.
+  const [writing, setWriting] = useState<{
+    flatId: string;
+    targetId: string;
+    type: "PROPERTY" | "OWNER";
+  } | null>(null);
 
   const meQ = useQuery({
     queryKey: ["me", authUserId],
@@ -89,7 +100,11 @@ export function TenantReviewsPage() {
                             size="sm"
                             variant="outline"
                             onClick={() =>
-                              setWriting({ id: f.buildingId, type: "PROPERTY" })
+                              setWriting({
+                                flatId: f.id,
+                                targetId: f.buildingId,
+                                type: "PROPERTY",
+                              })
                             }
                           >
                             <Pencil /> Property
@@ -99,7 +114,10 @@ export function TenantReviewsPage() {
                             variant="outline"
                             onClick={() =>
                               setWriting({
-                                id: String((f as { ownerId?: string }).ownerId ?? f.buildingId),
+                                flatId: f.id,
+                                targetId: String(
+                                  (f as { ownerId?: string }).ownerId ?? f.buildingId,
+                                ),
                                 type: "OWNER",
                               })
                             }
@@ -108,20 +126,17 @@ export function TenantReviewsPage() {
                           </Button>
                         </div>
                       </div>
-                      {writing &&
-                        ((writing.type === "PROPERTY" && writing.id === f.buildingId) ||
-                          (writing.type === "OWNER" &&
-                            writing.id === String((f as { ownerId?: string }).ownerId ?? f.buildingId))) && (
-                          <div className="mt-4">
-                            <ReviewForm
-                              reviewerId={userId ?? ""}
-                              reviewerType="TENANT"
-                              targetId={writing.id}
-                              targetType={writing.type}
-                              onSubmitted={() => setWriting(null)}
-                            />
-                          </div>
-                        )}
+                      {writing && writing.flatId === f.id && (
+                        <div className="mt-4">
+                          <ReviewForm
+                            reviewerId={userId ?? ""}
+                            reviewerType="TENANT"
+                            targetId={writing.targetId}
+                            targetType={writing.type}
+                            onSubmitted={() => setWriting(null)}
+                          />
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
