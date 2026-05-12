@@ -72,15 +72,15 @@ app:
     # Default below is a length-padded placeholder so HMAC-SHA256 accepts it
     # for local dev; SecretsBootstrapValidator refuses it in prod profiles.
     secret: ${JWT_SECRET:CHANGE_ME_LOCAL_DEV_JWT_SECRET_PLACEHOLDER_AT_LEAST_32_BYTES_LONG_ABC}
-    # Audit H3: tightened from 15min → 5min so the worst-case post-
-    # logout JWT-still-valid window shrinks from 15 to 5 minutes. The
-    # frontend's idle timer + refresh-token rotation handle the UX
-    # impact (silent re-mint as long as the user is active).
-    # Refresh: tightened from 7d to 24h to limit blast radius of an
-    # XSS-stolen refresh token (audit H5 + M34). Browsers stay
-    # signed-in via the rolling 24h refresh; longer sessions require
-    # an explicit re-login.
-    access-token-validity-seconds: ${JWT_ACCESS_TTL:300}          # 5 minutes
+    # Access-token TTL settled at 15min after user testing — the
+    # 5-minute experiment from the H3 audit fix produced too many
+    # "session expiring soon" warnings during normal use. The
+    # gateway-side revoke check (TokenRevocationCheck, opt-in via
+    # JWT_REVOKE_CHECK_ENABLED) covers the immediate-logout case;
+    # without it, the worst-case logout-to-invalidation gap is
+    # back to the access-token TTL (15 min).
+    # Refresh: 24h — limits the XSS-stolen-token blast radius.
+    access-token-validity-seconds: ${JWT_ACCESS_TTL:900}          # 15 minutes
     refresh-token-validity-seconds: ${JWT_REFRESH_TTL:86400}      # 24 hours
     issuer: ${JWT_ISSUER:home-rental-auth}
   password-reset:

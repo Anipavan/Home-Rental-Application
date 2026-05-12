@@ -96,6 +96,43 @@ export function IdleTimer() {
     navigate("/login");
   }
 
+  // Click handler for the "Stay signed in" button. Previously only
+  // bumped lastActivityAt — which the next tick happily ignored
+  // because expiresIn was still <60s. The result was the banner
+  // refusing to dismiss until the user actually triggered a refresh
+  // via some other API call. Now we explicitly mint a new access
+  // token via /auth/refresh, which updates accessTokenExpiresAt;
+  // the tick then sees plenty of headroom and stops drawing the
+  // banner.
+  const [extending, setExtending] = useState(false);
+
+  async function extendSession() {
+    setExtending(true);
+    try {
+      const rt = useAuthStore.getState().refreshToken;
+      if (!rt) {
+        // No refresh token → can't extend; nudge the user to re-login.
+        forceLogout("expired");
+        return;
+      }
+      const resp = await authApi.refresh(rt);
+      useAuthStore.getState().setTokens(
+        resp.accessToken,
+        resp.refreshToken ?? rt,
+        resp.accessTokenExpiresInSeconds,
+      );
+      useAuthStore.getState().touchActivity();
+      setSecondsLeft(null);
+    } catch {
+      // Refresh failed (server expired the refresh token, or auth
+      // service is down). Best to logout cleanly so the user gets
+      // pushed to /login instead of staring at a stuck banner.
+      forceLogout("expired");
+    } finally {
+      setExtending(false);
+    }
+  }
+
   if (secondsLeft === null) return null;
 
   return (
@@ -104,21 +141,16 @@ export function IdleTimer() {
       <div className="flex-1">
         <p className="font-medium text-sm">Session expiring soon</p>
         <p className="text-xs text-muted-foreground mt-0.5">
-          You'll be signed out in <strong>{secondsLeft}s</strong>. Move your
-          mouse or press a key to extend the session.
+          You'll be signed out in <strong>{secondsLeft}s</strong>.
         </p>
         <Button
           size="sm"
           variant="outline"
           className="mt-2"
-          onClick={() => {
-            // The activity listener will pick this up on the next mousemove,
-            // but force-touch immediately so the banner clears now.
-            useAuthStore.getState().touchActivity();
-            setSecondsLeft(null);
-          }}
+          onClick={extendSession}
+          disabled={extending}
         >
-          Stay signed in
+          {extending ? "Extending…" : "Stay signed in"}
         </Button>
       </div>
     </div>

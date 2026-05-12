@@ -24,6 +24,15 @@ export const authApi = {
     api
       .post<MessageResponse>("/auth/logout", { refreshToken })
       .then((r) => r.data),
+  /**
+   * Manual refresh — used by the "Stay signed in" idle-timer button.
+   * The interceptor in client.ts handles the automatic on-401-retry
+   * refresh; this overload is for explicit UI-initiated extension.
+   */
+  refresh: (refreshToken: string) =>
+    api
+      .post<AuthResponse>("/auth/refresh", { refreshToken })
+      .then((r) => r.data),
   byRole: (role: string) =>
     api.get<AuthUserResponse[]>(`/auth/role/${role}`).then((r) => r.data),
   byId: (id: string) =>

@@ -972,7 +972,10 @@ function MoreFiltersDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => (!o ? onClose() : undefined)}>
-      <DialogContent className="max-w-xl">
+      {/* On viewports shorter than the filter list, the dialog used
+          to overflow off the bottom of the screen with no way to
+          scroll inside it. Cap at 85vh, make the body scrollable. */}
+      <DialogContent className="max-w-xl max-h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>More filters</DialogTitle>
           <DialogDescription>
@@ -980,7 +983,7 @@ function MoreFiltersDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-5">
+        <div className="space-y-5 overflow-y-auto pr-1 -mr-1 flex-1">
           {/* Rent range */}
           <div>
             <Label className="flex items-center gap-1.5 mb-2">

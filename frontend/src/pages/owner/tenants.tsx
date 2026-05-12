@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ChevronRight, Users } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { propertiesApi } from "@/lib/api/properties";
+import { paymentsApi } from "@/lib/api/payments";
 import { useUserByAuth } from "@/hooks/use-user-by-auth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -94,6 +95,22 @@ function TenantCard({
   const tenantId = flat.tenantId!;
   const { user, fullName, isLoading } = useUserByAuth(tenantId);
 
+  // Owner-side rollup of total rent COLLECTED from this tenant. Sums
+  // every PAID payment regardless of which flat — covers cases where
+  // a tenant moved between flats under the same owner.
+  const paymentsQ = useQuery({
+    queryKey: ["payments", "by-tenant", tenantId],
+    queryFn: () => paymentsApi.byTenant(tenantId),
+    enabled: !!tenantId,
+    staleTime: 60_000,
+  });
+  const paid = (paymentsQ.data ?? [])
+    .filter((p) => p.status === "PAID")
+    .reduce((acc, p) => acc + Number(p.totalAmount ?? p.amount ?? 0), 0);
+  const pending = (paymentsQ.data ?? [])
+    .filter((p) => p.status === "PENDING" || p.status === "OVERDUE")
+    .reduce((acc, p) => acc + Number(p.totalAmount ?? p.amount ?? 0), 0);
+
   return (
     <Card className="overflow-hidden">
       {/* Clickable header / stats area */}
@@ -126,7 +143,7 @@ function TenantCard({
         </div>
         <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
           <div>
-            <p className="text-muted-foreground">Rent</p>
+            <p className="text-muted-foreground">Monthly rent</p>
             <p className="font-semibold mt-0.5">
               {formatINR(flat.rentAmount)}
             </p>
@@ -135,6 +152,26 @@ function TenantCard({
             <p className="text-muted-foreground">Lease ends</p>
             <p className="font-semibold mt-0.5">
               {formatDate(flat.leaseEndDate) ?? "—"}
+            </p>
+          </div>
+          {/* Bug "owner sees rent collected per tenant" — totals
+              roll up every PAID payment for this tenant. Pending +
+              overdue surface so the owner sees what's still due. */}
+          <div>
+            <p className="text-muted-foreground">Collected total</p>
+            <p className="font-semibold mt-0.5 text-emerald-600">
+              {paymentsQ.isLoading ? "…" : formatINR(paid)}
+            </p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">Outstanding</p>
+            <p
+              className={
+                "font-semibold mt-0.5 " +
+                (pending > 0 ? "text-amber-600" : "text-muted-foreground")
+              }
+            >
+              {paymentsQ.isLoading ? "…" : formatINR(pending)}
             </p>
           </div>
         </div>

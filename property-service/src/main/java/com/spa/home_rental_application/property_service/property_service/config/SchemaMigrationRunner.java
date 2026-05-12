@@ -1,0 +1,121 @@
+package com.spa.home_rental_application.property_service.property_service.config;
+
+import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Component;
+
+import java.util.List;
+
+/**
+ * Idempotent Oracle schema migrations for property-service.
+ *
+ * <p>Same shape + reasoning as auth-service's SchemaMigrationRunner.
+ * Multiple feature batches (browse filters, map view, image gallery
+ * cover/order, soft-delete, geo pin) added columns to the existing
+ * {@code flats}, {@code registered_buildings}, and {@code propertyimages}
+ * tables. Hibernate's {@code ddl-auto=update} is supposed to add them
+ * on next boot but doesn't always — the Oracle DEFAULT clause + NOT
+ * NULL combo is the usual culprit, and Hibernate's "skip on doubt"
+ * behaviour silently bails.
+ *
+ * <p>Without these columns, the wishlist heart-toggle fails because
+ * {@code FlatFavoriteController.add} calls {@code flatService.getflatById(flatId)}
+ * which selects every Flat column — a missing column (e.g.
+ * {@code description}, {@code deposit_amount}, {@code furnishing_status})
+ * raises ORA-00904 and the toggle bubbles up as a 500. Same for
+ * saved-searches (it queries the flat catalog as the create predicate
+ * cross-check) and building detail pages.
+ *
+ * <p>Runs at {@link PostConstruct} so the migration is done before
+ * any controller can race a query. Catches the predictable Oracle
+ * "duplicate column" / "table doesn't exist yet" errors so re-runs
+ * + fresh-schema boots both work.
+ *
+ * <p>Disable via {@code app.schema-migrations.enabled=false} once
+ * the team adopts Flyway/Liquibase for real versioned migrations.
+ */
+@Component
+@Slf4j
+public class SchemaMigrationRunner {
+
+    /**
+     * Each entry: {table, column, type-with-constraint}. Issued as
+     * {@code ALTER TABLE %s ADD %s %s} and re-run-safe.
+     *
+     * <p>Order matters: parent tables before child ones in case any
+     * future migration adds an FK constraint. None of the current
+     * entries need that, but the convention helps when the list
+     * grows.
+     */
+    private static final List<Migration> MIGRATIONS = List.of(
+            // ── flats (browse-filter listing attributes) ──
+            new Migration("flats", "furnishing_status", "VARCHAR2(32)"),
+            new Migration("flats", "pet_friendly",      "NUMBER(1)"),
+            new Migration("flats", "available_from",    "DATE"),
+            new Migration("flats", "deposit_amount",    "NUMBER(12,2)"),
+            new Migration("flats", "description",       "VARCHAR2(2000)"),
+            new Migration("flats", "is_deleted",        "NUMBER(1) DEFAULT 0 NOT NULL"),
+            new Migration("flats", "created_at",        "TIMESTAMP"),
+            new Migration("flats", "updated_at",        "TIMESTAMP"),
+
+            // ── registered_buildings (geo pin + soft-delete + city/state FKs) ──
+            new Migration("registered_buildings", "latitude",   "NUMBER(10,6)"),
+            new Migration("registered_buildings", "longitude",  "NUMBER(10,6)"),
+            new Migration("registered_buildings", "state_id",   "NUMBER(19)"),
+            new Migration("registered_buildings", "city_id",    "NUMBER(19)"),
+            new Migration("registered_buildings", "is_deleted", "NUMBER(1) DEFAULT 0 NOT NULL"),
+
+            // ── propertyimages (cover + sort_order from gallery feature) ──
+            new Migration("propertyimages", "is_cover",   "NUMBER(1) DEFAULT 0 NOT NULL"),
+            new Migration("propertyimages", "sort_order", "NUMBER(10) DEFAULT 1000 NOT NULL")
+    );
+
+    private final JdbcTemplate jdbc;
+
+    public SchemaMigrationRunner(JdbcTemplate jdbc) {
+        this.jdbc = jdbc;
+    }
+
+    @PostConstruct
+    public void run() {
+        log.info("property-service SchemaMigrationRunner: applying {} idempotent migration(s)",
+                MIGRATIONS.size());
+        int added = 0;
+        int skipped = 0;
+        for (Migration m : MIGRATIONS) {
+            String ddl = String.format("ALTER TABLE %s ADD %s %s",
+                    m.table, m.column, m.type);
+            try {
+                jdbc.execute(ddl);
+                log.info("Added column {}.{} ({})", m.table, m.column, m.type);
+                added++;
+            } catch (Exception ex) {
+                String msg = ex.getMessage() == null ? "" : ex.getMessage();
+                // Predictable / safe errors:
+                //   ORA-01430: column being added already exists in table
+                //   ORA-00955: name already used by an existing object
+                //   ORA-00942: table or view does not exist (fresh DB;
+                //              Hibernate creates the table moments later
+                //              with the column already on it)
+                //   ORA-01758: NOT NULL column can't be added if the
+                //              column-definition is missing a DEFAULT —
+                //              the columnDefinition strings above all
+                //              include DEFAULT, so we shouldn't hit this
+                //              for our own rows, but tolerating it makes
+                //              re-runs idempotent.
+                if (msg.contains("ORA-01430") || msg.contains("ORA-00955")
+                        || msg.contains("ORA-00942") || msg.contains("ORA-01758")) {
+                    log.debug("Skipping {}.{}: {}", m.table, m.column,
+                            msg.lines().findFirst().orElse(msg));
+                    skipped++;
+                    continue;
+                }
+                log.error("Unexpected error adding {}.{}: {}", m.table, m.column, msg, ex);
+            }
+        }
+        log.info("property-service SchemaMigrationRunner: complete (added={}, skipped={})", added, skipped);
+    }
+
+    private record Migration(String table, String column, String type) {}
+}
