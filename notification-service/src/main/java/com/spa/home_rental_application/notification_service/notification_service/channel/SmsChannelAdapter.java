@@ -59,10 +59,17 @@ public class SmsChannelAdapter implements NotificationChannelAdapter {
         if (n.getRecipient() == null || n.getRecipient().isBlank()) {
             throw new IllegalArgumentException("SMS recipient (phone) is missing");
         }
+        // Normalise to E.164 before sending. Many profile rows store
+        // bare 10-digit Indian numbers ("8088617923") which Twilio
+        // rejects with error 21211; toE164 prepends the configured
+        // default country code (+91) when the prefix is missing.
+        String e164 = props.toE164(n.getRecipient());
         if (!props.credentialsConfigured()) {
             // Dev / pre-prod: log the would-be payload so we still see
             // the message in the audit trail but don't 4xx on a bad key.
-            log.info("[SMS-STUB] to={} body={}", n.getRecipient(),
+            // Show the normalised form in the stub log so operators
+            // can confirm the format that would actually be sent.
+            log.info("[SMS-STUB] to={} body={}", e164,
                     truncate(n.getMessage(), 160));
             return;
         }
@@ -71,12 +78,12 @@ public class SmsChannelAdapter implements NotificationChannelAdapter {
                     "app.twilio.from-number is not configured — cannot send SMS");
         }
         Message msg = Message.creator(
-                new PhoneNumber(n.getRecipient()),
+                new PhoneNumber(e164),
                 new PhoneNumber(props.getFromNumber()),
                 n.getMessage()
         ).create();
         log.info("Sent SMS sid={} to={} status={}",
-                msg.getSid(), n.getRecipient(), msg.getStatus());
+                msg.getSid(), e164, msg.getStatus());
     }
 
     private static String truncate(String s, int max) {

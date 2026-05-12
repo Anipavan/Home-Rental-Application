@@ -49,6 +49,28 @@ public class TemplateSeeder {
                     repo.delete(t);
                 });
 
+        // ── LEASE_WELCOME templates: switched from {{flatId}} (raw UUID)
+        // to {{flatNumber}} (human-readable, e.g. "A-301"). Same narrow-
+        // delete pattern as the password-reset cleanup above: only nuke
+        // rows that still embed the old {{flatId}} placeholder, so any
+        // admin who edited the template via TemplateController to use
+        // {{flatNumber}} themselves stays untouched. Covers all three
+        // channel rows (EMAIL, SMS, WHATSAPP) — seedIfAbsent below re-
+        // creates each with the new copy. Triggered when the user
+        // reported "the SMS shows Flat FLT-90f89b90-... instead of A-301".
+        for (NotificationType ch : List.of(NotificationType.EMAIL,
+                                            NotificationType.SMS,
+                                            NotificationType.WHATSAPP)) {
+            repo.findByCategoryAndType(NotificationCategory.LEASE_WELCOME, ch)
+                    .filter(t -> t.getBodyTemplate() != null
+                            && t.getBodyTemplate().contains("{{flatId}}"))
+                    .ifPresent(t -> {
+                        log.info("Deleting stale lease-welcome {} template (still references flatId UUID) — will be re-seeded to use flatNumber",
+                                ch);
+                        repo.delete(t);
+                    });
+        }
+
         seedIfAbsent("welcome-email", NotificationCategory.USER_REGISTRATION, NotificationType.EMAIL,
                 "Welcome to Home Rental, {{userName}}",
                 "Hi {{userName}},\n\nYour Home Rental account ({{email}}, role: {{role}}) is ready. Log in to get started.\n\n— Home Rental Team",
@@ -126,8 +148,8 @@ public class TemplateSeeder {
 
         seedIfAbsent("welcome-flat-email", NotificationCategory.LEASE_WELCOME, NotificationType.EMAIL,
                 "Welcome to your new home!",
-                "Welcome! You've moved into flat {{flatId}}. Your monthly rent is ₹{{rentAmount}} starting {{startDate}}.",
-                List.of("flatId", "rentAmount", "startDate"));
+                "Welcome! You've moved into flat {{flatNumber}}. Your monthly rent is ₹{{rentAmount}} starting {{startDate}}.",
+                List.of("flatNumber", "rentAmount", "startDate"));
 
         /* ─────────── SMS templates ───────────
          * Kept under 160 chars where possible so a single segment
@@ -200,10 +222,10 @@ public class TemplateSeeder {
 
         seedIfAbsent("lease-welcome-whatsapp", NotificationCategory.LEASE_WELCOME,
                 NotificationType.WHATSAPP, null,
-                "Welcome home {{userName}} 🏡\n\nYou've moved into *{{flatId}}*. "
+                "Welcome home 🏡\n\nYou've moved into *flat {{flatNumber}}*. "
                         + "Monthly rent is *₹{{rentAmount}}* starting {{startDate}}.\n\n"
                         + "Tap *Maintenance* in the app any time something needs fixing.",
-                List.of("userName", "flatId", "rentAmount", "startDate"));
+                List.of("flatNumber", "rentAmount", "startDate"));
 
         // SMS leg of the lease-welcome — keeps the channel parity intact
         // (email + WhatsApp + SMS + bell) when an owner assigns a tenant
@@ -211,9 +233,9 @@ public class TemplateSeeder {
         // chars.
         seedIfAbsent("lease-welcome-sms", NotificationCategory.LEASE_WELCOME,
                 NotificationType.SMS, null,
-                "Welcome to your new home! Flat {{flatId}} is yours from {{startDate}}. "
+                "Welcome to your new home! Flat {{flatNumber}} is yours from {{startDate}}. "
                         + "Rent: Rs.{{rentAmount}}/mo. Manage everything in the Hearth app.",
-                List.of("flatId", "rentAmount", "startDate"));
+                List.of("flatNumber", "rentAmount", "startDate"));
 
         /* ─────────── Welcome (registration) — SMS + WhatsApp legs ───────────
          * Email leg is already seeded as "welcome-email" near the top of

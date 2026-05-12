@@ -68,8 +68,12 @@ public class WhatsappChannelAdapter implements NotificationChannelAdapter {
         if (recipient == null || recipient.isBlank()) {
             throw new IllegalArgumentException("WhatsApp recipient (phone) is missing");
         }
+        // Same E.164 normalisation as SmsChannelAdapter — many profile
+        // phone columns store bare 10-digit Indian numbers, which the
+        // Twilio WhatsApp API also rejects without a country prefix.
+        String e164 = props.toE164(recipient);
         if (!props.credentialsConfigured()) {
-            log.info("[WHATSAPP-STUB] to={} body={}", recipient,
+            log.info("[WHATSAPP-STUB] to={} body={}", e164,
                     truncate(n.getMessage(), 200));
             return;
         }
@@ -86,12 +90,12 @@ public class WhatsappChannelAdapter implements NotificationChannelAdapter {
         }
 
         Message msg = Message.creator(
-                new PhoneNumber(whatsappPrefix(recipient)),
+                new PhoneNumber(whatsappPrefix(e164)),
                 new PhoneNumber(whatsappPrefix(fromNumber)),
                 n.getMessage()
         ).create();
         log.info("Sent WhatsApp sid={} to={} status={}",
-                msg.getSid(), recipient, msg.getStatus());
+                msg.getSid(), e164, msg.getStatus());
     }
 
     /**

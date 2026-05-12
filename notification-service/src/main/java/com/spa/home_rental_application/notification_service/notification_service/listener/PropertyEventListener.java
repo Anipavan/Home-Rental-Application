@@ -51,10 +51,16 @@ public class PropertyEventListener {
     )
     public void onFlatOccupied(FlatOccupiedEvent e) {
         if (e == null || !"flat.occupied".equals(e.getEventType())) return;
-        log.info("Received {} for flatId={} tenantId={}", e.getEventType(), e.getFlatId(), e.getTenantId());
+        log.info("Received {} for flatId={} flatNumber={} tenantId={}",
+                e.getEventType(), e.getFlatId(), e.getFlatNumber(), e.getTenantId());
+        // flatNumber is the human-readable label the tenant recognises
+        // (e.g. "A-301"); flatId is the UUID — keep both in vars so
+        // templates can reference whichever is appropriate. New
+        // templates should prefer {{flatNumber}} for user-visible copy.
         notifications.fanOut(e.getTenantId(),
                 NotificationCategory.LEASE_WELCOME,
                 Map.of("flatId",     safe(e.getFlatId()),
+                        "flatNumber", safe(e.getFlatNumber()),
                         "buildingId", safe(e.getBuildingId()),
                         "rentAmount", safe(e.getRentAmount()),
                         "startDate",  safe(e.getStartDate())));
@@ -67,14 +73,16 @@ public class PropertyEventListener {
     )
     public void onFlatVacated(FlatVacatedEvent e) {
         if (e == null || !"flat.vacated".equals(e.getEventType())) return;
-        log.info("Received {} for flatId={} tenantId={}", e.getEventType(), e.getFlatId(), e.getTenantId());
+        log.info("Received {} for flatId={} flatNumber={} tenantId={}",
+                e.getEventType(), e.getFlatId(), e.getFlatNumber(), e.getTenantId());
         // Reuse LEASE_TERMINATED so we don't fork the template surface —
-        // the body wording is "your tenancy at {flatId} ended on {endDate}",
+        // the body wording is "your tenancy at {flatNumber} ended on {terminatedOn}",
         // which covers both lease-service-driven terminations and
         // property-service-driven vacates from the same template.
         notifications.fanOut(e.getTenantId(),
                 NotificationCategory.LEASE_TERMINATED,
                 Map.of("flatId",            safe(e.getFlatId()),
+                        "flatNumber",       safe(e.getFlatNumber()),
                         "terminatedOn",     safe(e.getEndDate()),
                         "terminationReason","tenancy ended"));
     }
