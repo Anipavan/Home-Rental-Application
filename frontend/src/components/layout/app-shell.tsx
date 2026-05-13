@@ -42,7 +42,11 @@ import { GlobalSearch } from "./global-search";
 import { useAuthStore } from "@/stores/auth-store";
 import { authApi } from "@/lib/api/auth";
 import { usersApi } from "@/lib/api/users";
-import { isKycDisabled } from "@/lib/feature-flags";
+import {
+  isAlertsDisabled,
+  isComplianceDisabled,
+  isKycDisabled,
+} from "@/lib/feature-flags";
 import { cn, initials } from "@/lib/utils";
 import type { Role } from "@/types/api";
 
@@ -69,7 +73,10 @@ const tenantNav: NavItem[] = [
   // Saved-search alerts (email me when a new home matches). Lives
   // right under "Saved" because the user mental model is identical —
   // both surfaces are "things I want the platform to remember".
-  { to: "/app/saved-searches", label: "Alerts", icon: BellRing },
+  // Alerts pill mirrors the ALERTS_DISABLED feature flag. Same
+  // single-source-of-truth pattern as KYC below — flipping the flag
+  // back to false removes the pill automatically.
+  { to: "/app/saved-searches", label: "Alerts", icon: BellRing, pausedBadge: isAlertsDisabled() },
   // Always visible — even after a flat is assigned, tenants should be
   // able to look at other listings (planning ahead, longer lease,
   // recommending to a friend, etc.). The route lives outside the
@@ -99,7 +106,8 @@ const ownerNav: NavItem[] = [
   { to: "/owner/agreements", label: "Agreements", icon: ScrollText },
   { to: "/owner/leases", label: "Leases", icon: FileText },
   { to: "/owner/enquiries", label: "Enquiries", icon: Inbox },
-  { to: "/owner/compliance", label: "Compliance", icon: Stamp },
+  // Compliance pill mirrors the COMPLIANCE_DISABLED feature flag.
+  { to: "/owner/compliance", label: "Compliance", icon: Stamp, pausedBadge: isComplianceDisabled() },
   { to: "/owner/analytics", label: "Analytics", icon: BarChart3 },
   { to: "/owner/profile", label: "Profile", icon: Settings },
 ];

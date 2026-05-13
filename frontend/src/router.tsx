@@ -4,7 +4,11 @@ import { AppShell } from "@/components/layout/app-shell";
 import { ProtectedRoute } from "@/components/auth/protected-route";
 import { FlatRequiredOutlet } from "@/components/auth/flat-required-outlet";
 import { FeatureDisabledOutlet } from "@/components/auth/feature-disabled-outlet";
-import { isKycDisabled } from "@/lib/feature-flags";
+import {
+  isAlertsDisabled,
+  isComplianceDisabled,
+  isKycDisabled,
+} from "@/lib/feature-flags";
 import { LandingPage } from "@/pages/public/landing";
 import { BrowsePage } from "@/pages/public/browse";
 import { PropertyDetailPage } from "@/pages/public/property-detail";
@@ -94,8 +98,23 @@ export const router = createBrowserRouter([
       { path: "saved", element: <SavedListingsPage /> },
       // /app/saved-searches is the manage-alerts page. Kept outside
       // FlatRequiredOutlet — a tenant who hasn't been assigned a flat
-      // yet is exactly the audience for saved-search alerts.
-      { path: "saved-searches", element: <SavedSearchesPage /> },
+      // yet is exactly the audience for saved-search alerts. Same
+      // disable pattern as KYC below — the route still renders so
+      // the URL / nav highlight stay consistent, but it's wrapped in
+      // FeatureDisabledOutlet when the flag is on.
+      ...(isAlertsDisabled()
+        ? [
+            {
+              element: (
+                <FeatureDisabledOutlet
+                  feature="Alerts"
+                  reason="We've paused saved-search alerts while we polish the email digest. Your saved searches are kept — you'll start getting matches again as soon as we re-enable this."
+                />
+              ),
+              children: [{ path: "saved-searches", element: <SavedSearchesPage /> }],
+            },
+          ]
+        : [{ path: "saved-searches", element: <SavedSearchesPage /> }]),
       { path: "compare", element: <ComparePage /> },
       // Channel-toggle UI — lives outside FlatRequiredOutlet so any
       // user (even pre-flat-assignment) can dial in their delivery
@@ -173,7 +192,23 @@ export const router = createBrowserRouter([
       { path: "agreements", element: <OwnerAgreementsPage /> },
       { path: "leases", element: <OwnerLeasesPage /> },
       { path: "enquiries", element: <OwnerEnquiriesPage /> },
-      { path: "compliance", element: <OwnerCompliancePage /> },
+      // Compliance paused while the compliance-service swaps from
+      // MOCK to live RERA provider integration. Same wrapped-outlet
+      // pattern as KYC above so the page URL still resolves but renders
+      // behind a "temporarily unavailable" overlay.
+      ...(isComplianceDisabled()
+        ? [
+            {
+              element: (
+                <FeatureDisabledOutlet
+                  feature="Compliance"
+                  reason="We've paused RERA + GST compliance tools while we switch from our mock provider to live integrations. Your existing filings stay intact — this page returns when the new provider is live."
+                />
+              ),
+              children: [{ path: "compliance", element: <OwnerCompliancePage /> }],
+            },
+          ]
+        : [{ path: "compliance", element: <OwnerCompliancePage /> }]),
       { path: "analytics", element: <OwnerAnalyticsPage /> },
       { path: "notifications", element: <NotificationsInboxPage /> },
       { path: "notifications/preferences", element: <NotificationPreferencesPage /> },
