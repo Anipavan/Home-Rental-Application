@@ -135,6 +135,32 @@ app:
     from-email: ${APP_NOTIFICATION_FROM_EMAIL:${MAIL_USERNAME:no-reply@homerental.local}}
     from-name:  ${APP_NOTIFICATION_FROM_NAME:Hearth}
 
+  # Twilio — set TWILIO_SID + TWILIO_TOKEN + TWILIO_FROM env vars to
+  # enable real SMS / WhatsApp delivery. Without these (or while they
+  # equal the literal "placeholder"), TwilioProperties.credentialsConfigured
+  # returns false → SmsChannelAdapter + WhatsappChannelAdapter both log
+  # "running in STUB mode" at boot and emit [SMS-STUB] / [WHATSAPP-STUB]
+  # lines at runtime instead of calling Twilio.
+  #
+  # This block intentionally duplicates the one Config Server serves
+  # in HRA-notification-service.yml, so the env-var bindings still work
+  # when Config Server is unreachable on startup (Connection refused on
+  # localhost:8888). Same pattern as the spring.mail.* block above.
+  #
+  # TWILIO_FROM should be a real Twilio-owned trial number in E.164
+  # (e.g. +12025550123). TWILIO_WHATSAPP_FROM is optional — defaults to
+  # Twilio's sandbox number +14155238886 which is fine for dev as long
+  # as the recipient has joined the sandbox via "join <code>".
+  twilio:
+    account-sid: ${TWILIO_SID:placeholder}
+    auth-token:  ${TWILIO_TOKEN:placeholder}
+    from-number: ${TWILIO_FROM:+10000000000}
+    whatsapp-from-number: ${TWILIO_WHATSAPP_FROM:+14155238886}
+    # Default country code for E.164 normalisation when a recipient
+    # number lacks the + prefix. India-first deployment so default +91;
+    # override for multi-country setups.
+    default-country-code: ${TWILIO_DEFAULT_COUNTRY:+91}
+
   kafka:
     property-topic: property-events
     user-topic: user-events
