@@ -109,6 +109,38 @@ public class DocumentController {
         return ResponseEntity.ok(documentService.verify(documentId, verifiedBy, fraudFlag));
     }
 
+    /**
+     * Issue #9 — owner approves a tenant-uploaded document. Sets
+     * {@code verificationStatus=APPROVED} on the document, stamps
+     * {@code decidedBy} / {@code decidedAt}, fires
+     * {@code document.approved} Kafka event so the tenant gets a
+     * notification fanned out across their channels.
+     */
+    @Operation(summary = "Owner approves a tenant-uploaded document (Issue #9)")
+    @PostMapping("/{id}/approve")
+    public ResponseEntity<DocumentResponseDto> approve(@PathVariable("id") String documentId,
+                                                       @RequestParam("ownerId") @NotBlank String ownerId) {
+        log.info("POST /documents/{}/approve by ownerId={}", documentId, ownerId);
+        return ResponseEntity.ok(documentService.approve(documentId, ownerId));
+    }
+
+    /**
+     * Issue #9 — owner rejects a tenant-uploaded document with a
+     * free-text reason. Reason is required (Bean Validation on the
+     * body) and surfaced verbatim in the tenant's notification.
+     */
+    @Operation(summary = "Owner rejects a tenant-uploaded document with a reason (Issue #9)")
+    @PostMapping(value = "/{id}/reject", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<DocumentResponseDto> reject(
+            @PathVariable("id") String documentId,
+            @RequestParam("ownerId") @NotBlank String ownerId,
+            @RequestBody @jakarta.validation.Valid
+                com.spa.home_rental_application.document_service.DTO.Request.RejectDocumentRequest body) {
+        log.info("POST /documents/{}/reject by ownerId={} reason={}",
+                documentId, ownerId, body.reason());
+        return ResponseEntity.ok(documentService.reject(documentId, ownerId, body.reason()));
+    }
+
     @Operation(summary = "Soft-delete a document")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> softDelete(@PathVariable("id") String documentId) {

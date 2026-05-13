@@ -1,6 +1,8 @@
 package com.spa.home_rental_application.KafkaEvents.Producers.Impliments;
 
+import com.spa.home_rental_application.KafkaEvents.Producers.DTO.DocumentServiceEvents.DocumentApprovedEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.DocumentServiceEvents.DocumentExtractedEvent;
+import com.spa.home_rental_application.KafkaEvents.Producers.DTO.DocumentServiceEvents.DocumentRejectedEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.DocumentServiceEvents.DocumentUploadedEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.DocumentServiceEvents.DocumentVerifiedEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.Events.DocumentServiceEvents;
@@ -44,6 +46,21 @@ public class DocumentEventImpl implements DocumentServiceEvents {
     public void sendDocumentExtracted(DocumentExtractedEvent event) {
         log.info("→ {} : document.extracted documentId={} confidence={}",
                 topics.getDocumentTopic(), event.getDocumentId(), event.getConfidenceScore());
+        kafkaTemplate.send(topics.getDocumentTopic(), event.getDocumentId(), event);
+    }
+
+    @Override
+    public void sendDocumentApproved(DocumentApprovedEvent event) {
+        log.info("→ {} : document.approved documentId={} decidedBy={}",
+                topics.getDocumentTopic(), event.getDocumentId(), event.getDecidedBy());
+        kafkaTemplate.send(topics.getDocumentTopic(), event.getDocumentId(), event);
+    }
+
+    @Override
+    public void sendDocumentRejected(DocumentRejectedEvent event) {
+        log.info("→ {} : document.rejected documentId={} decidedBy={} reason={}",
+                topics.getDocumentTopic(), event.getDocumentId(),
+                event.getDecidedBy(), event.getRejectionReason());
         kafkaTemplate.send(topics.getDocumentTopic(), event.getDocumentId(), event);
     }
 }

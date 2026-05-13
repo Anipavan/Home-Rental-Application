@@ -20,6 +20,14 @@ public record DocumentResponseDto(
         BigDecimal confidenceScore,
         String verifiedBy,
         LocalDateTime verifiedAt,
+        /* Issue #9 — owner approval workflow */
+        /** PENDING | APPROVED | REJECTED — drives owner UI buttons. */
+        String verificationStatus,
+        /** Free-text reason set by the owner on rejection. */
+        String rejectionReason,
+        /** authUserId of the owner who decided. */
+        String decidedBy,
+        LocalDateTime decidedAt,
         LocalDateTime uploadedAt,
         LocalDateTime updatedAt
 ) {

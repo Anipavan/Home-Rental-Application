@@ -29,6 +29,23 @@ public interface DocumentService {
 
     DocumentResponseDto verify(String documentId, String verifiedBy, boolean fraudFlag);
 
+    /**
+     * Owner approves a tenant-uploaded document (Issue #9). Sets
+     * verificationStatus=APPROVED, stamps decidedBy / decidedAt,
+     * fires {@code document.approved} Kafka event so the tenant
+     * gets a notification via notification-service.
+     */
+    DocumentResponseDto approve(String documentId, String ownerId);
+
+    /**
+     * Owner rejects a tenant-uploaded document (Issue #9). Sets
+     * verificationStatus=REJECTED, stores the rejection reason
+     * (visible to the tenant on their documents tab + in the
+     * notification body), fires {@code document.rejected} Kafka
+     * event.
+     */
+    DocumentResponseDto reject(String documentId, String ownerId, String reason);
+
     void softDelete(String documentId);
 
     /**

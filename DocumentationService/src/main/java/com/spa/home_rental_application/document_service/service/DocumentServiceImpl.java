@@ -1,6 +1,8 @@
 package com.spa.home_rental_application.document_service.service;
 
+import com.spa.home_rental_application.KafkaEvents.Producers.DTO.DocumentServiceEvents.DocumentApprovedEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.DocumentServiceEvents.DocumentExtractedEvent;
+import com.spa.home_rental_application.KafkaEvents.Producers.DTO.DocumentServiceEvents.DocumentRejectedEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.DocumentServiceEvents.DocumentUploadedEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.DocumentServiceEvents.DocumentVerifiedEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.Events.DocumentServiceEvents;
@@ -8,6 +10,7 @@ import com.spa.home_rental_application.document_service.DTO.Response.DocumentRes
 import com.spa.home_rental_application.document_service.DTO.Response.ExtractedDataDto;
 import com.spa.home_rental_application.document_service.DTO.Response.PreSignedUrlDto;
 import com.spa.home_rental_application.document_service.Entities.Document;
+import com.spa.home_rental_application.document_service.Entities.VerificationStatus;
 import com.spa.home_rental_application.document_service.Exceptionclass.DocumentNotFoundException;
 import com.spa.home_rental_application.document_service.Exceptionclass.InvalidDocumentException;
 import com.spa.home_rental_application.document_service.Exceptionclass.StorageException;
@@ -239,6 +242,73 @@ public class DocumentServiceImpl implements DocumentService {
                     .build());
         } catch (Exception ex) {
             log.warn("document.verified publish failed for documentId={} (proceeding): {}",
+                    saved.getId(), ex.getMessage());
+        }
+        return mapper.toResponse(saved);
+    }
+
+    /* ─────────────────────────────────────────────────────────────────
+     * Issue #9 — owner approval / rejection workflow.
+     * ────────────────────────────────────────────────────────────── */
+
+    @Override
+    @Transactional
+    public DocumentResponseDto approve(String documentId, String ownerId) {
+        Document doc = mustFind(documentId);
+        if (doc.getVerificationStatus() == VerificationStatus.APPROVED) {
+            // Idempotent: re-clicking approve doesn't re-fire the event.
+            return mapper.toResponse(doc);
+        }
+        doc.setVerificationStatus(VerificationStatus.APPROVED);
+        doc.setRejectionReason(null);  // clear any stale reason
+        doc.setDecidedBy(ownerId);
+        doc.setDecidedAt(LocalDateTime.now());
+        Document saved = repository.save(doc);
+
+        try {
+            events.sendDocumentApproved(DocumentApprovedEvent.builder()
+                    .eventType("document.approved")
+                    .documentId(saved.getId())
+                    .userId(saved.getUserId())
+                    .documentType(saved.getDocumentType())
+                    .decidedBy(ownerId)
+                    .decidedAt(saved.getDecidedAt())
+                    .timestamp(LocalDateTime.now())
+                    .build());
+        } catch (Exception ex) {
+            log.warn("document.approved publish failed for documentId={} (proceeding): {}",
+                    saved.getId(), ex.getMessage());
+        }
+        return mapper.toResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public DocumentResponseDto reject(String documentId, String ownerId, String reason) {
+        Document doc = mustFind(documentId);
+        String trimmed = reason == null ? null : reason.trim();
+        // Reject is idempotent on the status side, but we re-stamp
+        // decidedAt + reason so the owner can EDIT a rejection reason
+        // (PUT-style replace) without an extra endpoint.
+        doc.setVerificationStatus(VerificationStatus.REJECTED);
+        doc.setRejectionReason(trimmed);
+        doc.setDecidedBy(ownerId);
+        doc.setDecidedAt(LocalDateTime.now());
+        Document saved = repository.save(doc);
+
+        try {
+            events.sendDocumentRejected(DocumentRejectedEvent.builder()
+                    .eventType("document.rejected")
+                    .documentId(saved.getId())
+                    .userId(saved.getUserId())
+                    .documentType(saved.getDocumentType())
+                    .decidedBy(ownerId)
+                    .rejectionReason(trimmed)
+                    .decidedAt(saved.getDecidedAt())
+                    .timestamp(LocalDateTime.now())
+                    .build());
+        } catch (Exception ex) {
+            log.warn("document.rejected publish failed for documentId={} (proceeding): {}",
                     saved.getId(), ex.getMessage());
         }
         return mapper.toResponse(saved);

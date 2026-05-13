@@ -88,6 +88,37 @@ public class Document implements Persistable<String> {
     @Column(name = "verified_at")
     private LocalDateTime verifiedAt;
 
+    /**
+     * Owner approval workflow (Issue #9). When a tenant uploads a
+     * document, this starts at PENDING. The owner opens the tenant
+     * detail page, sees the document, and either approves or
+     * rejects it via the new
+     * {@code POST /documents/{id}/approve|reject} endpoints.
+     *
+     * <p>Independent of {@link #verifiedBy} / {@link #verifiedAt}
+     * (those track admin / KYC-provider verification — a separate
+     * concept from the owner's "do I accept this document for my
+     * flat?" decision). A document can be AUTO_VERIFIED by the
+     * KYC pipeline AND still be PENDING owner approval — both
+     * states coexist.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "verification_status", length = 32, nullable = false,
+            columnDefinition = "VARCHAR2(32) DEFAULT 'PENDING' NOT NULL")
+    @Builder.Default
+    private VerificationStatus verificationStatus = VerificationStatus.PENDING;
+
+    /** Free-text reason the owner gave when rejecting. NULL otherwise. */
+    @Column(name = "rejection_reason", length = 500)
+    private String rejectionReason;
+
+    /** authUserId of the owner who approved/rejected (null while PENDING). */
+    @Column(name = "decided_by", length = 64)
+    private String decidedBy;
+
+    @Column(name = "decided_at")
+    private LocalDateTime decidedAt;
+
     @Column(name = "is_deleted", nullable = false)
     @Builder.Default
     private Boolean isDeleted = false;

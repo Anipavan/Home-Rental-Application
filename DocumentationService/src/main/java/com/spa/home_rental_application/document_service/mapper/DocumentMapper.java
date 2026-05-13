@@ -39,6 +39,10 @@ public class DocumentMapper {
                 d.getConfidenceScore(),
                 d.getVerifiedBy(),
                 d.getVerifiedAt(),
+                d.getVerificationStatus() == null ? null : d.getVerificationStatus().name(),
+                d.getRejectionReason(),
+                d.getDecidedBy(),
+                d.getDecidedAt(),
                 d.getUploadedAt(),
                 d.getUpdatedAt()
         );
