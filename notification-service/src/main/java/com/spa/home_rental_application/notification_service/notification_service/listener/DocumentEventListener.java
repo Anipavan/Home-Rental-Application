@@ -1,6 +1,8 @@
 package com.spa.home_rental_application.notification_service.notification_service.listener;
 
+import com.spa.home_rental_application.KafkaEvents.Producers.DTO.DocumentServiceEvents.DocumentApprovedEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.DocumentServiceEvents.DocumentExtractedEvent;
+import com.spa.home_rental_application.KafkaEvents.Producers.DTO.DocumentServiceEvents.DocumentRejectedEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.DocumentServiceEvents.DocumentVerifiedEvent;
 import com.spa.home_rental_application.notification_service.notification_service.enums.NotificationCategory;
 import com.spa.home_rental_application.notification_service.notification_service.enums.NotificationType;
@@ -61,6 +63,48 @@ public class DocumentEventListener {
                         "confidenceScore",safe(e.getConfidenceScore()),
                         "fraudFlag",      safe(e.getFraudFlag()),
                         "extractedAt",    safe(e.getExtractedAt())));
+    }
+
+    /**
+     * Issue #9 — owner approved the tenant's document. Fan a tenant-
+     * facing confirmation across every channel they're configured on
+     * (email + SMS + WhatsApp + bell) so they know the document
+     * landed without having to refresh the documents tab.
+     */
+    @KafkaListener(
+            topics = "${app.kafka.document-topic:document-events}",
+            groupId = "${spring.kafka.consumer.group-id:hra-notification-service}-document-approved",
+            properties = {"spring.json.value.default.type=com.spa.home_rental_application.KafkaEvents.Producers.DTO.DocumentServiceEvents.DocumentApprovedEvent"}
+    )
+    public void onApproved(DocumentApprovedEvent e) {
+        if (e == null || !"document.approved".equals(e.getEventType())) return;
+        log.info("Received {} for documentId={} userId={}",
+                e.getEventType(), e.getDocumentId(), e.getUserId());
+        notifications.fanOut(e.getUserId(),
+                NotificationCategory.DOCUMENT_APPROVED,
+                Map.of("documentType", safe(e.getDocumentType()),
+                        "decidedAt",  safe(e.getDecidedAt())));
+    }
+
+    /**
+     * Issue #9 — owner rejected the tenant's document. Includes the
+     * reason verbatim in the notification body so the tenant knows
+     * exactly what to fix before re-uploading.
+     */
+    @KafkaListener(
+            topics = "${app.kafka.document-topic:document-events}",
+            groupId = "${spring.kafka.consumer.group-id:hra-notification-service}-document-rejected",
+            properties = {"spring.json.value.default.type=com.spa.home_rental_application.KafkaEvents.Producers.DTO.DocumentServiceEvents.DocumentRejectedEvent"}
+    )
+    public void onRejected(DocumentRejectedEvent e) {
+        if (e == null || !"document.rejected".equals(e.getEventType())) return;
+        log.info("Received {} for documentId={} userId={} reason={}",
+                e.getEventType(), e.getDocumentId(), e.getUserId(), e.getRejectionReason());
+        notifications.fanOut(e.getUserId(),
+                NotificationCategory.DOCUMENT_REJECTED,
+                Map.of("documentType",    safe(e.getDocumentType()),
+                        "rejectionReason",safe(e.getRejectionReason()),
+                        "decidedAt",      safe(e.getDecidedAt())));
     }
 
     private static String safe(Object o) { return o == null ? "" : o.toString(); }

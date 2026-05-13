@@ -1,6 +1,6 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Mail,
@@ -14,7 +14,23 @@ import {
   AlertTriangle,
   CheckCircle2,
   Building2,
+  Check,
+  X,
+  Loader2,
 } from "lucide-react";
+import { useAuthStore } from "@/stores/auth-store";
+import { extractErrorMessage } from "@/lib/api/client";
+import { toast } from "@/hooks/use-toast";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { paymentsApi } from "@/lib/api/payments";
 import { maintenanceApi } from "@/lib/api/maintenance";
 import { agreementsApi } from "@/lib/api/agreements";
@@ -32,6 +48,7 @@ import { Separator } from "@/components/ui/separator";
 import { PageHeader } from "@/components/layout/page-header";
 import { formatDate, formatINR, initials } from "@/lib/utils";
 import type {
+  DocumentResponse,
   KycStatus,
   PaymentResponse,
   PaymentStatus,
@@ -344,7 +361,10 @@ export function TenantDetailPage() {
           </CardContent>
         </Card>
 
-        {/* Documents on file */}
+        {/* Documents on file — owner approval workflow (Issue #9).
+            Each row shows the doc + a Approve/Reject pair while
+            PENDING, and a status badge once decided. Reject opens a
+            small dialog to capture the reason (required, max 500 chars). */}
         <Card>
           <CardContent className="p-6">
             <Section title="Documents on file" Icon={FileText} />
@@ -360,28 +380,8 @@ export function TenantDetailPage() {
               </p>
             ) : (
               <ul className="mt-3 space-y-2">
-                {documentsQ.data!.slice(0, 6).map((d) => (
-                  <li
-                    key={d.id}
-                    className="rounded-lg border bg-secondary/30 p-3 flex items-center gap-3 text-sm"
-                  >
-                    <FileText className="size-4 text-muted-foreground shrink-0" />
-                    <span className="font-medium truncate flex-1">
-                      {d.originalFilename ?? d.id}
-                    </span>
-                    <Badge variant="secondary" className="text-[10px]">
-                      {d.documentType}
-                    </Badge>
-                    {d.verifiedAt ? (
-                      <Badge variant="success" className="text-[10px]">
-                        <CheckCircle2 className="size-3" /> Verified
-                      </Badge>
-                    ) : (
-                      <Badge variant="warning" className="text-[10px]">
-                        Pending
-                      </Badge>
-                    )}
-                  </li>
+                {documentsQ.data!.slice(0, 8).map((d) => (
+                  <DocumentRow key={d.id} doc={d} />
                 ))}
               </ul>
             )}
@@ -564,5 +564,163 @@ function Stat({
         {value}
       </p>
     </div>
+  );
+}
+
+/**
+ * Document row with owner approve/reject buttons (Issue #9). PENDING
+ * docs surface the two action buttons; APPROVED / REJECTED docs show
+ * a status badge and (for rejected) the reason in a small footer
+ * underneath so the owner remembers what they asked for.
+ */
+function DocumentRow({ doc }: { doc: DocumentResponse }) {
+  const { authUserId } = useAuthStore();
+  const qc = useQueryClient();
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [reason, setReason] = useState("");
+
+  const status = doc.verificationStatus ?? "PENDING";
+
+  const approveM = useMutation({
+    mutationFn: () => documentsApi.approve(doc.id, authUserId!),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tenant-documents", doc.userId] });
+      toast({
+        title: "Document approved",
+        description: `${doc.documentType} marked as approved. The tenant has been notified.`,
+      });
+    },
+    onError: (e) =>
+      toast({
+        variant: "destructive",
+        title: "Couldn't approve document",
+        description: extractErrorMessage(e),
+      }),
+  });
+
+  const rejectM = useMutation({
+    mutationFn: () => documentsApi.reject(doc.id, authUserId!, reason.trim()),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tenant-documents", doc.userId] });
+      toast({
+        title: "Document rejected",
+        description: "The tenant has been notified and can re-upload.",
+      });
+      setRejectOpen(false);
+      setReason("");
+    },
+    onError: (e) =>
+      toast({
+        variant: "destructive",
+        title: "Couldn't reject document",
+        description: extractErrorMessage(e),
+      }),
+  });
+
+  return (
+    <li className="rounded-lg border bg-secondary/30 p-3 text-sm">
+      <div className="flex items-center gap-3 flex-wrap">
+        <FileText className="size-4 text-muted-foreground shrink-0" />
+        <span className="font-medium truncate flex-1 min-w-0">
+          {doc.originalFilename ?? doc.id}
+        </span>
+        <Badge variant="secondary" className="text-[10px]">
+          {doc.documentType}
+        </Badge>
+        {status === "APPROVED" && (
+          <Badge variant="success" className="text-[10px]">
+            <CheckCircle2 className="size-3" /> Approved
+          </Badge>
+        )}
+        {status === "REJECTED" && (
+          <Badge variant="destructive" className="text-[10px]">
+            <X className="size-3" /> Rejected
+          </Badge>
+        )}
+        {status === "PENDING" && (
+          <>
+            <Badge variant="warning" className="text-[10px]">
+              Pending review
+            </Badge>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7"
+              onClick={() => approveM.mutate()}
+              disabled={approveM.isPending || !authUserId}
+            >
+              {approveM.isPending ? (
+                <Loader2 className="size-3 animate-spin" />
+              ) : (
+                <Check className="size-3" />
+              )}
+              Approve
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              className="h-7"
+              onClick={() => setRejectOpen(true)}
+              disabled={!authUserId}
+            >
+              <X className="size-3" /> Reject
+            </Button>
+          </>
+        )}
+      </div>
+      {/* Rejected doc footer — small note with the reason so the owner
+          can remember what they told the tenant. */}
+      {status === "REJECTED" && doc.rejectionReason && (
+        <p className="text-xs text-muted-foreground mt-2 pl-7">
+          <span className="font-semibold">Reason:</span> {doc.rejectionReason}
+        </p>
+      )}
+
+      {/* Reject-reason dialog */}
+      <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reject {doc.documentType}?</DialogTitle>
+            <DialogDescription>
+              Tell the tenant what to fix so they can re-upload. They'll see
+              this reason in their notification + on their documents tab.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor={`reject-reason-${doc.id}`}>Reason</Label>
+            <Textarea
+              id={`reject-reason-${doc.id}`}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="e.g. The photo is too blurry — please upload a clearer copy of the front side."
+              maxLength={500}
+              rows={4}
+            />
+            <p className="text-[11px] text-muted-foreground">
+              {reason.length} / 500 characters
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setRejectOpen(false)}
+              disabled={rejectM.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => rejectM.mutate()}
+              disabled={!reason.trim() || rejectM.isPending}
+            >
+              {rejectM.isPending && (
+                <Loader2 className="size-4 animate-spin" />
+              )}
+              Confirm rejection
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </li>
   );
 }

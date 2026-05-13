@@ -604,6 +604,14 @@ export interface KycReport {
 export type DocumentType = "AADHAAR" | "PAN" | "AGREEMENT" | "PHOTO" | "OTHER";
 export type OcrStatus = "PENDING" | "PROCESSING" | "DONE" | "FAILED";
 
+/**
+ * Issue #9 — owner approval workflow status. Independent of
+ * verifiedBy/verifiedAt (which track admin / KYC-provider
+ * verification) — a document can be AUTO_VERIFIED by OCR AND
+ * still be PENDING owner approval.
+ */
+export type VerificationStatus = "PENDING" | "APPROVED" | "REJECTED";
+
 export interface DocumentResponse {
   id: string;
   userId: string;
@@ -617,6 +625,11 @@ export interface DocumentResponse {
   confidenceScore?: number;
   verifiedBy?: string;
   verifiedAt?: string;
+  /* Issue #9 — owner approval workflow */
+  verificationStatus?: VerificationStatus;
+  rejectionReason?: string | null;
+  decidedBy?: string | null;
+  decidedAt?: string | null;
   uploadedAt?: string;
   updatedAt?: string;
 }

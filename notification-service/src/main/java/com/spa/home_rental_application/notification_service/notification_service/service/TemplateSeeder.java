@@ -506,6 +506,48 @@ public class TemplateSeeder {
                         + "We'll ping again on the day itself.",
                 List.of("tenantName", "flatNumber", "vacateDate", "daysUntilVacate"));
 
+        /* ─── DOCUMENT_APPROVED / DOCUMENT_REJECTED (Issue #9) ───
+         * Tenant-facing — confirms the owner's decision on a doc the
+         * tenant uploaded. Variables: documentType, rejectionReason
+         * (rejected variant only). All three channels seeded so the
+         * tenant gets the same news on whichever channel they're on.
+         */
+        seedIfAbsent("document-approved-email", NotificationCategory.DOCUMENT_APPROVED,
+                NotificationType.EMAIL,
+                "Your {{documentType}} was approved",
+                "Hi,\n\nYour owner has approved your {{documentType}} document. "
+                        + "It's now on your tenant file and you don't need to do anything else.\n\n"
+                        + "You can view all your documents under *Documents* in the Hearth app.",
+                List.of("documentType"));
+        seedIfAbsent("document-approved-sms", NotificationCategory.DOCUMENT_APPROVED,
+                NotificationType.SMS, null,
+                "Hearth: your {{documentType}} was approved by your owner. No action needed.",
+                List.of("documentType"));
+        seedIfAbsent("document-approved-whatsapp", NotificationCategory.DOCUMENT_APPROVED,
+                NotificationType.WHATSAPP, null,
+                "✅ *Document approved*\n\nYour *{{documentType}}* has been approved by your owner. "
+                        + "It's filed on your tenant record — nothing more to do.",
+                List.of("documentType"));
+
+        seedIfAbsent("document-rejected-email", NotificationCategory.DOCUMENT_REJECTED,
+                NotificationType.EMAIL,
+                "Your {{documentType}} needs another look",
+                "Hi,\n\nYour owner couldn't accept the {{documentType}} you uploaded. They wrote:\n\n"
+                        + "  \"{{rejectionReason}}\"\n\n"
+                        + "Please re-upload a corrected version under *Documents* in the Hearth app. "
+                        + "Once you upload again, the owner will review the new copy.",
+                List.of("documentType", "rejectionReason"));
+        seedIfAbsent("document-rejected-sms", NotificationCategory.DOCUMENT_REJECTED,
+                NotificationType.SMS, null,
+                "Hearth: your {{documentType}} was rejected. Reason: {{rejectionReason}}. Re-upload via the app.",
+                List.of("documentType", "rejectionReason"));
+        seedIfAbsent("document-rejected-whatsapp", NotificationCategory.DOCUMENT_REJECTED,
+                NotificationType.WHATSAPP, null,
+                "⚠️ *Document needs another look*\n\nYour owner couldn't accept the *{{documentType}}* "
+                        + "you uploaded:\n\n> {{rejectionReason}}\n\n"
+                        + "Re-upload a corrected version under *Documents* in the Hearth app.",
+                List.of("documentType", "rejectionReason"));
+
         /* ─── MAINTENANCE_ASSIGNED / MAINTENANCE_RESOLVED — completing
          * the channel set for the in-flight maintenance pipeline.
          * MaintenanceEventListener already uses fanOut for these, so

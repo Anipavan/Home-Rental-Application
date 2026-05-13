@@ -43,5 +43,12 @@ public enum NotificationCategory {
     GST_INVOICE_GENERATED,
     DOCUMENT_VERIFIED,
     DOCUMENT_EXTRACTED,
+    // Issue #9 — owner approval workflow on tenant-uploaded documents.
+    // Fired when the owner approves/rejects from their tenant-detail
+    // page. Recipient is the TENANT (the uploader) — they need to
+    // know whether to wait, re-upload, or fix something specific
+    // (rejectionReason variable on the REJECTED template).
+    DOCUMENT_APPROVED,
+    DOCUMENT_REJECTED,
     GENERIC
 }

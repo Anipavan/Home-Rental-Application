@@ -61,6 +61,33 @@ export const documentsApi = {
       })
       .then((r) => r.data),
 
+  /**
+   * Issue #9 — owner approves a tenant-uploaded document. Sets
+   * verificationStatus=APPROVED, fires document.approved event so
+   * the tenant gets a notification fanned out across their channels.
+   */
+  approve: (id: string, ownerId: string) =>
+    api
+      .post<DocumentResponse>(`/documents/${id}/approve`, null, {
+        params: { ownerId },
+      })
+      .then((r) => r.data),
+
+  /**
+   * Issue #9 — owner rejects a tenant-uploaded document with a
+   * free-text reason. The reason is required (max 500 chars) and
+   * is surfaced verbatim in the tenant's notification + on their
+   * documents tab.
+   */
+  reject: (id: string, ownerId: string, reason: string) =>
+    api
+      .post<DocumentResponse>(
+        `/documents/${id}/reject`,
+        { reason },
+        { params: { ownerId } },
+      )
+      .then((r) => r.data),
+
   remove: (id: string) =>
     api.delete<void>(`/documents/${id}`).then((r) => r.data),
 };
