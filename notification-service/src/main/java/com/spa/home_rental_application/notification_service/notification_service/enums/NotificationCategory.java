@@ -27,6 +27,11 @@ public enum NotificationCategory {
     ENQUIRY_RECEIVED,
     LEASE_WELCOME,
     LEASE_EXPIRY,
+    // Issue #5 — owner is notified 10 days before a tenant's
+    // scheduled vacate date, so they can plan re-listing /
+    // walkthrough / deposit return. Fanned across every channel
+    // because vacates are high-impact ops events for the owner.
+    TENANT_VACATING_NOTICE,
     // ----- India Compliance Layer -----
     KYC_VERIFIED,
     KYC_FAILED,

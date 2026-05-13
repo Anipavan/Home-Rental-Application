@@ -474,6 +474,38 @@ public class TemplateSeeder {
                         + "is in *Documents* in the Hearth app.\n\nThanks for staying with us. 🙏",
                 List.of("terminatedOn", "terminationReason"));
 
+        /* ─── TENANT_VACATING_NOTICE — owner-facing 10-day-prior warning
+         * (Issue #5). Fired by property-service's VacateScheduler when
+         * a tenant's scheduledVacateDate lands within the next 10 days.
+         * Variables: flatNumber, tenantName, vacateDate, daysUntilVacate.
+         */
+        seedIfAbsent("tenant-vacating-notice-email", NotificationCategory.TENANT_VACATING_NOTICE,
+                NotificationType.EMAIL,
+                "{{tenantName}} is vacating Flat {{flatNumber}} in {{daysUntilVacate}} days",
+                "Hi,\n\nHeads-up — your tenant {{tenantName}} is scheduled to move out of "
+                        + "Flat {{flatNumber}} on {{vacateDate}} ({{daysUntilVacate}} days from now).\n\n"
+                        + "What to do now:\n"
+                        + "• Plan a move-out walkthrough close to the date\n"
+                        + "• Have the deposit-refund flow ready (7-day SLA from move-out)\n"
+                        + "• List the flat again in the Hearth dashboard so it's discoverable "
+                        + "on the day they move out\n\n"
+                        + "You'll get another notification on the move-out day itself.",
+                List.of("tenantName", "flatNumber", "vacateDate", "daysUntilVacate"));
+        seedIfAbsent("tenant-vacating-notice-sms", NotificationCategory.TENANT_VACATING_NOTICE,
+                NotificationType.SMS, null,
+                "Hearth: tenant {{tenantName}} vacating Flat {{flatNumber}} on {{vacateDate}} ({{daysUntilVacate}}d). Plan walkthrough + re-listing.",
+                List.of("tenantName", "flatNumber", "vacateDate", "daysUntilVacate"));
+        seedIfAbsent("tenant-vacating-notice-whatsapp", NotificationCategory.TENANT_VACATING_NOTICE,
+                NotificationType.WHATSAPP, null,
+                "📅 *Tenant vacating soon*\n\n*{{tenantName}}* is moving out of *Flat {{flatNumber}}* on "
+                        + "*{{vacateDate}}* (in {{daysUntilVacate}} days).\n\n"
+                        + "Next steps in the Hearth app:\n"
+                        + "• Schedule a walkthrough\n"
+                        + "• Re-list the flat to keep it visible from day one\n"
+                        + "• Confirm deposit refund details\n\n"
+                        + "We'll ping again on the day itself.",
+                List.of("tenantName", "flatNumber", "vacateDate", "daysUntilVacate"));
+
         /* ─── MAINTENANCE_ASSIGNED / MAINTENANCE_RESOLVED — completing
          * the channel set for the in-flight maintenance pipeline.
          * MaintenanceEventListener already uses fanOut for these, so

@@ -2,6 +2,7 @@ package com.spa.home_rental_application.notification_service.notification_servic
 
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyServiceEvents.FlatOccupiedEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyServiceEvents.FlatVacatedEvent;
+import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyServiceEvents.TenantVacateScheduledEvent;
 import com.spa.home_rental_application.notification_service.notification_service.enums.NotificationCategory;
 import com.spa.home_rental_application.notification_service.notification_service.service.NotificationService;
 import lombok.extern.slf4j.Slf4j;
@@ -85,6 +86,39 @@ public class PropertyEventListener {
                         "flatNumber",       safe(e.getFlatNumber()),
                         "terminatedOn",     safe(e.getEndDate()),
                         "terminationReason","tenancy ended"));
+    }
+
+    /**
+     * Issue #5 — owner's 10-day-prior vacate warning. Fired by
+     * property-service's VacateScheduler. The OWNER is the recipient
+     * here (not the tenant), so we fanOut against the owner's
+     * authUserId. tenantName is left as a placeholder for now —
+     * a future enrichment could call user-service via Feign to fetch
+     * the tenant's display name, but for the first cut we render
+     * "your tenant" generically.
+     */
+    @KafkaListener(
+            topics = "${app.kafka.property-topic:property-events}",
+            groupId = "${spring.kafka.consumer.group-id:hra-notification-service}-tenant-vacate-scheduled",
+            properties = {"spring.json.value.default.type=com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyServiceEvents.TenantVacateScheduledEvent"}
+    )
+    public void onTenantVacateScheduled(TenantVacateScheduledEvent e) {
+        if (e == null || !"tenant.vacate.scheduled".equals(e.getEventType())) return;
+        log.info("Received {} for flatId={} flatNumber={} ownerId={} vacateDate={} daysUntil={}",
+                e.getEventType(), e.getFlatId(), e.getFlatNumber(),
+                e.getOwnerId(), e.getVacateDate(), e.getDaysUntilVacate());
+        if (e.getOwnerId() == null || e.getOwnerId().isBlank()) {
+            log.warn("Skipping vacate-scheduled notification — event had no ownerId. flatId={}", e.getFlatId());
+            return;
+        }
+        notifications.fanOut(e.getOwnerId(),
+                NotificationCategory.TENANT_VACATING_NOTICE,
+                Map.of("flatNumber",       safe(e.getFlatNumber()),
+                        "vacateDate",      safe(e.getVacateDate()),
+                        "daysUntilVacate", String.valueOf(e.getDaysUntilVacate()),
+                        // Best-effort tenant name; templates fall back to "your tenant"
+                        // when this is blank (Mustache renders missing var as "").
+                        "tenantName",      "your tenant"));
     }
 
     private static String safe(Object o) { return o == null ? "" : o.toString(); }
