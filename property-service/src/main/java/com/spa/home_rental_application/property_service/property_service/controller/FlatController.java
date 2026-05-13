@@ -43,8 +43,16 @@ public class FlatController {
     @GetMapping("/flats")
     public ResponseEntity<Page<FlatResponseDTO>> getAllFlats(
             @RequestParam(defaultValue = "0") @Min(0) int page,
-            // M11: cap size at 100 to defang ?size=99999 DoS.
-            @RequestParam(defaultValue = "10") @Min(1) @jakarta.validation.constraints.Max(100) int size) {
+            // M11 originally capped size at 100 to defang ?size=99999 DoS.
+            // Bumped to 500 (same as BuildingsController) so the owner's
+            // AssignTenantDialog can fetch every active flat in one call
+            // to build the set of "tenants currently assigned somewhere"
+            // for filtering its tenant picker. Each FlatResponseDTO is
+            // ~1-2 KB, so 500 caps payload at ~1 MB — still bounded.
+            // For metropolitan-scale deployments, follow up with a
+            // narrow /flats/occupied-tenant-ids endpoint returning
+            // List<String>.
+            @RequestParam(defaultValue = "10") @Min(1) @jakarta.validation.constraints.Max(500) int size) {
         log.info("GET /properties/flats page={} size={}", page, size);
         Pageable pageable = PageRequest.of(page, size);
         return ResponseEntity.ok(flatService.getAllFlats(pageable));

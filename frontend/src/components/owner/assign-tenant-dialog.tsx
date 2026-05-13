@@ -81,6 +81,40 @@ export function AssignTenantDialog({
     staleTime: 60_000,
   });
 
+  // Fetch every active flat so we can hide tenants who are already
+  // occupying one. A tenant can only hold one flat at a time — the
+  // backend's FlatServiceImpul.assignFlat enforces this and throws
+  // FlatOccupiedException on violations, but raising the error AFTER
+  // the owner picks a tenant + clicks Assign is bad UX. Pre-filter
+  // here so ineligible tenants never show up in the picker.
+  //
+  // Page size 500 matches the FlatController's bumped @Max cap;
+  // sufficient for any city-scale deployment. For metropolitan-scale
+  // we'd swap this for a dedicated /flats/occupied-tenant-ids
+  // endpoint returning just String[].
+  const allFlatsQ = useQuery({
+    queryKey: ["all-flats-for-assignment", flatId],
+    queryFn: () => propertiesApi.flats.list(0, 500),
+    enabled: open,
+    staleTime: 30_000,
+  });
+
+  // Build the set of authUserIds currently holding an active,
+  // occupied flat. Exclude the CURRENT flat we're assigning to —
+  // if it already has a tenant (re-assign flow), they'd otherwise
+  // self-filter out and the dialog would look like "no tenants
+  // available".
+  const occupiedTenantIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const f of allFlatsQ.data?.content ?? []) {
+      if (f.id === flatId) continue; // don't filter against ourselves
+      if (f.isOccupied && f.tenantId && f.tenantId.length > 0) {
+        set.add(f.tenantId);
+      }
+    }
+    return set;
+  }, [allFlatsQ.data, flatId]);
+
   const tenants = useMemo(
     () =>
       (tenantsQ.data ?? []).filter(
@@ -89,6 +123,17 @@ export function AssignTenantDialog({
       ),
     [tenantsQ.data],
   );
+
+  // Tenants minus the ones already assigned to another flat. The
+  // owner only ever sees tenants who are actually available — the
+  // backend's FlatOccupiedException is a defence-in-depth check
+  // for race conditions / direct API calls, never a normal UX
+  // path.
+  const eligibleTenants = useMemo(
+    () => tenants.filter((t) => !occupiedTenantIds.has(t.authUserId)),
+    [tenants, occupiedTenantIds],
+  );
+  const hiddenCount = tenants.length - eligibleTenants.length;
 
   /**
    * Case-insensitive filter across firstName + lastName + userName +
@@ -99,8 +144,8 @@ export function AssignTenantDialog({
    */
   const filteredTenants = useMemo(() => {
     const q = tenantSearch.trim().toLowerCase();
-    if (!q) return tenants;
-    return tenants.filter((t) => {
+    if (!q) return eligibleTenants;
+    return eligibleTenants.filter((t) => {
       const haystack = [
         t.firstName,
         t.lastName,
@@ -113,7 +158,7 @@ export function AssignTenantDialog({
         .toLowerCase();
       return haystack.includes(q);
     });
-  }, [tenants, tenantSearch]);
+  }, [eligibleTenants, tenantSearch]);
 
   const assignM = useMutation({
     mutationFn: () =>
@@ -177,7 +222,7 @@ export function AssignTenantDialog({
         <div className="space-y-4">
           <div>
             <Label htmlFor="tenantSearch">Tenant</Label>
-            {tenantsQ.isLoading ? (
+            {tenantsQ.isLoading || allFlatsQ.isLoading ? (
               <div className="mt-1.5 text-sm text-muted-foreground flex items-center gap-2">
                 <Loader2 className="size-4 animate-spin" />
                 Loading tenants…
@@ -186,6 +231,11 @@ export function AssignTenantDialog({
               <p className="mt-1.5 text-sm text-muted-foreground">
                 No registered tenants yet — once someone signs up with the
                 TENANT role, they'll show here.
+              </p>
+            ) : eligibleTenants.length === 0 ? (
+              <p className="mt-1.5 text-sm text-muted-foreground">
+                Every registered tenant is already assigned to a flat. Vacate
+                an existing flat first, or wait for a new tenant to sign up.
               </p>
             ) : (
               <>
@@ -254,9 +304,23 @@ export function AssignTenantDialog({
                 </div>
 
                 <p className="mt-1 text-[11px] text-muted-foreground">
-                  {tenantAuthId
-                    ? "1 tenant selected."
-                    : `${filteredTenants.length} of ${tenants.length} matching — tap a row to pick.`}
+                  {tenantAuthId ? (
+                    "1 tenant selected."
+                  ) : (
+                    <>
+                      {filteredTenants.length} of {eligibleTenants.length}{" "}
+                      eligible — tap a row to pick.
+                      {hiddenCount > 0 && (
+                        <>
+                          {" "}
+                          <span className="text-muted-foreground/70">
+                            ({hiddenCount} hidden — already assigned to other
+                            flats.)
+                          </span>
+                        </>
+                      )}
+                    </>
+                  )}
                 </p>
               </>
             )}
