@@ -55,7 +55,8 @@ export function TenantLeasePage() {
   // idempotent), but legacy rows from before that fix can still produce
   // a "lease shown twice" effect — particularly when there's a SIGNED
   // row from an old assignment plus a stale PENDING_SIGNATURE for the
-  // same flat. We collapse to one card per flatId using a richer rank:
+  // same flat, OR when one of the legacy rows has flatId=null. We
+  // collapse to one card per flatId using a richer rank:
   //
   //   SIGNED  >  PENDING_SIGNATURE  >  REJECTED
   //   within the same status, latest updated wins.
@@ -67,12 +68,15 @@ export function TenantLeasePage() {
   const uniqueById = Array.from(
     new Map(agreements.map((a) => [a.id, a])).values(),
   );
+  // Dedup by flatId where set; for legacy rows that never got their
+  // flatId backfilled, fall back to tenantId so all the tenant's
+  // null-flat agreements collapse into a single slot (instead of
+  // each getting its own slot via the agreement.id fallback we used
+  // before, which produced the "lease displayed twice" symptom when
+  // one row had a real flatId and another had null).
   const dedupedByFlat = Object.values(
     uniqueById.reduce<Record<string, AgreementResponseDTO>>((acc, a) => {
-      // Use agreement.id as the fallback key so an agreement with no
-      // flatId still gets its own slot rather than colliding with
-      // another null-flat row.
-      const key = a.flatId ?? a.id;
+      const key = a.flatId ?? a.tenantId ?? a.id;
       const existing = acc[key];
       if (!existing || agreementRank(a) > agreementRank(existing)) {
         acc[key] = a;

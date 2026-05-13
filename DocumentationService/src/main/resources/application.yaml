@@ -120,13 +120,26 @@ app:
     download-url-ttl-seconds: ${DOCUMENT_DOWNLOAD_TTL:31536000}
     # Pre-signed download HMAC secret — keep out of source control in prod.
     download-url-secret: ${DOCUMENT_DOWNLOAD_SECRET:change-me-in-prod-doc-download-secret}
-    # Externally-reachable base for pre-signed download URLs — MUST be
-    # the API Gateway URL the browser uses, not the document-service's
-    # internal hostname. Without this, the URL embedded in the
-    # user.profilePictureUrl column points at lb://-resolved internal
-    # ports the browser can't reach and avatars never render. See
-    # DocumentProperties.publicBaseUrl for the full rationale.
-    public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080/rentals/v1}
+    # Base for pre-signed download URLs.
+    #
+    # The default is RELATIVE ("/rentals/v1") rather than absolute
+    # ("http://localhost:8080/rentals/v1"). Reason: the URL ends up
+    # in <img src="..."> tags on the SPA, and an absolute URL hard-
+    # codes the host at upload time. If the browser is on ngrok
+    # (or any host other than the one that did the signing — e.g.
+    # localhost dev, staging, prod), an absolute "http://localhost"
+    # URL points at a host the browser can't reach and the avatar
+    # 404s silently. Relative URLs resolve against the browser's
+    # current origin, so the same persisted value Just Works on
+    # localhost, ngrok, and prod without any host-bound config.
+    #
+    # Override with PUBLIC_BASE_URL=https://api.hearth.app/rentals/v1
+    # only when serving downloads from a DIFFERENT origin than the
+    # SPA (e.g. CDN proxying to a separate document host). The
+    # gateway routes /rentals/v1/documents/** to this service, so
+    # the relative path works as long as both SPA and API share the
+    # gateway's origin.
+    public-base-url: ${PUBLIC_BASE_URL:/rentals/v1}
     allowed-content-types:
       - application/pdf
       - image/png

@@ -38,7 +38,17 @@ export function OwnerAgreementsPage() {
     enabled: !!authUserId,
   });
 
-  const all = q.data ?? [];
+  // Defensive id-dedup. If the API ever returns the same agreement
+  // row twice (e.g. a Kafka-consumer retry hydrated the row a second
+  // time), the owner page would render two identical cards under the
+  // same status tab. Unlike the tenant view we don't dedup by flatId
+  // here — the owner legitimately wants to see every agreement they
+  // have across every flat, including the historical SIGNED row plus
+  // any current PENDING_SIGNATURE for the same flat. Just collapse
+  // exact-id duplicates.
+  const all = Array.from(
+    new Map((q.data ?? []).map((a) => [a.id, a])).values(),
+  );
   const pending = all.filter((a) => a.status === "PENDING_SIGNATURE");
   const signed = all.filter((a) => a.status === "SIGNED");
   const rejected = all.filter((a) => a.status === "REJECTED");
