@@ -204,6 +204,12 @@ export interface FlatResponseDTO {
   availableFrom?: string | null;
   depositAmount?: number | null;
   description?: string | null;
+  /**
+   * Issue #5 — tenant-initiated scheduled vacate. When set, the
+   * flat is still occupied (isOccupied=true) and the tenant is in
+   * the 60-day notice window. ISO date string from the backend.
+   */
+  scheduledVacateDate?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }

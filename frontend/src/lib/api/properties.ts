@@ -177,6 +177,23 @@ export const propertiesApi = {
       api
         .post<FlatResponseDTO>(`/properties/flats/${flatId}/vacate`)
         .then((r) => r.data),
+    /**
+     * Tenant-initiated scheduled vacate (Issue #5). Locks the effective
+     * date to today + 60 days. Backend rejects with 422 if any
+     * outstanding rent invoice exists. Returns the updated flat with
+     * scheduledVacateDate set.
+     */
+    scheduleVacate: (flatId: number | string) =>
+      api
+        .post<FlatResponseDTO>(`/properties/flats/${flatId}/schedule-vacate`)
+        .then((r) => r.data),
+    /** Cancel a previously-scheduled tenant vacate. */
+    cancelScheduledVacate: (flatId: number | string) =>
+      api
+        .post<FlatResponseDTO>(
+          `/properties/flats/${flatId}/schedule-vacate/cancel`,
+        )
+        .then((r) => r.data),
     remove: (id: number | string) =>
       api
         .delete<FlatResponseDTO>(`/properties/flats/${id}`)

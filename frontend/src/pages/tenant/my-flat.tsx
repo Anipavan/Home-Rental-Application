@@ -1,5 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import { useState } from "react";
 import {
   Bed,
   Bath,
@@ -8,6 +9,8 @@ import {
   Building2,
   MapPin,
   Wrench,
+  CalendarClock,
+  Loader2,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { propertiesApi } from "@/lib/api/properties";
@@ -18,11 +21,16 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Separator } from "@/components/ui/separator";
 import { ContactPersonPopover } from "@/components/common/contact-person-popover";
 import { MyRequestsCard } from "@/components/tenant/my-requests-card";
+import { ScheduleVacateDialog } from "@/components/tenant/schedule-vacate-dialog";
 import { formatINR, formatDate } from "@/lib/utils";
+import { extractErrorMessage } from "@/lib/api/client";
+import { toast } from "@/hooks/use-toast";
 import { getPlaceholderImage } from "@/components/property/property-card";
 
 export function MyFlatPage() {
   const { authUserId } = useAuthStore();
+  const qc = useQueryClient();
+  const [vacateDialogOpen, setVacateDialogOpen] = useState(false);
   const flatsQ = useQuery({
     queryKey: ["my-flats", authUserId],
     queryFn: () => propertiesApi.flats.byTenant(authUserId!),
@@ -33,6 +41,22 @@ export function MyFlatPage() {
     queryKey: ["building", flat?.buildingId],
     queryFn: () => propertiesApi.buildings.get(flat!.buildingId),
     enabled: !!flat?.buildingId,
+  });
+
+  // Cancel a previously-scheduled vacate. Only mounted when
+  // `flat.scheduledVacateDate` is set — gives the tenant an undo.
+  const cancelVacateM = useMutation({
+    mutationFn: () => propertiesApi.flats.cancelScheduledVacate(flat!.id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["my-flats"] });
+      toast({ title: "Vacate cancelled" });
+    },
+    onError: (e) =>
+      toast({
+        variant: "destructive",
+        title: "Couldn't cancel vacate",
+        description: extractErrorMessage(e),
+      }),
   });
 
   if (flatsQ.isLoading) {
@@ -77,6 +101,39 @@ export function MyFlatPage() {
         title="My home"
         description="Everything about your current rental, in one place."
       />
+
+      {/* Vacate-scheduled banner. When the tenant has clicked
+          "Schedule vacate", the backend stamps Flat.scheduledVacateDate
+          and we surface it loudly so they remember the lockdown date.
+          Includes an "Undo" so the tenant can change their mind any
+          time before the date hits. */}
+      {flat.scheduledVacateDate && (
+        <Card className="mb-6 border-amber-500/30 bg-amber-500/5">
+          <CardContent className="p-4 flex items-center gap-4 flex-wrap">
+            <CalendarClock className="size-5 text-amber-600 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="font-display font-semibold">
+                Vacate scheduled for {formatDate(flat.scheduledVacateDate)}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Your owner has been notified. You'll keep paying rent and
+                using the app until then. Changed your mind?
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => cancelVacateM.mutate()}
+              disabled={cancelVacateM.isPending}
+            >
+              {cancelVacateM.isPending && (
+                <Loader2 className="size-4 animate-spin" />
+              )}
+              Undo vacate
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="rounded-2xl overflow-hidden mb-6 aspect-[16/9] sm:aspect-[3/1] bg-muted">
         <img
@@ -172,8 +229,43 @@ export function MyFlatPage() {
               )}
             </div>
           </Card>
+
+          {/* Vacate card — Issue #5 spec: bottom-right of My Home page.
+              Always enabled (vacate-effective is locked to today + 60d,
+              so there's no "occupancy minimum" gate). Confirmation
+              dialog handles the dues check + locked-date prompt.
+              Hidden when a vacate is ALREADY scheduled — the banner at
+              the top of the page handles the cancel path. */}
+          {!flat.scheduledVacateDate && (
+            <Card className="p-6 border-destructive/20">
+              <h3 className="font-display font-semibold mb-1">Vacate flat</h3>
+              <p className="text-xs text-muted-foreground mb-3">
+                Planning to move out? You'll give your owner 60 days' notice
+                and all dues must be cleared first.
+              </p>
+              <Button
+                variant="destructive"
+                className="w-full"
+                onClick={() => setVacateDialogOpen(true)}
+              >
+                <CalendarClock /> Schedule vacate
+              </Button>
+            </Card>
+          )}
         </aside>
       </div>
+
+      {/* Confirmation dialog — mounted at the page level so the
+          payments-query cache survives an open/close cycle. */}
+      {authUserId && (
+        <ScheduleVacateDialog
+          open={vacateDialogOpen}
+          onOpenChange={setVacateDialogOpen}
+          flatId={flat.id}
+          flatNumber={flat.flatNumber}
+          tenantId={authUserId}
+        />
+      )}
     </div>
   );
 }
