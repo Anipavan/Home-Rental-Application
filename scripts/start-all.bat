@@ -18,12 +18,25 @@ echo.
 echo ============================================================
 echo  Step 1/7  Docker infrastructure (Kafka, MongoDB, Oracle...)
 echo ============================================================
+REM Bring up ONLY the infrastructure containers — explicitly named
+REM to skip the Spring Boot service containers that docker-compose.yml
+REM also defines. Those service containers run `mvn package` inside
+REM Docker as a build step, which is (a) slow, (b) duplicate of what
+REM this script does on the host with `mvn spring-boot:run`, and
+REM (c) was failing for api-gateway with "exit code 1" because the
+REM in-container Maven build couldn't resolve something with -q
+REM hiding the actual error. Skipping the service containers
+REM sidesteps that entire build path.
 cd /d "%REPO%"
-docker compose up -d
+docker compose up -d oracle-db mongodb zookeeper kafka
 if errorlevel 1 (
     echo.
-    echo ERROR: docker compose up failed. Is Docker Desktop running?
-    echo Open Docker Desktop, wait for the whale icon to go solid, then re-run this script.
+    echo ERROR: docker compose up failed.
+    echo  - If you see "Cannot connect to the Docker daemon": Docker Desktop
+    echo    isn't running. Open it, wait for the whale icon to go solid, retry.
+    echo  - If you see a port conflict on 1521 / 27017 / 9093 / 2181: another
+    echo    container or local DB is using that port. Stop the conflicting
+    echo    process and retry.
     pause
     exit /b 1
 )
