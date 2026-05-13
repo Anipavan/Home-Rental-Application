@@ -109,6 +109,19 @@ public class AuthServiceImpl implements AuthService {
             throw new DuplicateUserException("email already registered: " + req.email());
         }
 
+        // Normalise the phone to E.164 BEFORE the uniqueness check so
+        // two users entering the same number in different formats
+        // (e.g. "9108201223" vs "+91 9108201223") are correctly
+        // recognised as a collision. Same canonicalisation pattern
+        // that notification-service's SMS / WhatsApp adapters use at
+        // send time — duplicated inline here because auth-service
+        // can't depend on notification-service.
+        String normalisedPhone = normalisePhone(req.phone(), "+91");
+        if (normalisedPhone != null && userRepository.existsByPhone(normalisedPhone)) {
+            throw new DuplicateUserException(
+                    "phone number already registered: " + normalisedPhone);
+        }
+
         Roles role = (req.userRole() == Roles.TENENT) ? Roles.TENANT : req.userRole();
         Instant now = Instant.now();
 
@@ -116,6 +129,7 @@ public class AuthServiceImpl implements AuthService {
                 .userName(req.userName())
                 .userPassword(passwordEncoder.encode(req.userPassword()))
                 .email(req.email())
+                .phone(normalisedPhone)
                 .userRole(role)
                 .enabled(true)
                 .accountNonLocked(true)
@@ -125,13 +139,17 @@ public class AuthServiceImpl implements AuthService {
         UserDetails saved = userRepository.save(entity);
 
         // Forward to User Service — never include the password.
+        // Pass the NORMALISED phone so user-service stores the same
+        // canonical E.164 form as the auth row, and so downstream
+        // notification-service consumers (which call
+        // TwilioProperties.toE164 anyway) don't have to renormalise.
         try {
             userServiceFeign.createUser(new UserProfileCreateRequest(
                     saved.getId().toString(),
                     req.firstName(),
                     req.lastName(),
                     req.email(),
-                    req.phone(),
+                    normalisedPhone,
                     req.dateOfBirth(),
                     req.gender(),
                     req.address(),
@@ -156,7 +174,7 @@ public class AuthServiceImpl implements AuthService {
                 .userName(saved.getUsername())
                 .role(role.name())
                 .email(saved.getEmail())
-                .phone(req.phone())
+                .phone(normalisedPhone)
                 .timestamp(Instant.now())
                 .build());
 
@@ -551,4 +569,45 @@ public class AuthServiceImpl implements AuthService {
      */
     @Value("${app.auth.lockout.enabled:false}")
     private boolean lockoutEnabled;
+
+    /**
+     * Normalise a raw phone number to E.164 ({@code +<country code><digits>}).
+     * Used at registration so the {@code phone} uniqueness check is
+     * format-agnostic — "9108201223" and "+91 9108201223" both end
+     * up as "+919108201223" and collide correctly. Mirrors the
+     * notification-service's {@code TwilioProperties.toE164} so the
+     * stored value also happens to be exactly what Twilio expects on
+     * the outgoing SMS / WhatsApp path.
+     *
+     * <ul>
+     *   <li>{@code null} / blank input → {@code null} (the phone field
+     *       is optional at registration; callers must NOT call
+     *       existsByPhone on null).</li>
+     *   <li>Starts with {@code +} → keep prefix, strip everything but
+     *       digits from the rest.</li>
+     *   <li>Starts with {@code 00} → swap to {@code +}.</li>
+     *   <li>Bare local number → prepend {@code defaultCountryCode}.</li>
+     * </ul>
+     */
+    private static String normalisePhone(String raw, String defaultCountryCode) {
+        if (raw == null) return null;
+        String trimmed = raw.trim();
+        if (trimmed.isEmpty()) return null;
+        String digits;
+        if (trimmed.startsWith("+")) {
+            digits = trimmed.substring(1).replaceAll("\\D", "");
+            if (digits.isEmpty()) return null;
+            return "+" + digits;
+        }
+        if (trimmed.startsWith("00")) {
+            digits = trimmed.substring(2).replaceAll("\\D", "");
+            if (digits.isEmpty()) return null;
+            return "+" + digits;
+        }
+        digits = trimmed.replaceAll("\\D", "");
+        if (digits.isEmpty()) return null;
+        String cc = defaultCountryCode == null ? "+91" : defaultCountryCode.trim();
+        if (!cc.startsWith("+")) cc = "+" + cc;
+        return cc + digits;
+    }
 }

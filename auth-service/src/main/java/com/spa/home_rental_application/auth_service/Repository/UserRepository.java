@@ -19,5 +19,14 @@ public interface UserRepository extends JpaRepository<UserDetails, Long> {
 
     boolean existsByEmailIgnoreCase(String email);
 
+    /**
+     * Used at registration to enforce the same one-account-per-phone
+     * rule we have for email. The phone is normalised to E.164 in
+     * AuthServiceImpl.register BEFORE the check, so the comparison
+     * is a straight exact match (no IgnoreCase / no LIKE — every
+     * caller already canonicalises).
+     */
+    boolean existsByPhone(String phone);
+
     List<UserDetails> findByUserRole(Roles userRole);
 }

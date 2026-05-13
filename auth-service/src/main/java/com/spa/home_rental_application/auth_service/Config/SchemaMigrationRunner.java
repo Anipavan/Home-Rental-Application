@@ -52,7 +52,15 @@ public class SchemaMigrationRunner {
             new Migration("user_details_table", "tokens_revoked_before", "TIMESTAMP"),
             // H5 — refresh-token fingerprint columns
             new Migration("refresh_tokens",     "ip_address",            "VARCHAR2(64)"),
-            new Migration("refresh_tokens",     "user_agent_hash",       "VARCHAR2(64)")
+            new Migration("refresh_tokens",     "user_agent_hash",       "VARCHAR2(64)"),
+            // Phone uniqueness at registration. Nullable on existing
+            // rows (so legacy users without a phone don't violate
+            // anything); Hibernate creates the matching unique index
+            // `idx_user_details_phone` from the @Index annotation on
+            // UserDetails. New registrations populate this column
+            // with the E.164-normalised number; AuthServiceImpl
+            // rejects duplicates with DuplicateUserException → HTTP 409.
+            new Migration("user_details_table", "phone",                 "VARCHAR2(20)")
     );
 
     private final JdbcTemplate jdbc;

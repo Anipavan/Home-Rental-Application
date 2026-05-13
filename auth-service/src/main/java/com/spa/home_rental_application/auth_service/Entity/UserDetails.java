@@ -21,7 +21,13 @@ import java.util.stream.Collectors;
 @Entity
 @Table(name = "user_details_table", indexes = {
         @Index(name = "idx_user_details_username", columnList = "user_name", unique = true),
-        @Index(name = "idx_user_details_email", columnList = "email", unique = true)
+        @Index(name = "idx_user_details_email", columnList = "email", unique = true),
+        // Phone numbers are unique like email/userName so a user
+        // can't register a second account with the same mobile
+        // number. Index is unique + non-null-tolerant: legacy rows
+        // with phone=NULL don't violate the constraint because
+        // Oracle's unique index treats multiple NULLs as distinct.
+        @Index(name = "idx_user_details_phone", columnList = "phone", unique = true)
 })
 @Getter
 @Setter
@@ -42,6 +48,23 @@ public class UserDetails implements org.springframework.security.core.userdetail
 
     @Column(name = "email", unique = true, length = 200)
     private String email;
+
+    /**
+     * Normalised phone number (E.164: {@code +<country code><digits>}).
+     * Persisted with a unique constraint so a user can't register a
+     * second account with the same mobile number. Nullable for
+     * backwards-compat with rows created before this column existed —
+     * Oracle's unique index allows multiple NULLs.
+     *
+     * <p>AuthServiceImpl.register normalises the raw user input to
+     * E.164 before persisting (defaulting to +91 when the user types
+     * a bare 10-digit Indian number), so the uniqueness check works
+     * even if two users format their input differently (e.g.
+     * "9108201223" vs "+91 9108201223" both end up as
+     * "+919108201223" and collide correctly).
+     */
+    @Column(name = "phone", unique = true, length = 20)
+    private String phone;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "user_role", nullable = false, length = 32)
@@ -97,11 +120,15 @@ public class UserDetails implements org.springframework.security.core.userdetail
     @Column(name = "record_updated_date", nullable = false)
     private Instant recodeUpdatedDate;
 
-    /* ---------- Transient profile holders (used only during registration) ---------- */
+    /* ---------- Transient profile holders (used only during registration) ----------
+     * phoneNumber USED to be here but is now persisted as the
+     * non-transient `phone` column above (unique constraint enforced
+     * at registration). Remaining @Transient fields are still
+     * convenience holders projected onto the downstream user-service
+     * profile DTO, not stored in auth-service. */
     @Transient private String firstName;
     @Transient private String lastName;
     @Transient private String gender;
-    @Transient private String phoneNumber;
     @Transient private String address;
 
     @Override
