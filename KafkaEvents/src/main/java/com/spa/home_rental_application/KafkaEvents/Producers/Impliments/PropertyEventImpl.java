@@ -4,6 +4,7 @@ import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyService
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyServiceEvents.FlatVacatedEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyServiceEvents.PropertyCreatedEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyServiceEvents.PropertyUpdatedEvent;
+import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyServiceEvents.TenantVacateScheduledEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.Events.PropertyServiceEvents;
 import com.spa.home_rental_application.KafkaEvents.config.KafkaTopicProperties;
 import lombok.extern.slf4j.Slf4j;
@@ -52,6 +53,13 @@ public class PropertyEventImpl implements PropertyServiceEvents {
     @Override
     public void sendFlatVacated(FlatVacatedEvent event) {
         log.debug("→ {} : flat.vacated flatId={}", topics.getPropertyTopic(), event.getFlatId());
+        kafkaTemplate.send(topics.getPropertyTopic(), event.getFlatId(), event);
+    }
+
+    @Override
+    public void sendTenantVacateScheduled(TenantVacateScheduledEvent event) {
+        log.debug("→ {} : tenant.vacate.scheduled flatId={} ownerId={} vacateDate={}",
+                topics.getPropertyTopic(), event.getFlatId(), event.getOwnerId(), event.getVacateDate());
         kafkaTemplate.send(topics.getPropertyTopic(), event.getFlatId(), event);
     }
 }

@@ -59,6 +59,30 @@ public class Flat {
     @Column(name = "lease_end_date")
     private LocalDate leaseEndDate;
 
+    /**
+     * Tenant-initiated scheduled vacate. NULL means no pending
+     * vacate. When set, the flat is STILL occupied (isOccupied=true)
+     * and the tenant continues to pay rent / use the app — only on
+     * this effective date does the daily {@code VacateScheduler}
+     * sweep flip {@code isOccupied=false} and clear {@code tenantId}.
+     *
+     * <p>Spec: tenant clicks "Schedule vacate" → today + 60 days
+     * lands here. Owner is notified 10 days before this date
+     * (idempotent via {@link #vacateWarningSentAt}).
+     */
+    @Column(name = "scheduled_vacate_date")
+    private LocalDate scheduledVacateDate;
+
+    /**
+     * Idempotency stamp for the owner's 10-day-prior vacate warning.
+     * Set when {@code VacateScheduler} fires the
+     * {@code TENANT_VACATING_NOTICE} notification so re-runs of the
+     * daily cron don't spam the owner. Cleared if the tenant cancels
+     * their scheduled vacate.
+     */
+    @Column(name = "vacate_warning_sent_at")
+    private LocalDateTime vacateWarningSentAt;
+
     /* ─────────── Listing attributes (filter-facing) ───────────
      * These power the NoBroker / 99acres-style filters on the public
      * browse page. Nullable so legacy rows keep working — the filter

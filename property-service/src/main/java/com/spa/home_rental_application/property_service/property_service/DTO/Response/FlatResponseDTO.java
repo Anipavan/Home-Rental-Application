@@ -37,6 +37,12 @@ public record FlatResponseDTO(
         LocalDate availableFrom,
         BigDecimal depositAmount,
         String description,
+        /* Issue #5 — tenant-initiated scheduled vacate. NULL when no
+         * vacate is pending. When set, the flat is still occupied
+         * (isOccupied=true) and the tenant continues to pay rent
+         * until this date arrives; the daily VacateScheduler flips
+         * the flat to vacant on this date. */
+        LocalDate scheduledVacateDate,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {}

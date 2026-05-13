@@ -144,11 +144,32 @@ public class FlatController {
         return ResponseEntity.ok(flatService.findFlatsNear(lat, lng, radiusKm));
     }
 
-    @Operation(summary = "Mark a flat as vacant (publishes flat.vacated)")
+    @Operation(summary = "Mark a flat as vacant (owner-initiated, immediate — publishes flat.vacated)")
     @PostMapping("/flats/{flatId}/vacate")
     public ResponseEntity<FlatResponseDTO> vacateFlat(@PathVariable String flatId) {
-        log.info("POST /properties/flats/{}/vacate", flatId);
+        log.info("POST /properties/flats/{}/vacate (owner-initiated, immediate)", flatId);
         return ResponseEntity.ok(flatService.makeFlatVacate(flatId));
+    }
+
+    /**
+     * Tenant-initiated scheduled vacate (Issue #5). Locks the
+     * effective date to today + 60 days. Rejects with HTTP 422 if
+     * any PENDING / OVERDUE rent invoice still exists. Idempotent —
+     * re-calling returns the existing scheduled date.
+     */
+    @Operation(summary = "Schedule a tenant-initiated vacate (60-day notice; rejects on outstanding dues)")
+    @PostMapping("/flats/{flatId}/schedule-vacate")
+    public ResponseEntity<FlatResponseDTO> scheduleVacate(@PathVariable String flatId) {
+        log.info("POST /properties/flats/{}/schedule-vacate (tenant-initiated)", flatId);
+        return ResponseEntity.ok(flatService.scheduleVacate(flatId));
+    }
+
+    /** Cancels a previously-scheduled vacate. Tenant (or admin) only. */
+    @Operation(summary = "Cancel a previously-scheduled vacate")
+    @PostMapping("/flats/{flatId}/schedule-vacate/cancel")
+    public ResponseEntity<FlatResponseDTO> cancelScheduledVacate(@PathVariable String flatId) {
+        log.info("POST /properties/flats/{}/schedule-vacate/cancel", flatId);
+        return ResponseEntity.ok(flatService.cancelScheduledVacate(flatId));
     }
 
     @Operation(summary = "Update flat attributes")

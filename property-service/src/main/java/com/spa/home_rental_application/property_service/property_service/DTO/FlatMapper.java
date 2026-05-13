@@ -90,6 +90,7 @@ public class FlatMapper {
                 flat.getAvailableFrom(),
                 flat.getDepositAmount(),
                 flat.getDescription(),
+                flat.getScheduledVacateDate(),
                 flat.getCreatedAt(),
                 flat.getUpdatedAt()
         );

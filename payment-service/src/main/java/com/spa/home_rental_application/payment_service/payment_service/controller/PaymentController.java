@@ -5,6 +5,7 @@ import com.spa.home_rental_application.payment_service.payment_service.DTO.Reque
 import com.spa.home_rental_application.payment_service.payment_service.DTO.Response.InvoiceResponse;
 import com.spa.home_rental_application.payment_service.payment_service.DTO.Response.PaymentResponse;
 import com.spa.home_rental_application.payment_service.payment_service.DTO.Response.ReceiptResponse;
+import com.spa.home_rental_application.payment_service.payment_service.DTO.Response.UnpaidSummaryDTO;
 import com.spa.home_rental_application.payment_service.payment_service.security.CallerSecurity;
 import com.spa.home_rental_application.payment_service.payment_service.service.PaymentService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -110,6 +111,24 @@ public class PaymentController {
     public ResponseEntity<List<PaymentResponse>> byOwner(@PathVariable String ownerId) {
         CallerSecurity.requireSelfOrAdmin(ownerId);
         return ResponseEntity.ok(paymentService.getPaymentsByOwner(ownerId));
+    }
+
+    /**
+     * Outstanding-dues summary for a flat. Called by property-service
+     * via Feign when validating a tenant-initiated vacate request
+     * (Issue #5 — all PENDING + OVERDUE invoices must be cleared
+     * before the vacate is scheduled). Also useful for any UI that
+     * wants to render an "Outstanding ₹X" badge on a flat card.
+     *
+     * <p>No CallerSecurity gate — Eureka-routed Feign calls from
+     * property-service don't carry a user JWT, and the endpoint is
+     * read-only with no PII beyond a totals summary + invoice
+     * numbers (no tenant identity is leaked).
+     */
+    @Operation(summary = "Outstanding (unpaid) summary for a flat — PENDING + OVERDUE invoices")
+    @GetMapping("/flat/{flatId}/unpaid")
+    public ResponseEntity<UnpaidSummaryDTO> unpaidByFlat(@PathVariable String flatId) {
+        return ResponseEntity.ok(paymentService.getUnpaidByFlat(flatId));
     }
 
     @Operation(summary = "List all currently overdue payments (ADMIN only, paginated)")

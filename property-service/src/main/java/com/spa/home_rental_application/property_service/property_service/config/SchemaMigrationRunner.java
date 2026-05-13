@@ -58,6 +58,12 @@ public class SchemaMigrationRunner {
             new Migration("flats", "is_deleted",        "NUMBER(1) DEFAULT 0 NOT NULL"),
             new Migration("flats", "created_at",        "TIMESTAMP"),
             new Migration("flats", "updated_at",        "TIMESTAMP"),
+            // Tenant-initiated scheduled vacate (Issue #5). NULL until
+            // tenant clicks "Schedule vacate" — daily VacateScheduler
+            // sweeps for non-null dates, fires owner warning 10 days
+            // before, and performs the actual vacate on the date itself.
+            new Migration("flats", "scheduled_vacate_date",  "DATE"),
+            new Migration("flats", "vacate_warning_sent_at", "TIMESTAMP"),
 
             // ── registered_buildings (geo pin + soft-delete + city/state FKs) ──
             new Migration("registered_buildings", "latitude",   "NUMBER(10,6)"),

@@ -201,6 +201,28 @@ public class PaymentServiceImpl implements PaymentService {
                 .map(PaymentMapper::toResponse);
     }
 
+    @Override
+    public UnpaidSummaryDTO getUnpaidByFlat(String flatId) {
+        // PENDING + OVERDUE invoices block a tenant-initiated vacate per
+        // Issue #5. PROCESSING is in-flight (gateway hasn't confirmed
+        // success/failure yet) — we EXCLUDE it from "outstanding" so a
+        // tenant who just clicked Pay isn't blocked by a 60-second
+        // settlement window.
+        List<Payment> unpaid = paymentRepo.findByFlatIdAndStatusIn(
+                flatId, List.of(PaymentStatus.PENDING, PaymentStatus.OVERDUE));
+        if (unpaid.isEmpty()) return UnpaidSummaryDTO.empty(flatId);
+        BigDecimal total = unpaid.stream()
+                .map(p -> p.getTotalAmount() != null
+                        ? p.getTotalAmount()
+                        : (p.getAmount() == null ? BigDecimal.ZERO : p.getAmount()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        List<String> invoiceNumbers = unpaid.stream()
+                .map(Payment::getInvoiceNumber)
+                .filter(s -> s != null && !s.isBlank())
+                .toList();
+        return new UnpaidSummaryDTO(flatId, unpaid.size(), total, invoiceNumbers);
+    }
+
     /* ---------------- Pay ---------------- */
 
     @Override

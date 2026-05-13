@@ -11,7 +11,9 @@ import com.spa.home_rental_application.property_service.property_service.Entitie
 import com.spa.home_rental_application.property_service.property_service.Entities.Flat;
 import com.spa.home_rental_application.property_service.property_service.ExceptionClass.FlatOccupiedException;
 import com.spa.home_rental_application.property_service.property_service.ExceptionClass.InvalidLeasePeriodException;
+import com.spa.home_rental_application.property_service.property_service.ExceptionClass.OutstandingDuesException;
 import com.spa.home_rental_application.property_service.property_service.ExceptionClass.RecordNotFoundException;
+import com.spa.home_rental_application.property_service.property_service.client.PaymentClient;
 import com.spa.home_rental_application.property_service.property_service.client.UserClient;
 import com.spa.home_rental_application.property_service.property_service.repository.BuildingRepo;
 import com.spa.home_rental_application.property_service.property_service.repository.FlatRepo;
@@ -41,19 +43,22 @@ public class FlatServiceImpul implements FlatService {
     private final FlatMapper flatMapper;
     private final AgreementService agreementService;
     private final UserClient userClient;
+    private final PaymentClient paymentClient;
 
     public FlatServiceImpul(FlatRepo flatRepo,
                             BuildingRepo buildingRepo,
                             PropertyServiceEvents eventProducer,
                             FlatMapper flatMapper,
                             AgreementService agreementService,
-                            UserClient userClient) {
+                            UserClient userClient,
+                            PaymentClient paymentClient) {
         this.flatRepo = flatRepo;
         this.buildingRepo = buildingRepo;
         this.eventProducer = eventProducer;
         this.flatMapper = flatMapper;
         this.agreementService = agreementService;
         this.userClient = userClient;
+        this.paymentClient = paymentClient;
     }
 
     @Override
@@ -205,23 +210,36 @@ public class FlatServiceImpul implements FlatService {
             return flatMapper.toResponseDTO(flat);
         }
 
-        if (flat.getLeaseStartDate() != null) {
-            LocalDate earliestVacate = flat.getLeaseStartDate().plusMonths(2);
-            if (LocalDate.now().isBefore(earliestVacate)) {
-                throw new InvalidLeasePeriodException(
-                        "Cannot vacate flat " + flat.getFlatNumber()
-                        + " before " + earliestVacate
-                        + " -- a minimum 2-month occupancy is required.");
-            }
-        }
+        // Issue #6: owner can vacate any time, no minimum-occupancy
+        // restriction. The 2-month check previously here was lifted
+        // because the spec says: "in the owner page, when owner clicks
+        // on vacate option, there should not be any restrictions. he
+        // can vacate anytime." Tenants still get the 60-day notice
+        // window via scheduleVacate() — that's the right place to
+        // enforce a delay, not this endpoint.
 
+        return doVacate(flat, "owner-initiated");
+    }
+
+    /**
+     * Shared vacate path used by both {@link #makeFlatVacate} (owner,
+     * instant) and {@link #executeScheduledVacate} (scheduler, on
+     * effective date). Clears tenant + occupancy, clears any
+     * scheduledVacateDate stamp, fires flat.vacated event.
+     */
+    private FlatResponseDTO doVacate(Flat flat, String origin) {
+        String flatId = flat.getId();
         String tenantBeingVacated = flat.getTenantId();
         String leaseEnd = flat.getLeaseEndDate() != null ? flat.getLeaseEndDate().toString() : null;
 
         flatRepo.markFlatVacant(flatId);
         flat.setIsOccupied(false);
         flat.setTenantId(null);
+        flat.setScheduledVacateDate(null);
+        flat.setVacateWarningSentAt(null);
         flat.setUpdatedAt(LocalDateTime.now());
+
+        log.info("Vacated flat {} (origin={} tenant={})", flatId, origin, tenantBeingVacated);
 
         // Best-effort, same reasoning as the assignFlat publish above.
         try {
@@ -239,6 +257,109 @@ public class FlatServiceImpul implements FlatService {
         }
 
         return flatMapper.toResponseDTO(flat);
+    }
+
+    /* ─────────────────────────────────────────────────────────────────
+     * Issue #5 — tenant-initiated scheduled vacate.
+     *
+     * Spec:
+     *   - tenant clicks "Schedule vacate" → effectiveDate = today + 60d
+     *   - rejected if any PENDING / OVERDUE rent invoice remains
+     *   - flat stays occupied during the 60-day notice window
+     *   - daily scheduler fires owner notification 10 days before
+     *   - daily scheduler executes the actual vacate on the date itself
+     * ────────────────────────────────────────────────────────────── */
+
+    /** Spec: vacate-effective date is locked to today + this many days. */
+    private static final int VACATE_NOTICE_PERIOD_DAYS = 60;
+
+    @Override
+    @Transactional
+    public FlatResponseDTO scheduleVacate(String flatId) {
+        Flat flat = flatRepo.findById(flatId).orElseThrow(
+                () -> new RecordNotFoundException("Flat not found with id: " + flatId));
+
+        if (Boolean.FALSE.equals(flat.getIsOccupied()) || flat.getTenantId() == null) {
+            throw new InvalidLeasePeriodException(
+                    "Flat " + flat.getFlatNumber() + " is not occupied — nothing to vacate.");
+        }
+
+        // Caller must be the current tenant. Owner-initiated vacate
+        // goes through makeFlatVacate which has its own ownership
+        // gate; this path is tenant-only.
+        CallerSecurity.requireSelfOrAdmin(flat.getTenantId());
+
+        // Already scheduled? Idempotent — return existing date.
+        if (flat.getScheduledVacateDate() != null) {
+            log.info("Vacate already scheduled for flatId={} on {} — returning existing",
+                    flatId, flat.getScheduledVacateDate());
+            return flatMapper.toResponseDTO(flat);
+        }
+
+        // Dues check — the spec is "all dues should be cleared before
+        // vacating". Backend defence-in-depth in addition to the
+        // frontend's visible check, so a direct API call can't bypass.
+        try {
+            PaymentClient.UnpaidSummary unpaid = paymentClient.getUnpaidByFlat(flatId);
+            if (unpaid != null && !unpaid.isClear()) {
+                throw new OutstandingDuesException(String.format(
+                        "Cannot schedule vacate — ₹%s in outstanding rent across %d invoice(s). Clear all dues first.",
+                        unpaid.totalOutstanding(), unpaid.unpaidCount()));
+            }
+        } catch (OutstandingDuesException reraise) {
+            throw reraise;
+        } catch (Exception ex) {
+            // PaymentClientFallback returns UnpaidSummary.unreachable
+            // which is_clear()==false, so this branch is only hit if
+            // Feign itself blows up (network/serialisation) before the
+            // fallback. Fail closed.
+            log.warn("Dues check failed for flatId={}: {} — failing closed", flatId, ex.getMessage());
+            throw new OutstandingDuesException(
+                    "Cannot verify outstanding dues right now. Try again in a minute.");
+        }
+
+        LocalDate effective = LocalDate.now().plusDays(VACATE_NOTICE_PERIOD_DAYS);
+        flat.setScheduledVacateDate(effective);
+        flat.setVacateWarningSentAt(null);
+        flat.setUpdatedAt(LocalDateTime.now());
+        Flat saved = flatRepo.save(flat);
+        log.info("Scheduled vacate for flatId={} tenantId={} effectiveDate={}",
+                flatId, flat.getTenantId(), effective);
+        return flatMapper.toResponseDTO(saved);
+    }
+
+    @Override
+    @Transactional
+    public FlatResponseDTO cancelScheduledVacate(String flatId) {
+        Flat flat = flatRepo.findById(flatId).orElseThrow(
+                () -> new RecordNotFoundException("Flat not found with id: " + flatId));
+
+        // Same authorisation as schedule — tenant who set it can cancel.
+        if (flat.getTenantId() != null) {
+            CallerSecurity.requireSelfOrAdmin(flat.getTenantId());
+        }
+
+        if (flat.getScheduledVacateDate() == null) {
+            return flatMapper.toResponseDTO(flat);  // already not scheduled — idempotent
+        }
+        log.info("Cancelling scheduled vacate for flatId={} (was {})", flatId, flat.getScheduledVacateDate());
+        flat.setScheduledVacateDate(null);
+        flat.setVacateWarningSentAt(null);
+        flat.setUpdatedAt(LocalDateTime.now());
+        return flatMapper.toResponseDTO(flatRepo.save(flat));
+    }
+
+    @Override
+    @Transactional
+    public FlatResponseDTO executeScheduledVacate(String flatId) {
+        Flat flat = flatRepo.findById(flatId).orElseThrow(
+                () -> new RecordNotFoundException("Flat not found with id: " + flatId));
+        // Idempotent — if already vacated (eg the scheduler re-ran),
+        // just return the current state.
+        if (Boolean.FALSE.equals(flat.getIsOccupied())) {
+            return flatMapper.toResponseDTO(flat);
+        }
+        return doVacate(flat, "scheduler-executed");
     }
 
     @Override

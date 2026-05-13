@@ -30,6 +30,14 @@ public interface PaymentService {
     List<PaymentResponse> getOverduePayments();
 
     /**
+     * Outstanding-dues summary for a single flat — PENDING + OVERDUE
+     * invoices only. Used by property-service when validating a
+     * tenant-initiated vacate request (Issue #5). Returns an empty
+     * summary (count=0, total=0) when the flat is fully paid up.
+     */
+    UnpaidSummaryDTO getUnpaidByFlat(String flatId);
+
+    /**
      * Audit L4: paginated overdue listing. At catalog scale (10k+
      * overdue rows during a payment-cycle blip) the unpaginated
      * variant 504s; this one streams a page at a time.

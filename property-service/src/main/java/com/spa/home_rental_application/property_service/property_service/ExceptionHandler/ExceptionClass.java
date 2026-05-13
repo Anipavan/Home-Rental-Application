@@ -77,6 +77,15 @@ public class ExceptionClass {
         return build(HttpStatus.BAD_REQUEST, ex.getMessage(), ex.getErrorCode(), req);
     }
 
+    @ExceptionHandler(com.spa.home_rental_application.property_service.property_service.ExceptionClass.OutstandingDuesException.class)
+    public ResponseEntity<APIErrorResponse> handleOutstandingDues(
+            com.spa.home_rental_application.property_service.property_service.ExceptionClass.OutstandingDuesException ex,
+            HttpServletRequest req) {
+        log.warn("Vacate blocked by outstanding dues at {}: {}", req.getRequestURI(), ex.getMessage());
+        // 422 Unprocessable Entity — well-formed but business-rule blocked
+        return build(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage(), ex.getErrorCode(), req);
+    }
+
     // ---------- Bean validation ----------
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

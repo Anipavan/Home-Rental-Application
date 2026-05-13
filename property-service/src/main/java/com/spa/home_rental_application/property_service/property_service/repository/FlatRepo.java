@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -61,9 +62,36 @@ public interface FlatRepo extends JpaRepository<Flat,String> {
     List<Flat> findActiveByTenantId(@Param("tenantId") String tenantId);
     @Modifying
     @Transactional
-    @Query("UPDATE Flat f SET f.isOccupied = false, f.tenantId = null " +
+    @Query("UPDATE Flat f SET f.isOccupied = false, f.tenantId = null, " +
+            "f.scheduledVacateDate = null, f.vacateWarningSentAt = null " +
             "WHERE f.id = :flatId")
     int markFlatVacant(@Param("flatId") String flatId);
+
+    /**
+     * Sweep A — owners who need their 10-day-before-vacate warning.
+     * Returns active flats with a scheduled vacate landing in the
+     * next {@code days} days where the warning hasn't been sent yet.
+     * Used by {@code VacateScheduler}.
+     */
+    @Query("SELECT f FROM Flat f " +
+           "WHERE f.scheduledVacateDate IS NOT NULL " +
+           "AND f.scheduledVacateDate <= :cutoff " +
+           "AND f.vacateWarningSentAt IS NULL " +
+           "AND (f.isDeleted = false OR f.isDeleted IS NULL)")
+    List<Flat> findDueForVacateWarning(@Param("cutoff") LocalDate cutoff);
+
+    /**
+     * Sweep B — flats whose scheduled vacate date has arrived and
+     * are still occupied. These get executed (isOccupied=false,
+     * tenantId=null, flat.vacated event fires). Used by
+     * {@code VacateScheduler}.
+     */
+    @Query("SELECT f FROM Flat f " +
+           "WHERE f.scheduledVacateDate IS NOT NULL " +
+           "AND f.scheduledVacateDate <= :today " +
+           "AND f.isOccupied = true " +
+           "AND (f.isDeleted = false OR f.isDeleted IS NULL)")
+    List<Flat> findDueForVacateExecution(@Param("today") LocalDate today);
     @Query("SELECT f FROM Flat f WHERE f.isDeleted = false OR f.isDeleted IS NULL")
     Page<Flat> getActiveFlats(Pageable pageable);
 }
