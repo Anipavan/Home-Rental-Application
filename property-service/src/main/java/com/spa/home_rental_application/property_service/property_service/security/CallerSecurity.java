@@ -80,6 +80,29 @@ public final class CallerSecurity {
                 "You can only manage buildings and flats you own.");
     }
 
+    /**
+     * Throws {@link ForbiddenException} unless the current caller is
+     * {@code userId} themselves or has the ADMIN role. Used by the
+     * tenant-initiated scheduled-vacate path (Issue #5) where the
+     * action is only valid if performed by the tenant who actually
+     * lives in the flat. No-ops when there's no current request
+     * (scheduler, Kafka, tests).
+     */
+    public static void requireSelfOrAdmin(String userId) {
+        Optional<String> caller = getCurrentAuthUserId();
+        if (caller.isEmpty()) {
+            // No request context — assume system-level call, allow.
+            return;
+        }
+        if (isAdmin()) return;
+        if (userId != null && userId.equals(caller.get())) return;
+
+        log.warn("Forbidden: caller={} attempted self-only action on userId={}",
+                caller.get(), userId);
+        throw new ForbiddenException(
+                "You can only perform this action for your own account.");
+    }
+
     private static Optional<HttpServletRequest> currentRequest() {
         try {
             ServletRequestAttributes attrs =

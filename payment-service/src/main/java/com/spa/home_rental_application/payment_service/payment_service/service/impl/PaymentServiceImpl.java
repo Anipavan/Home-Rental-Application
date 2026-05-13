@@ -216,8 +216,13 @@ public class PaymentServiceImpl implements PaymentService {
                         ? p.getTotalAmount()
                         : (p.getAmount() == null ? BigDecimal.ZERO : p.getAmount()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+        // Payment has no separate "invoice number" column — the payment
+        // id itself is the user-facing identifier in this codebase
+        // (it's what the tenant sees on /app/payments). Returning the
+        // ids gives the caller a stable handle for each unpaid row
+        // without inventing an artificial invoice numbering scheme.
         List<String> invoiceNumbers = unpaid.stream()
-                .map(Payment::getInvoiceNumber)
+                .map(Payment::getId)
                 .filter(s -> s != null && !s.isBlank())
                 .toList();
         return new UnpaidSummaryDTO(flatId, unpaid.size(), total, invoiceNumbers);
