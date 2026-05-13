@@ -40,7 +40,16 @@ export function PublicFooter() {
       <div className="border-t border-border/60">
         <div className="container py-5 flex flex-col md:flex-row items-center justify-between gap-2 text-xs text-muted-foreground">
           <span>© {new Date().getFullYear()} Hearth. All rights reserved.</span>
-          <span>Made with care · Bengaluru · Mumbai · Delhi</span>
+          <span className="hidden md:inline">Made with care · Bengaluru · Mumbai · Delhi</span>
+          {/* Attribution watermark — kept subtle (muted, tiny) so it
+              doesn't compete with the copyright but is always visible
+              on every public page footer. */}
+          <span>
+            Crafted by{" "}
+            <span className="font-semibold text-foreground/80">
+              Siva Pawan Anirudh
+            </span>
+          </span>
         </div>
       </div>
     </footer>

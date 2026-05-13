@@ -205,6 +205,16 @@ export function AppShell() {
             </p>
             <ContactSupport className="mt-3 w-full" />
           </div>
+          {/* Attribution watermark — kept very small (10px) and muted
+              so it sits quietly at the bottom of the desktop sidebar
+              without competing with the nav. Mirrors the credit in
+              PublicFooter so logged-in users see it too. */}
+          <p className="mt-3 px-1 text-[10px] text-muted-foreground/60 text-center">
+            Crafted by{" "}
+            <span className="font-semibold text-muted-foreground/80">
+              Siva Pawan Anirudh
+            </span>
+          </p>
         </div>
       </aside>
 
