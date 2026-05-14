@@ -203,12 +203,28 @@ function TenantCard({
   // if a tenant moved between flats under the same owner, every
   // collected rupee from them should still roll up here.
   const tenantPayments = allPayments.filter((p) => p.tenantId === tenantId);
-  const paid = tenantPayments
-    .filter((p) => p.status === "PAID")
-    .reduce((acc, p) => acc + Number(p.totalAmount ?? p.amount ?? 0), 0);
-  const pending = tenantPayments
-    .filter((p) => p.status === "PENDING" || p.status === "OVERDUE")
-    .reduce((acc, p) => acc + Number(p.totalAmount ?? p.amount ?? 0), 0);
+  const sumAmount = (rows: PaymentResponse[]) =>
+    rows.reduce(
+      (acc, p) => acc + Number(p.totalAmount ?? p.amount ?? 0),
+      0,
+    );
+  const paid = sumAmount(
+    tenantPayments.filter((p) => p.status === "PAID"),
+  );
+  // Split the "what's still owed" total into its two actionable
+  // halves: overdue (already past due-date, chase NOW) and upcoming
+  // (PENDING but not yet past due-date, expected soon). Keeping
+  // PROCESSING out of both buckets — that money is mid-flight via
+  // the gateway and double-counting it would inflate the totals.
+  const overdue = sumAmount(
+    tenantPayments.filter((p) => p.status === "OVERDUE"),
+  );
+  const upcoming = sumAmount(
+    tenantPayments.filter((p) => p.status === "PENDING"),
+  );
+  // Total still owed — used by the action-bar pill + the parent's
+  // dues-first sort. Equivalent to overdue + upcoming.
+  const pending = overdue + upcoming;
 
   return (
     <Card
@@ -249,7 +265,15 @@ function TenantCard({
           </div>
           <ChevronRight className="size-4 text-muted-foreground shrink-0" />
         </div>
-        <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
+        {/* Stats grid — 3 cols × 2 rows. Row 1 = static lease
+            context (rent, lease end, collected lifetime). Row 2 =
+            the two actionable buckets the owner cares about:
+            Overdue (chase now) and Upcoming (expected soon),
+            broken out from what used to be a single Outstanding
+            line. Splitting them lets the owner see at-a-glance
+            whether the unpaid total is a normal "next month's
+            rent is due" or a problem "tenant's behind on rent". */}
+        <div className="mt-4 grid grid-cols-3 gap-3 text-xs">
           <div>
             <p className="text-muted-foreground">Monthly rent</p>
             <p className="font-semibold mt-0.5">
@@ -262,13 +286,32 @@ function TenantCard({
               {formatDate(flat.leaseEndDate) ?? "—"}
             </p>
           </div>
-          {/* Bug "owner sees rent collected per tenant" — totals
-              roll up every PAID payment for this tenant. Pending +
-              overdue surface so the owner sees what's still due. */}
           <div>
-            <p className="text-muted-foreground">Collected total</p>
+            <p className="text-muted-foreground">Collected</p>
             <p className="font-semibold mt-0.5 text-emerald-600">
               {paymentsLoading ? "…" : formatINR(paid)}
+            </p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">Overdue</p>
+            <p
+              className={
+                "font-semibold mt-0.5 " +
+                (overdue > 0 ? "text-destructive" : "text-muted-foreground")
+              }
+            >
+              {paymentsLoading ? "…" : formatINR(overdue)}
+            </p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">Upcoming</p>
+            <p
+              className={
+                "font-semibold mt-0.5 " +
+                (upcoming > 0 ? "text-amber-600" : "text-muted-foreground")
+              }
+            >
+              {paymentsLoading ? "…" : formatINR(upcoming)}
             </p>
           </div>
           <div>
