@@ -73,6 +73,12 @@ export function TenantDetailPage() {
   const { tenantId } = useParams<{ tenantId: string }>();
   const authUserId = tenantId ?? "";
 
+  // Signed-in OWNER's authUserId — distinct from `authUserId` above
+  // (which is the tenant being viewed). We need both: the route param
+  // identifies whose detail to render, the auth store identifies who
+  // the API call is FROM.
+  const { authUserId: viewerAuthUserId } = useAuthStore();
+
   const userQ = useUserByAuth(authUserId);
   const userServiceId = userQ.user ? String(userQ.user.id) : undefined;
 
@@ -82,10 +88,20 @@ export function TenantDetailPage() {
     enabled: !!authUserId,
   });
 
+  // /payments/tenant/{tenantId} is gated to self-or-admin server-side
+  // — calling it as the OWNER gets a 403, so the page silently
+  // rendered Paid/Overdue/Upcoming = 0 for every tenant. Switch to
+  // /payments/owner/{ownerId} (which the signed-in owner CAN call)
+  // and filter to this tenant on the client. That endpoint returns
+  // every payment across the owner's portfolio so the slice we need
+  // is guaranteed to be present.
   const paymentsQ = useQuery({
-    queryKey: ["tenant-payments", authUserId],
-    queryFn: () => paymentsApi.byTenant(authUserId),
-    enabled: !!authUserId,
+    queryKey: ["owner-payments-for-tenant", viewerAuthUserId, authUserId],
+    queryFn: () =>
+      paymentsApi
+        .byOwner(viewerAuthUserId!)
+        .then((all) => all.filter((p) => p.tenantId === authUserId)),
+    enabled: !!authUserId && !!viewerAuthUserId,
   });
 
   const maintenanceQ = useQuery({

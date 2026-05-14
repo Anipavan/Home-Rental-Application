@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/layout/page-header";
 import { ContactPersonPopover } from "@/components/common/contact-person-popover";
 import { formatDate, formatINR, initials, normalizeDocUrl } from "@/lib/utils";
-import type { FlatResponseDTO } from "@/types/api";
+import type { FlatResponseDTO, PaymentResponse } from "@/types/api";
 
 export function TenantsPage() {
   const { authUserId } = useAuthStore();
@@ -39,6 +39,25 @@ export function TenantsPage() {
       return all.flat();
     },
     enabled: !!buildingsQ.data,
+  });
+
+  // ALL payments across every tenant the owner has — fetched ONCE for
+  // the page. Each TenantCard slices its own rows out of this list
+  // (filter by p.tenantId === flat.tenantId) instead of issuing N
+  // separate /payments/tenant/{id} calls, which:
+  //  (a) is wasteful (1 call vs N), and
+  //  (b) doesn't work — /payments/tenant/{id} is gated to
+  //      self-or-admin, so an owner calling it gets a 403 and the
+  //      query returns no data (the bug that made every card show
+  //      Outstanding=0). /payments/owner/{id} accepts the owner's
+  //      authUserId via the same requireSelfOrAdmin guard, so this
+  //      query succeeds and the data we need is already in the
+  //      response — we just filter client-side.
+  const paymentsQ = useQuery({
+    queryKey: ["payments", "by-owner", authUserId],
+    queryFn: () => paymentsApi.byOwner(authUserId!),
+    enabled: !!authUserId,
+    staleTime: 60_000,
   });
 
   const tenantedFlats = (flatsQ.data ?? []).filter((f) => f.tenantId);
@@ -75,6 +94,8 @@ export function TenantsPage() {
           <TenantCard
             key={f.id}
             flat={f as FlatResponseDTO & { _buildingName?: string }}
+            allPayments={paymentsQ.data ?? []}
+            paymentsLoading={paymentsQ.isLoading}
           />
         ))}
       </div>
@@ -86,28 +107,34 @@ export function TenantsPage() {
  * One tenant tile. The whole card is a link to /owner/tenants/:tenantId
  * EXCEPT the contact-icon row at the bottom, which sits outside the link
  * so opening the popover doesn't trigger navigation.
+ *
+ * <p>Payments are NOT fetched here — the parent fans out a single
+ * /payments/owner/{ownerId} call and passes the result down. See the
+ * comment on the parent's paymentsQ for why this matters (the previous
+ * per-card /payments/tenant/{id} call returned 403 for owners, so every
+ * card silently rendered Outstanding=0).
  */
 function TenantCard({
   flat,
+  allPayments,
+  paymentsLoading,
 }: {
   flat: FlatResponseDTO & { _buildingName?: string };
+  allPayments: PaymentResponse[];
+  paymentsLoading: boolean;
 }) {
   const tenantId = flat.tenantId!;
   const { user, fullName, isLoading } = useUserByAuth(tenantId);
 
-  // Owner-side rollup of total rent COLLECTED from this tenant. Sums
-  // every PAID payment regardless of which flat — covers cases where
-  // a tenant moved between flats under the same owner.
-  const paymentsQ = useQuery({
-    queryKey: ["payments", "by-tenant", tenantId],
-    queryFn: () => paymentsApi.byTenant(tenantId),
-    enabled: !!tenantId,
-    staleTime: 60_000,
-  });
-  const paid = (paymentsQ.data ?? [])
+  // Slice the owner's full payment list down to just this tenant's
+  // rows. Filtering by tenantId alone (not also flatId) on purpose:
+  // if a tenant moved between flats under the same owner, every
+  // collected rupee from them should still roll up here.
+  const tenantPayments = allPayments.filter((p) => p.tenantId === tenantId);
+  const paid = tenantPayments
     .filter((p) => p.status === "PAID")
     .reduce((acc, p) => acc + Number(p.totalAmount ?? p.amount ?? 0), 0);
-  const pending = (paymentsQ.data ?? [])
+  const pending = tenantPayments
     .filter((p) => p.status === "PENDING" || p.status === "OVERDUE")
     .reduce((acc, p) => acc + Number(p.totalAmount ?? p.amount ?? 0), 0);
 
@@ -160,7 +187,7 @@ function TenantCard({
           <div>
             <p className="text-muted-foreground">Collected total</p>
             <p className="font-semibold mt-0.5 text-emerald-600">
-              {paymentsQ.isLoading ? "…" : formatINR(paid)}
+              {paymentsLoading ? "…" : formatINR(paid)}
             </p>
           </div>
           <div>
@@ -171,7 +198,7 @@ function TenantCard({
                 (pending > 0 ? "text-amber-600" : "text-muted-foreground")
               }
             >
-              {paymentsQ.isLoading ? "…" : formatINR(pending)}
+              {paymentsLoading ? "…" : formatINR(pending)}
             </p>
           </div>
         </div>
