@@ -257,13 +257,14 @@ function Table({
   }
   return (
     <Card>
-      <div className="hidden sm:grid grid-cols-[90px_1fr_110px_110px_110px_100px_240px] gap-3 px-5 py-3 text-xs uppercase tracking-wider text-muted-foreground border-b">
+      <div className="hidden sm:grid grid-cols-[90px_1fr_100px_100px_110px_100px_100px_240px] gap-3 px-5 py-3 text-xs uppercase tracking-wider text-muted-foreground border-b">
         <span>Flat</span>
         <span>Tenant</span>
         <span>Due</span>
         <span>Paid</span>
         <span>Amount</span>
         <span>Status</span>
+        <span>Method</span>
         <span className="text-right">Actions</span>
       </div>
       <div className="divide-y">
@@ -272,11 +273,24 @@ function Table({
           const recently =
             lastRemindedAt &&
             Date.now() - lastRemindedAt < REMINDER_COOLDOWN_HOURS * 3600 * 1000;
+          // Backend's guardNotPaid blocks pay-cash only on PAID +
+          // CANCELLED — so the FE button mirrors that and stays open
+          // for PENDING / OVERDUE (normal flow) AND for PROCESSING /
+          // FAILED (tenant tried UPI / card, gateway didn't settle,
+          // owner now records the cash that was handed over off-band).
+          // Without this, the button disappeared the moment a gateway
+          // attempt left the invoice in PROCESSING — owner had no
+          // way to reconcile.
+          const canRecordCash =
+            p.status === "PENDING" ||
+            p.status === "OVERDUE" ||
+            p.status === "PROCESSING" ||
+            p.status === "FAILED";
           const isUnpaid = p.status === "PENDING" || p.status === "OVERDUE";
           return (
             <div
               key={p.id}
-              className="grid grid-cols-2 sm:grid-cols-[90px_1fr_110px_110px_110px_100px_240px] gap-3 px-5 py-3.5 text-sm items-center"
+              className="grid grid-cols-2 sm:grid-cols-[90px_1fr_100px_100px_110px_100px_100px_240px] gap-3 px-5 py-3.5 text-sm items-center"
             >
               <span className="font-medium">{flatLookup.nameOf(p.flatId)}</span>
               <span className="truncate text-muted-foreground">
@@ -290,37 +304,43 @@ function Table({
                 {formatINR(p.totalAmount ?? p.amount)}
               </span>
               <StatusBadge status={p.status} />
-              <div className="flex justify-end gap-2">
+              {/* Method column — surfaces "Cash" vs "UPI" / "Card" /
+                  etc. at a glance so the owner can reconcile what's
+                  digital vs what they collected by hand. Renders an
+                  em-dash for invoices that haven't been settled yet. */}
+              <MethodBadge method={p.paymentMethod} />
+              <div className="flex justify-end gap-2 flex-wrap">
                 {isUnpaid && (
-                  <>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => onRemind(p)}
-                      disabled={remindingId === p.id || Boolean(recently)}
-                      title={
-                        recently
-                          ? `Reminded ${Math.round(
-                              (Date.now() - lastRemindedAt!) / 60000,
-                            )}m ago — wait ${REMINDER_COOLDOWN_HOURS}h before sending another.`
-                          : "Send a payment reminder email to this tenant"
-                      }
-                    >
-                      {remindingId === p.id ? (
-                        <Loader2 className="animate-spin" />
-                      ) : (
-                        <Bell />
-                      )}
-                      {recently ? "Reminded" : "Remind"}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => onMarkCash(p)}
-                    >
-                      <Banknote /> Cash
-                    </Button>
-                  </>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => onRemind(p)}
+                    disabled={remindingId === p.id || Boolean(recently)}
+                    title={
+                      recently
+                        ? `Reminded ${Math.round(
+                            (Date.now() - lastRemindedAt!) / 60000,
+                          )}m ago — wait ${REMINDER_COOLDOWN_HOURS}h before sending another.`
+                        : "Send a payment reminder email to this tenant"
+                    }
+                  >
+                    {remindingId === p.id ? (
+                      <Loader2 className="animate-spin" />
+                    ) : (
+                      <Bell />
+                    )}
+                    {recently ? "Reminded" : "Remind"}
+                  </Button>
+                )}
+                {canRecordCash && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onMarkCash(p)}
+                    title="Tenant paid in cash — record it now."
+                  >
+                    <Banknote /> Record cash
+                  </Button>
                 )}
                 {p.status === "PAID" && <ReceiptButton paymentId={p.id} />}
                 {isUnpaid && <InvoiceButton paymentId={p.id} />}
@@ -333,6 +353,36 @@ function Table({
   );
 }
 
+/**
+ * Compact "how was this paid?" badge for the payments table. Maps the
+ * backend's underscore-separated enum names to human-friendly labels
+ * ({@code NET_BANKING} → "Net banking", {@code BANK_TRANSFER} → "Bank
+ * transfer"). CASH gets a coin icon so it pops in the reconciliation
+ * scan.
+ */
+function MethodBadge({ method }: { method?: string | null }) {
+  if (!method) {
+    return <span className="text-xs text-muted-foreground">—</span>;
+  }
+  if (method === "CASH") {
+    return (
+      <Badge variant="secondary" className="gap-1">
+        <Banknote className="size-3" /> Cash
+      </Badge>
+    );
+  }
+  const label = method
+    .toLowerCase()
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+  return (
+    <Badge variant="secondary" className="text-[10px]">
+      {label}
+    </Badge>
+  );
+}
+
 function RecordCashDialog({
   target,
   onClose,
@@ -341,7 +391,13 @@ function RecordCashDialog({
 }: {
   target: PaymentResponse | null;
   onClose: () => void;
-  onConfirm: (reference: string) => void;
+  /**
+   * Called with the trimmed reference, or {@code undefined} when the
+   * owner left the field blank. The {@code undefined} path tells the
+   * service to auto-generate a {@code CASH-<uuid>} transaction id so
+   * the receipt + audit log still have a unique row identifier.
+   */
+  onConfirm: (reference: string | undefined) => void;
   loading: boolean;
 }) {
   const [reference, setReference] = useState("");
@@ -401,7 +457,7 @@ function RecordCashDialog({
           </Button>
           <Button
             variant="gradient"
-            onClick={() => onConfirm(reference.trim() || undefined!)}
+            onClick={() => onConfirm(reference.trim() || undefined)}
             disabled={loading}
           >
             {loading && <Loader2 className="animate-spin" />}

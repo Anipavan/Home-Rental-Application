@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Download, CreditCard, FileText, Loader2, Receipt } from "lucide-react";
+import { Banknote, Download, CreditCard, FileText, Loader2, Receipt } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { paymentsApi } from "@/lib/api/payments";
 import { extractErrorMessage } from "@/lib/api/client";
@@ -211,9 +211,21 @@ function HistoryRow({ payment }: { payment: PaymentResponse }) {
           {payment.transactionId && ` · ${payment.transactionId}`}
         </p>
       </div>
-      <p className="text-xs text-muted-foreground capitalize hidden sm:block">
-        {payment.paymentMethod?.toLowerCase().replace("_", " ") ?? "—"}
-      </p>
+      {/* Method label — "Cash" gets a coin icon + slightly more
+          prominent styling so the tenant can immediately spot owner-
+          recorded cash receipts vs gateway-driven settlements they'd
+          done themselves. */}
+      <div className="hidden sm:block text-xs">
+        {payment.paymentMethod === "CASH" ? (
+          <span className="inline-flex items-center gap-1 font-medium text-foreground">
+            <Banknote className="size-3.5" /> Cash
+          </span>
+        ) : (
+          <span className="text-muted-foreground capitalize">
+            {payment.paymentMethod?.toLowerCase().replace("_", " ") ?? "—"}
+          </span>
+        )}
+      </div>
       <Button
         variant="ghost"
         size="sm"
