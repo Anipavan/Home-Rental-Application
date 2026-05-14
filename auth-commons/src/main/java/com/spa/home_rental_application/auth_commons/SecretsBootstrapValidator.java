@@ -40,6 +40,11 @@ public class SecretsBootstrapValidator implements ApplicationListener<Applicatio
             "spring.datasource.password",
             "app.jwt.secret",
             "app.internal-auth.secret",
+            // PII-at-rest encryption key (used by
+            // EncryptedStringConverter to protect bank account
+            // numbers and similar columns). Production deployment
+            // must source this from a secret manager.
+            "app.encryption.key",
             "app.razorpay.key-id",
             "app.razorpay.key-secret",
             "app.razorpay.webhook-secret",

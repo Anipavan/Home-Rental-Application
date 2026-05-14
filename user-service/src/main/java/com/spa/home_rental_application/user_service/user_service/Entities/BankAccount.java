@@ -1,5 +1,6 @@
 package com.spa.home_rental_application.user_service.user_service.Entities;
 
+import com.spa.home_rental_application.user_service.user_service.config.EncryptedStringConverter;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -46,12 +47,21 @@ public class BankAccount {
     private String bankName;
 
     /**
-     * Full account number — sensitive. Service-layer mappers must
-     * strip everything except the last 4 digits before returning to
-     * the SPA; the bare entity should never leak through to a
-     * controller response.
+     * Full account number — sensitive. Encrypted at rest via
+     * {@link EncryptedStringConverter} (AES-256-GCM); the entity
+     * field still exposes plaintext to service-layer code, but the
+     * database stores {@code ENC:<base64(iv||ciphertext)>}.
+     * <p>Service-layer mappers must still strip everything except
+     * the last 4 digits before returning to the SPA — the
+     * encryption protects the data at rest, not in transit through
+     * our own services.
+     * <p>Column length bumped from 30 → 200 to fit the
+     * {@code ENC:} sentinel + base64 ciphertext overhead. Hibernate
+     * {@code ddl-auto=update} widens the column on existing schemas
+     * without data loss.
      */
-    @Column(name = "account_number", nullable = false, length = 30)
+    @Convert(converter = EncryptedStringConverter.class)
+    @Column(name = "account_number", nullable = false, length = 200)
     private String accountNumber;
 
     @Column(name = "ifsc_code", nullable = false, length = 11)

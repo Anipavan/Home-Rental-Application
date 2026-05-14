@@ -1,0 +1,48 @@
+# ─────────────────────────────────────────────────────────────────
+#  Production profile overrides for user-service.
+#
+#  Activated by setting SPRING_PROFILES_ACTIVE=prod (or, in our
+#  Docker images, ACTIVE_PROFILE=prod). Everything in here REPLACES
+#  the matching key in the default application.yaml — keep this
+#  file as small as possible; only override what's genuinely
+#  dangerous outside dev.
+# ─────────────────────────────────────────────────────────────────
+spring:
+  jpa:
+    hibernate:
+      # No auto-schema mutations in prod. Schema changes must come
+      # from explicit Liquibase/Flyway migrations, not Hibernate's
+      # best-guess diff. Mismatch → app fails to start (which is
+      # the right failure mode — better than silently dropping a
+      # column).
+      ddl-auto: validate
+    # Never log SQL in prod — leaks query patterns into log
+    # aggregation + clobbers disk + bypasses parameter binding logs.
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # Strip env + loggers — both can leak property keys (env)
+        # or be used to flip log level to DEBUG and dump sensitive
+        # data into the log stream (loggers). Health/info/metrics/
+        # prometheus are the bare-minimum probe + scrape surface.
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      # Anonymous health probes (k8s liveness/readiness) should NOT
+      # see internal db / disk / kafka detail — flip to never. The
+      # /actuator/health/{liveness,readiness} group endpoints still
+      # return up/down, which is all kubelet needs.
+      show-details: never
+
+# SecretsBootstrapValidator (in auth-commons) refuses to start
+# this app under any non-dev profile when sensitive keys
+# (spring.datasource.password, app.jwt.secret, app.internal-auth.secret,
+# app.encryption.key, razorpay/stripe credentials) still carry a
+# CHANGE_ME / placeholder value. Nothing extra needed here — the
+# fail-fast is automatic when `spring.profiles.active=prod`.

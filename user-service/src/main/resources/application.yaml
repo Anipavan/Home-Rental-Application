@@ -65,6 +65,13 @@ spring:
 
 # Bound by KafkaTopicProperties (in KafkaEvents shared lib)
 app:
+  # AES-256-GCM key used by EncryptedStringConverter to protect
+  # PII columns at rest (currently bank_accounts.account_number).
+  # MUST be supplied via env / secret manager in prod;
+  # SecretsBootstrapValidator refuses to start the app with the
+  # placeholder under any non-local profile.
+  encryption:
+    key: ${PII_ENCRYPTION_KEY:CHANGE_ME_LOCAL_DEV_ENCRYPTION_KEY_PLACEHOLDER}
   internal-auth:
     enabled: ${INTERNAL_AUTH_ENABLED:true}
     secret: ${INTERNAL_AUTH_SECRET:CHANGE_ME_LOCAL_DEV_INTERNAL_AUTH_SECRET_PLACEHOLDER_AT_LEAST_32_BYTES_LONG}

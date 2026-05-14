@@ -1,0 +1,31 @@
+# ─────────────────────────────────────────────────────────────────
+#  Production profile overrides for api-gateway.
+#
+#  Activated by SPRING_PROFILES_ACTIVE=prod. Only overrides what's
+#  genuinely dangerous outside dev — gateway config, secret
+#  enforcement, and the management surface.
+# ─────────────────────────────────────────────────────────────────
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # Strip env + loggers + gateway-actuator endpoints in prod:
+        # env leaks property keys; loggers can be flipped to DEBUG
+        # by an attacker to dump request bodies into log aggregation;
+        # the /actuator/gateway/routes endpoint surfaces the routing
+        # table (useful for ops, but should be authenticated).
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: never
+
+# SecretsBootstrapValidator + the gateway's own placeholder check
+# refuse to boot under prod when JWT/internal-auth secrets are still
+# at placeholder defaults — see auth-commons/SecretsBootstrapValidator.
+
+# CORS_ALLOWED_ORIGINS must be set explicitly in prod env vars; the
+# default in application.yaml is `http://localhost:4200` (dev SPA).
+# If it falls back to that in a prod deployment, every browser-issued
+# cross-origin request from the real SPA will hit the gateway's CORS
+# filter and 403. Treat as a deploy-time check.
