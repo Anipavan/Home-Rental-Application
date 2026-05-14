@@ -33,6 +33,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { extractErrorMessage } from "@/lib/api/client";
 import { toast } from "@/hooks/use-toast";
 import { initials, normalizeDocUrl } from "@/lib/utils";
+import { BankAccountSection } from "@/components/profile/bank-account-section";
 import type { UserRequestDto, UserResponseDto } from "@/types/api";
 
 /**
@@ -401,6 +402,20 @@ export function ProfilePage() {
           </div>
         </CardContent>
       </Card>
+      )}
+
+      {/* Bank-account section — separate card so the user can find
+          "where do I put my account details" without scrolling through
+          the personal-info form. Self-contained: manages its own
+          query / mutations / edit toggle. Same component renders on
+          tenant, owner, and admin profiles since all three routes
+          mount this page. Keyed on the auth-user id so the backend's
+          self-or-admin guard accepts the call. mt-6 to match the
+          gap between the preceding cards. */}
+      {authUserId && (
+        <div className="mt-6">
+          <BankAccountSection authUserId={authUserId} />
+        </div>
       )}
     </div>
   );
