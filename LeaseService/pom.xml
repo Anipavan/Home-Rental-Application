@@ -135,6 +135,28 @@
 		    <artifactId>logstash-logback-encoder</artifactId>
 		    <version>7.4</version>
 		</dependency>
+		<!--
+		  Distributed tracing — micrometer-tracing-bridge-otel writes
+		  OpenTelemetry spans for HTTP, Feign, JDBC, and Kafka
+		  automatically. The OTLP exporter ships spans to whatever
+		  collector the OTEL_EXPORTER_OTLP_ENDPOINT env var points at
+		  (Jaeger / Tempo / Honeycomb / Datadog Agent / CloudWatch
+		  OTel Collector — they all speak OTLP/HTTP).
+
+		  Trace + span IDs propagate to the logback MDC, which the
+		  logback-spring.xml encoder includes on every log event —
+		  so an aggregator can pivot from "log line for invoice X"
+		  to "full trace of that request" in one click.
+		-->
+		<dependency>
+		    <groupId>io.micrometer</groupId>
+		    <artifactId>micrometer-tracing-bridge-otel</artifactId>
+		</dependency>
+		<dependency>
+		    <groupId>io.opentelemetry</groupId>
+		    <artifactId>opentelemetry-exporter-otlp</artifactId>
+		</dependency>
+
 
 	</dependencies>
 

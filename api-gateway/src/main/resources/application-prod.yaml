@@ -29,3 +29,22 @@ management:
 # If it falls back to that in a prod deployment, every browser-issued
 # cross-origin request from the real SPA will hit the gateway's CORS
 # filter and 403. Treat as a deploy-time check.
+
+management:
+  tracing:
+    sampling:
+      # 10% of requests in prod — keeps span volume manageable +
+      # latency cost negligible. Bump in incidents via env override
+      # (MANAGEMENT_TRACING_SAMPLING_PROBABILITY=1.0).
+      probability: 0.1
+    propagation:
+      type: w3c
+
+# OTLP exporter — span shipping endpoint. The OTEL collector / Jaeger /
+# Tempo / Datadog Agent should listen on this URL. In k8s usually a
+# sidecar or DaemonSet at http://otel-collector.observability:4318.
+otel:
+  exporter:
+    otlp:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://otel-collector:4318}
+      protocol: ${OTEL_EXPORTER_OTLP_PROTOCOL:http/protobuf}

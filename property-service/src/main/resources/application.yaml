@@ -116,6 +116,11 @@ management:
       export:
         enabled: true
 
+  tracing:
+    sampling:
+      probability: 1.0
+    propagation:
+      type: w3c
 springdoc:
   api-docs:
     path: /v3/api-docs
