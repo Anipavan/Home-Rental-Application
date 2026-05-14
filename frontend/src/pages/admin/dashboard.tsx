@@ -85,6 +85,20 @@ export function AdminDashboard() {
         </div>
       </div>
 
+      {/* Quick-action row — surfaces the most common admin tasks
+          without burying them inside the sidebar. */}
+      <div className="mb-6 flex flex-wrap gap-2">
+        <Button asChild variant="gradient" size="sm">
+          <Link to="/admin/announcements">Send announcement</Link>
+        </Button>
+        <Button asChild variant="outline" size="sm">
+          <Link to="/admin/users">Manage users</Link>
+        </Button>
+        <Button asChild variant="outline" size="sm">
+          <Link to="/admin/support">Open support tickets</Link>
+        </Button>
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
         <Kpi
           icon={Users}

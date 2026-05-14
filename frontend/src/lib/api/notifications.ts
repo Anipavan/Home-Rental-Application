@@ -52,6 +52,29 @@ export const notificationsApi = {
     api
       .put<{ updated: number }>(`/notifications/user/${userId}/read-all`)
       .then((r) => r.data),
+
+  /**
+   * Issue #9 — admin announcement broadcast. Resolve the audience
+   * client-side (e.g. fetch every TENANT via authApi.byRole) then
+   * post the list of auth user IDs here. Backend fans the message
+   * out to every recipient on INAPP + EMAIL.
+   *
+   * @returns Per-channel delivery counts:
+   *   {@code inapp}, {@code emails}, {@code skipped}, {@code total}
+   */
+  broadcast: (body: {
+    userIds: string[];
+    subject: string;
+    message: string;
+  }) =>
+    api
+      .post<{
+        inapp: number;
+        emails: number;
+        skipped: number;
+        total: number;
+      }>("/notifications/admin/broadcast", body)
+      .then((r) => r.data),
 };
 
 /* ────────────────── Notification preferences ────────────────── */

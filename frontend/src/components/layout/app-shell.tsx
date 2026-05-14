@@ -19,6 +19,7 @@ import {
   Stamp,
   Calendar,
   Inbox,
+  Megaphone,
   MessageSquareWarning,
   Search,
   Heart,
@@ -122,6 +123,8 @@ const adminNav: NavItem[] = [
   { to: "/admin/reviews", label: "Reviews", icon: Star },
   { to: "/admin/support", label: "Support", icon: FileText },
   { to: "/admin/visit-requests", label: "Visit requests", icon: Calendar },
+  // Issue #9 — admin announcement broadcast composer.
+  { to: "/admin/announcements", label: "Announcements", icon: Megaphone },
   { to: "/admin/profile", label: "Profile", icon: Settings },
 ];
 

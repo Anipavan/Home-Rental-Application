@@ -110,6 +110,56 @@ public class NotificationService {
                 vars == null ? java.util.Map.of() : vars);
     }
 
+    /**
+     * Issue #9 — admin-composed announcement to a slice of users. Each
+     * recipient gets the same literal {@code subject} + {@code message}
+     * delivered as a bell entry (INAPP) and an email (when they have
+     * one on file). Skips users who muted {@link NotificationCategory#ADMIN_BROADCAST}.
+     *
+     * <p>Returns a per-channel delivery count so the admin UI can show
+     * "Sent to 137 inboxes (134 emails dispatched, 3 skipped)" after
+     * the call returns.
+     */
+    public Map<String, Integer> broadcast(List<String> userIds,
+                                          String subject,
+                                          String message) {
+        if (userIds == null || userIds.isEmpty()) return Map.of();
+        int inapp = 0;
+        int emails = 0;
+        int skipped = 0;
+        for (String userId : userIds) {
+            if (userId == null || userId.isBlank()) {
+                skipped++;
+                continue;
+            }
+            try {
+                // INAPP — always dispatched; backs the bell badge.
+                deliver(userId, NotificationType.INAPP,
+                        NotificationCategory.ADMIN_BROADCAST,
+                        subject, message, null, Map.of(), true);
+                inapp++;
+                // EMAIL — best-effort; deliver() records SKIPPED when
+                // the user has no email on file or has the channel
+                // disabled, so we just count successful dispatches.
+                NotificationLog email = deliver(userId, NotificationType.EMAIL,
+                        NotificationCategory.ADMIN_BROADCAST,
+                        subject, message, null, Map.of(), false);
+                if (email.getStatus() == NotificationStatus.PENDING
+                        || email.getStatus() == NotificationStatus.SENT) {
+                    emails++;
+                }
+            } catch (Exception ex) {
+                log.warn("Broadcast delivery failed for userId={}: {}",
+                        userId, ex.getMessage());
+                skipped++;
+            }
+        }
+        log.info("Broadcast complete: {} INAPP, {} EMAIL, {} skipped (out of {} recipients)",
+                inapp, emails, skipped, userIds.size());
+        return Map.of("inapp", inapp, "emails", emails, "skipped", skipped,
+                "total", userIds.size());
+    }
+
     /* ------------- Lookups ------------- */
 
     public Page<NotificationResponse> list(Pageable pageable) {

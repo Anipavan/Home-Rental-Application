@@ -50,5 +50,10 @@ public enum NotificationCategory {
     // (rejectionReason variable on the REJECTED template).
     DOCUMENT_APPROVED,
     DOCUMENT_REJECTED,
+    // Issue #9 — admin-composed announcements broadcast to a slice of
+    // users (all, or filtered by role). No template — admin types raw
+    // subject + body, then the broadcast endpoint fans the message out
+    // to every recipient on INAPP + EMAIL.
+    ADMIN_BROADCAST,
     GENERIC
 }

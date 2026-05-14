@@ -1,6 +1,7 @@
 package com.spa.home_rental_application.notification_service.notification_service.controller;
 
 import com.spa.home_rental_application.auth_commons.GatewayAuthFilter;
+import com.spa.home_rental_application.notification_service.notification_service.DTO.Request.BroadcastNotificationRequest;
 import com.spa.home_rental_application.notification_service.notification_service.DTO.Request.SendNotificationRequest;
 import com.spa.home_rental_application.notification_service.notification_service.DTO.Response.NotificationResponse;
 import com.spa.home_rental_application.notification_service.notification_service.enums.NotificationType;
@@ -80,6 +81,25 @@ public class NotificationController {
         requireAdmin();
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(service.send(forced(body, NotificationType.PUSH)));
+    }
+
+    /**
+     * Issue #9 — admin announcement broadcast. Admin types one
+     * subject + message, picks an audience in the SPA, and the
+     * resolved auth-user IDs land here. Service fans the message out
+     * to every recipient on INAPP + EMAIL with the ADMIN_BROADCAST
+     * category, so users who muted that category in their preferences
+     * silently skip.
+     */
+    @Operation(summary = "Broadcast an announcement to a list of users (ADMIN only)")
+    @PostMapping(value = "/admin/broadcast", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<java.util.Map<String, Integer>> broadcast(
+            @Valid @RequestBody BroadcastNotificationRequest body) {
+        requireAdmin();
+        log.info("Admin broadcast: subject='{}' recipients={}",
+                body.subject(), body.userIds().size());
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(service.broadcast(body.userIds(), body.subject(), body.message()));
     }
 
     @Operation(summary = "All notifications, every user (ADMIN only)")

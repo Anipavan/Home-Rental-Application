@@ -537,6 +537,26 @@ public class TemplateSeeder {
                         + "We'll ping again on the day itself.",
                 List.of("tenantName", "flatNumber", "vacateDate", "daysUntilVacate"));
 
+        /* ─── ADMIN_BROADCAST (Issue #9) ───
+         * Admin-composed announcements — no template variables, the
+         * service passes subjectOverride + messageOverride straight
+         * through deliver(). We still seed a fallback template here so
+         * the preferences UI can show "Admin broadcasts" as a mutable
+         * category (PreferenceService scans the templates table to
+         * build the muteable-category list).
+         */
+        seedIfAbsent("admin-broadcast-email", NotificationCategory.ADMIN_BROADCAST,
+                NotificationType.EMAIL,
+                "Hearth announcement",
+                "Hearth team has a platform-wide announcement for you. "
+                        + "Check the app for details.",
+                List.of());
+        seedIfAbsent("admin-broadcast-inapp", NotificationCategory.ADMIN_BROADCAST,
+                NotificationType.INAPP,
+                "Hearth announcement",
+                "Hearth team has a platform-wide announcement for you.",
+                List.of());
+
         /* ─── DOCUMENT_APPROVED / DOCUMENT_REJECTED (Issue #9) ───
          * Tenant-facing — confirms the owner's decision on a doc the
          * tenant uploaded. Variables: documentType, rejectionReason
