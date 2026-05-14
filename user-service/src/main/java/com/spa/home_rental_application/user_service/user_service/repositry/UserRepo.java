@@ -43,4 +43,13 @@ public interface UserRepo extends JpaRepository<User, String> {
                         @Param("provider") String provider,
                         @Param("verifiedAt") LocalDateTime verifiedAt,
                         @Param("updatedAt") LocalDateTime updatedAt);
+
+    /**
+     * Users that were soft-deleted at least {@code cutoff} ago. Used
+     * by {@link com.spa.home_rental_application.user_service.user_service.service.impul.DataRetentionScheduler}
+     * to find rows eligible for hard-deletion under the GDPR / India
+     * DPDP "right to be forgotten" retention window.
+     */
+    @Query("SELECT u FROM User u WHERE u.isDeleted = true AND u.deletedAt IS NOT NULL AND u.deletedAt < :cutoff")
+    List<User> findSoftDeletedBefore(@Param("cutoff") LocalDateTime cutoff);
 }
