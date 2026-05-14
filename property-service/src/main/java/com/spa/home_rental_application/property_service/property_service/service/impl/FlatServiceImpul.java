@@ -298,9 +298,13 @@ public class FlatServiceImpul implements FlatService {
         }
         LocalDate earliest = LocalDate.now().plusDays(VACATE_NOTICE_PERIOD_DAYS);
         if (effectiveDate.isBefore(earliest)) {
+            // Mirror the FE wording so the toast surfaced from a direct
+            // API call (or a client that skipped the FE check) reads
+            // exactly like the inline FE error — easier for support to
+            // grep across channels.
             throw new InvalidLeasePeriodException(
-                    "You can't vacate the house before " + earliest
-                            + " — a minimum 60 days' notice to the owner is required.");
+                    "Can't vacate the house before 60 days. "
+                            + "Earliest move-out date: " + earliest + ".");
         }
 
         // Already scheduled? Idempotent — return existing date.

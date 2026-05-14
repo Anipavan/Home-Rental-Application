@@ -57,36 +57,55 @@ export function ScheduleVacateDialog({
   // is "should not be default, user should be able to enter a date".
   const [vacateDate, setVacateDate] = useState<string>("");
 
+  // Earliest acceptable date — today + 60 days. Stored as a
+  // YYYY-MM-DD string (not a Date) for two reasons:
+  //
+  //   1. The <input type="date"> needs a YYYY-MM-DD string for its
+  //      `min` attribute, so we'd convert anyway.
+  //   2. Comparing the picked date to this threshold via string
+  //      comparison ("2026-07-12" < "2026-07-13") is purely
+  //      lexicographic on a sortable format — no Date arithmetic,
+  //      no timezone arguments, no DST-boundary surprises.
+  //
+  // Recomputed every time the dialog opens (not memoized to mount
+  // time) so a tab left open past midnight still rolls the floor
+  // forward.
+  const [earliestDateInput, setEarliestDateInput] = useState<string>(() =>
+    toDateInput(plusDays(new Date(), VACATE_NOTICE_DAYS)),
+  );
+
   // Reset state every time the dialog opens so a previously-picked
-  // date doesn't leak across re-opens.
+  // date doesn't leak across re-opens, AND refresh the floor so the
+  // threshold reflects "today" at the moment the dialog opens.
   useEffect(() => {
-    if (open) setVacateDate("");
+    if (open) {
+      setVacateDate("");
+      setEarliestDateInput(toDateInput(plusDays(new Date(), VACATE_NOTICE_DAYS)));
+    }
   }, [open]);
 
-  // Earliest acceptable date — today + 60 days. Used as the input's
-  // `min` attribute and as the client-side validation threshold.
-  const earliestDate = useMemo(() => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    d.setDate(d.getDate() + VACATE_NOTICE_DAYS);
-    return d;
-  }, []);
-  const earliestDateInput = toDateInput(earliestDate);
+  // Pretty-format the earliest date for display in the help-text +
+  // error message. Built from the same string the input enforces, so
+  // there's no chance of the display drifting from the validation.
+  const earliestDateLabel = formatDate(earliestDateInput);
 
   // Validate the picked date. Empty = "not picked yet" (no error
-  // message, button disabled). Anything < earliestDate = explicit
-  // error message + disabled.
+  // message, button disabled). Anything earlier than earliestDateInput
+  // = explicit error message + disabled. Pure string comparison —
+  // YYYY-MM-DD sorts chronologically as text so this is both correct
+  // and timezone-immune.
   const dateError = useMemo(() => {
     if (!vacateDate) return null;
-    const picked = new Date(vacateDate + "T00:00:00");
-    if (Number.isNaN(picked.getTime())) return "Pick a valid date.";
-    if (picked < earliestDate) {
-      return `You can't vacate the house before ${formatDate(
-        earliestDate.toISOString(),
-      )} — a minimum 60 days' notice to the owner is required.`;
+    // Sanity: input control only emits YYYY-MM-DD, but guard against
+    // hand-edited inputs / autocomplete glitches just in case.
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(vacateDate)) {
+      return "Pick a valid date.";
+    }
+    if (vacateDate < earliestDateInput) {
+      return `Can't vacate the house before 60 days. Earliest move-out date: ${earliestDateLabel}.`;
     }
     return null;
-  }, [vacateDate, earliestDate]);
+  }, [vacateDate, earliestDateInput, earliestDateLabel]);
 
   // Outstanding-dues check — same logic the backend enforces, but
   // surfaced here so the Confirm button stays disabled until cleared.
@@ -172,19 +191,31 @@ export function ScheduleVacateDialog({
               type="date"
               value={vacateDate}
               min={earliestDateInput}
+              // aria-invalid lights up screen-reader feedback the
+              // moment the picked date violates the 60-day floor.
+              aria-invalid={!!dateError}
+              aria-describedby="vacateDate-error vacateDate-help"
               onChange={(e) => setVacateDate(e.target.value)}
               className="mt-1.5"
             />
-            <p className="text-[11px] text-muted-foreground mt-1">
+            <p id="vacateDate-help" className="text-[11px] text-muted-foreground mt-1">
               Earliest acceptable date:{" "}
-              <span className="font-medium">
-                {formatDate(earliestDate.toISOString())}
-              </span>{" "}
+              <span className="font-medium">{earliestDateLabel}</span>{" "}
               (60 days from today). Your owner is notified 10 days before
               the move-out date.
             </p>
+            {/* Promoted from a quiet line of text to a banner-style
+                alert so the rejection is unmissable — the previous
+                rendering was easy to miss next to the help text. */}
             {dateError && (
-              <p className="text-xs text-destructive mt-2">{dateError}</p>
+              <div
+                id="vacateDate-error"
+                role="alert"
+                className="mt-2 flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+              >
+                <AlertTriangle className="size-3.5 mt-0.5 shrink-0" />
+                <span>{dateError}</span>
+              </div>
             )}
           </div>
 
@@ -256,4 +287,20 @@ function toDateInput(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+/**
+ * Return a NEW Date that's {@code days} after {@code base}, with the
+ * time component clamped to local midnight. Used to compute the
+ * "earliest acceptable move-out date" without mutating the caller's
+ * Date object. {@code Date#setDate} handles month / year rollovers,
+ * leap years, and DST transitions correctly, so a naive +ms approach
+ * (which would be off-by-an-hour twice a year in DST locales) is
+ * deliberately avoided here.
+ */
+function plusDays(base: Date, days: number): Date {
+  const d = new Date(base.getTime());
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + days);
+  return d;
 }
