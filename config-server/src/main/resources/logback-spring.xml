@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Spring Boot's logback-spring.xml hook — loaded automatically because
+  the filename matches the convention. Two profile-scoped appenders
+  share the same root level:
+
+   • dev (and the default no-profile case): plain console for tail -f
+   • prod: JSON-line console encoded by logstash-logback-encoder, one
+     log event per line, ready for ingestion by ELK / Loki / Datadog /
+     CloudWatch Logs Insights without a regex parse layer.
+
+  MDC fields propagated:
+   • traceId / spanId — populated by micrometer-tracing once the
+     OTEL bridge lands (see P1-8). Until then the keys are empty
+     strings, which JSON encoders render as "" or omit.
+   • userId / requestId — populated by the gateway's auth filter
+     and request-id filter (X-Auth-User-Id / X-Request-Id headers).
+-->
+<configuration scan="false">
+
+    <!-- spring.application.name — used as the "service" tag on every
+         log line. Falls back to "unknown" so a misconfigured service
+         doesn't poison the log index with nameless events. -->
+    <springProperty scope="context" name="appName"
+                    source="spring.application.name"
+                    defaultValue="unknown"/>
+
+    <!-- dev / no-profile / test: human-readable console. -->
+    <springProfile name="dev,local,test,default">
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [${appName},%X{traceId:-},%X{spanId:-}] %logger{36} - %msg%n</pattern>
+            </encoder>
+        </appender>
+    </springProfile>
+
+    <!-- prod: JSON output. One event per line; nested fields under
+         "mdc". Stack traces stay multi-line under "stack_trace" so
+         Loki/ELK still groups them correctly. -->
+    <springProfile name="prod">
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+                <includeMdcKeyName>traceId</includeMdcKeyName>
+                <includeMdcKeyName>spanId</includeMdcKeyName>
+                <includeMdcKeyName>userId</includeMdcKeyName>
+                <includeMdcKeyName>requestId</includeMdcKeyName>
+                <customFields>{"service":"${appName}"}</customFields>
+                <fieldNames>
+                    <timestamp>@timestamp</timestamp>
+                    <message>message</message>
+                    <thread>thread</thread>
+                    <logger>logger</logger>
+                    <level>level</level>
+                    <stackTrace>stack_trace</stackTrace>
+                </fieldNames>
+            </encoder>
+        </appender>
+    </springProfile>
+
+    <!-- Root logger level — tightened in prod to drop framework
+         noise from the log stream. Application packages stay at
+         DEBUG in dev (set in application.yaml/logging.level) and
+         INFO in prod via the same key. -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+
+</configuration>

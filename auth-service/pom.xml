@@ -167,6 +167,19 @@
 			<version>33.0.0-jre</version>
 			<scope>compile</scope>
 		</dependency>
+		<!--
+		  logstash-logback-encoder - produces one JSON object per log
+		  event in the `prod` Spring profile (see logback-spring.xml).
+		  Without it, logback's ConsoleAppender ships plaintext that
+		  an ELK / Loki / Datadog ingest pipeline has to regex-parse,
+		  which is fragile and burns CPU at scale.
+		-->
+		<dependency>
+		    <groupId>net.logstash.logback</groupId>
+		    <artifactId>logstash-logback-encoder</artifactId>
+		    <version>7.4</version>
+		</dependency>
+
 	</dependencies>
 	<dependencyManagement>
 		<dependencies>
