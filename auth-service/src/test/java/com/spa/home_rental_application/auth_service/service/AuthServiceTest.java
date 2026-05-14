@@ -46,7 +46,10 @@ class AuthServiceTest {
         JwtProperties props = new JwtProperties();
         props.setSecret("U3VwZXJTZWNyZXRLZXlGb3JKV1RUb2tlbkdlbmVyYXRpb24xMjM0NTY3ODkwIQ==");
         return new AuthServiceImpl(userRepository, refreshTokenRepository, passwordResetTokenRepository,
-                passwordEncoder, authenticationManager, jwtUtil, props, userServiceFeign, authEvents, 15L);
+                passwordEncoder, authenticationManager, jwtUtil, props, userServiceFeign, authEvents,
+                org.mockito.Mockito.mock(
+                        com.spa.home_rental_application.KafkaEvents.Producers.Events.AuditEventPublisher.class),
+                15L);
     }
 
     @Test

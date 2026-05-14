@@ -146,6 +146,21 @@
 			<artifactId>spring-boot-starter-test</artifactId>
 			<scope>test</scope>
 		</dependency>
+
+		<!--
+		  H2 with Oracle compatibility mode — used by the
+		  integration tests under src/test as a lightweight stand-in
+		  for the real Oracle. Boots in ms (vs 2+ minutes for an
+		  Oracle Testcontainer) and supports the schema we care about
+		  for tests: VARCHAR columns, foreign keys, unique constraints,
+		  and the @Convert-based AES encryption round-trip on
+		  bank_accounts.account_number.
+		-->
+		<dependency>
+			<groupId>com.h2database</groupId>
+			<artifactId>h2</artifactId>
+			<scope>test</scope>
+		</dependency>
 		<!--
 		  Distributed tracing — micrometer-tracing-bridge-otel writes
 		  OpenTelemetry spans for HTTP, Feign, JDBC, and Kafka
