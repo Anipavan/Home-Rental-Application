@@ -58,13 +58,19 @@ public class PropertyEventListener {
         // (e.g. "A-301"); flatId is the UUID — keep both in vars so
         // templates can reference whichever is appropriate. New
         // templates should prefer {{flatNumber}} for user-visible copy.
+        //
+        // Issue #7 — include a signInUrl so the lease-welcome message
+        // gives the tenant a one-tap path back into the app to view
+        // / sign the new lease. Same base URL as the password-reset
+        // path, suffixed with /sign-in.
         notifications.fanOut(e.getTenantId(),
                 NotificationCategory.LEASE_WELCOME,
                 Map.of("flatId",     safe(e.getFlatId()),
                         "flatNumber", safe(e.getFlatNumber()),
                         "buildingId", safe(e.getBuildingId()),
                         "rentAmount", safe(e.getRentAmount()),
-                        "startDate",  safe(e.getStartDate())));
+                        "startDate",  safe(e.getStartDate()),
+                        "signInUrl",  signInUrl()));
     }
 
     @KafkaListener(
@@ -122,4 +128,21 @@ public class PropertyEventListener {
     }
 
     private static String safe(Object o) { return o == null ? "" : o.toString(); }
+
+    /**
+     * Resolve the public sign-in URL for the lease-welcome CTA (Issue
+     * #7). Built off {@code app.frontend.base-url} so a single env
+     * override (FRONTEND_URL) configures every transactional CTA on
+     * the platform.
+     */
+    private String signInUrl() {
+        String base = frontendBaseUrl == null || frontendBaseUrl.isBlank()
+                ? "http://localhost:5173"
+                : frontendBaseUrl.replaceAll("/+$", "");
+        return base + "/sign-in";
+    }
+
+    @org.springframework.beans.factory.annotation.Value(
+            "${app.frontend.base-url:http://localhost:5173}")
+    private String frontendBaseUrl;
 }

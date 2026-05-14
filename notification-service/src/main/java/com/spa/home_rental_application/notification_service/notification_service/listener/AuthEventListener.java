@@ -82,12 +82,33 @@ public class AuthEventListener {
         // handles opt-out / no-recipient gracefully so we don't have
         // to branch on hasPhone here — channels with no recipient just
         // record a SKIPPED row.
+        //
+        // Issue #7 — include a sign-in URL so the welcome message has
+        // a tappable CTA on every channel. The template references
+        // {{signInUrl}} directly; if the variable is unset, Mustache
+        // renders an empty string and the template gracefully degrades.
         notifications.fanOut(e.getAuthUserId(),
                 NotificationCategory.USER_REGISTRATION,
-                Map.of("userName", safe(e.getUserName()),
-                        "email",   safe(e.getEmail()),
-                        "phone",   safe(e.getPhone()),
-                        "role",    safe(e.getRole())));
+                Map.of("userName",  safe(e.getUserName()),
+                        "email",    safe(e.getEmail()),
+                        "phone",    safe(e.getPhone()),
+                        "role",     safe(e.getRole()),
+                        "signInUrl", signInUrl()));
+    }
+
+    /**
+     * Compute the absolute URL the user should hit to sign in. Built
+     * off the same {@code app.frontend.base-url} property used by the
+     * password-reset link so a single env override (FRONTEND_URL)
+     * configures both. The fragment {@code #/sign-in} works for
+     * SPA-hash routers and falls through to {@code /sign-in} for
+     * history-mode routers (the FE's router redirects both forms).
+     */
+    private String signInUrl() {
+        String base = frontendBaseUrl == null || frontendBaseUrl.isBlank()
+                ? "http://localhost:5173"
+                : frontendBaseUrl.replaceAll("/+$", "");
+        return base + "/sign-in";
     }
 
     @KafkaListener(
@@ -147,6 +168,16 @@ public class AuthEventListener {
     @org.springframework.beans.factory.annotation.Value(
             "${app.frontend.base-url:http://localhost:5173}/reset-password")
     private String resetLinkBaseUrl;
+
+    /**
+     * Same base URL as {@link #resetLinkBaseUrl}, but without the
+     * {@code /reset-password} suffix. Lets us derive {@code /sign-in}
+     * (Issue #7 — sign-in link in welcome notifications) from the
+     * same configuration knob so operators only configure ONE value.
+     */
+    @org.springframework.beans.factory.annotation.Value(
+            "${app.frontend.base-url:http://localhost:5173}")
+    private String frontendBaseUrl;
 
     private static String safe(Object o) { return o == null ? "" : o.toString(); }
 }

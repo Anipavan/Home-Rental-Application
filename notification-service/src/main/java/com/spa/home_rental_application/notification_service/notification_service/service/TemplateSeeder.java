@@ -57,29 +57,60 @@ public class TemplateSeeder {
         // the seedIfAbsent insert, falling back to the generic "You
         // have a new X notification" copy). Updating in place removes
         // that gap window. Still narrow — only touches rows that still
-        // embed the old {{flatId}} placeholder, so admin-edited templates
-        // already using {{flatNumber}} stay untouched.
+        // embed the old {{flatId}} placeholder OR are missing the new
+        // {{signInUrl}} CTA (Issue #7), so admin-edited templates that
+        // already include both stay untouched.
         refreshLeaseWelcomeIfStale(NotificationCategory.LEASE_WELCOME,
                 NotificationType.EMAIL,
                 "welcome-flat-email",
                 "Welcome to your new home!",
-                "Welcome! You've moved into flat {{flatNumber}}. Your monthly rent is ₹{{rentAmount}} starting {{startDate}}.",
-                List.of("flatNumber", "rentAmount", "startDate"));
+                "Welcome! You've moved into flat {{flatNumber}}.\n\n"
+                        + "Your monthly rent is ₹{{rentAmount}} starting {{startDate}}.\n\n"
+                        + "Sign in to view your lease, pay rent, and raise maintenance tickets:\n"
+                        + "  {{signInUrl}}",
+                List.of("flatNumber", "rentAmount", "startDate", "signInUrl"));
         refreshLeaseWelcomeIfStale(NotificationCategory.LEASE_WELCOME,
                 NotificationType.SMS,
                 "lease-welcome-sms",
                 null,
                 "Welcome to your new home! Flat {{flatNumber}} is yours from {{startDate}}. "
-                        + "Rent: Rs.{{rentAmount}}/mo. Manage everything in the Hearth app.",
-                List.of("flatNumber", "rentAmount", "startDate"));
+                        + "Rent Rs.{{rentAmount}}/mo. Sign in: {{signInUrl}}",
+                List.of("flatNumber", "rentAmount", "startDate", "signInUrl"));
         refreshLeaseWelcomeIfStale(NotificationCategory.LEASE_WELCOME,
                 NotificationType.WHATSAPP,
                 "lease-welcome-whatsapp",
                 null,
                 "Welcome home 🏡\n\nYou've moved into *flat {{flatNumber}}*. "
                         + "Monthly rent is *₹{{rentAmount}}* starting {{startDate}}.\n\n"
-                        + "Tap *Maintenance* in the app any time something needs fixing.",
-                List.of("flatNumber", "rentAmount", "startDate"));
+                        + "Sign in to view your lease 👉 {{signInUrl}}",
+                List.of("flatNumber", "rentAmount", "startDate", "signInUrl"));
+
+        // ── USER_REGISTRATION templates: add a sign-in CTA (Issue #7)
+        // so the welcome message links straight back to the app. Same
+        // in-place refresh trick as LEASE_WELCOME — only touches rows
+        // that still lack the {{signInUrl}} placeholder, so admin-
+        // edited templates are left alone.
+        refreshUserRegistrationIfStale(NotificationCategory.USER_REGISTRATION,
+                NotificationType.EMAIL,
+                "welcome-email",
+                "Welcome to Home Rental, {{userName}}",
+                "Hi {{userName}},\n\nYour Home Rental account ({{email}}, role: {{role}}) is ready.\n\n"
+                        + "Sign in to start finding your next home or list one of your own:\n"
+                        + "  {{signInUrl}}\n\n— Home Rental Team",
+                List.of("userName", "email", "role", "signInUrl"));
+        refreshUserRegistrationIfStale(NotificationCategory.USER_REGISTRATION,
+                NotificationType.SMS,
+                "user-registration-sms",
+                null,
+                "Welcome to Hearth, {{userName}}! Sign in: {{signInUrl}}",
+                List.of("userName", "signInUrl"));
+        refreshUserRegistrationIfStale(NotificationCategory.USER_REGISTRATION,
+                NotificationType.WHATSAPP,
+                "welcome-whatsapp",
+                null,
+                "Welcome to Hearth, {{userName}}! 🏠\n\nYour account is ready. "
+                        + "Sign in here 👉 {{signInUrl}}",
+                List.of("userName", "email", "role", "signInUrl"));
 
         seedIfAbsent("welcome-email", NotificationCategory.USER_REGISTRATION, NotificationType.EMAIL,
                 "Welcome to Home Rental, {{userName}}",
@@ -616,8 +647,16 @@ public class TemplateSeeder {
         repo.findByCategoryAndType(category, type)
                 .ifPresentOrElse(existing -> {
                     String body = existing.getBodyTemplate();
-                    if (body == null || body.contains("{{flatId}}")) {
-                        log.info("Refreshing stale {} / {} template in place (was missing flatNumber placeholder)",
+                    // Refresh when the body still embeds the legacy
+                    // {{flatId}} placeholder OR lacks the new {{signInUrl}}
+                    // CTA (Issue #7). Admin-edited templates that include
+                    // a different sign-in URL via a custom placeholder
+                    // stay untouched.
+                    boolean stale = body == null
+                            || body.contains("{{flatId}}")
+                            || !body.contains("{{signInUrl}}");
+                    if (stale) {
+                        log.info("Refreshing stale {} / {} template in place (missing flatNumber/signInUrl placeholder)",
                                 category, type);
                         existing.setSubject(subject);
                         existing.setBodyTemplate(bodyTemplate);
@@ -627,6 +666,43 @@ public class TemplateSeeder {
                 }, () -> {
                     // Row was missing entirely (e.g. the previous
                     // delete+re-seed left it nuked). Recreate it.
+                    log.info("Re-creating missing {} / {} template", category, type);
+                    repo.save(NotificationTemplate.builder()
+                            .name(name)
+                            .category(category)
+                            .type(type)
+                            .subject(subject)
+                            .bodyTemplate(bodyTemplate)
+                            .variables(variables)
+                            .build());
+                });
+    }
+
+    /**
+     * Refresh USER_REGISTRATION templates in place when the body is
+     * missing the {@code {{signInUrl}}} CTA introduced in Issue #7.
+     * Same in-place strategy as {@link #refreshLeaseWelcomeIfStale} so
+     * an event that lands during the refresh window can't fall through
+     * to the generic fallback copy.
+     */
+    private void refreshUserRegistrationIfStale(NotificationCategory category,
+                                                 NotificationType type,
+                                                 String name,
+                                                 String subject,
+                                                 String bodyTemplate,
+                                                 List<String> variables) {
+        repo.findByCategoryAndType(category, type)
+                .ifPresentOrElse(existing -> {
+                    String body = existing.getBodyTemplate();
+                    if (body == null || !body.contains("{{signInUrl}}")) {
+                        log.info("Refreshing {} / {} template in place (adding signInUrl CTA)",
+                                category, type);
+                        existing.setSubject(subject);
+                        existing.setBodyTemplate(bodyTemplate);
+                        existing.setVariables(variables);
+                        repo.save(existing);
+                    }
+                }, () -> {
                     log.info("Re-creating missing {} / {} template", category, type);
                     repo.save(NotificationTemplate.builder()
                             .name(name)
