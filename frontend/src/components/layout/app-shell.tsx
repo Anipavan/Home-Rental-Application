@@ -47,7 +47,7 @@ import {
   isComplianceDisabled,
   isKycDisabled,
 } from "@/lib/feature-flags";
-import { cn, initials } from "@/lib/utils";
+import { cn, initials, normalizeDocUrl } from "@/lib/utils";
 import type { Role } from "@/types/api";
 
 interface NavItem {
@@ -155,7 +155,11 @@ export function AppShell() {
       return status !== 404 && failureCount < 1;
     },
   });
-  const photoUrl = meQ.data?.profilePictureUrl;
+  // Normalise — strips any legacy "http://localhost:8080" prefix that
+  // older profile rows still embed from before commit 78021a7 (Issue
+  // #1). Anything already relative or pointing to a non-localhost
+  // host passes through unchanged.
+  const photoUrl = normalizeDocUrl(meQ.data?.profilePictureUrl);
 
   const onLogout = async () => {
     try {

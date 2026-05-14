@@ -11,7 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/layout/page-header";
 import { ContactPersonPopover } from "@/components/common/contact-person-popover";
-import { formatDate, formatINR, initials } from "@/lib/utils";
+import { formatDate, formatINR, initials, normalizeDocUrl } from "@/lib/utils";
 import type { FlatResponseDTO } from "@/types/api";
 
 export function TenantsPage() {
@@ -121,7 +121,7 @@ function TenantCard({
         <div className="flex items-center gap-3">
           <Avatar className="size-12">
             {user?.profilePictureUrl && (
-              <AvatarImage src={user.profilePictureUrl} />
+              <AvatarImage src={normalizeDocUrl(user.profilePictureUrl)} />
             )}
             <AvatarFallback>
               {initials(fullName ?? tenantId.slice(0, 2))}

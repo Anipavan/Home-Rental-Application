@@ -32,7 +32,7 @@ import { FileUpload } from "@/components/ui/file-upload";
 import { PageHeader } from "@/components/layout/page-header";
 import { extractErrorMessage } from "@/lib/api/client";
 import { toast } from "@/hooks/use-toast";
-import { initials } from "@/lib/utils";
+import { initials, normalizeDocUrl } from "@/lib/utils";
 import type { UserRequestDto, UserResponseDto } from "@/types/api";
 
 /**
@@ -249,7 +249,7 @@ export function ProfilePage() {
           <div className="relative">
             <Avatar className="size-20">
               {q.data?.profilePictureUrl && (
-                <AvatarImage src={q.data.profilePictureUrl} />
+                <AvatarImage src={normalizeDocUrl(q.data.profilePictureUrl)} />
               )}
               <AvatarFallback className="text-2xl">
                 {initials(userName ?? "")}

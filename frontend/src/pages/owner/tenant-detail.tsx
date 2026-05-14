@@ -46,7 +46,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { PageHeader } from "@/components/layout/page-header";
-import { formatDate, formatINR, initials } from "@/lib/utils";
+import { formatDate, formatINR, initials, normalizeDocUrl } from "@/lib/utils";
 import type {
   DocumentResponse,
   KycStatus,
@@ -154,7 +154,7 @@ export function TenantDetailPage() {
             <div className="flex items-start gap-5 flex-wrap">
               <Avatar className="size-20">
                 {userQ.user?.profilePictureUrl && (
-                  <AvatarImage src={userQ.user.profilePictureUrl} />
+                  <AvatarImage src={normalizeDocUrl(userQ.user.profilePictureUrl)} />
                 )}
                 <AvatarFallback className="text-2xl">
                   {initials(

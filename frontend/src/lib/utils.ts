@@ -46,3 +46,29 @@ export function initials(name?: string): string {
   const parts = name.trim().split(/\s+/);
   return (parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "");
 }
+
+/**
+ * Normalise a presigned document URL for use in an {@code <img src>}
+ * attribute (Issue #1).
+ *
+ * <p>Backend now mints RELATIVE URLs (e.g.
+ * {@code /rentals/v1/documents/{id}/blob?…}) so the browser resolves
+ * against whatever origin is currently serving the SPA — works on
+ * localhost, ngrok-tunneled dev sessions, and prod without any host
+ * config.
+ *
+ * <p>This helper strips legacy {@code http://localhost:8080} (or any
+ * host:port + scheme) prefix from URLs minted BEFORE the fix landed,
+ * so users whose {@code User.profilePictureUrl} was persisted with an
+ * absolute localhost URL don't see a permanently-broken avatar after
+ * the deploy. Returns null when the input is null / empty so callers
+ * can render the initials fallback unchanged.
+ */
+export function normalizeDocUrl(url?: string | null): string | undefined {
+  if (!url) return undefined;
+  // Already relative — pass through unchanged.
+  if (url.startsWith("/")) return url;
+  // Strip absolute scheme://host[:port] prefix; keep the path + query.
+  const m = url.match(/^https?:\/\/[^/]+(\/.*)$/);
+  return m ? m[1] : url;
+}
