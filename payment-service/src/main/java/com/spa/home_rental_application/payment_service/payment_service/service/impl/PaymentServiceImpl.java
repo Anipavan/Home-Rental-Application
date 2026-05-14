@@ -1,6 +1,7 @@
 package com.spa.home_rental_application.payment_service.payment_service.service.impl;
 
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PaymentServiceEvents.*;
+import com.spa.home_rental_application.KafkaEvents.Producers.Events.AuditEventPublisher;
 import com.spa.home_rental_application.KafkaEvents.Producers.Events.PaymentServiceEvents;
 import com.spa.home_rental_application.payment_service.payment_service.client.PropertyClient;
 import com.spa.home_rental_application.payment_service.payment_service.DTO.PaymentMapper;
@@ -52,6 +53,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final PaymentProperties props;
     private final PaymentPdfGenerator pdfGenerator;
     private final PropertyClient propertyClient;
+    private final AuditEventPublisher audit;
 
     public PaymentServiceImpl(PaymentRepository paymentRepo,
                               InvoiceRepository invoiceRepo,
@@ -61,7 +63,8 @@ public class PaymentServiceImpl implements PaymentService {
                               PaymentServiceEvents events,
                               PaymentProperties props,
                               PaymentPdfGenerator pdfGenerator,
-                              PropertyClient propertyClient) {
+                              PropertyClient propertyClient,
+                              AuditEventPublisher audit) {
         this.paymentRepo = paymentRepo;
         this.invoiceRepo = invoiceRepo;
         this.receiptRepo = receiptRepo;
@@ -71,6 +74,7 @@ public class PaymentServiceImpl implements PaymentService {
         this.props = props;
         this.pdfGenerator = pdfGenerator;
         this.propertyClient = propertyClient;
+        this.audit = audit;
     }
 
     /* ---------------- Lifecycle ---------------- */
@@ -409,6 +413,18 @@ public class PaymentServiceImpl implements PaymentService {
         p.setGatewayName("manual");
         p.setGatewayOrderId(null);
         markPaid(p, body.reference() != null ? body.reference() : "CASH-" + UUID.randomUUID());
+
+        // P1-12: cash settlement is a high-signal event for audit —
+        // it's the path where money changes hands outside any
+        // payment gateway. Capture actor (owner), subject (tenant),
+        // amount + reference for the security operations index.
+        audit.publishSuccess("payment.cash.recorded",
+                body.ownerId(), p.getTenantId(), p.getId(),
+                java.util.Map.of(
+                        "amount", String.valueOf(p.getTotalAmount()),
+                        "flatId", String.valueOf(p.getFlatId()),
+                        "reference", body.reference() == null ? "" : body.reference()));
+
         return PaymentMapper.toResponse(p);
     }
 

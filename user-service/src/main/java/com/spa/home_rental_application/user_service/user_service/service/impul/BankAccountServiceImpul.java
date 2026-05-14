@@ -1,5 +1,6 @@
 package com.spa.home_rental_application.user_service.user_service.service.impul;
 
+import com.spa.home_rental_application.KafkaEvents.Producers.Events.AuditEventPublisher;
 import com.spa.home_rental_application.user_service.user_service.DTO.Request.BankAccountRequestDto;
 import com.spa.home_rental_application.user_service.user_service.DTO.Response.BankAccountResponseDto;
 import com.spa.home_rental_application.user_service.user_service.Entities.BankAccount;
@@ -9,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -16,9 +18,11 @@ import java.util.Optional;
 public class BankAccountServiceImpul implements BankAccountService {
 
     private final BankAccountRepo repo;
+    private final AuditEventPublisher audit;
 
-    public BankAccountServiceImpul(BankAccountRepo repo) {
+    public BankAccountServiceImpul(BankAccountRepo repo, AuditEventPublisher audit) {
         this.repo = repo;
+        this.audit = audit;
     }
 
     @Override
@@ -44,8 +48,19 @@ public class BankAccountServiceImpul implements BankAccountService {
                 ? "SAVINGS"
                 : body.accountType().trim().toUpperCase());
         entity.setUpiId(blankToNull(body.upiId()));
+        boolean isNew = entity.getId() == null;
         BankAccount saved = repo.save(entity);
         log.info("Saved bank account for userId={} (id={})", userId, saved.getId());
+        // P1-12: audit-channel emission. We deliberately do NOT log
+        // any part of the account number on this row — only that
+        // the user added or updated a saved account. The masked
+        // form is recoverable from the entity if a forensic
+        // investigation needs it.
+        audit.publishSuccess(
+                isNew ? "bank-account.added" : "bank-account.updated",
+                userId, userId, saved.getId(),
+                Map.of("bankName", saved.getBankName(),
+                        "ifsc", saved.getIfscCode()));
         return toDto(saved);
     }
 
@@ -55,6 +70,8 @@ public class BankAccountServiceImpul implements BankAccountService {
         repo.findByUserId(userId).ifPresent(b -> {
             repo.delete(b);
             log.info("Deleted bank account for userId={} (id={})", userId, b.getId());
+            audit.publishSuccess("bank-account.removed",
+                    userId, userId, b.getId(), Map.of());
         });
     }
 

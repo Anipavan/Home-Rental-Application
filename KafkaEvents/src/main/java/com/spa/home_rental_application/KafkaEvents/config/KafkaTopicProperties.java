@@ -39,4 +39,11 @@ public class KafkaTopicProperties {
     private String complianceTopic = "compliance-events";
     private String documentTopic = "document-events";
     private String reviewTopic = "review-events";
+    /**
+     * Dedicated append-only audit channel (P1-12) — security-relevant
+     * mutations across every service publish {@code AuditEvent} rows
+     * here. Sized for a separate, longer-retention index in log
+     * aggregation; reused by the operations runbook during incidents.
+     */
+    private String auditTopic = "audit-events";
 }

@@ -4,6 +4,7 @@ import com.spa.home_rental_application.KafkaEvents.Producers.DTO.AuthServiceEven
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.AuthServiceEvents.UserLoginEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.AuthServiceEvents.UserLogoutEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.AuthServiceEvents.UserRegisteredEvent;
+import com.spa.home_rental_application.KafkaEvents.Producers.Events.AuditEventPublisher;
 import com.spa.home_rental_application.KafkaEvents.Producers.Events.AuthServiceEvents;
 import com.spa.home_rental_application.auth_service.Config.JwtProperties;
 import com.spa.home_rental_application.auth_service.Dto.AuthUserMapper;
@@ -71,6 +72,7 @@ public class AuthServiceImpl implements AuthService {
     private final JwtProperties jwtProperties;
     private final UserServiceFeign userServiceFeign;
     private final AuthServiceEvents authEvents;
+    private final AuditEventPublisher audit;
     private final long passwordResetTtlMinutes;
 
     public AuthServiceImpl(UserRepository userRepository,
@@ -82,6 +84,7 @@ public class AuthServiceImpl implements AuthService {
                            JwtProperties jwtProperties,
                            UserServiceFeign userServiceFeign,
                            AuthServiceEvents authEvents,
+                           AuditEventPublisher audit,
                            @Value("${app.password-reset.token-validity-minutes:15}") long passwordResetTtlMinutes) {
         this.userRepository = userRepository;
         this.refreshTokenRepository = refreshTokenRepository;
@@ -92,6 +95,7 @@ public class AuthServiceImpl implements AuthService {
         this.jwtProperties = jwtProperties;
         this.userServiceFeign = userServiceFeign;
         this.authEvents = authEvents;
+        this.audit = audit;
         this.passwordResetTtlMinutes = passwordResetTtlMinutes;
     }
 
@@ -178,6 +182,14 @@ public class AuthServiceImpl implements AuthService {
                 .timestamp(Instant.now())
                 .build());
 
+        // P1-12: dedicated audit channel. Mirrors the user.registered
+        // event onto audit-events so the security operations index
+        // gets a copy regardless of how the normal auth-events topic
+        // is being consumed / retained.
+        audit.publishSuccess("auth.register", saved.getId().toString(),
+                saved.getId().toString(), saved.getId().toString(),
+                java.util.Map.of("role", role.name(), "email", saved.getEmail()));
+
         return AuthUserMapper.toRegisterResponse(saved);
     }
 
@@ -211,9 +223,21 @@ public class AuthServiceImpl implements AuthService {
                     new UsernamePasswordAuthenticationToken(req.userName(), req.password()));
         } catch (BadCredentialsException ex) {
             if (lockoutEnabled) registerFailedLogin(prelocked);
+            // P1-12: failed-login audit. Actor unknown (no JWT yet);
+            // subject is whichever user record the username pointed at
+            // (may be blank if the username doesn't even exist — that's
+            // intentional, the audit row still tells us SOMEONE tried).
+            audit.publishFailure("auth.login.failed",
+                    null,
+                    prelocked == null ? null : String.valueOf(prelocked.getId()),
+                    "Bad credentials for username '" + req.userName() + "'");
             throw ex;
         } catch (AuthenticationException ex) {
             if (lockoutEnabled) registerFailedLogin(prelocked);
+            audit.publishFailure("auth.login.failed",
+                    null,
+                    prelocked == null ? null : String.valueOf(prelocked.getId()),
+                    ex.getClass().getSimpleName() + ": " + ex.getMessage());
             throw ex;
         }
 
@@ -249,6 +273,16 @@ public class AuthServiceImpl implements AuthService {
                 .userAgent(userAgent)
                 .loginTime(Instant.now())
                 .timestamp(Instant.now())
+                .build());
+
+        // P1-12: audit-channel mirror for security-ops dashboards.
+        audit.publish(com.spa.home_rental_application.KafkaEvents.Producers.DTO.AuditServiceEvents.AuditEvent.builder()
+                .eventType("auth.login.success")
+                .actorUserId(user.getId().toString())
+                .subjectUserId(user.getId().toString())
+                .outcome("SUCCESS")
+                .clientIp(ipAddress)
+                .userAgent(userAgent)
                 .build());
 
         return AuthResponse.bearer(accessToken, refresh.getToken(),
@@ -359,6 +393,11 @@ public class AuthServiceImpl implements AuthService {
         Instant expires = Instant.now().plus(passwordResetTtlMinutes, ChronoUnit.MINUTES);
         passwordResetTokenRepository.save(PasswordResetToken.builder()
                 .token(token).userId(user.getId()).expiresAt(expires).used(false).build());
+
+        // P1-12: audit the password-reset request even when no email
+        // actually lands — supports investigations of "someone tried to
+        // reset my password" reports.
+        audit.publishSuccess("auth.password.reset.requested", user.getId().toString());
 
         authEvents.sendPasswordResetRequested(PasswordResetRequestedEvent.builder()
                 .eventType("user.password.reset.requested")

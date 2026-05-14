@@ -45,12 +45,14 @@ class PaymentServiceTest {
     @Mock PaymentGateway gateway;
     @Mock PaymentServiceEvents events;
     @Mock com.spa.home_rental_application.payment_service.payment_service.client.PropertyClient propertyClient;
+    @Mock com.spa.home_rental_application.KafkaEvents.Producers.Events.AuditEventPublisher audit;
 
     PaymentServiceImpl service() {
         return new PaymentServiceImpl(paymentRepo, invoiceRepo, receiptRepo, webhookRepo, gateway, events,
                 new PaymentProperties(),
                 new com.spa.home_rental_application.payment_service.payment_service.service.impl.PaymentPdfGenerator(),
-                propertyClient);
+                propertyClient,
+                audit);
     }
 
     @Test
