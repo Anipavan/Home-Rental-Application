@@ -1,0 +1,21 @@
+-- ─────────────────────────────────────────────────────────────────
+--  V1 — Hibernate-managed baseline.
+--
+--  Every existing user-service deployment has its schema created by
+--  Hibernate ddl-auto=update. Adopting Flyway means we need to tell
+--  Flyway "this version is already applied" without it trying to
+--  recreate the tables. application-prod.yaml has
+--  spring.flyway.baseline-on-migrate=true, which on the first boot
+--  inserts a row into flyway_schema_history pointing at this file
+--  but does not execute its body — making this an intentional no-op.
+--
+--  All future schema changes go in V2__*.sql, V3__*.sql, etc., one
+--  ordered file per change. Roll-back is by writing a forward
+--  migration (V<n+1>__revert_<x>.sql), never by editing or deleting
+--  an already-applied V*.sql.
+-- ─────────────────────────────────────────────────────────────────
+
+-- Sanity check that this file ran. Flyway records the checksum;
+-- mutating the file after release will trigger validate-on-migrate
+-- to fail boot — which is the desired failure mode.
+SELECT 1 FROM dual;

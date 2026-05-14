@@ -13,7 +13,7 @@
 	<artifactId>compliance-service</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<name>compliance-service</name>
-	<description>RentGenius Compliance Service — RERA registration + GST invoicing</description>
+	<description>RentGenius Compliance Service - RERA registration + GST invoicing</description>
 
 	<properties>
 		<java.version>21</java.version>
@@ -28,6 +28,25 @@
 		<dependency>
 			<groupId>com.oracle.database.jdbc</groupId>
 			<artifactId>ojdbc11</artifactId>
+		</dependency>
+
+		<!--
+		  Flyway - schema migration tooling. In prod the
+		  application-prod profile sets spring.flyway.enabled=true +
+		  baseline-on-migrate=true, so existing databases adopt
+		  Flyway tracking on first boot without breaking. Dev keeps
+		  Hibernate ddl-auto=update for fast iteration; prod uses
+		  explicit V*.sql files under src/main/resources/db/migration.
+		  flyway-database-oracle is required separately under Spring
+		  Boot 3 (Oracle support was split out of flyway-core).
+		-->
+		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-core</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-database-oracle</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>

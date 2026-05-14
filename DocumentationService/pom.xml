@@ -13,7 +13,7 @@
 	<artifactId>document-service</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<name>document-service</name>
-	<description>RentGenius Document Service — secure upload + OCR + pre-signed downloads</description>
+	<description>RentGenius Document Service - secure upload + OCR + pre-signed downloads</description>
 
 	<properties>
 		<java.version>21</java.version>
@@ -28,6 +28,25 @@
 		<dependency>
 			<groupId>com.oracle.database.jdbc</groupId>
 			<artifactId>ojdbc11</artifactId>
+		</dependency>
+
+		<!--
+		  Flyway - schema migration tooling. In prod the
+		  application-prod profile sets spring.flyway.enabled=true +
+		  baseline-on-migrate=true, so existing databases adopt
+		  Flyway tracking on first boot without breaking. Dev keeps
+		  Hibernate ddl-auto=update for fast iteration; prod uses
+		  explicit V*.sql files under src/main/resources/db/migration.
+		  flyway-database-oracle is required separately under Spring
+		  Boot 3 (Oracle support was split out of flyway-core).
+		-->
+		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-core</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-database-oracle</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -84,7 +103,7 @@
 		</dependency>
 
 		<!--
-		  AWS SDK v2 — used by S3DocumentStorage when
+		  AWS SDK v2 - used by S3DocumentStorage when
 		  app.documents.storage-backend=S3. Both runtime artifacts:
 		    * s3            : object operations (put/get/delete)
 		    * s3-transfer-manager : not strictly needed yet but cheap to keep
@@ -105,7 +124,7 @@
 		  language tessdata at runtime, so it's only activated when
 		  app.documents.ocr.provider=TESSERACT. The Spring Boot Alpine
 		  runtime image needs `apk add tesseract-ocr tesseract-ocr-data-eng`
-		  for this to function — see DocumentationService/Dockerfile.
+		  for this to function - see DocumentationService/Dockerfile.
 		-->
 		<dependency>
 			<groupId>net.sourceforge.tess4j</groupId>
@@ -134,7 +153,7 @@
 				<type>pom</type>
 				<scope>import</scope>
 			</dependency>
-			<!-- AWS SDK v2 BOM — pins all software.amazon.awssdk:* versions. -->
+			<!-- AWS SDK v2 BOM - pins all software.amazon.awssdk:* versions. -->
 			<dependency>
 				<groupId>software.amazon.awssdk</groupId>
 				<artifactId>bom</artifactId>

@@ -26,6 +26,18 @@ spring:
       minimum-idle: 2
       connection-timeout: 30000
 
+
+  # Flyway - disabled by default so local dev keeps using Hibernate
+  # ddl-auto=update for fast iteration. application-prod.yaml flips
+  # spring.flyway.enabled=true and locks ddl-auto to 'validate'.
+  flyway:
+    enabled: false
+    baseline-on-migrate: true
+    baseline-version: 1
+    baseline-description: "Pre-Flyway baseline (Hibernate-managed)"
+    locations: classpath:db/migration
+    validate-on-migrate: true
+
   jpa:
     hibernate:
       ddl-auto: update

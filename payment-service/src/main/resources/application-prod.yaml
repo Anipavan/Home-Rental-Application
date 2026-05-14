@@ -8,6 +8,17 @@
 #  dangerous outside dev.
 # ─────────────────────────────────────────────────────────────────
 spring:
+  # Flyway-driven schema management in prod. With
+  # baseline-on-migrate=true the first boot against an existing
+  # database stamps it as version 1 without trying to re-create
+  # tables. validate-on-migrate=true makes any drift between the
+  # checked-in V*.sql files and the recorded history a startup
+  # failure (the right failure mode).
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    validate-on-migrate: true
+
   jpa:
     hibernate:
       # No auto-schema mutations in prod. Schema changes must come

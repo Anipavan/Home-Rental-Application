@@ -33,6 +33,25 @@
 			<artifactId>ojdbc11</artifactId>
 			<scope>runtime</scope>
 		</dependency>
+
+		<!--
+		  Flyway - schema migration tooling. In prod the
+		  application-prod profile sets spring.flyway.enabled=true +
+		  baseline-on-migrate=true, so existing databases adopt
+		  Flyway tracking on first boot without breaking. Dev keeps
+		  Hibernate ddl-auto=update for fast iteration; prod uses
+		  explicit V*.sql files under src/main/resources/db/migration.
+		  flyway-database-oracle is required separately under Spring
+		  Boot 3 (Oracle support was split out of flyway-core).
+		-->
+		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-core</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-database-oracle</artifactId>
+		</dependency>
 		<dependency>
 			<groupId>com.spa.home_rental_application</groupId>
 			<artifactId>KafkaEvents</artifactId>
@@ -93,7 +112,7 @@
 			<version>2.6.0</version>
 		</dependency>
 
-		<!-- OpenPDF — generates the lease agreement PDF on sign. Same library
+		<!-- OpenPDF - generates the lease agreement PDF on sign. Same library
 		     used by LeaseService and ComplianceService for consistency. -->
 		<dependency>
 			<groupId>com.github.librepdf</groupId>
