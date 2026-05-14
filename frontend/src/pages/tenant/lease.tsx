@@ -228,6 +228,20 @@ function AgreementCard({ agreement }: { agreement: AgreementResponseDTO }) {
           <StatusBadge status={agreement.status} />
         </div>
 
+        {/* Parties — Issue #5: show resolved full names instead of
+            raw UUIDs. We still expose the id in a subtle line beneath
+            so support / audits can correlate when needed. */}
+        <div className="grid sm:grid-cols-2 gap-4 text-sm mb-4">
+          <KV
+            label="Owner"
+            value={agreement.ownerName || agreement.ownerId || "—"}
+          />
+          <KV
+            label="Tenant"
+            value={agreement.tenantName || agreement.tenantId || "—"}
+          />
+        </div>
+
         <div className="grid sm:grid-cols-3 gap-4 text-sm mb-6">
           <KV label="Monthly rent" value={formatINR(agreement.rentAmount)} />
           <KV label="Lease starts" value={formatDate(agreement.leaseStartDate)} />
@@ -648,8 +662,17 @@ function KV({ label, value }: { label: string; value: string }) {
 }
 
 function defaultTerms(a: AgreementResponseDTO): string {
+  // Issue #5: prefer the resolved KYC names over raw UUIDs; the id is
+  // kept inline as a parenthetical so audit trails can still link the
+  // wording back to the platform records.
+  const owner = a.ownerName
+    ? `${a.ownerName} (id ${a.ownerId})`
+    : `id ${a.ownerId}`;
+  const tenant = a.tenantName
+    ? `${a.tenantName} (id ${a.tenantId})`
+    : `id ${a.tenantId}`;
   return `1. PARTIES
-   This Residential Lease Agreement is entered into between the Owner (id ${a.ownerId}) and the Tenant (id ${a.tenantId}) for the residential premises identified as flat ${a.flatId}.
+   This Residential Lease Agreement is entered into between the Owner ${owner} and the Tenant ${tenant} for the residential premises identified as flat ${a.flatId}.
 
 2. TERM
    The lease begins on ${a.leaseStartDate} and ends on ${a.leaseEndDate}, unless renewed or terminated as per the terms below.
@@ -658,7 +681,7 @@ function defaultTerms(a: AgreementResponseDTO): string {
    Tenant agrees to pay ${a.rentAmount ? `INR ${a.rentAmount}` : "the rent amount specified"} per month, due on the 5th of each month.
 
 4. SECURITY DEPOSIT
-   Tenant has paid a refundable deposit equal to two months of rent, returnable within 30 days of vacating the premises after deduction for damages, if any.
+   Tenant shall pay a security deposit equal to two months of rent at the time of signing this agreement. The security deposit is NON-REFUNDABLE — the Owner shall retain the full amount upon expiry or earlier termination of the lease, in lieu of wear-and-tear adjustments, outstanding dues, and any damages caused by the Tenant.
 
 5. UTILITIES
    Tenant is responsible for electricity, water, gas, internet, and other consumption-based utilities, unless otherwise agreed in writing.
@@ -670,7 +693,7 @@ function defaultTerms(a: AgreementResponseDTO): string {
    The premises may not be sub-let, in whole or in part, without the Owner's prior written consent.
 
 8. TERMINATION
-   Either party may terminate this agreement with one (1) month's written notice. Termination by the Owner without cause within the first six months requires a refund of one month's rent.
+   Either party may terminate this agreement with one (1) month's written notice.
 
 9. GOVERNING LAW
    This agreement is governed by the laws of India and any disputes shall be settled in the courts of the jurisdiction where the premises are located.`;

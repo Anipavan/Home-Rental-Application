@@ -321,14 +321,37 @@ public class AgreementServiceImpl implements AgreementService {
         t.append("   Tenant pays: electricity, water, internet (unless owner agrees otherwise).\n");
         t.append("   Owner is responsible for structural maintenance via the platform.\n\n");
         t.append("6. SECURITY DEPOSIT\n");
-        t.append("   Equal to two months' rent, refundable on lease termination subject to inspection.\n\n");
+        // Issue #6: deposit is now NON-refundable on termination. The
+        // owner retains the entire amount to cover wear-and-tear,
+        // outstanding dues, and any damages caused during occupancy.
+        t.append("   Equal to two months' rent, payable at the time of signing this agreement.\n");
+        t.append("   The security deposit is NON-REFUNDABLE — the Owner shall retain the full\n");
+        t.append("   amount upon expiry or early termination of this lease, in lieu of\n");
+        t.append("   wear-and-tear adjustments, outstanding dues, and any damages caused by\n");
+        t.append("   the Tenant.\n\n");
         t.append("By signing this agreement the tenant confirms they have read and accepted these terms.");
         return t.toString();
     }
 
+    /**
+     * Resolve human-readable owner/tenant names from user-service so the
+     * lease card no longer leaks raw UUIDs (Issue #5). Failure is silently
+     * absorbed — names are nice-to-have, not load-bearing for the DTO.
+     */
     private AgreementResponseDTO toDto(Agreement a) {
+        String tenantName = null;
+        String ownerName = null;
+        try {
+            UserSummary t = safeFetchUser(a.getTenantId());
+            if (t != null) tenantName = t.fullName();
+        } catch (Exception ignored) { /* names are best-effort */ }
+        try {
+            UserSummary o = safeFetchUser(a.getOwnerId());
+            if (o != null) ownerName = o.fullName();
+        } catch (Exception ignored) { /* names are best-effort */ }
         return new AgreementResponseDTO(
                 a.getId(), a.getFlatId(), a.getBuildingId(), a.getTenantId(), a.getOwnerId(),
+                tenantName, ownerName,
                 a.getRentAmount(), a.getLeaseStartDate(), a.getLeaseEndDate(),
                 a.getTerms(), a.getStatus().name(), a.getSignatureData(),
                 a.getSignedAt(), a.getRejectedAt(), a.getRejectionReason(),

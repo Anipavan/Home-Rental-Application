@@ -11,6 +11,16 @@ public record AgreementResponseDTO(
         String buildingId,
         String tenantId,
         String ownerId,
+        /**
+         * Tenant's full name resolved via user-service KYC, so the SPA can
+         * render "Owner: John Doe" instead of leaking the raw UUID into
+         * the lease card (Issue #5). Null when user-service is unreachable
+         * or the user record has no name on file; the UI falls back to the
+         * raw id in that case.
+         */
+        String tenantName,
+        /** Owner's full name — same treatment as tenantName. */
+        String ownerName,
         BigDecimal rentAmount,
         LocalDate leaseStartDate,
         LocalDate leaseEndDate,

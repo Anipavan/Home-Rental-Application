@@ -247,6 +247,14 @@ export interface AgreementResponseDTO {
   buildingId: string;
   tenantId: string;
   ownerId: string;
+  /**
+   * Tenant's full name, resolved server-side via user-service (Issue
+   * #5). Lets the lease card render "Tenant: John Doe" instead of
+   * leaking the raw UUID. Falls back to the raw id when null.
+   */
+  tenantName?: string | null;
+  /** Owner's full name — same treatment as tenantName. */
+  ownerName?: string | null;
   rentAmount: number;
   leaseStartDate: string;
   leaseEndDate: string;

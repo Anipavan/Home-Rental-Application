@@ -254,10 +254,13 @@ function AgreementDetail({
   agreement: AgreementResponseDTO;
   onBack: () => void;
 }) {
-  // Resolve the single flat + tenant for the detail header so it reads
-  // "Lease for flat A-302 · Asha Rao" instead of two raw UUIDs.
+  // Resolve the single flat + tenant + owner for the detail header so
+  // it reads "Lease for flat A-302 · Asha Rao" instead of two raw UUIDs.
+  // The owner id is included so the Parties block can fall back to a
+  // local lookup when the DTO's ownerName field is null (e.g. legacy
+  // rows from before the resolution was added).
   const flatLookup = useFlatLookup([agreement.flatId]);
-  const userLookup = useUserLookup([agreement.tenantId]);
+  const userLookup = useUserLookup([agreement.tenantId, agreement.ownerId]);
 
   return (
     <div className="animate-fade-in max-w-3xl">
@@ -286,6 +289,30 @@ function AgreementDetail({
               </div>
             </div>
             <StatusBadge status={agreement.status} />
+          </div>
+
+          {/* Parties — Issue #5: prefer the DTO's resolved names
+              (server-side via user-service KYC) and fall back to the
+              local user-lookup batched fetch when missing. The raw id
+              is still rendered as a fallback last so support / audits
+              can still cross-reference. */}
+          <div className="grid sm:grid-cols-2 gap-4 text-sm mb-4">
+            <KV
+              label="Owner"
+              value={
+                agreement.ownerName ||
+                userLookup.nameOf(agreement.ownerId) ||
+                agreement.ownerId
+              }
+            />
+            <KV
+              label="Tenant"
+              value={
+                agreement.tenantName ||
+                userLookup.nameOf(agreement.tenantId) ||
+                agreement.tenantId
+              }
+            />
           </div>
 
           <div className="grid sm:grid-cols-3 gap-4 text-sm mb-6">

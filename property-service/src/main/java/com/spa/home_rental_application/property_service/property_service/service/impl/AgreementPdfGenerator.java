@@ -242,24 +242,20 @@ public class AgreementPdfGenerator {
                             + "Tenant to pay electricity & water bills, as presented by the "
                             + "Departments concerned according to the readings on the respective "
                             + "meters upto the date of vacation of the property."));
+            // Issue #6: the security deposit is no longer refunded by the
+            // owner on lease termination. The clause is rewritten to make
+            // that explicit so the printed deed matches platform policy.
             doc.add(clause(body,
-                    "6. The Tenant will pay to the Owner an interest-free refundable security "
-                            + "deposit of Rs. " + BLANK + " vide cheque no " + BLANK
-                            + " dated " + BLANK + " at the time of signing the Rent Agreement. "
-                            + "The said amount of the Security deposit shall be refunded by the "
-                            + "Owner to the Tenant at the time of handing over possession of the "
-                            + "demised premises by the Tenant upon expiry or sooner termination "
-                            + "of this Rent after adjusting any dues (if any) or cost towards "
-                            + "damages caused by the negligence of the Tenant or the person he "
-                            + "is responsible for, normal wear & tear and damages due to act of "
-                            + "god exempted. In case the Owner fails to refund the security "
-                            + "deposit to the Tenant on early termination or expiry of the Rent "
-                            + "agreement, the Tenant is entitled to hold possession of the "
-                            + "Rented premises, without payment of rent and/or any other charges "
-                            + "whatsoever, till such time the Owner refunds the security deposit "
-                            + "to the Tenant. This is without prejudice and in addition to the "
-                            + "other remedies available to the Tenant to recover the amount from "
-                            + "the Owner."));
+                    "6. The Tenant shall pay to the Owner a security deposit of Rs. "
+                            + BLANK + " vide cheque no " + BLANK + " dated " + BLANK
+                            + " at the time of signing this Rent Agreement. The said security "
+                            + "deposit is NON-REFUNDABLE — the Owner shall retain the full "
+                            + "amount upon expiry or earlier termination of this Rent "
+                            + "agreement, in lieu of wear-and-tear adjustments, outstanding "
+                            + "dues, and any damages caused by the negligence of the Tenant "
+                            + "or the persons for whom the Tenant is responsible. The Tenant "
+                            + "expressly waives any claim to refund of the security deposit on "
+                            + "the expiry or earlier termination of this Rent agreement."));
             doc.add(clause(body,
                     "7. That all the sanitary, electrical and other fittings and fixtures and "
                             + "appliances in the premises shall be handed over from the Owner "
