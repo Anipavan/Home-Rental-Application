@@ -51,24 +51,63 @@ export function initials(name?: string): string {
  * Normalise a presigned document URL for use in an {@code <img src>}
  * attribute (Issue #1).
  *
- * <p>Backend now mints RELATIVE URLs (e.g.
- * {@code /rentals/v1/documents/{id}/blob?…}) so the browser resolves
- * against whatever origin is currently serving the SPA — works on
- * localhost, ngrok-tunneled dev sessions, and prod without any host
- * config.
+ * <p>The bug this solves: document-service mints presigned URLs as
+ * {@code /rentals/v1/documents/{id}/blob?…} — the canonical gateway
+ * path. But the FE talks to the gateway through different prefixes
+ * depending on the deployment:
  *
- * <p>This helper strips legacy {@code http://localhost:8080} (or any
- * host:port + scheme) prefix from URLs minted BEFORE the fix landed,
- * so users whose {@code User.profilePictureUrl} was persisted with an
- * absolute localhost URL don't see a permanently-broken avatar after
- * the deploy. Returns null when the input is null / empty so callers
- * can render the initials fallback unchanged.
+ * <ul>
+ *   <li>Direct mode: axios baseURL = {@code http://localhost:8080/rentals/v1}.
+ *       An {@code <img src="/rentals/v1/…">} resolves against the
+ *       SPA origin ({@code :4200} in dev), which has no such path
+ *       and returns the SPA fallback HTML — image silently fails.</li>
+ *   <li>Proxy/tunnel mode: axios baseURL = {@code /api/rentals/v1}.
+ *       Vite proxies {@code /api/**} to the gateway. A bare
+ *       {@code /rentals/v1/…} src bypasses the proxy entirely.</li>
+ * </ul>
+ *
+ * <p>The fix: derive the FE's "everything before /rentals/v1" prefix
+ * from {@code VITE_API_BASE_URL} and prepend it to any signed URL
+ * whose path starts with {@code /rentals/v1/}. The result is a URL
+ * that hits the same code path as every other axios call — so dev
+ * (proxy), tunnels (ngrok + proxy), and prod (absolute host) all
+ * work without per-environment FE branching.
+ *
+ * <p>Returns undefined when input is null / empty so callers can
+ * render the initials fallback unchanged.
  */
 export function normalizeDocUrl(url?: string | null): string | undefined {
   if (!url) return undefined;
-  // Already relative — pass through unchanged.
-  if (url.startsWith("/")) return url;
-  // Strip absolute scheme://host[:port] prefix; keep the path + query.
-  const m = url.match(/^https?:\/\/[^/]+(\/.*)$/);
-  return m ? m[1] : url;
+  // Pass through unchanged for URLs that aren't document-service
+  // signed paths (e.g. an external CDN URL or some legacy data
+  // shape we shouldn't touch).
+  if (!url.includes("/rentals/v1/")) return url;
+
+  // Step 1: figure out the FE's prefix-before-/rentals/v1 from its
+  // own base URL. Works for both absolute bases ({@code http://host/rentals/v1})
+  // and relative-proxy bases ({@code /api/rentals/v1}).
+  const BASE =
+    (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
+    "http://localhost:8080/rentals/v1";
+  const sliceAt = BASE.indexOf("/rentals/v1");
+  // Unknown base URL shape — bail.
+  if (sliceAt < 0) return url;
+  const prefix = BASE.slice(0, sliceAt);
+
+  // Step 2: canonicalize to a leading-slash path (strip any
+  // scheme://host:port prefix from legacy absolute URLs).
+  let path = url;
+  const absMatch = url.match(/^https?:\/\/[^/]+(\/.*)$/);
+  if (absMatch) path = absMatch[1];
+
+  // Step 3: if the path is already correctly prefixed, leave it.
+  if (prefix && path.startsWith(prefix + "/rentals/v1/")) return path;
+
+  // Step 4: slice from the canonical "/rentals/v1/" segment and
+  // rebuild with the FE's prefix. Handles bare paths
+  // ({@code /rentals/v1/...}) and any wrong-prefix path
+  // ({@code /other/rentals/v1/...}) alike.
+  const canonIdx = path.indexOf("/rentals/v1/");
+  if (canonIdx < 0) return path;
+  return prefix + path.slice(canonIdx);
 }
