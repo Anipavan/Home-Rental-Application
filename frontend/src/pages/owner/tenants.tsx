@@ -1,6 +1,7 @@
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, Users } from "lucide-react";
+import { AlertTriangle, ChevronRight, Users, Wallet } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { propertiesApi } from "@/lib/api/properties";
 import { paymentsApi } from "@/lib/api/payments";
@@ -61,6 +62,41 @@ export function TenantsPage() {
   });
 
   const tenantedFlats = (flatsQ.data ?? []).filter((f) => f.tenantId);
+  const allPayments = paymentsQ.data ?? [];
+
+  // Per-tenant outstanding rollup, used for both the page-wide
+  // summary banner AND the sort order of the cards. Keying by
+  // tenantId rather than flatId so a tenant who moved between flats
+  // still aggregates into one number.
+  const outstandingByTenant = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const p of allPayments) {
+      if (p.status !== "PENDING" && p.status !== "OVERDUE") continue;
+      const amt = Number(p.totalAmount ?? p.amount ?? 0);
+      map.set(p.tenantId, (map.get(p.tenantId) ?? 0) + amt);
+    }
+    return map;
+  }, [allPayments]);
+
+  // Sort tenants with the largest outstanding first so the owner
+  // sees who owes money at a glance. Tenants with no dues fall to
+  // the bottom in their natural order.
+  const sortedFlats = useMemo(() => {
+    return [...tenantedFlats].sort((a, b) => {
+      const aDue = outstandingByTenant.get(a.tenantId ?? "") ?? 0;
+      const bDue = outstandingByTenant.get(b.tenantId ?? "") ?? 0;
+      return bDue - aDue;
+    });
+  }, [tenantedFlats, outstandingByTenant]);
+
+  // Portfolio-wide totals for the summary banner.
+  const totalOutstanding = Array.from(outstandingByTenant.values()).reduce(
+    (s, v) => s + v,
+    0,
+  );
+  const tenantsWithDues = Array.from(outstandingByTenant.values()).filter(
+    (v) => v > 0,
+  ).length;
 
   return (
     <div className="animate-fade-in">
@@ -68,6 +104,42 @@ export function TenantsPage() {
         title="Tenants"
         description="People living in your homes. Click any card to see their full activity."
       />
+
+      {/* Portfolio-wide outstanding rollup. Surfaces the answer to
+          "how much rent is owed across all my tenants right now?"
+          at the very top of the page — same data each card carries,
+          aggregated. The banner is muted when there are no dues so
+          it doesn't draw attention when there's nothing to chase. */}
+      {tenantedFlats.length > 0 && (
+        <Card
+          className={
+            "mb-6 " +
+            (totalOutstanding > 0
+              ? "border-amber-500/40 bg-amber-50/40 dark:bg-amber-500/5"
+              : "border-emerald-500/30 bg-emerald-50/30 dark:bg-emerald-500/5")
+          }
+        >
+          <CardContent className="p-4 sm:p-5 flex items-center gap-3 flex-wrap">
+            {totalOutstanding > 0 ? (
+              <AlertTriangle className="size-5 text-amber-600 shrink-0" />
+            ) : (
+              <Wallet className="size-5 text-emerald-600 shrink-0" />
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="font-display font-semibold">
+                {paymentsQ.isLoading
+                  ? "Tallying outstanding rent…"
+                  : totalOutstanding > 0
+                    ? `${formatINR(totalOutstanding)} outstanding across ${tenantsWithDues} tenant${tenantsWithDues === 1 ? "" : "s"}`
+                    : "All tenants are paid up."}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Tenants with the largest unpaid balance appear first below.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {flatsQ.isLoading && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -90,11 +162,11 @@ export function TenantsPage() {
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {tenantedFlats.map((f) => (
+        {sortedFlats.map((f) => (
           <TenantCard
             key={f.id}
             flat={f as FlatResponseDTO & { _buildingName?: string }}
-            allPayments={paymentsQ.data ?? []}
+            allPayments={allPayments}
             paymentsLoading={paymentsQ.isLoading}
           />
         ))}
@@ -139,7 +211,16 @@ function TenantCard({
     .reduce((acc, p) => acc + Number(p.totalAmount ?? p.amount ?? 0), 0);
 
   return (
-    <Card className="overflow-hidden">
+    <Card
+      className={
+        "overflow-hidden " +
+        // Tenants with outstanding rent get a coloured top border so
+        // they're spottable in the grid without reading each amount.
+        (pending > 0
+          ? "border-amber-500/50 ring-1 ring-amber-500/20"
+          : "")
+      }
+    >
       {/* Clickable header / stats area */}
       <Link
         to={`/owner/tenants/${tenantId}`}
@@ -204,11 +285,20 @@ function TenantCard({
         </div>
       </Link>
 
-      {/* Action bar — outside the Link so dropdowns don't navigate */}
+      {/* Action bar — outside the Link so dropdowns don't navigate.
+          When the tenant has outstanding rent, surface a destructive
+          pill BEFORE the Active badge so the owner sees "₹X due"
+          even if they're scrolling past without reading the stats
+          grid above. */}
       <CardContent className="px-5 pb-5 pt-0 flex items-center gap-2">
         <ContactPersonPopover authUserId={tenantId} variant="icon-mail" />
         <ContactPersonPopover authUserId={tenantId} variant="icon-phone" />
-        <Badge variant="success" className="ml-auto">
+        {pending > 0 && (
+          <Badge variant="destructive" className="ml-auto gap-1">
+            <AlertTriangle className="size-3" /> {formatINR(pending)} due
+          </Badge>
+        )}
+        <Badge variant="success" className={pending > 0 ? "" : "ml-auto"}>
           Active
         </Badge>
       </CardContent>
