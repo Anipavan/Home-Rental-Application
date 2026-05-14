@@ -270,12 +270,12 @@ public class FlatServiceImpul implements FlatService {
      *   - daily scheduler executes the actual vacate on the date itself
      * ────────────────────────────────────────────────────────────── */
 
-    /** Spec: vacate-effective date is locked to today + this many days. */
+    /** Spec: tenant-picked vacate date must be at least this far from today. */
     private static final int VACATE_NOTICE_PERIOD_DAYS = 60;
 
     @Override
     @Transactional
-    public FlatResponseDTO scheduleVacate(String flatId) {
+    public FlatResponseDTO scheduleVacate(String flatId, LocalDate effectiveDate) {
         Flat flat = flatRepo.findById(flatId).orElseThrow(
                 () -> new RecordNotFoundException("Flat not found with id: " + flatId));
 
@@ -288,6 +288,20 @@ public class FlatServiceImpul implements FlatService {
         // goes through makeFlatVacate which has its own ownership
         // gate; this path is tenant-only.
         CallerSecurity.requireSelfOrAdmin(flat.getTenantId());
+
+        // Issue #4 — validate the tenant-picked date server-side
+        // (defence in depth — the frontend's date picker enforces the
+        // same floor but a direct API call could bypass it).
+        if (effectiveDate == null) {
+            throw new InvalidLeasePeriodException(
+                    "Vacate date is required.");
+        }
+        LocalDate earliest = LocalDate.now().plusDays(VACATE_NOTICE_PERIOD_DAYS);
+        if (effectiveDate.isBefore(earliest)) {
+            throw new InvalidLeasePeriodException(
+                    "You can't vacate the house before " + earliest
+                            + " — a minimum 60 days' notice to the owner is required.");
+        }
 
         // Already scheduled? Idempotent — return existing date.
         if (flat.getScheduledVacateDate() != null) {
@@ -318,13 +332,12 @@ public class FlatServiceImpul implements FlatService {
                     "Cannot verify outstanding dues right now. Try again in a minute.");
         }
 
-        LocalDate effective = LocalDate.now().plusDays(VACATE_NOTICE_PERIOD_DAYS);
-        flat.setScheduledVacateDate(effective);
+        flat.setScheduledVacateDate(effectiveDate);
         flat.setVacateWarningSentAt(null);
         flat.setUpdatedAt(LocalDateTime.now());
         Flat saved = flatRepo.save(flat);
         log.info("Scheduled vacate for flatId={} tenantId={} effectiveDate={}",
-                flatId, flat.getTenantId(), effective);
+                flatId, flat.getTenantId(), effectiveDate);
         return flatMapper.toResponseDTO(saved);
     }
 

@@ -257,12 +257,26 @@ function DocumentRow({
             {doc.documentType}
           </Badge>
           <OcrBadge status={doc.ocrStatus} />
+          {/* Issue #3 — owner approval status is independent of OCR
+              status. Render it alongside so the tenant sees both
+              "OCR done" (system extracted text) and "Approved" /
+              "Rejected" / "Pending review" (owner decision). */}
+          <VerificationBadge status={doc.verificationStatus} />
           {doc.fraudFlag && (
             <Badge variant="destructive" className="text-[10px]">
               Flagged
             </Badge>
           )}
         </div>
+        {/* When rejected, surface the owner's reason directly under
+            the title — tenant needs to know what to fix before
+            re-uploading. */}
+        {doc.verificationStatus === "REJECTED" && doc.rejectionReason && (
+          <p className="text-xs text-destructive mt-1">
+            <span className="font-semibold">Owner's note:</span>{" "}
+            {doc.rejectionReason}
+          </p>
+        )}
         <p className="text-xs text-muted-foreground mt-0.5">
           {doc.contentType ?? "—"}
           {doc.fileSizeBytes ? ` · ${formatSize(doc.fileSizeBytes)}` : ""}
@@ -315,8 +329,43 @@ function OcrBadge({ status }: { status: OcrStatus }) {
     case "FAILED":
       return <Badge variant="destructive" className="text-[10px]">OCR failed</Badge>;
     default:
-      return <Badge variant="secondary" className="text-[10px]">Pending</Badge>;
+      return <Badge variant="secondary" className="text-[10px]">OCR queued</Badge>;
   }
+}
+
+/**
+ * Issue #3 — owner approval status for a tenant-uploaded document.
+ * Independent of OCR status (the existing OcrBadge above). PENDING
+ * means the owner hasn't made a decision yet; APPROVED / REJECTED
+ * reflect the decision the owner made on their tenant-detail page.
+ */
+function VerificationBadge({
+  status,
+}: {
+  status?: "PENDING" | "APPROVED" | "REJECTED";
+}) {
+  if (status === "APPROVED") {
+    return (
+      <Badge variant="success" className="text-[10px]">
+        Approved
+      </Badge>
+    );
+  }
+  if (status === "REJECTED") {
+    return (
+      <Badge variant="destructive" className="text-[10px]">
+        Rejected
+      </Badge>
+    );
+  }
+  // Default + PENDING → "Pending review" (the documents page used to
+  // render plain "Pending" only from OcrBadge's default branch, which
+  // conflated OCR-not-started with owner-not-decided).
+  return (
+    <Badge variant="warning" className="text-[10px]">
+      Pending review
+    </Badge>
+  );
 }
 
 function formatSize(bytes: number) {

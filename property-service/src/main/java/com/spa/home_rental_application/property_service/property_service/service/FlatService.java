@@ -21,13 +21,15 @@ public interface FlatService {
     FlatResponseDTO assignFlat(String flatId, AssignFlatRequest req);
 
     /**
-     * Tenant-initiated scheduled vacate (Issue #5). Locks the
-     * effective date to today + 60 days, rejects if there are any
-     * PENDING or OVERDUE rent invoices. Caller must be the current
-     * tenant of the flat. Returns the updated flat (still occupied,
-     * with scheduledVacateDate set).
+     * Tenant-initiated scheduled vacate (Issue #5 + Issue #4). Tenant
+     * picks {@code effectiveDate} which must be at least 60 days from
+     * today; backend rejects with InvalidLeasePeriodException otherwise.
+     * Rejects with OutstandingDuesException if any PENDING or OVERDUE
+     * rent invoices remain. Caller must be the current tenant of the
+     * flat (or an admin). Returns the updated flat (still occupied,
+     * with scheduledVacateDate set to the picked date).
      */
-    FlatResponseDTO scheduleVacate(String flatId);
+    FlatResponseDTO scheduleVacate(String flatId, java.time.LocalDate effectiveDate);
 
     /**
      * Cancel a previously-scheduled vacate. Only the tenant who

@@ -62,7 +62,7 @@ export function ContactPersonPopover({
     staleTime: 60_000,
   });
 
-  const trigger = renderTrigger(variant, className);
+  const trigger = renderTrigger(variant, className, label);
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -184,15 +184,22 @@ function CopyItem({
 function renderTrigger(
   variant: NonNullable<Props["variant"]>,
   className?: string,
+  label?: string,
 ) {
   if (variant === "button") {
-    // Has Phone icon — used on My Home Quick Actions
+    // Issue #8 — the button used to hard-code "Contact owner",
+    // which was correct for the tenant My-Home page but wrong on
+    // the owner's complaint / maintenance pages (where the same
+    // component is used to call the TENANT). Thread the `label`
+    // prop through so each call site controls its own copy; default
+    // to "Contact owner" so existing call sites that don't pass
+    // a label keep their old behaviour.
     return (
       <button
         type="button"
         className={`inline-flex items-center justify-center gap-2 w-full h-10 rounded-lg border bg-background hover:bg-secondary text-sm font-medium transition-colors ${className ?? ""}`}
       >
-        <Phone className="size-4" /> Contact owner
+        <Phone className="size-4" /> {label ?? "Contact owner"}
       </button>
     );
   }

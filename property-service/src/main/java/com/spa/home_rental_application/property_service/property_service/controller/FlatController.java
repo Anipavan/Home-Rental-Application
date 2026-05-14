@@ -152,16 +152,23 @@ public class FlatController {
     }
 
     /**
-     * Tenant-initiated scheduled vacate (Issue #5). Locks the
-     * effective date to today + 60 days. Rejects with HTTP 422 if
-     * any PENDING / OVERDUE rent invoice still exists. Idempotent —
-     * re-calling returns the existing scheduled date.
+     * Tenant-initiated scheduled vacate (Issue #5 + Issue #4).
+     *
+     * Tenant picks a move-out date which must be at least 60 days
+     * from today. Backend validates the floor + the outstanding-dues
+     * check; rejects with HTTP 400 if the date is too soon and HTTP
+     * 422 if any PENDING / OVERDUE rent invoice still exists.
+     * Idempotent — re-calling returns the existing scheduled date.
      */
     @Operation(summary = "Schedule a tenant-initiated vacate (60-day notice; rejects on outstanding dues)")
     @PostMapping("/flats/{flatId}/schedule-vacate")
-    public ResponseEntity<FlatResponseDTO> scheduleVacate(@PathVariable String flatId) {
-        log.info("POST /properties/flats/{}/schedule-vacate (tenant-initiated)", flatId);
-        return ResponseEntity.ok(flatService.scheduleVacate(flatId));
+    public ResponseEntity<FlatResponseDTO> scheduleVacate(
+            @PathVariable String flatId,
+            @RequestParam("effectiveDate") @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE)
+            java.time.LocalDate effectiveDate) {
+        log.info("POST /properties/flats/{}/schedule-vacate effectiveDate={} (tenant-initiated)",
+                flatId, effectiveDate);
+        return ResponseEntity.ok(flatService.scheduleVacate(flatId, effectiveDate));
     }
 
     /** Cancels a previously-scheduled vacate. Tenant (or admin) only. */
