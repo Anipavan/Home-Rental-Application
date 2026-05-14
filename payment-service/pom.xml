@@ -47,6 +47,20 @@
             <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
         </dependency>
 
+        <!--
+          Feign client used to resolve {flat → building → ownerId} via
+          property-service. Needed because auto-created rent invoices
+          land in the payments table with ownerId=null (the
+          flat.occupied Kafka event doesn't carry an ownerId field),
+          which made /payments/owner/{id} return zero rows for every
+          owner. The Feign lookup closes that gap both at write time
+          (onFlatOccupied) and at read time (getPaymentsByOwner).
+        -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-openfeign</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>com.spa.home_rental_application</groupId>
             <artifactId>KafkaEvents</artifactId>

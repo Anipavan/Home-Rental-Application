@@ -19,7 +19,12 @@ class RazorpayPaymentGatewayTest {
         p.setKeyId("rzp_test_key");
         p.setKeySecret("rzp_test_secret");
         p.setWebhookSecret("hooky");
-        return new RazorpayPaymentGateway(p);
+        // PaymentRepository isn't exercised on the hmac-verify code
+        // path under test — a Mockito mock is enough to satisfy the
+        // constructor signature.
+        return new RazorpayPaymentGateway(p,
+                org.mockito.Mockito.mock(
+                        com.spa.home_rental_application.payment_service.payment_service.repository.PaymentRepository.class));
     }
 
     private static String hmac(String data, String secret) throws Exception {

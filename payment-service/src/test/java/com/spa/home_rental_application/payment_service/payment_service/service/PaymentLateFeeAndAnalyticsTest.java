@@ -26,13 +26,16 @@ class PaymentLateFeeAndAnalyticsTest {
     @Mock PaymentRepository paymentRepo;
     @Mock InvoiceRepository invoiceRepo;
     @Mock ReceiptRepository receiptRepo;
+    @Mock com.spa.home_rental_application.payment_service.payment_service.repository.ProcessedWebhookRepository webhookRepo;
     @Mock PaymentGateway gateway;
     @Mock PaymentServiceEvents events;
+    @Mock com.spa.home_rental_application.payment_service.payment_service.client.PropertyClient propertyClient;
 
     PaymentServiceImpl service() {
-        return new PaymentServiceImpl(paymentRepo, invoiceRepo, receiptRepo, gateway, events,
+        return new PaymentServiceImpl(paymentRepo, invoiceRepo, receiptRepo, webhookRepo, gateway, events,
                 new PaymentProperties(),
-                new com.spa.home_rental_application.payment_service.payment_service.service.impl.PaymentPdfGenerator());
+                new com.spa.home_rental_application.payment_service.payment_service.service.impl.PaymentPdfGenerator(),
+                propertyClient);
     }
 
     @Test

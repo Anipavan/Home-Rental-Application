@@ -19,6 +19,16 @@ public interface PaymentRepository extends JpaRepository<Payment, String> {
     List<Payment> findByOwnerId(String ownerId);
     List<Payment> findByFlatIdAndStatusIn(String flatId, Collection<PaymentStatus> statuses);
 
+    /**
+     * Lookup every payment whose flat is in the given collection.
+     * Used by {@code getPaymentsByOwner} to back-fill the legacy rows
+     * that were auto-created (via {@code onFlatOccupied}) before this
+     * fix and therefore have {@code ownerId=null}. The owner's full
+     * flat list is resolved via the {@link com.spa.home_rental_application.payment_service.payment_service.client.PropertyClient}
+     * Feign call and fed in here.
+     */
+    List<Payment> findByFlatIdIn(Collection<String> flatIds);
+
     List<Payment> findByStatus(PaymentStatus status);
 
     /**

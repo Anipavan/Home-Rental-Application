@@ -2,6 +2,7 @@ package com.spa.home_rental_application.payment_service.payment_service.service.
 
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PaymentServiceEvents.*;
 import com.spa.home_rental_application.KafkaEvents.Producers.Events.PaymentServiceEvents;
+import com.spa.home_rental_application.payment_service.payment_service.client.PropertyClient;
 import com.spa.home_rental_application.payment_service.payment_service.DTO.PaymentMapper;
 import com.spa.home_rental_application.payment_service.payment_service.DTO.Request.*;
 import com.spa.home_rental_application.payment_service.payment_service.DTO.Response.*;
@@ -50,6 +51,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final PaymentServiceEvents events;
     private final PaymentProperties props;
     private final PaymentPdfGenerator pdfGenerator;
+    private final PropertyClient propertyClient;
 
     public PaymentServiceImpl(PaymentRepository paymentRepo,
                               InvoiceRepository invoiceRepo,
@@ -58,7 +60,8 @@ public class PaymentServiceImpl implements PaymentService {
                               PaymentGateway gateway,
                               PaymentServiceEvents events,
                               PaymentProperties props,
-                              PaymentPdfGenerator pdfGenerator) {
+                              PaymentPdfGenerator pdfGenerator,
+                              PropertyClient propertyClient) {
         this.paymentRepo = paymentRepo;
         this.invoiceRepo = invoiceRepo;
         this.receiptRepo = receiptRepo;
@@ -67,6 +70,7 @@ public class PaymentServiceImpl implements PaymentService {
         this.events = events;
         this.props = props;
         this.pdfGenerator = pdfGenerator;
+        this.propertyClient = propertyClient;
     }
 
     /* ---------------- Lifecycle ---------------- */
@@ -183,8 +187,98 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     @Override
+    @Transactional   // Back-fill saveAll(...) on legacy rows needs an active tx.
     public List<PaymentResponse> getPaymentsByOwner(String ownerId) {
-        return paymentRepo.findByOwnerId(ownerId).stream().map(PaymentMapper::toResponse).toList();
+        // Two-pass lookup that heals legacy data on the way through.
+        //
+        // Pass 1: rows explicitly tagged with this owner (the happy path
+        // for new payments created after the onFlatOccupied fix).
+        //
+        // Pass 2: rows with ownerId=null whose flatId belongs to one
+        // of this owner's buildings. We resolve the owner's flatIds
+        // via the property-service Feign call, query payments by
+        // flatId-in, and back-fill the ownerId column on every row
+        // we find so the next call to this method serves them from
+        // pass 1 (no Feign round-trip needed). This is what makes
+        // /payments/owner/{id} actually return the right rows for
+        // the tenants page + tenant-detail Payments section after
+        // earlier billing runs that landed ownerId=null.
+        List<Payment> tagged = paymentRepo.findByOwnerId(ownerId);
+        Map<String, Payment> merged = new LinkedHashMap<>();
+        for (Payment p : tagged) merged.put(p.getId(), p);
+
+        Set<String> ownerFlatIds = collectOwnerFlatIds(ownerId);
+        if (!ownerFlatIds.isEmpty()) {
+            List<Payment> byFlat = paymentRepo.findByFlatIdIn(ownerFlatIds);
+            List<Payment> toHeal = new ArrayList<>();
+            for (Payment p : byFlat) {
+                merged.putIfAbsent(p.getId(), p);
+                if (p.getOwnerId() == null || p.getOwnerId().isBlank()) {
+                    p.setOwnerId(ownerId);
+                    toHeal.add(p);
+                }
+            }
+            if (!toHeal.isEmpty()) {
+                paymentRepo.saveAll(toHeal);
+                log.info("Back-filled ownerId on {} legacy payment rows for owner={}",
+                        toHeal.size(), ownerId);
+            }
+        }
+
+        return merged.values().stream()
+                .sorted(Comparator.comparing(Payment::getDueDate,
+                        Comparator.nullsLast(Comparator.reverseOrder())))
+                .map(PaymentMapper::toResponse)
+                .toList();
+    }
+
+    /**
+     * Resolve the owner of a flat through property-service. Returns
+     * null on any failure (offline, 404, etc.) so callers can treat
+     * the lookup as best-effort. Pulled into a helper so both
+     * {@code onFlatOccupied} (write side) and the back-fill path use
+     * the same flat→building→ownerId resolution.
+     */
+    private String resolveOwnerIdForFlat(String flatId) {
+        if (flatId == null || flatId.isBlank()) return null;
+        try {
+            PropertyClient.FlatSummary flat = propertyClient.getFlatById(flatId);
+            if (flat == null || flat.buildingId() == null) return null;
+            PropertyClient.BuildingSummary building = propertyClient.getBuildingById(flat.buildingId());
+            return building == null ? null : building.ownerId();
+        } catch (Exception ex) {
+            log.warn("Failed to resolve ownerId for flatId={} via property-service: {}",
+                    flatId, ex.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Resolve every flat the owner has on file. Used by the
+     * legacy-row back-fill inside {@link #getPaymentsByOwner}. Returns
+     * an empty set when property-service is unreachable so the back-fill
+     * path no-ops gracefully (pass 1 still runs).
+     */
+    private Set<String> collectOwnerFlatIds(String ownerId) {
+        if (ownerId == null || ownerId.isBlank()) return Set.of();
+        try {
+            List<PropertyClient.BuildingSummary> buildings = propertyClient.getBuildingsByOwner(ownerId);
+            if (buildings == null || buildings.isEmpty()) return Set.of();
+            Set<String> flatIds = new LinkedHashSet<>();
+            for (PropertyClient.BuildingSummary b : buildings) {
+                if (b == null || b.buildingId() == null) continue;
+                List<PropertyClient.FlatSummary> flats = propertyClient.getFlatsByBuilding(b.buildingId());
+                if (flats == null) continue;
+                for (PropertyClient.FlatSummary f : flats) {
+                    if (f != null && f.id() != null) flatIds.add(f.id());
+                }
+            }
+            return flatIds;
+        } catch (Exception ex) {
+            log.warn("Failed to collect owner's flat ids for ownerId={}: {}",
+                    ownerId, ex.getMessage());
+            return Set.of();
+        }
     }
 
     @Override
@@ -497,8 +591,19 @@ public class PaymentServiceImpl implements PaymentService {
             return;
         }
         LocalDate due = (leaseStartDate != null ? leaseStartDate : LocalDate.now()).withDayOfMonth(1).plusMonths(1);
+        // Resolve ownerId via property-service so the new rent invoice
+        // is attributable to the right landlord. Without this, the row
+        // lands with ownerId=null and the owner's /payments/owner/{id}
+        // call returns zero rows — which is exactly the bug that made
+        // the tenant-detail Payments section render Paid/Overdue/Upcoming
+        // = 0 for every tenant. The Feign call is best-effort: if
+        // property-service is down (fallback returns null fields) we
+        // still create the payment; the lazy back-fill in
+        // getPaymentsByOwner will heal it later.
+        String resolvedOwnerId = resolveOwnerIdForFlat(flatId);
         Payment p = Payment.builder()
                 .tenantId(tenantId).flatId(flatId)
+                .ownerId(resolvedOwnerId)
                 .amount(rentAmount).lateFee(BigDecimal.ZERO).totalAmount(rentAmount)
                 .dueDate(due)
                 .status(PaymentStatus.PENDING)
