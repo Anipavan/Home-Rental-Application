@@ -311,34 +311,116 @@ mvn test                            # only tests
 mvn -pl payment-service -am test    # one module + its deps
 ```
 
-## Production-readiness summary
+## Production deployment
 
-What's already production-grade:
-- ✅ Centralised config + JWT auth + HMAC gateway-only enforcement
-- ✅ Refresh tokens with rotation + revocation
-- ✅ Comprehensive global exception handlers (consistent envelope)
-- ✅ Structured logging with trace/span placeholders
-- ✅ Actuator probes (liveness + readiness) and Prometheus metrics
-- ✅ OpenAPI/Swagger on every service
-- ✅ Kafka event-driven cross-service flows
-- ✅ Multi-stage Dockerfiles + health-checked docker-compose
-- ✅ DTO-only API surface (no JPA entity leaks)
-- ✅ Bean Validation on every request body / path param
+### 1. Set up the secrets
 
-What's left for v2:
-- ⚠️ Switch from `ddl-auto: update` to **Flyway** migrations
-- ⚠️ Move JWT/HMAC secrets to **Vault** or AWS Secrets Manager
-- ⚠️ Add **distributed tracing** (Tempo/Jaeger) — placeholders are in the log pattern
-- ⚠️ **Outbox pattern** so DB writes + Kafka publishes are atomic
-- ⚠️ **Distributed scheduler** (ShedLock/Quartz) for multi-instance overdue/reminder/retry sweeps
-- ⚠️ **mTLS** between services (HMAC is good but mTLS is better behind a partial network compromise)
-- ⚠️ **Real Razorpay/Twilio/FCM SDKs** (adapters all have a clearly-marked `// STUB:`)
-- ⚠️ **Rate limiting at the gateway** (Spring Cloud Gateway `RequestRateLimiter` requires Redis — config is commented in `api-gateway/application.yaml`)
-- ⚠️ **CI pipeline** (GitHub Actions / Jenkinsfile)
+Copy the template and fill in real values for every `CHANGE_ME_*`
+entry. The `SecretsBootstrapValidator` (in `auth-commons`) refuses to
+start ANY service under the `prod` profile when a placeholder leaks
+through, so this file IS the deploy-day checklist.
+
+```bash
+cp .env.example .env
+# edit .env — replace every CHANGE_ME_* with a real value
+```
+
+Frontend secrets follow the same pattern:
+
+```bash
+cp frontend/.env.example frontend/.env
+# set VITE_API_BASE_URL to your real gateway URL
+```
+
+Neither `.env` is committed (both are in `.gitignore`).
+
+### 2. Build the images
+
+```bash
+docker compose --env-file .env \
+               -f docker-compose.yml \
+               -f docker-compose.prod.yml build
+```
+
+The base `docker-compose.yml` is the **dev** flavour (host ports
+exposed, profile=dev). `docker-compose.prod.yml` is an **overlay**
+that:
+
+- Activates `SPRING_PROFILES_ACTIVE=prod` everywhere (Hibernate
+  `ddl-auto=validate`, Flyway on, JSON logging, `management.env`
+  endpoint hidden — see each service's `application-prod.yaml`).
+- Drops every internal host-port binding. Only the **frontend
+  nginx** is exposed on `:80` — every API call goes via
+  `/api/* → gateway` through nginx, not directly to the gateway.
+- Reads every secret from the `.env` file via interpolation.
+- Replaces the dev bind-mount `./uploads:/uploads` with a named
+  Docker volume so document blobs survive `docker compose down`.
+- Sets memory limits + `restart: unless-stopped` on every service.
+
+Both files together ARE the production-compose; you don't use the
+base file alone in prod.
+
+### 3. Run
+
+```bash
+docker compose --env-file .env \
+               -f docker-compose.yml \
+               -f docker-compose.prod.yml up -d
+```
+
+In prod the **infrastructure services** (`oracle-db`, `mongodb`,
+`zookeeper`, `kafka`) should be commented out of the base
+`docker-compose.yml` — point `DB_URL`, `SPRING_DATA_MONGODB_URI`,
+`KAFKA_BOOTSTRAP_SERVERS` at managed services (RDS / MongoDB Atlas
+/ AWS MSK) instead. The application services are stateless; only
+the data stores need careful operations.
+
+### 4. Smoke-test
+
+```bash
+# Each service should respond UP
+curl -sf https://api.hearth.app/actuator/health/liveness
+curl -sf https://api.hearth.app/actuator/health/readiness
+
+# Check the boot log for SecretsBootstrapValidator green-light
+docker compose logs auth-service | grep "SecretsBootstrapValidator"
+# Expected: "all sensitive secrets passed — no placeholder leakage detected"
+
+# Confirm the management surface is trimmed
+curl -sf -o /dev/null -w "%{http_code}\n" https://api.hearth.app/actuator/env
+# Expected: 404
+```
+
+### 5. Persistent storage notes
+
+The `uploads/` directory in `document-service` holds property
+photos, ID-proof scans, signed deed PDFs, etc. In the dev compose
+file it's a bind-mount under the repo root; the **prod overlay
+replaces it with a named Docker volume** (`hearth-documents`). For
+real production scale you should migrate this to S3-compatible
+object storage — see `PRODUCTION_READINESS.md` P1-10.
+
+### 6. What's still left
+
+See `PRODUCTION_READINESS.md` for the full P0/P1/P2 punch list of
+infrastructure-layer items that aren't in this repo (TLS
+termination, k8s manifests, backups + DR, multi-region, etc.).
+
+## Helper scripts
+
+`scripts/` contains a few convenience entry points:
+
+- `scripts/start-all.sh` / `stop-all.sh` — bring the dev stack
+  up/down with the right service ordering (Eureka → config server
+  → everything else).
+- See `scripts/README.md` for the full list.
 
 ## Useful docs
 
 - `Home-Rental-Microservices-Architecture.md` — original architecture
 - `Home-Rental-Implementation-Review.docx` — initial audit
 - `IMPLEMENTATION-PLAN.md` — the phased plan we executed against
-- Each service folder has its own `README.md` with endpoint catalog and config matrix
+- `PRODUCTION_READINESS.md` — prioritised list of what's done +
+  what's still required before going live
+- Each service folder has its own `README.md` with endpoint
+  catalog and config matrix

@@ -1,0 +1,44 @@
+# Java service .dockerignore — keeps the build context tight so a
+# `docker build` doesn't waste minutes shipping unused files into
+# the daemon. The Dockerfile copies only what it explicitly needs;
+# everything else here is just defensive.
+
+# Build outputs
+target/
+*.jar
+*.war
+*.ear
+
+# IDE
+.idea/
+.vscode/
+*.iml
+.classpath
+.project
+.settings/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Git metadata (the build doesn't need history)
+.git/
+.gitignore
+.gitattributes
+
+# Claude Code harness state (worktrees, settings, hooks)
+.claude/
+
+# CI
+.github/
+
+# Logs + local runtime artefacts
+*.log
+logs/
+uploads/
+
+# Don't ship docs / scripts inside the image
+README.md
+docs/
+scripts/
+PRODUCTION_READINESS.md

@@ -1,0 +1,154 @@
+# ════════════════════════════════════════════════════════════════════
+#  CI for the Hearth monorepo.
+#
+#  Runs on every push to master + every PR. Two parallel jobs:
+#
+#    • backend  — install KafkaEvents + auth-commons into the local
+#                 m2 (they're SNAPSHOT siblings every service depends
+#                 on), then run `mvn -B verify` on each Spring
+#                 service. Tests use H2 / Mockito (see P2-15 test
+#                 suites) so no DB / Kafka container is needed.
+#
+#    • frontend — `npm ci` + `tsc --noEmit` + `vite build`. Verifies
+#                 the TS layer compiles AND the production bundle
+#                 builds, including the CSP / sourcemap-hidden plugin.
+#
+#  Both jobs cache the maven local repo and the npm cache so a
+#  cold checkout doesn't reburn the same 200 dependency downloads.
+#
+#  This is the bare-minimum CI gate for Phase 1. The full punch
+#  list (Pact contract tests, integration tests under Testcontainers,
+#  E2E Cypress / Playwright run, security scans) lives in
+#  PRODUCTION_READINESS.md P2-15 / P2-21 / P2-22.
+# ════════════════════════════════════════════════════════════════════
+
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  backend:
+    name: Backend — mvn verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Install shared libs (KafkaEvents + auth-commons)
+        # Every service depends on these as SNAPSHOT artefacts in the
+        # local m2. Install them first so the per-service `verify`
+        # steps don't fail with "could not resolve".
+        run: |
+          mvn -B -q -DskipTests -f KafkaEvents/pom.xml install
+          mvn -B -q -DskipTests -f auth-commons/pom.xml install
+
+      - name: Verify auth-commons
+        run: mvn -B -q -f auth-commons/pom.xml verify
+
+      - name: Verify auth-service
+        run: mvn -B -q -f auth-service/pom.xml verify
+
+      - name: Verify user-service
+        run: mvn -B -q -f user-service/pom.xml verify
+
+      - name: Verify property-service
+        run: mvn -B -q -f property-service/pom.xml verify
+
+      - name: Verify payment-service
+        run: mvn -B -q -f payment-service/pom.xml verify
+
+      - name: Verify lease-service
+        run: mvn -B -q -f LeaseService/pom.xml verify
+
+      - name: Verify compliance-service
+        run: mvn -B -q -f ComplanceService/pom.xml verify
+
+      - name: Verify document-service
+        run: mvn -B -q -f DocumentationService/pom.xml verify
+
+      - name: Verify kyc-service
+        run: mvn -B -q -f KYCService/pom.xml verify
+
+      - name: Verify review-service
+        run: mvn -B -q -f ReviewService/pom.xml verify
+
+      - name: Verify maintenance-service
+        run: mvn -B -q -f maintenance-service/pom.xml verify
+
+      - name: Verify notification-service
+        run: mvn -B -q -f notification-service/pom.xml verify
+
+      - name: Verify analytics-service
+        run: mvn -B -q -f analytics-service/pom.xml verify
+
+      - name: Verify api-gateway
+        run: mvn -B -q -f api-gateway/pom.xml verify
+
+      - name: Verify config-server
+        # Compile-only — config-server has no business logic
+        # tests of its own.
+        run: mvn -B -q -DskipTests -f config-server/pom.xml verify
+
+      - name: Verify service-registry
+        run: mvn -B -q -DskipTests -f Service-Registry/pom.xml verify
+
+      - name: Upload test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-surefire-reports
+          path: '**/target/surefire-reports/'
+          retention-days: 7
+
+  frontend:
+    name: Frontend — tsc + build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install deps
+        run: npm ci --no-audit --no-fund
+
+      - name: TypeScript type-check
+        run: npx tsc --noEmit
+
+      - name: Production build (CSP + hidden sourcemaps)
+        # Build with the default prod-shaped args. A real deploy
+        # passes VITE_API_BASE_URL etc. as build-args to the Docker
+        # build, but for CI we just verify the bundle compiles.
+        run: npm run build
+
+      - name: Upload built bundle as artifact
+        # Useful for diffing bundle size between PRs + grabbing a
+        # known-good build for one-off staging deploys.
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+          retention-days: 7

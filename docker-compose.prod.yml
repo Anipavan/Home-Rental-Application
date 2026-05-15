@@ -1,0 +1,283 @@
+# ════════════════════════════════════════════════════════════════════
+#  Production overlay for docker-compose.
+#
+#  Run with:
+#    docker compose --env-file .env \
+#                   -f docker-compose.yml \
+#                   -f docker-compose.prod.yml up -d
+#
+#  This file ONLY contains the diff from docker-compose.yml that
+#  prod needs. Everything in here REPLACES or AUGMENTS the
+#  matching key in the base file:
+#
+#   • Activates the `prod` Spring profile in every service.
+#   • Removes host port bindings on internal-only services (so the
+#     box only exposes 80 / 443 via nginx, not 8080 / 9090 / etc.).
+#   • Wires every secret to an env var read from `.env` — no
+#     literal credentials.
+#   • Replaces the bind-mount `uploads/` with a named volume so
+#     document blobs survive container restarts.
+#   • Adds resource limits + restart policies appropriate for a
+#     production host.
+#
+#  This overlay assumes:
+#   • You're running on a single host (EC2 / Hetzner / DO droplet)
+#     with docker-compose, NOT a real orchestrator. For k8s, drop
+#     this file and write proper Deployments + Services + Secrets
+#     instead.
+#   • Oracle / MongoDB / Kafka are RUN OUTSIDE compose. The
+#     `oracle-db`, `mongodb`, `zookeeper`, `kafka` services from
+#     the base file should be COMMENTED OUT in prod — point
+#     DB_URL / SPRING_DATA_MONGODB_URI / KAFKA_BOOTSTRAP_SERVERS
+#     at managed services (RDS / Atlas / MSK).
+# ════════════════════════════════════════════════════════════════════
+
+services:
+
+  # ─── Frontend ────────────────────────────────────────────────────
+  # Built from the Dockerfile we just added. nginx serves the SPA +
+  # reverse-proxies /api/* to the gateway. This is the ONLY service
+  # that should be publicly exposed in prod (port 80 / 443).
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        # Match whatever your axios baseURL is — see frontend/.env.example.
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/rentals/v1}
+        VITE_CSP_CONNECT_SRC: ${VITE_CSP_CONNECT_SRC:-}
+    image: hearth/frontend:${IMAGE_TAG:-latest}
+    container_name: hearth-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - api-gateway
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  # ─── Eureka service registry ────────────────────────────────────
+  service-registry:
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      EUREKA_USERNAME: ${EUREKA_USERNAME}
+      EUREKA_PASSWORD: ${EUREKA_PASSWORD}
+    # No host port — only reachable from other compose services
+    ports: []
+    restart: unless-stopped
+
+  # ─── Config server ──────────────────────────────────────────────
+  config-server:
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      EUREKA_URL: ${EUREKA_URL}
+      EUREKA_USERNAME: ${EUREKA_USERNAME}
+      EUREKA_PASSWORD: ${EUREKA_PASSWORD}
+    ports: []
+    restart: unless-stopped
+
+  # ─── API Gateway ────────────────────────────────────────────────
+  api-gateway:
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+      EUREKA_URL: ${EUREKA_URL}
+      EUREKA_USERNAME: ${EUREKA_USERNAME}
+      EUREKA_PASSWORD: ${EUREKA_PASSWORD}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+      MANAGEMENT_TRACING_SAMPLING_PROBABILITY: ${MANAGEMENT_TRACING_SAMPLING_PROBABILITY:-0.1}
+    # No host port — nginx in the frontend container proxies to it.
+    ports: []
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+
+  # ─── Auth service ───────────────────────────────────────────────
+  auth-service:
+    environment: &spring-jpa-env
+      SPRING_PROFILES_ACTIVE: prod
+      DB_URL: ${DB_URL}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET}
+      INTERNAL_AUTH_ENABLED: ${INTERNAL_AUTH_ENABLED:-true}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      EUREKA_URL: ${EUREKA_URL}
+      EUREKA_USERNAME: ${EUREKA_USERNAME}
+      EUREKA_PASSWORD: ${EUREKA_PASSWORD}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+      MANAGEMENT_TRACING_SAMPLING_PROBABILITY: ${MANAGEMENT_TRACING_SAMPLING_PROBABILITY:-0.1}
+      FRONTEND_URL: ${FRONTEND_URL}
+      APP_AUTH_LOCKOUT_ENABLED: ${APP_AUTH_LOCKOUT_ENABLED:-true}
+    ports: []
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+
+  # ─── User service ──────────────────────────────────────────────
+  user-service:
+    environment:
+      <<: *spring-jpa-env
+      # PII-at-rest encryption key — only user-service uses it for
+      # bank_accounts.account_number, but listed here so the env
+      # contract is explicit at the deploy boundary.
+      PII_ENCRYPTION_KEY: ${PII_ENCRYPTION_KEY}
+      APP_RETENTION_SOFT_DELETE_DAYS: ${APP_RETENTION_SOFT_DELETE_DAYS:-30}
+      APP_RETENTION_ENABLED: ${APP_RETENTION_ENABLED:-true}
+    ports: []
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+
+  # ─── Property service ──────────────────────────────────────────
+  property-service:
+    environment: *spring-jpa-env
+    ports: []
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+
+  # ─── Payment service ───────────────────────────────────────────
+  payment-service:
+    environment:
+      <<: *spring-jpa-env
+      APP_RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID}
+      APP_RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET}
+      APP_RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET}
+      APP_STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      APP_STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+    ports: []
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+
+  # ─── Maintenance service ───────────────────────────────────────
+  maintenance-service:
+    environment: *spring-jpa-env
+    ports: []
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ─── Lease service ─────────────────────────────────────────────
+  lease-service:
+    environment: *spring-jpa-env
+    ports: []
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ─── Compliance service ────────────────────────────────────────
+  compliance-service:
+    environment: *spring-jpa-env
+    ports: []
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ─── KYC service ───────────────────────────────────────────────
+  kyc-service:
+    environment: *spring-jpa-env
+    ports: []
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ─── Review service ────────────────────────────────────────────
+  review-service:
+    environment: *spring-jpa-env
+    ports: []
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ─── Notification service (MongoDB-backed) ────────────────────
+  notification-service:
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATA_MONGODB_URI: ${SPRING_DATA_MONGODB_URI}
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET}
+      INTERNAL_AUTH_ENABLED: ${INTERNAL_AUTH_ENABLED:-true}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      EUREKA_URL: ${EUREKA_URL}
+      EUREKA_USERNAME: ${EUREKA_USERNAME}
+      EUREKA_PASSWORD: ${EUREKA_PASSWORD}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+      MANAGEMENT_TRACING_SAMPLING_PROBABILITY: ${MANAGEMENT_TRACING_SAMPLING_PROBABILITY:-0.1}
+      FRONTEND_URL: ${FRONTEND_URL}
+      SPRING_MAIL_HOST: ${SPRING_MAIL_HOST:-}
+      SPRING_MAIL_PORT: ${SPRING_MAIL_PORT:-587}
+      SPRING_MAIL_USERNAME: ${SPRING_MAIL_USERNAME:-}
+      SPRING_MAIL_PASSWORD: ${SPRING_MAIL_PASSWORD:-}
+      APP_TWILIO_ACCOUNT_SID: ${APP_TWILIO_ACCOUNT_SID:-}
+      APP_TWILIO_AUTH_TOKEN: ${APP_TWILIO_AUTH_TOKEN:-}
+      APP_TWILIO_SMS_FROM: ${APP_TWILIO_SMS_FROM:-}
+      APP_TWILIO_WHATSAPP_FROM: ${APP_TWILIO_WHATSAPP_FROM:-}
+    ports: []
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+
+  # ─── Document service ──────────────────────────────────────────
+  # Replaces the dev bind-mount `./uploads:/uploads` with a named
+  # volume so document blobs survive container restarts. For real
+  # prod, migrate to S3-compatible object storage (see
+  # PRODUCTION_READINESS.md P1-10).
+  document-service:
+    environment:
+      <<: *spring-jpa-env
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
+      DOWNLOAD_URL_SECRET: ${DOWNLOAD_URL_SECRET}
+    ports: []
+    restart: unless-stopped
+    volumes:
+      - hearth-documents:/uploads
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+
+  # ─── Analytics service ─────────────────────────────────────────
+  analytics-service:
+    environment: *spring-jpa-env
+    ports: []
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+# ─── Persistent volumes ────────────────────────────────────────────
+# Override the bind-mount under uploads/ with a named docker volume
+# so document blobs survive `docker compose down` and host restarts.
+# For real prod, swap this for an S3 bucket (P1-10).
+volumes:
+  hearth-documents:
+    driver: local

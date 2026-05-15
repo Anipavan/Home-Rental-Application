@@ -1,0 +1,42 @@
+# Frontend .dockerignore — keep the build context out of the
+# `docker build` daemon. The Dockerfile only needs package.json,
+# package-lock.json, vite.config.ts, index.html, public/, and src/.
+
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.tsbuildinfo
+
+# Local env files (might contain real keys for staging/prod tunnels —
+# never bake them into the image; deploy supplies them via runtime).
+.env
+.env.local
+.env.demo
+.env.development
+.env.production
+
+# IDE / OS junk
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Git + Claude Code harness state
+.git/
+.gitignore
+.gitattributes
+.claude/
+
+# CI
+.github/
+
+# Test coverage + reports
+coverage/
+playwright-report/
+
+# Docs at the repo root — not shipped into the image
+../README.md
+../docs/
+../PRODUCTION_READINESS.md

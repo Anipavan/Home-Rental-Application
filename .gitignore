@@ -19,3 +19,22 @@ dist/
 *.tsbuildinfo
 # Local uploads dir (property-service writes images here in dev)
 uploads/
+
+# Frontend env files — must NEVER be committed because they're how
+# real secrets (Sentry DSN, analytics keys, prod VITE_API_BASE_URL)
+# get baked into the build. frontend/.env.example is the template
+# that IS committed; everything else is local-only.
+frontend/.env
+frontend/.env.local
+frontend/.env.development
+frontend/.env.production
+
+# Root-level prod env file — operators copy .env.example → .env and
+# fill in real secrets. Never commit a real one.
+.env
+.env.local
+.env.production
+
+# Belt-and-braces: cover any nested target/ that the line 2 rule
+# might miss due to path semantics.
+**/target/
