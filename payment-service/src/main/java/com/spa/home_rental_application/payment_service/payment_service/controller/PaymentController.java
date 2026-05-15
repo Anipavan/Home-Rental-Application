@@ -156,6 +156,34 @@ public class PaymentController {
         return ResponseEntity.ok(paymentService.payCash(id, body));
     }
 
+    @Operation(summary = "Owner confirms a UPI / NEFT / IMPS payment received out-of-band (owner of this payment or admin)")
+    @PostMapping(value = "/{id}/mark-upi-received", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<PaymentResponse> markUpiReceived(@PathVariable String id,
+                                                           @Valid @RequestBody com.spa.home_rental_application.payment_service.payment_service.DTO.Request.PayCashRequest body) {
+        PaymentResponse p = paymentService.getPaymentById(id);
+        // Same authz model as cash: only the owner sees money in
+        // their bank, so only the owner can confirm receipt.
+        CallerSecurity.requireSelfOrAdmin(p.ownerId());
+        return ResponseEntity.ok(paymentService.markUpiReceived(id, body));
+    }
+
+    /**
+     * Returns everything the tenant needs to pay rent directly to
+     * the owner — owner's UPI VPA, a fully-formed UPI QR payload,
+     * and a bank-transfer fallback (masked account + IFSC). Read
+     * by the tenant payment page; gated to the tenant of THIS
+     * invoice or the owner of THIS invoice or admin (matches the
+     * /invoice + /receipt endpoints).
+     */
+    @Operation(summary = "Get the payout details for a payment (tenant of this invoice, owner, or admin)")
+    @GetMapping("/{id}/payout-details")
+    public ResponseEntity<com.spa.home_rental_application.payment_service.payment_service.DTO.Response.PayoutDetailsResponse> payoutDetails(
+            @PathVariable String id) {
+        PaymentResponse p = paymentService.getPaymentById(id);
+        CallerSecurity.requireTenantOwnerOrAdmin(p.tenantId(), p.ownerId());
+        return ResponseEntity.ok(paymentService.getPayoutDetails(id));
+    }
+
     @Operation(summary = "Get the invoice generated for a payment (tenant/owner/admin)")
     @GetMapping("/{id}/invoice")
     public ResponseEntity<InvoiceResponse> invoice(@PathVariable String id) {

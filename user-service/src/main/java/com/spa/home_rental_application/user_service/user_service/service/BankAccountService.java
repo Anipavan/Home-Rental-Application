@@ -1,6 +1,7 @@
 package com.spa.home_rental_application.user_service.user_service.service;
 
 import com.spa.home_rental_application.user_service.user_service.DTO.Request.BankAccountRequestDto;
+import com.spa.home_rental_application.user_service.user_service.DTO.Response.BankAccountPayoutDto;
 import com.spa.home_rental_application.user_service.user_service.DTO.Response.BankAccountResponseDto;
 
 import java.util.Optional;
@@ -28,4 +29,18 @@ public interface BankAccountService {
      * preflight check).
      */
     void delete(String userId);
+
+    /**
+     * Payable subset of a user's bank account — what a payer needs to
+     * actually pay them, with the full account number masked. Powers
+     * the tenant-pays-rent-direct-to-owner flow: the tenant resolves
+     * the owner's payout details, then either scans a UPI QR built
+     * from {@code upiId} or NEFT/IMPSes to the masked-but-known
+     * account.
+     *
+     * <p>Returns empty when the user hasn't saved a bank account yet
+     * — the caller (payment-service) translates that to a clear
+     * "owner hasn't set up payment details" error for the tenant.
+     */
+    Optional<BankAccountPayoutDto> getPayoutByUserId(String userId);
 }

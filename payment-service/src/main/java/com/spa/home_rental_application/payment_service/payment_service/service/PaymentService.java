@@ -49,6 +49,25 @@ public interface PaymentService {
     PaymentResponse verifyPayment(VerifyPaymentRequest dto);
     PaymentResponse payCash(String paymentId, PayCashRequest body);
 
+    /**
+     * Owner confirms an out-of-band UPI / NEFT / IMPS transfer.
+     * Same shape as {@link #payCash} — owner is the actor, the
+     * money never touched the platform. Distinct entry point so the
+     * receipt PDF + audit trail can carry method=UPI and a UPI
+     * reference number instead of a cash receipt id.
+     */
+    PaymentResponse markUpiReceived(String paymentId, PayCashRequest body);
+
+    /**
+     * Resolve everything the tenant needs to pay rent directly to
+     * the owner's UPI VPA or bank account. Built from the owner's
+     * saved bank-account row (via Feign to user-service); returns
+     * {@code ownerPayoutMissing=true} when the owner hasn't saved
+     * any payment details yet.
+     */
+    com.spa.home_rental_application.payment_service.payment_service.DTO.Response.PayoutDetailsResponse
+            getPayoutDetails(String paymentId);
+
     /* --- documents --- */
     InvoiceResponse getInvoice(String paymentId);
     ReceiptResponse getReceipt(String paymentId);

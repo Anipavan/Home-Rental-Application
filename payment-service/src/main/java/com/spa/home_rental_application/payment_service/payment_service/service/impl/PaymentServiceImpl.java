@@ -4,6 +4,8 @@ import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PaymentServiceE
 import com.spa.home_rental_application.KafkaEvents.Producers.Events.AuditEventPublisher;
 import com.spa.home_rental_application.KafkaEvents.Producers.Events.PaymentServiceEvents;
 import com.spa.home_rental_application.payment_service.payment_service.client.PropertyClient;
+import com.spa.home_rental_application.payment_service.payment_service.client.UserClient;
+import com.spa.home_rental_application.payment_service.payment_service.DTO.Response.PayoutDetailsResponse;
 import com.spa.home_rental_application.payment_service.payment_service.DTO.PaymentMapper;
 import com.spa.home_rental_application.payment_service.payment_service.DTO.Request.*;
 import com.spa.home_rental_application.payment_service.payment_service.DTO.Response.*;
@@ -53,6 +55,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final PaymentProperties props;
     private final PaymentPdfGenerator pdfGenerator;
     private final PropertyClient propertyClient;
+    private final UserClient userClient;
     private final AuditEventPublisher audit;
 
     public PaymentServiceImpl(PaymentRepository paymentRepo,
@@ -64,6 +67,7 @@ public class PaymentServiceImpl implements PaymentService {
                               PaymentProperties props,
                               PaymentPdfGenerator pdfGenerator,
                               PropertyClient propertyClient,
+                              UserClient userClient,
                               AuditEventPublisher audit) {
         this.paymentRepo = paymentRepo;
         this.invoiceRepo = invoiceRepo;
@@ -74,6 +78,7 @@ public class PaymentServiceImpl implements PaymentService {
         this.props = props;
         this.pdfGenerator = pdfGenerator;
         this.propertyClient = propertyClient;
+        this.userClient = userClient;
         this.audit = audit;
     }
 
@@ -426,6 +431,149 @@ public class PaymentServiceImpl implements PaymentService {
                         "reference", body.reference() == null ? "" : body.reference()));
 
         return PaymentMapper.toResponse(p);
+    }
+
+    /**
+     * Tenant-pays-rent-direct-to-owner flow. The tenant has already
+     * paid the owner out-of-band (UPI scan, NEFT, IMPS) — this
+     * endpoint is the OWNER coming back to confirm receipt. From
+     * the platform's POV it's the same shape as
+     * {@link #payCash(String, com.spa.home_rental_application.payment_service.payment_service.DTO.Request.PayCashRequest)}
+     * — only the {@code PaymentMethod} differs. We keep them as
+     * separate entry points so the audit trail + receipt PDF can
+     * distinguish "owner saw money in their UPI app" from "owner
+     * accepted physical cash".
+     */
+    @Override
+    @Transactional
+    public PaymentResponse markUpiReceived(String paymentId,
+                                           com.spa.home_rental_application.payment_service.payment_service.DTO.Request.PayCashRequest body) {
+        Payment p = mustFind(paymentId);
+        guardNotPaid(p);
+
+        p.setPaymentMethod(PaymentMethod.UPI);
+        p.setGatewayName("manual-upi");
+        p.setGatewayOrderId(null);
+        // Reference is typically the UPI reference number ("UPI Ref:
+        // 412395123456") which the owner copies out of their bank
+        // SMS / app. Falls back to an auto-generated id when blank.
+        markPaid(p, body.reference() != null && !body.reference().isBlank()
+                ? body.reference()
+                : "UPI-" + UUID.randomUUID());
+
+        audit.publishSuccess("payment.upi.received",
+                body.ownerId(), p.getTenantId(), p.getId(),
+                java.util.Map.of(
+                        "amount", String.valueOf(p.getTotalAmount()),
+                        "flatId", String.valueOf(p.getFlatId()),
+                        "reference", body.reference() == null ? "" : body.reference()));
+
+        return PaymentMapper.toResponse(p);
+    }
+
+    /**
+     * Assemble everything the tenant needs to pay rent directly to
+     * the owner — UPI VPA + QR deep link as the preferred path,
+     * masked bank account + IFSC as the NEFT/IMPS fallback. See
+     * {@link PayoutDetailsResponse} for the contract.
+     *
+     * <p>Calls into user-service (UserClient Feign) to fetch the
+     * owner's saved bank-account row. Feign failures are absorbed
+     * by the fallback into an empty PayoutDetails — surfaces as
+     * {@code ownerPayoutMissing=true} so the FE can render a
+     * "couldn't load payment details" message rather than a 500.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public PayoutDetailsResponse getPayoutDetails(String paymentId) {
+        Payment p = mustFind(paymentId);
+
+        // Resolve the owner. New payments stamp ownerId at write
+        // time (P0/Issue-fix from earlier); legacy null-ownerId rows
+        // get back-filled the next time the owner views their
+        // payments list, but the tenant might race that. Fail-soft
+        // here: if ownerId is null, surface as payout-missing so
+        // the tenant gets a graceful message.
+        String ownerId = p.getOwnerId();
+        if (ownerId == null || ownerId.isBlank()) {
+            log.warn("Payment {} has no ownerId — payout-details returning empty",
+                    paymentId);
+            return new PayoutDetailsResponse(
+                    p.getId(), p.getTotalAmount(), p.getId(),
+                    null, null,
+                    null, null,
+                    null, null, null, null, null,
+                    true);
+        }
+
+        UserClient.PayoutDetails payout;
+        try {
+            payout = userClient.getPayoutDetails(ownerId);
+        } catch (Exception ex) {
+            log.warn("Owner payout lookup failed for paymentId={} ownerId={}: {}",
+                    paymentId, ownerId, ex.getMessage());
+            payout = UserClient.PayoutDetails.empty();
+        }
+        boolean missing = payout == null
+                || (isBlank(payout.upiId())
+                    && isBlank(payout.accountNumberMasked())
+                    && isBlank(payout.ifscCode()));
+
+        String upiPayload = null;
+        if (payout != null && !isBlank(payout.upiId())) {
+            upiPayload = buildUpiDeepLink(
+                    payout.upiId(),
+                    payout.accountHolderName(),
+                    p.getTotalAmount(),
+                    "Rent for flat " + p.getFlatId());
+        }
+
+        return new PayoutDetailsResponse(
+                p.getId(),
+                p.getTotalAmount(),
+                p.getId(),
+                payout == null ? null : payout.accountHolderName(),
+                ownerId,
+                payout == null ? null : payout.upiId(),
+                upiPayload,
+                payout == null ? null : payout.bankName(),
+                payout == null ? null : payout.accountNumberMasked(),
+                payout == null ? null : payout.ifscCode(),
+                payout == null ? null : payout.branch(),
+                payout == null ? null : payout.accountType(),
+                missing);
+    }
+
+    /**
+     * RFC-style UPI deep link. Most India UPI apps (GPay, PhonePe,
+     * Paytm, BHIM, Amazon Pay) recognise this shape from a QR scan
+     * and pre-fill the amount + payee. The `tn` (transaction note)
+     * shows up in the user's payment history so they can audit
+     * later.
+     *
+     * <p>Amount goes in with 2-decimal precision because some UPI
+     * apps reject anything else.
+     */
+    private static String buildUpiDeepLink(String vpa, String payeeName,
+                                            java.math.BigDecimal amount, String note) {
+        String pn = urlEncode(payeeName == null ? "Owner" : payeeName);
+        String tn = urlEncode(note == null ? "Rent payment" : note);
+        String am = amount == null ? "0.00"
+                : amount.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString();
+        return "upi://pay?pa=" + urlEncode(vpa)
+                + "&pn=" + pn
+                + "&am=" + am
+                + "&cu=INR"
+                + "&tn=" + tn;
+    }
+
+    private static String urlEncode(String s) {
+        if (s == null) return "";
+        return java.net.URLEncoder.encode(s, java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    private static boolean isBlank(String s) {
+        return s == null || s.isBlank();
     }
 
     /** Common path for any successful payment (gateway or cash). */

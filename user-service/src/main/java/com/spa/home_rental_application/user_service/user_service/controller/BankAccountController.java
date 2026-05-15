@@ -2,6 +2,7 @@ package com.spa.home_rental_application.user_service.user_service.controller;
 
 import com.spa.home_rental_application.auth_commons.GatewayAuthFilter;
 import com.spa.home_rental_application.user_service.user_service.DTO.Request.BankAccountRequestDto;
+import com.spa.home_rental_application.user_service.user_service.DTO.Response.BankAccountPayoutDto;
 import com.spa.home_rental_application.user_service.user_service.DTO.Response.BankAccountResponseDto;
 import com.spa.home_rental_application.user_service.user_service.service.BankAccountService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -69,6 +70,30 @@ public class BankAccountController {
         requireSelfOrAdmin(userId, req);
         service.delete(userId);
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Payable subset — what a payer needs to actually pay this user.
+     * Deliberately NOT self-or-admin-gated: any authenticated user
+     * can resolve any other user's payout details, because the
+     * platform's core flow is "tenant pays owner directly via UPI"
+     * and that needs the owner's VPA + masked-but-recognisable
+     * destination. The full account number is NEVER returned by
+     * this endpoint — only the masked form. The internal
+     * {@code GET /user/{userId}} endpoint (above) still gates that
+     * stricter view to self / admin.
+     *
+     * <p>404 when the target user hasn't saved a bank account; the
+     * caller (typically payment-service) translates that to a clear
+     * "owner hasn't set up payment details yet" error.
+     */
+    @Operation(summary = "Get a user's payout details (payable subset; any authenticated caller)")
+    @GetMapping("/payout/{userId}")
+    public ResponseEntity<BankAccountPayoutDto> getPayout(@PathVariable String userId) {
+        return service.getPayoutByUserId(userId)
+                .map(ResponseEntity::ok)
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND,
+                        "No payout details on file for userId=" + userId));
     }
 
     /* --------------------------- authz ---------------------------- */

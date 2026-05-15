@@ -2,6 +2,7 @@ package com.spa.home_rental_application.user_service.user_service.service.impul;
 
 import com.spa.home_rental_application.KafkaEvents.Producers.Events.AuditEventPublisher;
 import com.spa.home_rental_application.user_service.user_service.DTO.Request.BankAccountRequestDto;
+import com.spa.home_rental_application.user_service.user_service.DTO.Response.BankAccountPayoutDto;
 import com.spa.home_rental_application.user_service.user_service.DTO.Response.BankAccountResponseDto;
 import com.spa.home_rental_application.user_service.user_service.Entities.BankAccount;
 import com.spa.home_rental_application.user_service.user_service.repositry.BankAccountRepo;
@@ -75,7 +76,29 @@ public class BankAccountServiceImpul implements BankAccountService {
         });
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<BankAccountPayoutDto> getPayoutByUserId(String userId) {
+        return repo.findByUserId(userId).map(this::toPayoutDto);
+    }
+
     /* -------------------- helpers -------------------- */
+
+    /**
+     * Payable subset — the same {@code mask()} call used by the
+     * full DTO, just stripped of everything a payer doesn't need.
+     */
+    private BankAccountPayoutDto toPayoutDto(BankAccount b) {
+        return new BankAccountPayoutDto(
+                b.getAccountHolderName(),
+                b.getBankName(),
+                mask(b.getAccountNumber()),
+                b.getIfscCode(),
+                b.getBranch(),
+                b.getAccountType(),
+                b.getUpiId()
+        );
+    }
 
     private BankAccountResponseDto toDto(BankAccount b) {
         return new BankAccountResponseDto(

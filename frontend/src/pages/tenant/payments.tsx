@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Banknote, Download, CreditCard, FileText, Loader2, Receipt } from "lucide-react";
+import { Banknote, Download, FileText, Loader2, QrCode, Receipt } from "lucide-react";
+import { UpiPayDialog } from "@/components/tenant/upi-pay-dialog";
 import { useAuthStore } from "@/stores/auth-store";
 import { paymentsApi } from "@/lib/api/payments";
 import { extractErrorMessage } from "@/lib/api/client";
@@ -113,6 +113,7 @@ function DueCard({
 }) {
   const overdue = payment.status === "OVERDUE";
   const [downloadingInvoice, setDownloadingInvoice] = useState(false);
+  const [upiOpen, setUpiOpen] = useState(false);
 
   async function handleInvoiceDownload() {
     setDownloadingInvoice(true);
@@ -164,13 +165,25 @@ function DueCard({
             )}
             Invoice
           </Button>
-          <Button asChild variant="gradient" size="lg">
-            <Link to={`/app/payments/${payment.id}/pay`}>
-              <CreditCard /> Pay {formatINR(payment.totalAmount ?? payment.amount)}
-            </Link>
+          {/* Pay-via-UPI is the primary, India-realistic path: tenant
+              scans owner's QR, money goes direct to owner's bank,
+              owner marks as received. The gradient "Pay" button
+              below still routes to the Razorpay flow for users who'd
+              rather have the platform mediate via card / netbanking. */}
+          <Button
+            variant="gradient"
+            size="lg"
+            onClick={() => setUpiOpen(true)}
+          >
+            <QrCode /> Pay {formatINR(payment.totalAmount ?? payment.amount)}
           </Button>
         </div>
       </CardContent>
+      <UpiPayDialog
+        open={upiOpen}
+        onOpenChange={setUpiOpen}
+        payment={payment}
+      />
     </Card>
   );
 }

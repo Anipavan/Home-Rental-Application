@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Banknote, Bell, Download, FileText, Loader2 } from "lucide-react";
+import { Banknote, Bell, Download, FileText, Loader2, QrCode } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { paymentsApi } from "@/lib/api/payments";
 import { notificationsApi } from "@/lib/api/notifications";
@@ -52,6 +52,7 @@ export function OwnerPaymentsPage() {
   const { authUserId } = useAuthStore();
   const qc = useQueryClient();
   const [cashTarget, setCashTarget] = useState<PaymentResponse | null>(null);
+  const [upiTarget, setUpiTarget] = useState<PaymentResponse | null>(null);
   const [reminderLog, setReminderLog] = useState<Record<string, number>>(
     () => loadReminderLog(),
   );
@@ -78,6 +79,31 @@ export function OwnerPaymentsPage() {
       toast({
         variant: "destructive",
         title: "Couldn't record cash payment",
+        description: extractErrorMessage(e),
+      }),
+  });
+
+  // Same mutation as cashMutation but hits the UPI receipt endpoint
+  // and labels the resulting toast / audit row differently. Owner
+  // sees their UPI / NEFT money in the bank, opens this dialog,
+  // types the UPI reference number from the SMS / app, hits confirm.
+  const upiMutation = useMutation({
+    mutationFn: ({ id, reference }: { id: string; reference?: string }) =>
+      paymentsApi.markUpiReceived(id, { ownerId: authUserId!, reference }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["owner-payments", authUserId] });
+      qc.invalidateQueries({ queryKey: ["payment"] });
+      qc.invalidateQueries({ queryKey: ["my-payments"] });
+      toast({
+        title: "Marked as paid",
+        description: "UPI / bank-transfer receipt recorded.",
+      });
+      setUpiTarget(null);
+    },
+    onError: (e) =>
+      toast({
+        variant: "destructive",
+        title: "Couldn't record UPI payment",
         description: extractErrorMessage(e),
       }),
   });
@@ -137,6 +163,7 @@ export function OwnerPaymentsPage() {
       loading={q.isLoading}
       payments={rows}
       onMarkCash={(p) => setCashTarget(p)}
+      onMarkUpi={(p) => setUpiTarget(p)}
       onRemind={(p) => remindMutation.mutate(p)}
       remindingId={remindMutation.isPending ? remindMutation.variables?.id : undefined}
       reminderLog={reminderLog}
@@ -190,6 +217,17 @@ export function OwnerPaymentsPage() {
         }}
         loading={cashMutation.isPending}
       />
+
+      <RecordUpiDialog
+        target={upiTarget}
+        onClose={() => setUpiTarget(null)}
+        onConfirm={(reference) => {
+          if (upiTarget) {
+            upiMutation.mutate({ id: upiTarget.id, reference });
+          }
+        }}
+        loading={upiMutation.isPending}
+      />
     </div>
   );
 }
@@ -223,6 +261,7 @@ function Table({
   loading,
   payments,
   onMarkCash,
+  onMarkUpi,
   onRemind,
   remindingId,
   reminderLog,
@@ -230,6 +269,7 @@ function Table({
   loading?: boolean;
   payments: PaymentResponse[];
   onMarkCash: (p: PaymentResponse) => void;
+  onMarkUpi: (p: PaymentResponse) => void;
   onRemind: (p: PaymentResponse) => void;
   remindingId?: string;
   reminderLog: Record<string, number>;
@@ -330,6 +370,16 @@ function Table({
                       <Bell />
                     )}
                     {recently ? "Reminded" : "Remind"}
+                  </Button>
+                )}
+                {canRecordCash && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onMarkUpi(p)}
+                    title="Tenant paid via UPI / NEFT / IMPS — confirm receipt."
+                  >
+                    <QrCode className="size-4" /> UPI received
                   </Button>
                 )}
                 {canRecordCash && (
@@ -462,6 +512,92 @@ function RecordCashDialog({
           >
             {loading && <Loader2 className="animate-spin" />}
             Mark as paid
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Owner confirms a UPI / NEFT / IMPS payment received out-of-band.
+ * Same shape as RecordCashDialog, different copy + a different
+ * reference placeholder (the UPI reference number is the natural
+ * input here, not a cheque number).
+ */
+function RecordUpiDialog({
+  target,
+  onClose,
+  onConfirm,
+  loading,
+}: {
+  target: PaymentResponse | null;
+  onClose: () => void;
+  onConfirm: (reference: string | undefined) => void;
+  loading: boolean;
+}) {
+  const [reference, setReference] = useState("");
+  const userLookup = useUserLookup(target?.tenantId ? [target.tenantId] : []);
+
+  return (
+    <Dialog
+      open={!!target}
+      onOpenChange={(open) => {
+        if (!open) {
+          setReference("");
+          onClose();
+        }
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Confirm UPI / bank-transfer payment</DialogTitle>
+          <DialogDescription>
+            {target ? (
+              <>
+                Mark{" "}
+                <span className="font-semibold text-foreground">
+                  {formatINR(target.totalAmount ?? target.amount)}
+                </span>{" "}
+                from{" "}
+                <span className="font-medium text-foreground">
+                  {userLookup.nameOf(target.tenantId)}
+                </span>{" "}
+                as paid via UPI or bank transfer. Only confirm AFTER you
+                see the money in your bank account or UPI app.
+              </>
+            ) : null}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div>
+          <Label htmlFor="upi-reference">UPI / bank reference (optional)</Label>
+          <Input
+            id="upi-reference"
+            value={reference}
+            onChange={(e) => setReference(e.target.value)}
+            placeholder="e.g. UPI Ref 412395123456 / IMPS 9876543"
+            className="mt-1.5"
+            maxLength={100}
+          />
+          <p className="text-xs text-muted-foreground mt-1.5">
+            Copy the UPI reference number from your bank SMS or your UPI
+            app's transaction history. We attach it to the receipt so
+            both sides can audit later.
+          </p>
+        </div>
+
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose} disabled={loading}>
+            Cancel
+          </Button>
+          <Button
+            variant="gradient"
+            onClick={() => onConfirm(reference.trim() || undefined)}
+            disabled={loading}
+          >
+            {loading && <Loader2 className="animate-spin" />}
+            Confirm receipt
           </Button>
         </DialogFooter>
       </DialogContent>

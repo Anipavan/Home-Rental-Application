@@ -70,11 +70,12 @@ class PaymentCashFlowTest {
     @Mock PaymentGateway gateway;
     @Mock PaymentServiceEvents events;
     @Mock PropertyClient propertyClient;
+    @Mock com.spa.home_rental_application.payment_service.payment_service.client.UserClient userClient;
     @Mock AuditEventPublisher audit;
 
     private PaymentServiceImpl service() {
         return new PaymentServiceImpl(paymentRepo, invoiceRepo, receiptRepo, webhookRepo, gateway, events,
-                new PaymentProperties(), new PaymentPdfGenerator(), propertyClient, audit);
+                new PaymentProperties(), new PaymentPdfGenerator(), propertyClient, userClient, audit);
     }
 
     private Payment pending(String id) {
