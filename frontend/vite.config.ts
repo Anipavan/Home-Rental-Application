@@ -72,7 +72,7 @@ function buildContentSecurityPolicy(mode: string): string {
  */
 function securityHeadersPlugin() {
   return {
-    name: "hearth-security-headers",
+    name: "anirudhhomes-security-headers",
     transformIndexHtml: {
       order: "pre" as const,
       handler(html: string, ctx: { server?: unknown }) {

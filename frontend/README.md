@@ -1,4 +1,4 @@
-# Hearth — Home Rental Frontend
+# Anirudh Homes — Home Rental Frontend
 
 A modern, NoBroker-inspired UI for the Home Rental microservices backend.
 

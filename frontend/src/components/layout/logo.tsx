@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
 /**
- * Hearth brand mark.
+ * Anirudh Homes brand mark.
  *
  * <p>Composition:
  *   - Rounded-square plate filled with the emerald → teal → sky brand
@@ -67,7 +67,7 @@ export function Logo({
             text,
           )}
         >
-          Hearth
+          Anirudh Homes
         </span>
         {showTagline && size === "lg" && (
           <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground mt-1">

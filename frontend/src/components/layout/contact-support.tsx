@@ -35,7 +35,7 @@ import { toast } from "@/hooks/use-toast";
 
 /**
  * "Contact support" entry-point. Three options:
- *  1. Email — `mailto:` to support@hearth.in
+ *  1. Email — `mailto:` to support@anirudhhomes.in
  *  2. WhatsApp — `wa.me` deep link
  *  3. In-app form — POST to {@link supportTicketsApi.create}; admins see it
  *     under `/admin/support`.
@@ -43,7 +43,7 @@ import { toast } from "@/hooks/use-toast";
  * Used twice in the app shell — sidebar bottom card + dropdown menu item.
  */
 
-const SUPPORT_EMAIL = "support@hearth.in";
+const SUPPORT_EMAIL = "support@anirudhhomes.in";
 const SUPPORT_WHATSAPP = "919999999999"; // E.164 without `+`
 const SUPPORT_WHATSAPP_DISPLAY = "+91 99999 99999";
 
@@ -93,7 +93,7 @@ export function ContactSupport({ variant = "button", className }: Props) {
           <DropdownMenuItem asChild>
             <a
               href={`https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent(
-                "Hi Hearth, I need help with…",
+                "Hi Anirudh Homes, I need help with…",
               )}`}
               target="_blank"
               rel="noreferrer"

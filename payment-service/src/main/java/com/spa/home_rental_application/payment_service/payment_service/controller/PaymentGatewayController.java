@@ -175,7 +175,7 @@ public class PaymentGatewayController {
                 <head>
                   <meta charset="utf-8">
                   <meta name="viewport" content="width=device-width,initial-scale=1">
-                  <title>Mock Gateway · Hearth</title>
+                  <title>Mock Gateway · Anirudh Homes</title>
                   <style>
                     body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
                            margin: 0; background: #f5f5f7; color: #111;
@@ -212,7 +212,7 @@ public class PaymentGatewayController {
                       <button class="cancel" onclick="window.location.href='%s'">Cancel</button>
                       <button class="pay" onclick="window.location.href='%s'">Pay Rs. %s</button>
                     </div>
-                    <div class="footer">Powered by MockPaymentGateway — Hearth</div>
+                    <div class="footer">Powered by MockPaymentGateway — Anirudh Homes</div>
                   </div>
                 </body>
                 </html>

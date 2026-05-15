@@ -22,7 +22,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class NotificationProperties {
     private boolean deliveryEnabled = true;
     private String fromEmail = "no-reply@homerental.local";
-    private String fromName  = "Hearth";
+    private String fromName  = "Anirudh Homes";
     private int maxRetries = 3;
     private int retryIntervalMinutes = 5;
 }

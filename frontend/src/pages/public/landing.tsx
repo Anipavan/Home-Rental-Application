@@ -64,7 +64,7 @@ const testimonials = [
   },
   {
     quote:
-      "I manage 14 flats. Hearth replaced three spreadsheets and a WhatsApp group. The maintenance flow alone saves me an hour a day.",
+      "I manage 14 flats. Anirudh Homes replaced three spreadsheets and a WhatsApp group. The maintenance flow alone saves me an hour a day.",
     name: "Rahul Iyer",
     role: "Owner · Pune",
   },

@@ -46,8 +46,8 @@ services:
         # Match whatever your axios baseURL is — see frontend/.env.example.
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/rentals/v1}
         VITE_CSP_CONNECT_SRC: ${VITE_CSP_CONNECT_SRC:-}
-    image: hearth/frontend:${IMAGE_TAG:-latest}
-    container_name: hearth-frontend
+    image: anirudhhomes/frontend:${IMAGE_TAG:-latest}
+    container_name: anirudhhomes-frontend
     restart: unless-stopped
     ports:
       - "80:80"
@@ -234,6 +234,8 @@ services:
       SPRING_MAIL_PORT: ${SPRING_MAIL_PORT:-587}
       SPRING_MAIL_USERNAME: ${SPRING_MAIL_USERNAME:-}
       SPRING_MAIL_PASSWORD: ${SPRING_MAIL_PASSWORD:-}
+      APP_NOTIFICATION_FROM_EMAIL: ${APP_NOTIFICATION_FROM_EMAIL:-support@anirudhhomes.in}
+      APP_NOTIFICATION_FROM_NAME: ${APP_NOTIFICATION_FROM_NAME:-Anirudh Homes}
       APP_TWILIO_ACCOUNT_SID: ${APP_TWILIO_ACCOUNT_SID:-}
       APP_TWILIO_AUTH_TOKEN: ${APP_TWILIO_AUTH_TOKEN:-}
       APP_TWILIO_SMS_FROM: ${APP_TWILIO_SMS_FROM:-}
@@ -258,7 +260,7 @@ services:
     ports: []
     restart: unless-stopped
     volumes:
-      - hearth-documents:/uploads
+      - anirudhhomes-documents:/uploads
     deploy:
       resources:
         limits:
@@ -279,5 +281,5 @@ services:
 # so document blobs survive `docker compose down` and host restarts.
 # For real prod, swap this for an S3 bucket (P1-10).
 volumes:
-  hearth-documents:
+  anirudhhomes-documents:
     driver: local

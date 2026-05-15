@@ -490,7 +490,7 @@ function ContactActions({
         <Button asChild size="sm" variant="outline">
           <a
             href={`https://wa.me/${phoneDigits}?text=${encodeURIComponent(
-              `Hi ${name ?? "there"}, this is your owner via Hearth.`,
+              `Hi ${name ?? "there"}, this is your owner via Anirudh Homes.`,
             )}`}
             target="_blank"
             rel="noreferrer"

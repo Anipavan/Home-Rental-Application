@@ -95,7 +95,7 @@ public class PaymentEventListener {
         // payment-reminder-sms template references {{amount}} too —
         // that's a pre-existing template/event-shape mismatch; Mustache
         // renders the missing var as an empty string so the SMS reads
-        // "Hearth: rent ₹ due in 5d." which is ugly but not broken.
+        // "Anirudh Homes: rent ₹ due in 5d." which is ugly but not broken.
         // Proper fix is to add `amount` to PaymentReminderEvent at the
         // producer side (payment-service); deferred to keep this change
         // surgical.

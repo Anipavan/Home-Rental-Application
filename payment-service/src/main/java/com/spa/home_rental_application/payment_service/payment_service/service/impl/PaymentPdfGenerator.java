@@ -94,7 +94,7 @@ public class PaymentPdfGenerator {
 
             doc.add(new Paragraph(" "));
             doc.add(new Paragraph(
-                    "This is a system-generated receipt. Hearth — verified rental platform.",
+                    "This is a system-generated receipt. Anirudh Homes — verified rental platform.",
                     FontFactory.getFont(FontFactory.HELVETICA_OBLIQUE, 9)));
 
             doc.close();
@@ -154,7 +154,7 @@ public class PaymentPdfGenerator {
 
             doc.add(new Paragraph(" "));
             doc.add(new Paragraph(
-                    "Please pay before the due date to avoid late fees. — Hearth",
+                    "Please pay before the due date to avoid late fees. — Anirudh Homes",
                     FontFactory.getFont(FontFactory.HELVETICA_OBLIQUE, 9)));
 
             doc.close();

@@ -45,7 +45,7 @@ Total issues: **25**. Sprint length: **~13 working days**.
 ### A3. Contact Support button does nothing
 - **Where:** [`frontend/src/components/layout/app-shell.tsx`](../../frontend/src/components/layout/app-shell.tsx) sidebar bottom: `<Button variant="outline">Contact support</Button>`
 - **Decided fix (D3):** dropdown with three options:
-  1. Email — `mailto:support@hearth.in`
+  1. Email — `mailto:support@anirudhhomes.in`
   2. WhatsApp — `https://wa.me/91XXXXXXXXXX?text=…`
   3. In-app form (saved to a new `support_tickets` Mongo collection in `notification-service`); admins see it under `/admin/support`.
 - **Note:** real support-ticket UI is one of the simplest backend additions; included.

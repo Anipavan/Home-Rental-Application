@@ -379,15 +379,15 @@ the data stores need careful operations.
 
 ```bash
 # Each service should respond UP
-curl -sf https://api.hearth.app/actuator/health/liveness
-curl -sf https://api.hearth.app/actuator/health/readiness
+curl -sf https://anirudhhomes.in/actuator/health/liveness
+curl -sf https://anirudhhomes.in/actuator/health/readiness
 
 # Check the boot log for SecretsBootstrapValidator green-light
 docker compose logs auth-service | grep "SecretsBootstrapValidator"
 # Expected: "all sensitive secrets passed — no placeholder leakage detected"
 
 # Confirm the management surface is trimmed
-curl -sf -o /dev/null -w "%{http_code}\n" https://api.hearth.app/actuator/env
+curl -sf -o /dev/null -w "%{http_code}\n" https://anirudhhomes.in/actuator/env
 # Expected: 404
 ```
 
@@ -396,7 +396,7 @@ curl -sf -o /dev/null -w "%{http_code}\n" https://api.hearth.app/actuator/env
 The `uploads/` directory in `document-service` holds property
 photos, ID-proof scans, signed deed PDFs, etc. In the dev compose
 file it's a bind-mount under the repo root; the **prod overlay
-replaces it with a named Docker volume** (`hearth-documents`). For
+replaces it with a named Docker volume** (`anirudhhomes-documents`). For
 real production scale you should migrate this to S3-compatible
 object storage — see `PRODUCTION_READINESS.md` P1-10.
 

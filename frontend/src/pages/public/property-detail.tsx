@@ -244,7 +244,7 @@ export function PropertyDetailPage() {
           />
 
           <Card className="p-6">
-            <p className="font-display font-semibold">Why renters trust Hearth</p>
+            <p className="font-display font-semibold">Why renters trust Anirudh Homes</p>
             <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
               <li className="flex gap-2">
                 <ShieldCheck className="size-4 text-success shrink-0 mt-0.5" />

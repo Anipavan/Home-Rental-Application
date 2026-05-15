@@ -102,13 +102,13 @@ public class TemplateSeeder {
                 NotificationType.SMS,
                 "user-registration-sms",
                 null,
-                "Welcome to Hearth, {{userName}}! Sign in: {{signInUrl}}",
+                "Welcome to Anirudh Homes, {{userName}}! Sign in: {{signInUrl}}",
                 List.of("userName", "signInUrl"));
         refreshUserRegistrationIfStale(NotificationCategory.USER_REGISTRATION,
                 NotificationType.WHATSAPP,
                 "welcome-whatsapp",
                 null,
-                "Welcome to Hearth, {{userName}}! 🏠\n\nYour account is ready. "
+                "Welcome to Anirudh Homes, {{userName}}! 🏠\n\nYour account is ready. "
                         + "Sign in here 👉 {{signInUrl}}",
                 List.of("userName", "email", "role", "signInUrl"));
 
@@ -119,7 +119,7 @@ public class TemplateSeeder {
 
         seedIfAbsent("password-reset-email", NotificationCategory.PASSWORD_RESET, NotificationType.EMAIL,
                 "Reset your Home Rental password",
-                "Hi {{userName}},\n\nWe got a request to reset the password on your Hearth account.\n\n"
+                "Hi {{userName}},\n\nWe got a request to reset the password on your Anirudh Homes account.\n\n"
                         + "Click the link below to set a new password (valid until {{expiresAt}}):\n\n"
                         + "  {{resetLink}}\n\n"
                         + "If the link doesn't open, paste this token on the reset page instead:\n\n"
@@ -199,32 +199,32 @@ public class TemplateSeeder {
          */
         seedIfAbsent("user-registration-sms", NotificationCategory.USER_REGISTRATION,
                 NotificationType.SMS, null,
-                "Welcome to Hearth, {{userName}}! Sign in to find your next home or list yours.",
+                "Welcome to Anirudh Homes, {{userName}}! Sign in to find your next home or list yours.",
                 List.of("userName"));
 
         seedIfAbsent("payment-reminder-sms", NotificationCategory.PAYMENT_REMINDER,
                 NotificationType.SMS, null,
-                "Hearth: rent ₹{{amount}} due in {{daysUntilDue}}d. Pay via the app to avoid late fees.",
+                "Anirudh Homes: rent ₹{{amount}} due in {{daysUntilDue}}d. Pay via the app to avoid late fees.",
                 List.of("amount", "daysUntilDue"));
 
         seedIfAbsent("payment-receipt-sms", NotificationCategory.PAYMENT_RECEIPT,
                 NotificationType.SMS, null,
-                "Hearth: payment of ₹{{amount}} received via {{method}}. Txn {{transactionId}}.",
+                "Anirudh Homes: payment of ₹{{amount}} received via {{method}}. Txn {{transactionId}}.",
                 List.of("amount", "method", "transactionId"));
 
         seedIfAbsent("maintenance-created-sms", NotificationCategory.MAINTENANCE_CREATED,
                 NotificationType.SMS, null,
-                "Hearth: maintenance ticket {{requestNumber}} ({{category}}) opened. Track it in the app.",
+                "Anirudh Homes: maintenance ticket {{requestNumber}} ({{category}}) opened. Track it in the app.",
                 List.of("requestNumber", "category"));
 
         seedIfAbsent("maintenance-resolved-sms", NotificationCategory.MAINTENANCE_RESOLVED,
                 NotificationType.SMS, null,
-                "Hearth: ticket {{requestId}} resolved. Reply in the app if anything's still wrong.",
+                "Anirudh Homes: ticket {{requestId}} resolved. Reply in the app if anything's still wrong.",
                 List.of("requestId"));
 
         seedIfAbsent("complaint-created-sms", NotificationCategory.COMPLAINT_CREATED,
                 NotificationType.SMS, null,
-                "Hearth: complaint {{requestNumber}} filed. A manager will reply via the app.",
+                "Anirudh Homes: complaint {{requestNumber}} filed. A manager will reply via the app.",
                 List.of("requestNumber"));
 
         /* ─────────── WhatsApp templates ───────────
@@ -237,7 +237,7 @@ public class TemplateSeeder {
         seedIfAbsent("payment-reminder-whatsapp", NotificationCategory.PAYMENT_REMINDER,
                 NotificationType.WHATSAPP, null,
                 "Hi {{userName}} 👋\n\nYour rent of *₹{{amount}}* is due in *{{daysUntilDue}} days*.\n\n"
-                        + "Tap the Pay Rent button in the Hearth app to settle it instantly. "
+                        + "Tap the Pay Rent button in the Anirudh Homes app to settle it instantly. "
                         + "Reply STOP to mute these reminders.",
                 List.of("userName", "amount", "daysUntilDue"));
 
@@ -251,13 +251,13 @@ public class TemplateSeeder {
                 NotificationType.WHATSAPP, null,
                 "Hi 🛠️\n\nYour maintenance request *{{requestNumber}}* ({{category}}, "
                         + "{{priority}} priority) has been logged. A technician will be in touch shortly.\n\n"
-                        + "Track or comment on it in the Hearth app under *Maintenance*.",
+                        + "Track or comment on it in the Anirudh Homes app under *Maintenance*.",
                 List.of("requestNumber", "category", "priority"));
 
         seedIfAbsent("complaint-created-whatsapp", NotificationCategory.COMPLAINT_CREATED,
                 NotificationType.WHATSAPP, null,
                 "Hi 🔔\n\nWe've registered your complaint *{{requestNumber}}* about {{complaintCategory}}.\n\n"
-                        + "A property manager will review it and reply through the Hearth in-app thread. "
+                        + "A property manager will review it and reply through the Anirudh Homes in-app thread. "
                         + "You'll get a WhatsApp ping the moment they do.",
                 List.of("requestNumber", "complaintCategory"));
 
@@ -275,7 +275,7 @@ public class TemplateSeeder {
         seedIfAbsent("lease-welcome-sms", NotificationCategory.LEASE_WELCOME,
                 NotificationType.SMS, null,
                 "Welcome to your new home! Flat {{flatNumber}} is yours from {{startDate}}. "
-                        + "Rent: Rs.{{rentAmount}}/mo. Manage everything in the Hearth app.",
+                        + "Rent: Rs.{{rentAmount}}/mo. Manage everything in the Anirudh Homes app.",
                 List.of("flatNumber", "rentAmount", "startDate"));
 
         /* ─────────── Welcome (registration) — SMS + WhatsApp legs ───────────
@@ -285,7 +285,7 @@ public class TemplateSeeder {
          */
         seedIfAbsent("welcome-whatsapp", NotificationCategory.USER_REGISTRATION,
                 NotificationType.WHATSAPP, null,
-                "Welcome to Hearth, {{userName}}! 🏠\n\nYour account is ready. "
+                "Welcome to Anirudh Homes, {{userName}}! 🏠\n\nYour account is ready. "
                         + "Open the app to find your next home or list one of your own.",
                 List.of("userName", "email", "role"));
 
@@ -303,7 +303,7 @@ public class TemplateSeeder {
                 "New visit request for {{propertyLabel}}",
                 "Hi,\n\n{{visitorName}} wants to visit {{propertyLabel}}"
                         + "{{#preferredAt}} on {{preferredAt}}{{/preferredAt}}.\n\n"
-                        + "Open the Enquiries inbox in your Hearth dashboard to confirm "
+                        + "Open the Enquiries inbox in your Anirudh Homes dashboard to confirm "
                         + "or reschedule. Their message:\n\n\"{{message}}\"\n\n"
                         + "Reply fast — visitors who hear back within an hour are 3× more "
                         + "likely to sign a lease.",
@@ -311,7 +311,7 @@ public class TemplateSeeder {
 
         seedIfAbsent("visit-requested-sms", NotificationCategory.VISIT_REQUESTED,
                 NotificationType.SMS, null,
-                "Hearth: {{visitorName}} requested a visit to {{propertyLabel}}. "
+                "Anirudh Homes: {{visitorName}} requested a visit to {{propertyLabel}}. "
                         + "Confirm in the app.",
                 List.of("visitorName", "propertyLabel"));
 
@@ -321,7 +321,7 @@ public class TemplateSeeder {
                         + "*{{propertyLabel}}*"
                         + "{{#preferredAt}} (preferred: {{preferredAt}}){{/preferredAt}}.\n\n"
                         + "Their message:\n>\n> {{message}}\n\n"
-                        + "Open Enquiries in the Hearth app to confirm or reschedule.",
+                        + "Open Enquiries in the Anirudh Homes app to confirm or reschedule.",
                 List.of("visitorName", "propertyLabel", "preferredAt", "message"));
 
         seedIfAbsent("visit-responded-email", NotificationCategory.VISIT_RESPONDED,
@@ -335,7 +335,7 @@ public class TemplateSeeder {
 
         seedIfAbsent("visit-responded-sms", NotificationCategory.VISIT_RESPONDED,
                 NotificationType.SMS, null,
-                "Hearth: your visit to {{propertyLabel}} is {{status}}. "
+                "Anirudh Homes: your visit to {{propertyLabel}} is {{status}}. "
                         + "Check the app for details.",
                 List.of("propertyLabel", "status"));
 
@@ -352,19 +352,19 @@ public class TemplateSeeder {
                 "New enquiry about {{propertyLabel}}",
                 "Hi,\n\n{{visitorName}} just contacted you about "
                         + "{{propertyLabel}}.\n\nTheir message:\n\n\"{{message}}\"\n\n"
-                        + "Reach out via the Hearth Enquiries inbox or directly "
+                        + "Reach out via the Anirudh Homes Enquiries inbox or directly "
                         + "by phone / email — both are in their contact card.",
                 List.of("propertyLabel", "visitorName", "message"));
 
         seedIfAbsent("enquiry-received-sms", NotificationCategory.ENQUIRY_RECEIVED,
                 NotificationType.SMS, null,
-                "Hearth: new enquiry from {{visitorName}} about {{propertyLabel}}.",
+                "Anirudh Homes: new enquiry from {{visitorName}} about {{propertyLabel}}.",
                 List.of("visitorName", "propertyLabel"));
 
         seedIfAbsent("enquiry-received-whatsapp", NotificationCategory.ENQUIRY_RECEIVED,
                 NotificationType.WHATSAPP, null,
                 "Hi 👋\n\n*{{visitorName}}* contacted you about *{{propertyLabel}}*:\n>\n"
-                        + "> {{message}}\n\nReply via the Hearth Enquiries inbox.",
+                        + "> {{message}}\n\nReply via the Anirudh Homes Enquiries inbox.",
                 List.of("visitorName", "propertyLabel", "message"));
 
         /* ───────────────────────────────────────────────────────────
@@ -380,13 +380,13 @@ public class TemplateSeeder {
         // EMAIL template already seeded near the top of this method.
         seedIfAbsent("payment-created-sms", NotificationCategory.PAYMENT_CREATED,
                 NotificationType.SMS, null,
-                "Hearth: new invoice {{invoiceNumber}} ₹{{amount}} due {{dueDate}}. Pay in the app.",
+                "Anirudh Homes: new invoice {{invoiceNumber}} ₹{{amount}} due {{dueDate}}. Pay in the app.",
                 List.of("invoiceNumber", "amount", "dueDate"));
         seedIfAbsent("payment-created-whatsapp", NotificationCategory.PAYMENT_CREATED,
                 NotificationType.WHATSAPP, null,
                 "Hi 👋\n\nA new rent invoice is ready for you.\n\n"
                         + "*Invoice:* {{invoiceNumber}}\n*Amount:* ₹{{amount}}\n*Due:* {{dueDate}}\n\n"
-                        + "Open the Hearth app to pay via UPI, card, net-banking, or wallet.",
+                        + "Open the Anirudh Homes app to pay via UPI, card, net-banking, or wallet.",
                 List.of("invoiceNumber", "amount", "dueDate"));
 
         // ─── PAYMENT_OVERDUE — completing the channel set ───
@@ -396,7 +396,7 @@ public class TemplateSeeder {
                 NotificationType.WHATSAPP, null,
                 "⚠️ *Rent overdue*\n\nYour rent is *{{daysOverdue}}* day(s) late.\n"
                         + "*Now owing:* ₹{{amount}} (rent) + ₹{{lateFee}} (late fee)\n\n"
-                        + "Tap *Pay Rent* in the Hearth app to settle it before further charges accrue.",
+                        + "Tap *Pay Rent* in the Anirudh Homes app to settle it before further charges accrue.",
                 List.of("amount", "lateFee", "daysOverdue"));
 
         /* ─── LEASE_SIGNED — tenant just got a flat assigned ───
@@ -410,19 +410,19 @@ public class TemplateSeeder {
                         + "Lease number: {{leaseNumber}}\nStarts: {{startDate}}\n"
                         + "Ends:   {{endDate}}\nMonthly rent: ₹{{rentAmount}}\n"
                         + "Security deposit: ₹{{deposit}}\n\n"
-                        + "You can download the signed lease PDF from the Hearth app "
+                        + "You can download the signed lease PDF from the Anirudh Homes app "
                         + "under Documents at any time.",
                 List.of("leaseNumber", "startDate", "endDate", "rentAmount", "deposit"));
         seedIfAbsent("lease-signed-sms", NotificationCategory.LEASE_SIGNED,
                 NotificationType.SMS, null,
-                "Hearth: lease {{leaseNumber}} signed. Starts {{startDate}}. Rent Rs.{{rentAmount}}/mo.",
+                "Anirudh Homes: lease {{leaseNumber}} signed. Starts {{startDate}}. Rent Rs.{{rentAmount}}/mo.",
                 List.of("leaseNumber", "startDate", "rentAmount"));
         seedIfAbsent("lease-signed-whatsapp", NotificationCategory.LEASE_SIGNED,
                 NotificationType.WHATSAPP, null,
                 "🏡 *Lease signed*\n\nWelcome aboard! Your lease *{{leaseNumber}}* is live.\n\n"
                         + "*Starts:* {{startDate}}\n*Ends:* {{endDate}}\n"
                         + "*Rent:* ₹{{rentAmount}}/month\n*Deposit:* ₹{{deposit}}\n\n"
-                        + "Download the signed PDF from *Documents* in the Hearth app.",
+                        + "Download the signed PDF from *Documents* in the Anirudh Homes app.",
                 List.of("leaseNumber", "startDate", "endDate", "rentAmount", "deposit"));
 
         /* ─── LEASE_EXPIRY — 60-day countdown (cron-driven) ───
@@ -433,20 +433,20 @@ public class TemplateSeeder {
                 "Your lease ends in {{daysUntilExpiry}} days",
                 "Heads-up — your lease is scheduled to end on {{endDate}} "
                         + "({{daysUntilExpiry}} days away).\n\n"
-                        + "If you'd like to renew, open the Hearth app and tap *Renew lease* "
+                        + "If you'd like to renew, open the Anirudh Homes app and tap *Renew lease* "
                         + "before then. If you're moving out, no action needed — your tenancy "
                         + "will close automatically and your security deposit refund will "
                         + "be initiated within 7 working days of move-out.",
                 List.of("endDate", "daysUntilExpiry", "rentAmount"));
         seedIfAbsent("lease-expiry-sms", NotificationCategory.LEASE_EXPIRY,
                 NotificationType.SMS, null,
-                "Hearth: lease ends {{endDate}} ({{daysUntilExpiry}}d). Renew or move out in the app.",
+                "Anirudh Homes: lease ends {{endDate}} ({{daysUntilExpiry}}d). Renew or move out in the app.",
                 List.of("endDate", "daysUntilExpiry"));
         seedIfAbsent("lease-expiry-whatsapp", NotificationCategory.LEASE_EXPIRY,
                 NotificationType.WHATSAPP, null,
                 "📅 *Lease ending soon*\n\nYour lease ends on *{{endDate}}* "
                         + "({{daysUntilExpiry}} days from now).\n\n"
-                        + "Want to stay? Tap *Renew lease* in the Hearth app.\n"
+                        + "Want to stay? Tap *Renew lease* in the Anirudh Homes app.\n"
                         + "Moving on? No action needed — we'll handle the close-out + "
                         + "deposit refund automatically.",
                 List.of("endDate", "daysUntilExpiry"));
@@ -461,17 +461,17 @@ public class TemplateSeeder {
                         + "Previous end: {{previousEndDate}}\nNew end:      {{newEndDate}}\n"
                         + "Previous rent: ₹{{previousRent}}/month\n"
                         + "New rent:      ₹{{newRent}}/month\n\n"
-                        + "The updated lease PDF is available under *Documents* in the Hearth app.",
+                        + "The updated lease PDF is available under *Documents* in the Anirudh Homes app.",
                 List.of("previousEndDate", "newEndDate", "previousRent", "newRent"));
         seedIfAbsent("lease-renewed-sms", NotificationCategory.LEASE_RENEWED,
                 NotificationType.SMS, null,
-                "Hearth: lease renewed until {{newEndDate}}. New rent Rs.{{newRent}}/mo.",
+                "Anirudh Homes: lease renewed until {{newEndDate}}. New rent Rs.{{newRent}}/mo.",
                 List.of("newEndDate", "newRent"));
         seedIfAbsent("lease-renewed-whatsapp", NotificationCategory.LEASE_RENEWED,
                 NotificationType.WHATSAPP, null,
                 "♻️ *Lease renewed*\n\nWelcome back for another term.\n\n"
                         + "*New end date:* {{newEndDate}}\n*New rent:* ₹{{newRent}}/month\n\n"
-                        + "Download the updated lease PDF from *Documents* in the Hearth app.",
+                        + "Download the updated lease PDF from *Documents* in the Anirudh Homes app.",
                 List.of("newEndDate", "newRent"));
 
         /* ─── LEASE_TERMINATED — used by both LeaseEventListener.onTerminated
@@ -488,13 +488,13 @@ public class TemplateSeeder {
                         + "Next steps:\n"
                         + "• If a security deposit was held, refund will be initiated within "
                         + "7 working days to the bank account on file.\n"
-                        + "• Your final payment statement is now in *Documents* in the Hearth app.\n"
+                        + "• Your final payment statement is now in *Documents* in the Anirudh Homes app.\n"
                         + "• Need anything? Reply to this email or message us in the app.\n\n"
-                        + "Thanks for staying with Hearth.",
+                        + "Thanks for staying with Anirudh Homes.",
                 List.of("terminatedOn", "terminationReason", "flatId"));
         seedIfAbsent("lease-terminated-sms", NotificationCategory.LEASE_TERMINATED,
                 NotificationType.SMS, null,
-                "Hearth: your tenancy ended {{terminatedOn}}. Deposit refund (if any) in 7 working days.",
+                "Anirudh Homes: your tenancy ended {{terminatedOn}}. Deposit refund (if any) in 7 working days.",
                 List.of("terminatedOn"));
         seedIfAbsent("lease-terminated-whatsapp", NotificationCategory.LEASE_TERMINATED,
                 NotificationType.WHATSAPP, null,
@@ -502,7 +502,7 @@ public class TemplateSeeder {
                         + "(_{{terminationReason}}_).\n\n"
                         + "If a security deposit was held, we'll refund it to your bank "
                         + "account on file within 7 working days. Your final statement "
-                        + "is in *Documents* in the Hearth app.\n\nThanks for staying with us. 🙏",
+                        + "is in *Documents* in the Anirudh Homes app.\n\nThanks for staying with us. 🙏",
                 List.of("terminatedOn", "terminationReason"));
 
         /* ─── TENANT_VACATING_NOTICE — owner-facing 10-day-prior warning
@@ -518,19 +518,19 @@ public class TemplateSeeder {
                         + "What to do now:\n"
                         + "• Plan a move-out walkthrough close to the date\n"
                         + "• Have the deposit-refund flow ready (7-day SLA from move-out)\n"
-                        + "• List the flat again in the Hearth dashboard so it's discoverable "
+                        + "• List the flat again in the Anirudh Homes dashboard so it's discoverable "
                         + "on the day they move out\n\n"
                         + "You'll get another notification on the move-out day itself.",
                 List.of("tenantName", "flatNumber", "vacateDate", "daysUntilVacate"));
         seedIfAbsent("tenant-vacating-notice-sms", NotificationCategory.TENANT_VACATING_NOTICE,
                 NotificationType.SMS, null,
-                "Hearth: tenant {{tenantName}} vacating Flat {{flatNumber}} on {{vacateDate}} ({{daysUntilVacate}}d). Plan walkthrough + re-listing.",
+                "Anirudh Homes: tenant {{tenantName}} vacating Flat {{flatNumber}} on {{vacateDate}} ({{daysUntilVacate}}d). Plan walkthrough + re-listing.",
                 List.of("tenantName", "flatNumber", "vacateDate", "daysUntilVacate"));
         seedIfAbsent("tenant-vacating-notice-whatsapp", NotificationCategory.TENANT_VACATING_NOTICE,
                 NotificationType.WHATSAPP, null,
                 "📅 *Tenant vacating soon*\n\n*{{tenantName}}* is moving out of *Flat {{flatNumber}}* on "
                         + "*{{vacateDate}}* (in {{daysUntilVacate}} days).\n\n"
-                        + "Next steps in the Hearth app:\n"
+                        + "Next steps in the Anirudh Homes app:\n"
                         + "• Schedule a walkthrough\n"
                         + "• Re-list the flat to keep it visible from day one\n"
                         + "• Confirm deposit refund details\n\n"
@@ -547,14 +547,14 @@ public class TemplateSeeder {
          */
         seedIfAbsent("admin-broadcast-email", NotificationCategory.ADMIN_BROADCAST,
                 NotificationType.EMAIL,
-                "Hearth announcement",
-                "Hearth team has a platform-wide announcement for you. "
+                "Anirudh Homes announcement",
+                "Anirudh Homes team has a platform-wide announcement for you. "
                         + "Check the app for details.",
                 List.of());
         seedIfAbsent("admin-broadcast-inapp", NotificationCategory.ADMIN_BROADCAST,
                 NotificationType.INAPP,
-                "Hearth announcement",
-                "Hearth team has a platform-wide announcement for you.",
+                "Anirudh Homes announcement",
+                "Anirudh Homes team has a platform-wide announcement for you.",
                 List.of());
 
         /* ─── DOCUMENT_APPROVED / DOCUMENT_REJECTED (Issue #9) ───
@@ -568,11 +568,11 @@ public class TemplateSeeder {
                 "Your {{documentType}} was approved",
                 "Hi,\n\nYour owner has approved your {{documentType}} document. "
                         + "It's now on your tenant file and you don't need to do anything else.\n\n"
-                        + "You can view all your documents under *Documents* in the Hearth app.",
+                        + "You can view all your documents under *Documents* in the Anirudh Homes app.",
                 List.of("documentType"));
         seedIfAbsent("document-approved-sms", NotificationCategory.DOCUMENT_APPROVED,
                 NotificationType.SMS, null,
-                "Hearth: your {{documentType}} was approved by your owner. No action needed.",
+                "Anirudh Homes: your {{documentType}} was approved by your owner. No action needed.",
                 List.of("documentType"));
         seedIfAbsent("document-approved-whatsapp", NotificationCategory.DOCUMENT_APPROVED,
                 NotificationType.WHATSAPP, null,
@@ -585,18 +585,18 @@ public class TemplateSeeder {
                 "Your {{documentType}} needs another look",
                 "Hi,\n\nYour owner couldn't accept the {{documentType}} you uploaded. They wrote:\n\n"
                         + "  \"{{rejectionReason}}\"\n\n"
-                        + "Please re-upload a corrected version under *Documents* in the Hearth app. "
+                        + "Please re-upload a corrected version under *Documents* in the Anirudh Homes app. "
                         + "Once you upload again, the owner will review the new copy.",
                 List.of("documentType", "rejectionReason"));
         seedIfAbsent("document-rejected-sms", NotificationCategory.DOCUMENT_REJECTED,
                 NotificationType.SMS, null,
-                "Hearth: your {{documentType}} was rejected. Reason: {{rejectionReason}}. Re-upload via the app.",
+                "Anirudh Homes: your {{documentType}} was rejected. Reason: {{rejectionReason}}. Re-upload via the app.",
                 List.of("documentType", "rejectionReason"));
         seedIfAbsent("document-rejected-whatsapp", NotificationCategory.DOCUMENT_REJECTED,
                 NotificationType.WHATSAPP, null,
                 "⚠️ *Document needs another look*\n\nYour owner couldn't accept the *{{documentType}}* "
                         + "you uploaded:\n\n> {{rejectionReason}}\n\n"
-                        + "Re-upload a corrected version under *Documents* in the Hearth app.",
+                        + "Re-upload a corrected version under *Documents* in the Anirudh Homes app.",
                 List.of("documentType", "rejectionReason"));
 
         /* ─── MAINTENANCE_ASSIGNED / MAINTENANCE_RESOLVED — completing
@@ -606,19 +606,19 @@ public class TemplateSeeder {
          */
         seedIfAbsent("maintenance-assigned-sms", NotificationCategory.MAINTENANCE_ASSIGNED,
                 NotificationType.SMS, null,
-                "Hearth: ticket {{requestId}} assigned to {{assignedTo}}. They'll be in touch.",
+                "Anirudh Homes: ticket {{requestId}} assigned to {{assignedTo}}. They'll be in touch.",
                 List.of("requestId", "assignedTo"));
         seedIfAbsent("maintenance-assigned-whatsapp", NotificationCategory.MAINTENANCE_ASSIGNED,
                 NotificationType.WHATSAPP, null,
                 "🛠️ *Maintenance update*\n\nTicket *{{requestId}}* is assigned to "
                         + "*{{assignedTo}}*. They'll reach out shortly — track or "
-                        + "comment on it in the Hearth app under *Maintenance*.",
+                        + "comment on it in the Anirudh Homes app under *Maintenance*.",
                 List.of("requestId", "assignedTo"));
         seedIfAbsent("maintenance-resolved-whatsapp", NotificationCategory.MAINTENANCE_RESOLVED,
                 NotificationType.WHATSAPP, null,
                 "✅ *Resolved*\n\nGreat news — ticket *{{requestId}}* is resolved "
                         + "(turnaround {{resolutionTimeMinutes}} minutes).\n\n"
-                        + "Reply in the Hearth app if anything's still off.",
+                        + "Reply in the Anirudh Homes app if anything's still off.",
                 List.of("requestId", "resolutionTimeMinutes"));
 
         /* ─── COMPLAINT_ACKNOWLEDGED / COMPLAINT_RESOLVED — same
@@ -627,7 +627,7 @@ public class TemplateSeeder {
          */
         seedIfAbsent("complaint-acknowledged-sms", NotificationCategory.COMPLAINT_ACKNOWLEDGED,
                 NotificationType.SMS, null,
-                "Hearth: complaint {{requestNumber}} is being handled by {{assignedTo}}.",
+                "Anirudh Homes: complaint {{requestNumber}} is being handled by {{assignedTo}}.",
                 List.of("requestNumber", "assignedTo"));
         seedIfAbsent("complaint-acknowledged-whatsapp", NotificationCategory.COMPLAINT_ACKNOWLEDGED,
                 NotificationType.WHATSAPP, null,
@@ -636,12 +636,12 @@ public class TemplateSeeder {
                 List.of("requestNumber", "assignedTo"));
         seedIfAbsent("complaint-resolved-sms", NotificationCategory.COMPLAINT_RESOLVED,
                 NotificationType.SMS, null,
-                "Hearth: complaint {{requestNumber}} resolved. Reply in the app to re-open within 7d.",
+                "Anirudh Homes: complaint {{requestNumber}} resolved. Reply in the app to re-open within 7d.",
                 List.of("requestNumber"));
         seedIfAbsent("complaint-resolved-whatsapp", NotificationCategory.COMPLAINT_RESOLVED,
                 NotificationType.WHATSAPP, null,
                 "✅ *Complaint resolved*\n\nYour complaint *{{requestNumber}}* is closed.\n\n"
-                        + "Not happy with the outcome? Reply in the Hearth app within 7 days "
+                        + "Not happy with the outcome? Reply in the Anirudh Homes app within 7 days "
                         + "and we'll re-open it.",
                 List.of("requestNumber"));
     }

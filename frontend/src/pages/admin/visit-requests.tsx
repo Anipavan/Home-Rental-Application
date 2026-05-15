@@ -265,7 +265,7 @@ function RespondDialog({
               <Button asChild size="sm" variant="outline">
                 <a
                   href={`https://wa.me/${phoneDigits}?text=${encodeURIComponent(
-                    `Hi ${request.visitorName}, this is Hearth about your visit to ${request.propertyLabel ?? "the property"}.`,
+                    `Hi ${request.visitorName}, this is Anirudh Homes about your visit to ${request.propertyLabel ?? "the property"}.`,
                   )}`}
                   target="_blank"
                   rel="noreferrer"

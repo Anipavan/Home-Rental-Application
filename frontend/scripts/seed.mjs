@@ -387,7 +387,7 @@ async function seedMaintenance(tenantFlatIds) {
 // ── main ───────────────────────────────────────────────────────────────────
 
 async function main() {
-  console.log(`${C.bold}Hearth · seed${C.reset} ${C.dim}(${BASE})${C.reset}\n`);
+  console.log(`${C.bold}Anirudh Homes · seed${C.reset} ${C.dim}(${BASE})${C.reset}\n`);
   try {
     await loginAll();
     const tenantFlatIds = await seedBuildingsAndFlats();

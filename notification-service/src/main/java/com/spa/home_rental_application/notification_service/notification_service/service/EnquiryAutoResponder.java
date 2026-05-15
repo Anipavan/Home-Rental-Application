@@ -63,7 +63,7 @@ public class EnquiryAutoResponder {
                 """
                 Hi %s,
 
-                Thanks for reaching out to Hearth. We've received your message and our \
+                Thanks for reaching out to Anirudh Homes. We've received your message and our \
                 team will get back to you within 24 hours.
 
                 Your message:
@@ -72,7 +72,7 @@ public class EnquiryAutoResponder {
                 If your need is urgent, you can also reach us on WhatsApp at \
                 +91 99999 99999 or reply to this email.
 
-                — The Hearth team
+                — The Anirudh Homes team
                 """.formatted(
                         safeName(ticket.getUserName()),
                         safe(ticket.getMessage())
@@ -102,7 +102,7 @@ public class EnquiryAutoResponder {
 
                 If anything changes, just reply to this email.
 
-                — The Hearth team
+                — The Anirudh Homes team
                 """.formatted(
                         safeName(request.getVisitorName()),
                         property,

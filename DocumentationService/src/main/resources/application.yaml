@@ -145,7 +145,7 @@ app:
     # current origin, so the same persisted value Just Works on
     # localhost, ngrok, and prod without any host-bound config.
     #
-    # Override with PUBLIC_BASE_URL=https://api.hearth.app/rentals/v1
+    # Override with PUBLIC_BASE_URL=https://anirudhhomes.in/rentals/v1
     # only when serving downloads from a DIFFERENT origin than the
     # SPA (e.g. CDN proxying to a separate document host). The
     # gateway routes /rentals/v1/documents/** to this service, so

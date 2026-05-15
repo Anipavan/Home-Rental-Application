@@ -58,7 +58,7 @@ export function AdminUsersPage() {
     <div className="animate-fade-in">
       <PageHeader
         title="Users"
-        description="Everyone with an account on Hearth."
+        description="Everyone with an account on Anirudh Homes."
       />
 
       <Card className="p-3 mb-5">

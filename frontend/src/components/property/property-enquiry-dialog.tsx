@@ -274,7 +274,7 @@ export function PropertyEnquiryDialog({
                 */}
                 <a
                   href={`https://wa.me/${(owner!.phone ?? "").replace(/\D/g, "")}?text=${encodeURIComponent(
-                    `Hi, I'm interested in ${propertyLabel} on Hearth.`,
+                    `Hi, I'm interested in ${propertyLabel} on Anirudh Homes.`,
                   )}`}
                   target="_blank"
                   rel="noreferrer"

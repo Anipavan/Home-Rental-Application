@@ -141,7 +141,7 @@ public class EmailChannelAdapter implements NotificationChannelAdapter {
                 + "box-shadow:0 6px 24px -8px rgba(16,132,92,0.18);\">"
                 + "<tr><td style=\"background:linear-gradient(135deg,#10b981,#14b8a6 55%,#0284c7);"
                 + "padding:18px 24px;color:#ffffff;font-weight:700;font-size:18px;letter-spacing:-0.01em;\">"
-                + "Hearth"
+                + "Anirudh Homes"
                 + "</td></tr>"
                 + "<tr><td style=\"padding:28px 28px 24px;font-size:15px;line-height:1.55;\">"
                 + (safeSubject.isBlank() ? ""
@@ -150,7 +150,7 @@ public class EmailChannelAdapter implements NotificationChannelAdapter {
                 + "<div style=\"color:#334155;\">" + bodyHtml + "</div>"
                 + "</td></tr>"
                 + "<tr><td style=\"padding:14px 28px 22px;font-size:11px;color:#64748b;border-top:1px solid #e2e8f0;\">"
-                + "Sent automatically — no need to reply. © Hearth, Home Rentals."
+                + "Sent automatically — no need to reply. © Anirudh Homes."
                 + "</td></tr>"
                 + "</table>"
                 + "</td></tr></table></body></html>";

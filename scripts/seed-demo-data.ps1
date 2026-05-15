@@ -28,21 +28,21 @@
     done you can sign in as either user from the SPA login page.
 
 .EXAMPLE
-    pwsh -File .\scripts\seed-demo-data.ps1 -Gateway "https://demo.hearth.in/rentals/v1"
+    pwsh -File .\scripts\seed-demo-data.ps1 -Gateway "https://demo.anirudhhomes.in/rentals/v1"
 
     Seeds against a different environment.
 #>
 
 param(
     [string]$Gateway        = "http://localhost:8080/rentals/v1",
-    [string]$OwnerEmail     = "demo.owner@hearth.in",
+    [string]$OwnerEmail     = "demo.owner@anirudhhomes.in",
     [string]$OwnerUserName  = "demoowner",
     [string]$OwnerPassword  = "Owner@123",
     [string]$OwnerFirstName = "Demo",
     [string]$OwnerLastName  = "Owner",
     [string]$OwnerPhone     = "+919876500001",
 
-    [string]$TenantEmail     = "demo.tenant@hearth.in",
+    [string]$TenantEmail     = "demo.tenant@anirudhhomes.in",
     [string]$TenantUserName  = "demotenant",
     [string]$TenantPassword  = "Tenant@123",
     [string]$TenantFirstName = "Demo",
@@ -173,7 +173,7 @@ function Register-Or-Login {
 
 # ---------- main ----------
 
-Step "Seeding Hearth demo data via $Gateway"
+Step "Seeding Anirudh Homes demo data via $Gateway"
 
 # 1. Owner account
 Step "Step 1/5  · Owner account"

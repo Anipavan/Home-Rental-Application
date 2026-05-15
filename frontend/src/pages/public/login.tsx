@@ -118,7 +118,7 @@ export function LoginPage() {
             </Card>
 
             <p className="text-sm text-muted-foreground text-center mt-6">
-              New to Hearth?{" "}
+              New to Anirudh Homes?{" "}
               <Link to="/register" className="text-primary font-medium hover:underline">
                 Create an account
               </Link>
@@ -134,7 +134,7 @@ export function LoginPage() {
           <blockquote className="max-w-md">
             <p className="font-display text-2xl leading-snug">
               "I paid my deposit through PhonePe and got the keys the next
-              morning. Hearth made renting feel like a Sunday."
+              morning. Anirudh Homes made renting feel like a Sunday."
             </p>
             <footer className="mt-5 flex items-center gap-3">
               <div className="size-10 rounded-full bg-white/20 grid place-items-center font-semibold">

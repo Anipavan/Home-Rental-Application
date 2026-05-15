@@ -133,12 +133,18 @@ app:
     allowed-clock-skew-seconds: 60
 
   # Notification-service runtime properties. from-email defaults to
-  # whatever MAIL_USERNAME is set to (Gmail requires the From header
-  # to match the authenticated account); falls back to the legacy
-  # fake domain if MAIL_USERNAME is unset.
+  # whatever MAIL_USERNAME is set to (most SMTP providers — Gmail,
+  # AWS SES, Resend, Zoho — require the From header to match a
+  # verified sender on the authenticated account); falls back to the
+  # legacy fake domain if MAIL_USERNAME is unset so local dev runs
+  # without an SMTP credential.
+  #
+  # Production: set APP_NOTIFICATION_FROM_EMAIL=support@anirudhhomes.in
+  # via .env (see DNS_SETUP.md for the SPF + DKIM + DMARC records
+  # the chosen SMTP provider needs at the registrar).
   notification:
     from-email: ${APP_NOTIFICATION_FROM_EMAIL:${MAIL_USERNAME:no-reply@homerental.local}}
-    from-name:  ${APP_NOTIFICATION_FROM_NAME:Hearth}
+    from-name:  ${APP_NOTIFICATION_FROM_NAME:Anirudh Homes}
 
   # Twilio — set TWILIO_SID + TWILIO_TOKEN + TWILIO_FROM env vars to
   # enable real SMS / WhatsApp delivery. Without these (or while they

@@ -251,10 +251,11 @@ export const router = createBrowserRouter([
 function AboutStub() {
   return (
     <div className="container py-16 max-w-2xl">
-      <h1 className="font-display text-3xl font-bold">About Hearth</h1>
+      <h1 className="font-display text-3xl font-bold">About Anirudh Homes</h1>
       <p className="text-muted-foreground mt-3">
-        Hearth is a calm, modern rental platform — verified homes, instant
-        payments, and real humans on support. Built in India, for India.
+        Anirudh Homes is a calm, modern rental platform — verified homes,
+        instant payments, and real humans on support. Built in India, for
+        India.
       </p>
     </div>
   );

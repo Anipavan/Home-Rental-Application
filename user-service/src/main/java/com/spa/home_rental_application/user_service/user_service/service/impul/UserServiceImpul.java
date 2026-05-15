@@ -178,7 +178,7 @@ public class UserServiceImpul implements UserService {
         } catch (ReflectiveOperationException ignored) {
             /* fall through */
         }
-        return "tenant-" + authUserId + "@hearth.local";
+        return "tenant-" + authUserId + "@anirudhhomes.local";
     }
 
     @Override

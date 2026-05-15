@@ -1,5 +1,5 @@
 # ════════════════════════════════════════════════════════════════════
-#  CI for the Hearth monorepo.
+#  CI for the Anirudh Homes monorepo.
 #
 #  Runs on every push to master + every PR. Two parallel jobs:
 #

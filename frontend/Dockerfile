@@ -7,7 +7,7 @@
 #                       is /api/rentals/v1 (the Vite proxy path the dev
 #                       server uses); prod deployments override this to
 #                       the public gateway origin (e.g.
-#                       https://api.hearth.app/rentals/v1).
+#                       https://api.anirudhhomes.in/rentals/v1).
 
 # ----- build stage -----
 FROM node:20-alpine AS build

@@ -177,7 +177,7 @@ export function BankAccountSection({
                 Bank details
               </h2>
               <p className="text-xs text-muted-foreground mt-0.5 max-w-md">
-                Used by Hearth for rent payouts (owners) and deposit /
+                Used by Anirudh Homes for rent payouts (owners) and deposit /
                 cancellation refunds (tenants). Visible only to you.
               </p>
             </div>

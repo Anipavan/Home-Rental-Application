@@ -1,4 +1,4 @@
-# Production Readiness — Hearth Home Rental Platform
+# Production Readiness — Anirudh Homes Rental Platform
 
 Status: **NOT production-ready yet.** This document catalogs the known
 gaps, what's been fixed in this branch, and what's left before the
@@ -89,7 +89,7 @@ files.
 
 ### 3. CORS allowlist
 `CORS_ALLOWED_ORIGINS` must be set to the real production SPA host
-(e.g. `https://hearth.app,https://www.hearth.app`). The default
+(e.g. `https://anirudhhomes.in,https://www.anirudhhomes.in`). The default
 in `api-gateway/application.yaml` is `http://localhost:4200` — if
 that survives into prod, every browser request from the real SPA
 gets a 403 from the gateway's CORS filter.
@@ -243,18 +243,18 @@ After applying secret env vars + redeploying with prod profile:
 
 ```bash
 # Each service should respond UP — readiness should reflect DB + Kafka readiness
-curl -sf https://api.hearth.app/actuator/health/readiness
-curl -sf https://api.hearth.app/actuator/health/liveness
+curl -sf https://anirudhhomes.in/actuator/health/readiness
+curl -sf https://anirudhhomes.in/actuator/health/liveness
 
 # Secrets validator runs at startup — service should refuse to boot if
 # any sensitive placeholder is still in play. Check the boot log for:
 #   "SecretsBootstrapValidator: all sensitive secrets passed"
 
 # Confirm management surface trimmed (env / loggers should 404 in prod)
-curl -sf -o /dev/null -w "%{http_code}" https://api.hearth.app/actuator/env
+curl -sf -o /dev/null -w "%{http_code}" https://anirudhhomes.in/actuator/env
 # Expected: 404
 
 # Confirm CORS only allows the real SPA origin
-curl -I -H "Origin: https://evil.example" https://api.hearth.app/rentals/v1/properties/flats
+curl -I -H "Origin: https://evil.example" https://anirudhhomes.in/rentals/v1/properties/flats
 # Expected: no Access-Control-Allow-Origin header (or 403)
 ```

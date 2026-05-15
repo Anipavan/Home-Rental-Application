@@ -49,7 +49,7 @@ public class DocumentProperties {
      *
      * <p>Override via environment in any non-local environment where
      * the document blobs are served from a different origin than the
-     * SPA itself (e.g. {@code PUBLIC_BASE_URL=https://api.hearth.app/rentals/v1}).
+     * SPA itself (e.g. {@code PUBLIC_BASE_URL=https://anirudhhomes.in/rentals/v1}).
      *
      * <p>Earlier code defaulted to {@code http://localhost:8080/rentals/v1}
      * (absolute). That broke avatar rendering whenever the SPA was

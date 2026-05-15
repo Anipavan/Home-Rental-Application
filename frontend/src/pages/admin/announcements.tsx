@@ -202,7 +202,7 @@ export function AdminAnnouncementsPage() {
               onChange={(e) => setMessage(e.target.value)}
               maxLength={4000}
               rows={8}
-              placeholder="Hi everyone,\n\nWe'll be running scheduled maintenance on Tuesday between 02:00 and 04:00 IST. The app may be intermittently unavailable.\n\n— The Hearth team"
+              placeholder="Hi everyone,\n\nWe'll be running scheduled maintenance on Tuesday between 02:00 and 04:00 IST. The app may be intermittently unavailable.\n\n— The Anirudh Homes team"
               className="mt-1.5"
             />
             <p className="text-[11px] text-muted-foreground mt-1">
