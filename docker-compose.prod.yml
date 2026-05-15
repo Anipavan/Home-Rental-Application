@@ -34,10 +34,44 @@
 
 services:
 
+  # ─── Caddy reverse-proxy (TLS termination) ──────────────────────
+  # Public entry-point. Terminates TLS on :443, auto-renews
+  # Let's Encrypt certs for anirudhhomes.in + www.anirudhhomes.in,
+  # and forwards everything to the frontend container. This is the
+  # ONLY service bound to host ports in prod — frontend stays on the
+  # internal hra-net network.
+  #
+  # Persistent volumes:
+  #   caddy_data   — issued certs + ACME account key. Losing this
+  #                  triggers re-issue from scratch on next start
+  #                  (Let's Encrypt has a 5-cert/week rate limit).
+  #   caddy_config — Caddy's runtime config dump. Safe to lose;
+  #                  recreated from Caddyfile on start.
+  caddy:
+    image: caddy:2-alpine
+    container_name: anirudhhomes-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - hra-net
+    depends_on:
+      - frontend
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
   # ─── Frontend ────────────────────────────────────────────────────
-  # Built from the Dockerfile we just added. nginx serves the SPA +
-  # reverse-proxies /api/* to the gateway. This is the ONLY service
-  # that should be publicly exposed in prod (port 80 / 443).
+  # Built from frontend/Dockerfile. nginx inside serves the SPA +
+  # reverse-proxies /api/* to api-gateway:8080. NOT bound to host
+  # ports in prod — Caddy sits in front and forwards to frontend:80
+  # over the internal hra-net network.
   frontend:
     build:
       context: .
@@ -49,8 +83,8 @@ services:
     image: anirudhhomes/frontend:${IMAGE_TAG:-latest}
     container_name: anirudhhomes-frontend
     restart: unless-stopped
-    ports:
-      - "80:80"
+    # No host port binding — Caddy reaches us on the internal network.
+    ports: []
     depends_on:
       - api-gateway
     deploy:
@@ -280,6 +314,14 @@ services:
 # Override the bind-mount under uploads/ with a named docker volume
 # so document blobs survive `docker compose down` and host restarts.
 # For real prod, swap this for an S3 bucket (P1-10).
+#
+# caddy_data must survive container restarts — losing it forces a
+# full Let's Encrypt re-issue, and there's a 5-cert/week rate limit
+# per domain.
 volumes:
   anirudhhomes-documents:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
     driver: local

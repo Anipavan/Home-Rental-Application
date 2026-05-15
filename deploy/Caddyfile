@@ -1,0 +1,76 @@
+# ════════════════════════════════════════════════════════════════════
+#  Caddy reverse-proxy in front of the Anirudh Homes stack.
+#
+#  Caddy terminates TLS on 443, auto-fetches + renews Let's Encrypt
+#  certificates for anirudhhomes.in + www.anirudhhomes.in, and
+#  forwards everything to the `frontend` container on port 80. The
+#  frontend's internal nginx then serves the SPA + reverse-proxies
+#  /api/* to api-gateway:8080 (see frontend/nginx.conf).
+#
+#  Why Caddy instead of certbot+nginx:
+#    • Auto-renews certs — no cron job, no failure mode where you
+#      forget to bounce nginx after renewal.
+#    • Two-line config vs ~40 lines of nginx server blocks.
+#    • Default TLS settings are already best-practice
+#      (modern ciphers, HSTS, OCSP stapling).
+#
+#  Email in the global block is required by Let's Encrypt — they
+#  use it for cert-expiry warnings only (no marketing).
+# ════════════════════════════════════════════════════════════════════
+
+{
+    email support@anirudhhomes.in
+
+    # Tighten the default access-log to JSON so we can ship to a
+    # log aggregator later without re-parsing combined-log format.
+    log {
+        output stdout
+        format json
+        level INFO
+    }
+}
+
+# Apex + www both serve the same content. Caddy issues one cert that
+# covers both SANs.
+anirudhhomes.in, www.anirudhhomes.in {
+
+    # Redirect bare www → apex for canonical URLs. SEO + cookie
+    # consistency. Comment out if you want www to be the canonical
+    # host instead.
+    @www host www.anirudhhomes.in
+    redir @www https://anirudhhomes.in{uri} 308
+
+    # Strict transport security — once a browser sees this, it'll
+    # refuse to talk to anirudhhomes.in over plain http for 2 years.
+    # The `preload` flag opts into the HSTS preload list; submit at
+    # https://hstspreload.org once you're confident TLS won't break.
+    header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+
+    # Caddy already sets X-Content-Type-Options, X-Frame-Options,
+    # Referrer-Policy at sensible defaults. We just need to override
+    # X-Frame-Options to DENY (default is SAMEORIGIN).
+    header X-Frame-Options "DENY"
+    header Permissions-Policy "interest-cohort=()"
+
+    # Hide the server header.
+    header -Server
+
+    # Forward all traffic to the frontend container. The frontend's
+    # internal nginx handles SPA fallback + /api/* → gateway.
+    reverse_proxy frontend:80 {
+        # Pass the original host through so the gateway can build
+        # absolute URLs (presigned download links, magic auth links)
+        # that point at anirudhhomes.in, not "frontend".
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-Proto https
+    }
+}
+
+# Health-check / smoke-test endpoint on plain http for monitoring
+# tools that don't speak TLS. Returns 200 OK with no body. Comment
+# this whole block out if you don't need it.
+:80 {
+    @health path /healthz
+    respond @health 200
+}

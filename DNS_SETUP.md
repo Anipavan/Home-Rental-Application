@@ -8,6 +8,12 @@ to make the production deployment reachable AND let
 Skip nothing. SPF/DKIM/DMARC are the difference between "email
 lands in inbox" and "email lands in spam (or bounces)".
 
+> **Quick path for the current deploy (Resend chosen):** §1
+> (A records) + §3 Option B (Resend) + §4 (SPF, the Resend line) +
+> §5 (DMARC). The other options in §2/§3 are kept as reference for
+> if you ever swap providers. The mapping is also summarized at the
+> top of `deploy/DEPLOY_RUNBOOK.md` Phase 0.4.
+
 ---
 
 ## 1. Web traffic — point the domain at the droplet
