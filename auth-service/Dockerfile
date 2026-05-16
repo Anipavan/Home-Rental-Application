@@ -10,18 +10,18 @@ WORKDIR /workspace
 # 1. Build & install KafkaEvents (rarely changes — kept early for cache reuse).
 COPY KafkaEvents/pom.xml KafkaEvents/pom.xml
 COPY KafkaEvents/src     KafkaEvents/src
-RUN mvn -B -q -DskipTests -f KafkaEvents/pom.xml install
+RUN mvn -B -q -Dmaven.test.skip=true -f KafkaEvents/pom.xml install
 
 # 2. Build & install auth-commons.
 COPY auth-commons/pom.xml auth-commons/pom.xml
 COPY auth-commons/src     auth-commons/src
-RUN mvn -B -q -DskipTests -f auth-commons/pom.xml install
+RUN mvn -B -q -Dmaven.test.skip=true -f auth-commons/pom.xml install
 
 # 3. Resolve service deps offline, then compile + package.
 COPY auth-service/pom.xml auth-service/pom.xml
-RUN mvn -B -q -DskipTests -f auth-service/pom.xml dependency:go-offline
+RUN mvn -B -q -Dmaven.test.skip=true -f auth-service/pom.xml dependency:go-offline
 COPY auth-service/src auth-service/src
-RUN mvn -B -q -DskipTests -f auth-service/pom.xml package
+RUN mvn -B -q -Dmaven.test.skip=true -f auth-service/pom.xml package
 
 # ----- runtime stage -----
 FROM eclipse-temurin:21-jre-alpine

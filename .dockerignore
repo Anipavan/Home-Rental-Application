@@ -10,7 +10,6 @@
 **/.mvn/wrapper/maven-wrapper.jar
 
 # Node / frontend
-frontend/
 **/node_modules/
 **/dist/
 **/.next/

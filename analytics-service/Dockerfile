@@ -7,16 +7,16 @@ WORKDIR /workspace
 
 COPY KafkaEvents/pom.xml KafkaEvents/pom.xml
 COPY KafkaEvents/src     KafkaEvents/src
-RUN mvn -B -q -DskipTests -f KafkaEvents/pom.xml install
+RUN mvn -B -q -Dmaven.test.skip=true -f KafkaEvents/pom.xml install
 
 COPY auth-commons/pom.xml auth-commons/pom.xml
 COPY auth-commons/src     auth-commons/src
-RUN mvn -B -q -DskipTests -f auth-commons/pom.xml install
+RUN mvn -B -q -Dmaven.test.skip=true -f auth-commons/pom.xml install
 
 COPY analytics-service/pom.xml analytics-service/pom.xml
-RUN mvn -B -q -DskipTests -f analytics-service/pom.xml dependency:go-offline
+RUN mvn -B -q -Dmaven.test.skip=true -f analytics-service/pom.xml dependency:go-offline
 COPY analytics-service/src analytics-service/src
-RUN mvn -B -q -DskipTests -f analytics-service/pom.xml package
+RUN mvn -B -q -Dmaven.test.skip=true -f analytics-service/pom.xml package
 
 # ----- runtime stage -----
 FROM eclipse-temurin:21-jre-alpine
