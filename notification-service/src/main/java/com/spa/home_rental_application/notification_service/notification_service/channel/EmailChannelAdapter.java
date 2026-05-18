@@ -3,77 +3,60 @@ package com.spa.home_rental_application.notification_service.notification_servic
 import com.spa.home_rental_application.notification_service.notification_service.config.NotificationProperties;
 import com.spa.home_rental_application.notification_service.notification_service.entities.NotificationLog;
 import com.spa.home_rental_application.notification_service.notification_service.enums.NotificationType;
-import jakarta.mail.MessagingException;
-import jakarta.mail.internet.InternetAddress;
-import jakarta.mail.internet.MimeMessage;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Component;
 
-import java.io.UnsupportedEncodingException;
-import java.nio.charset.StandardCharsets;
-
 /**
- * SMTP-backed email delivery via Spring's {@link JavaMailSender}.
+ * HTTPS-backed email delivery via Resend's REST API at
+ * {@code https://api.resend.com/emails}.
  *
- * <p>Sends multipart messages with both an HTML and a plain-text body
- * so every mail client renders something readable. The HTML body is
- * wrapped in a branded template (emerald header bar + simple type
- * stack) when the stored {@code message} looks like raw text; pre-
- * rendered HTML (starts with {@code <}) passes through.
+ * <p><b>Why HTTPS instead of SMTP?</b> DigitalOcean blocks all outbound
+ * SMTP ports (25, 465, 587, 2525) by policy for new accounts (confirmed
+ * via support ticket #12223180). Port 443 (HTTPS) is universally
+ * allowed. Same Resend account, same verified domain, same DKIM/SPF/
+ * DMARC infrastructure — just different transport.
+ *
+ * <p>Authentication: reads the API key from {@code spring.mail.password}
+ * (which used to hold the SMTP password — now holds the Resend
+ * {@code re_*} key). Reusing the variable keeps the deploy contract
+ * unchanged: same env var, same .env, same secret rotation procedure.
+ *
+ * <p>Branding: HTML body is wrapped in our emerald header / content card
+ * shell when the stored {@code message} looks like raw text. Pre-rendered
+ * HTML (starts with {@code <}) passes through as-is.
  *
  * <p>Registration is gated on {@code app.notification.delivery-enabled}
  * (default {@code true}). Flip to {@code false} to swap for
- * {@link NoopChannelAdapter}. The {@link JavaMailSender} dependency
- * is satisfied by Spring Boot's {@code MailSenderAutoConfiguration},
- * which always creates one because our {@code application.yaml}
- * defaults {@code spring.mail.host} to {@code smtp.gmail.com} — so
- * the auto-config condition always matches and constructor injection
- * always succeeds.
- *
- * <p><b>History:</b> this used to also have
- * {@code @ConditionalOnBean(JavaMailSender.class)} as a second gate,
- * but that's a known Spring Boot gotcha — {@code @ConditionalOnBean}
- * on user-defined {@code @Component} classes evaluates BEFORE
- * auto-configurations run, so the JavaMailSender bean wasn't yet in
- * the context when the condition checked, and the adapter silently
- * failed to register. The Spring Boot docs explicitly warn against
- * this pattern. Removed in favour of relying on constructor injection
- * (Spring will throw a loud "no bean found" error at startup if
- * {@code spring.mail.host} is somehow unset, which is much easier to
- * debug than the silent "fall through to noop" we used to have).
+ * {@link NoopChannelAdapter}.
  */
 @Component
 @Slf4j
 @ConditionalOnProperty(prefix = "app.notification", name = "delivery-enabled", havingValue = "true", matchIfMissing = true)
 public class EmailChannelAdapter implements NotificationChannelAdapter {
 
-    private final JavaMailSender mailSender;
+    private final ResendHttpClient resendClient;
     private final NotificationProperties props;
 
-    public EmailChannelAdapter(JavaMailSender mailSender, NotificationProperties props) {
-        this.mailSender = mailSender;
+    public EmailChannelAdapter(ResendHttpClient resendClient, NotificationProperties props) {
+        this.resendClient = resendClient;
         this.props = props;
         // Startup banner — tells the operator at a glance whether the
         // email channel is live. If you DON'T see this line in
         // notification-service startup logs, the channel didn't
-        // register (no JavaMailSender bean → no spring.mail.host set
-        // → no MAIL_USERNAME/MAIL_PASSWORD env vars).
+        // register (delivery-enabled=false in application.yaml).
         log.info(
                 "\n" +
-                "============================================================\n" +
-                " EMAIL channel REGISTERED — JavaMailSender wired.\n" +
-                "   fromEmail : {}\n" +
-                "   fromName  : {}\n" +
-                "   sender    : {}\n" +
-                " If outgoing mail fails, check the MAIL_USERNAME /\n" +
-                " MAIL_PASSWORD env vars and that the Gmail account has an\n" +
-                " App Password (NOT a regular login password).\n" +
-                "============================================================",
-                props.getFromEmail(), props.getFromName(),
-                mailSender.getClass().getSimpleName());
+                        "============================================================\n" +
+                        " EMAIL channel REGISTERED — Resend HTTPS API wired.\n" +
+                        "   fromEmail : {}\n" +
+                        "   fromName  : {}\n" +
+                        "   endpoint  : https://api.resend.com/emails (port 443)\n" +
+                        " Outbound SMTP (587/465/2525) is blocked by DigitalOcean.\n" +
+                        " Using Resend REST API on port 443 — same API key in\n" +
+                        " SPRING_MAIL_PASSWORD env var, same domain DKIM/SPF/DMARC.\n" +
+                        "============================================================",
+                props.getFromEmail(), props.getFromName());
     }
 
     @Override
@@ -84,44 +67,29 @@ public class EmailChannelAdapter implements NotificationChannelAdapter {
         if (n.getRecipient() == null || n.getRecipient().isBlank()) {
             throw new IllegalArgumentException("Email recipient is missing");
         }
-        MimeMessage mime = mailSender.createMimeMessage();
-        try {
-            MimeMessageHelper helper = new MimeMessageHelper(
-                    mime, true /* multipart */, StandardCharsets.UTF_8.name());
-            helper.setFrom(new InternetAddress(
-                    props.getFromEmail(), props.getFromName(),
-                    StandardCharsets.UTF_8.name()));
-            helper.setTo(n.getRecipient());
-            helper.setSubject(n.getSubject() == null ? "Notification" : n.getSubject());
-            String body = n.getMessage() == null ? "" : n.getMessage();
-            String plain = looksLikeHtml(body) ? htmlToText(body) : body;
-            String html = looksLikeHtml(body) ? body : wrapInBrandTemplate(n.getSubject(), body);
-            helper.setText(plain, html);
-            mailSender.send(mime);
-            log.info("Sent email to={} subject={}", n.getRecipient(), n.getSubject());
-        } catch (MessagingException | UnsupportedEncodingException ex) {
-            // Wrap so the dispatcher's retry path sees a runtime
-            // exception instead of a checked one.
-            throw new RuntimeException("Failed to send email: " + ex.getMessage(), ex);
+        String subject = n.getSubject() == null ? "Notification" : n.getSubject();
+        String body = n.getMessage() == null ? "" : n.getMessage();
+        // Same branding logic as the old SMTP path: raw text gets wrapped
+        // in the emerald header shell; pre-rendered HTML passes through.
+        // Resend auto-generates the text/plain alternative from the HTML
+        // so we no longer need to render both bodies ourselves.
+        String html = looksLikeHtml(body) ? body : wrapInBrandTemplate(n.getSubject(), body);
+
+        boolean delivered = resendClient.sendEmail(n.getRecipient(), subject, html);
+        if (!delivered) {
+            // Throw so the dispatcher's retry path picks it up. The
+            // underlying cause (4xx response, network timeout, etc.) was
+            // already logged at WARN/ERROR by ResendHttpClient.
+            throw new RuntimeException(
+                    "Failed to send email via Resend to " + n.getRecipient());
         }
+        log.info("Sent email to={} subject={}", n.getRecipient(), subject);
     }
 
     private static boolean looksLikeHtml(String s) {
         if (s == null) return false;
         String t = s.trim();
         return t.startsWith("<") && t.contains(">");
-    }
-
-    /** Crude tag-strip for the text/plain leg of the multipart. */
-    private static String htmlToText(String html) {
-        if (html == null) return "";
-        return html.replaceAll("<[^>]+>", " ")
-                .replaceAll("&nbsp;", " ")
-                .replaceAll("&amp;", "&")
-                .replaceAll("&lt;", "<")
-                .replaceAll("&gt;", ">")
-                .replaceAll("\\s+", " ")
-                .trim();
     }
 
     /**
@@ -145,8 +113,8 @@ public class EmailChannelAdapter implements NotificationChannelAdapter {
                 + "</td></tr>"
                 + "<tr><td style=\"padding:28px 28px 24px;font-size:15px;line-height:1.55;\">"
                 + (safeSubject.isBlank() ? ""
-                    : "<h1 style=\"margin:0 0 14px;font-size:20px;font-weight:700;color:#0f172a;\">"
-                       + safeSubject + "</h1>")
+                : "<h1 style=\"margin:0 0 14px;font-size:20px;font-weight:700;color:#0f172a;\">"
+                + safeSubject + "</h1>")
                 + "<div style=\"color:#334155;\">" + bodyHtml + "</div>"
                 + "</td></tr>"
                 + "<tr><td style=\"padding:14px 28px 22px;font-size:11px;color:#64748b;border-top:1px solid #e2e8f0;\">"
