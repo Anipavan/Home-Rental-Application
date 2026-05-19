@@ -1,9 +1,26 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
+import {
+  MapContainer,
+  Marker,
+  Popup,
+  TileLayer,
+  Circle,
+  useMap,
+  useMapEvents,
+} from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { Crosshair, X } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { formatINR } from "@/lib/utils";
 import { propertiesApi } from "@/lib/api/properties";
 import type { BuildingResponseDTO, FlatResponseDTO } from "@/types/api";
@@ -18,9 +35,10 @@ import type { BuildingResponseDTO, FlatResponseDTO } from "@/types/api";
  * + key stats + "View →" link to the property-detail page.
  *
  * <p>Map centering rules:
- *   1. If a user-supplied lat/lng is passed, use that.
- *   2. Else if any flat has coords, centre on the first flat with coords.
- *   3. Else fall back to India centroid (~22°N, 79°E) at zoom 5.
+ *   1. If the user has dropped a search pin (click on the map), use that.
+ *   2. Else if a user-supplied lat/lng is passed, use that.
+ *   3. Else if any flat has coords, centre on the first flat with coords.
+ *   4. Else fall back to India centroid (~22°N, 79°E) at zoom 5.
  *
  * <p>Buildings without coordinates are silently omitted (they're
  * already excluded by the geosearch endpoint, but the listing-grid
@@ -45,9 +63,26 @@ interface Props {
 
 const INDIA_CENTER: [number, number] = [22.0, 79.0];
 
+/**
+ * Radius preset options for the "search around this pin" filter.
+ * Defaults to 5 km — covers most neighbourhood-scale rental searches
+ * in Indian cities. 1km tightens to a single locality, 25km opens up
+ * to whole-metro coverage.
+ */
+const RADIUS_OPTIONS = [1, 3, 5, 10, 25] as const;
+
 export function PropertyMapView({ flats, buildings, userCenter }: Props) {
+  /**
+   * User-clicked search pin. Setting this filters the visible
+   * markers to flats within {@link radiusKm} of the pin and draws
+   * a circle showing the search area. Null = no spatial filter
+   * applied (map shows every flat with a building pin).
+   */
+  const [searchPin, setSearchPin] = useState<{ lat: number; lng: number } | null>(null);
+  const [radiusKm, setRadiusKm] = useState<number>(5);
+
   // Build the marker list — only flats whose parent building has a pin.
-  const pins = useMemo(() => {
+  const allPins = useMemo(() => {
     return flats.flatMap((flat) => {
       const b = buildings[flat.buildingId];
       if (!b || b.latitude == null || b.longitude == null) return [];
@@ -55,34 +90,145 @@ export function PropertyMapView({ flats, buildings, userCenter }: Props) {
     });
   }, [flats, buildings]);
 
+  // Apply the radius filter when a search pin is dropped. Haversine
+  // distance to keep the maths accurate over India-scale ranges.
+  const pins = useMemo(() => {
+    if (!searchPin) return allPins;
+    return allPins.filter(
+      (p) => haversineKm(searchPin.lat, searchPin.lng, p.lat, p.lng) <= radiusKm,
+    );
+  }, [allPins, searchPin, radiusKm]);
+
   // Centre + zoom heuristic.
   let center: [number, number] = INDIA_CENTER;
   let zoom = 5;
-  if (userCenter) {
+  if (searchPin) {
+    center = [searchPin.lat, searchPin.lng];
+    // Zoom appropriate for the radius — tighter radius, tighter zoom.
+    zoom =
+      radiusKm <= 1 ? 14 : radiusKm <= 3 ? 13 : radiusKm <= 5 ? 12 : radiusKm <= 10 ? 11 : 10;
+  } else if (userCenter) {
     center = [userCenter.lat, userCenter.lng];
     zoom = 12;
-  } else if (pins.length > 0) {
-    center = [pins[0].lat, pins[0].lng];
+  } else if (allPins.length > 0) {
+    center = [allPins[0].lat, allPins[0].lng];
     zoom = 11;
   }
 
   return (
     <Card className="overflow-hidden">
+      {/* Top control bar — radius preset + clear button. Sits above
+          the map so it's always visible (Leaflet panes can occlude
+          floating overlays during pan/zoom). */}
+      <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b text-xs">
+        <Crosshair className="size-3.5 text-muted-foreground" />
+        <span className="text-muted-foreground">
+          {searchPin
+            ? `Searching within ${radiusKm} km of dropped pin`
+            : "Tip: click anywhere on the map to search around that spot"}
+        </span>
+        {searchPin && (
+          <>
+            <div className="ml-auto flex items-center gap-2">
+              <span className="text-muted-foreground">Radius:</span>
+              <Select
+                value={String(radiusKm)}
+                onValueChange={(v) => setRadiusKm(Number(v))}
+              >
+                <SelectTrigger className="h-7 w-[88px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {RADIUS_OPTIONS.map((r) => (
+                    <SelectItem key={r} value={String(r)} className="text-xs">
+                      {r} km
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setSearchPin(null)}
+              >
+                <X className="size-3" /> Clear pin
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+
       <div className="relative h-[600px]">
         <MapContainer
           center={center}
           zoom={zoom}
           scrollWheelZoom
           className="h-full w-full"
-          // Leaflet attaches CSS by default; we let it.
         >
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
-          {/* Auto-fit bounds to all pins when there are 2+ — keeps
-              every result visible on the first paint. */}
-          {pins.length > 1 && <FitBoundsToPins points={pins.map((p) => [p.lat, p.lng])} />}
+
+          {/* Click-to-set-search-center event handler. Drops a pin
+              and triggers the radius filter. */}
+          <MapClickHandler
+            onClick={(lat, lng) => setSearchPin({ lat, lng })}
+          />
+
+          {/* Auto-recentre when the searchPin / userCenter changes.
+              Without this, dropping a pin would set the state but
+              the map view would stay on its previous centre until
+              the next user pan. */}
+          <RecentreOn
+            target={searchPin ?? userCenter ?? null}
+            zoom={
+              searchPin
+                ? radiusKm <= 1
+                  ? 14
+                  : radiusKm <= 3
+                    ? 13
+                    : radiusKm <= 5
+                      ? 12
+                      : radiusKm <= 10
+                        ? 11
+                        : 10
+                : 12
+            }
+          />
+
+          {/* Auto-fit bounds to all pins when there are 2+ AND no
+              search pin is active — keeps every result visible on
+              first paint, but lets the search-pin zoom take over
+              once the user drops one. */}
+          {pins.length > 1 && !searchPin && (
+            <FitBoundsToPins points={pins.map((p) => [p.lat, p.lng])} />
+          )}
+
+          {/* Search circle — visualises the radius the filter is
+              applying. Sits under the markers so click targets
+              behave correctly. */}
+          {searchPin && (
+            <>
+              <Circle
+                center={[searchPin.lat, searchPin.lng]}
+                radius={radiusKm * 1000}
+                pathOptions={{
+                  color: "#0d9488",
+                  fillColor: "#0d9488",
+                  fillOpacity: 0.08,
+                  weight: 2,
+                }}
+              />
+              <Marker
+                position={[searchPin.lat, searchPin.lng]}
+                icon={searchPinIcon()}
+                interactive={false}
+              />
+            </>
+          )}
+
           {pins.map(({ flat, building, lat, lng }) => (
             <Marker
               key={flat.id}
@@ -99,21 +245,63 @@ export function PropertyMapView({ flats, buildings, userCenter }: Props) {
         {pins.length === 0 && (
           <div className="absolute inset-0 grid place-items-center pointer-events-none">
             <div className="bg-background/90 backdrop-blur rounded-lg px-4 py-3 shadow-soft text-sm text-muted-foreground">
-              {flats.length === 0
-                ? "No homes match your filters."
-                : "None of these homes have map coordinates yet."}
+              {searchPin
+                ? `No homes within ${radiusKm} km of this pin — try a larger radius.`
+                : flats.length === 0
+                  ? "No homes match your filters."
+                  : "None of these homes have map coordinates yet."}
             </div>
           </div>
         )}
       </div>
-      {pins.length > 0 && pins.length < flats.length && (
+      {pins.length > 0 && pins.length < allPins.length && (
         <div className="px-4 py-2 text-[11px] text-muted-foreground border-t">
-          Showing {pins.length} of {flats.length} on the map — {flats.length - pins.length}{" "}
-          {flats.length - pins.length === 1 ? "listing has" : "listings have"} no pin yet.
+          {searchPin
+            ? `Showing ${pins.length} of ${allPins.length} mapped homes within ${radiusKm} km.`
+            : `Showing ${pins.length} of ${flats.length} on the map — ${flats.length - pins.length} ${flats.length - pins.length === 1 ? "listing has" : "listings have"} no pin yet.`}
         </div>
       )}
     </Card>
   );
+}
+
+/**
+ * Map-event listener: captures clicks on the map background (not on
+ * markers/popups — those receive their own click events and
+ * Leaflet's bubbling stops there). Used to drop the search pin.
+ */
+function MapClickHandler({
+  onClick,
+}: {
+  onClick: (lat: number, lng: number) => void;
+}) {
+  useMapEvents({
+    click(e) {
+      onClick(e.latlng.lat, e.latlng.lng);
+    },
+  });
+  return null;
+}
+
+/**
+ * Imperative re-centre. Runs in a useMemo so it fires only when the
+ * target lat/lng actually changes. We use `flyTo` rather than
+ * `setView` so the transition is smooth — feels more like a search
+ * result than a teleport.
+ */
+function RecentreOn({
+  target,
+  zoom,
+}: {
+  target: { lat: number; lng: number } | null;
+  zoom: number;
+}) {
+  const map = useMap();
+  useMemo(() => {
+    if (!target) return;
+    map.flyTo([target.lat, target.lng], zoom, { duration: 0.6 });
+  }, [target, zoom, map]);
+  return null;
 }
 
 /**
@@ -129,6 +317,22 @@ function FitBoundsToPins({ points }: { points: [number, number][] }) {
     map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
   }, [points, map]);
   return null;
+}
+
+/**
+ * Haversine distance in kilometres between two lat/lng points. We
+ * inline rather than depend on a geo library — the formula is short,
+ * stable, and the precision is plenty for "within N km" filtering.
+ */
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371; // mean Earth radius in km
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
 }
 
 /**
@@ -154,6 +358,32 @@ function makePriceIcon(rentAmount: number) {
     className: "",
     iconSize: [60, 24],
     iconAnchor: [30, 12],
+  });
+}
+
+/**
+ * Icon for the user-dropped search pin. Visually distinct from the
+ * green price pills — a slate-coloured target reticle so it reads
+ * as "search centre" rather than "another listing".
+ */
+function searchPinIcon() {
+  const html = `
+    <div style="
+      width:28px;height:28px;border-radius:50%;
+      background:#0f172a;color:#fff;
+      display:grid;place-items:center;
+      border:3px solid #fff;
+      box-shadow:0 6px 12px -2px rgba(15,23,42,0.5);
+    ">
+      <div style="
+        width:8px;height:8px;background:#fff;border-radius:50%;
+      "></div>
+    </div>`;
+  return L.divIcon({
+    html,
+    className: "",
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
   });
 }
 

@@ -27,6 +27,15 @@ export function FlatNewPage() {
   const [buildingId, setBuildingId] = useState<string>(
     params.get("building") ?? "",
   );
+  // Tenant-preference toggles. Default ON so an owner who doesn't
+  // care to restrict is maximally inclusive — they have to actively
+  // un-check to filter renters out. Common Indian rental UX
+  // ("bachelor not allowed" / "family only" tags) maps to flipping
+  // exactly one of these to OFF; flipping both off would hide the
+  // listing from everyone using either filter, so the form blocks
+  // that pathological combo via the disabled-submit guard below.
+  const [acceptsBachelor, setAcceptsBachelor] = useState(true);
+  const [acceptsFamily, setAcceptsFamily] = useState(true);
 
   const buildingsQ = useQuery({
     queryKey: ["my-buildings", authUserId],
@@ -65,6 +74,8 @@ export function FlatNewPage() {
       bathrooms: Number(fd.get("bathrooms") ?? 1),
       areaSqft: Number(fd.get("areaSqft") ?? 0),
       rentAmount: Number(fd.get("rentAmount") ?? 0),
+      acceptsBachelor,
+      acceptsFamily,
     });
   }
 
@@ -105,6 +116,51 @@ export function FlatNewPage() {
               <Field label="Area (sqft)" name="areaSqft" type="number" />
             </div>
             <Field label="Monthly rent (₹)" name="rentAmount" type="number" required />
+
+            {/* Tenant-preference toggles. Default both ON so the
+                listing is visible to every renter. Owners who only
+                want one type of tenant un-check the other — that
+                flips the listing out of the corresponding browse
+                filter on /app/browse. */}
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-medium">
+                Who can rent this flat?
+              </legend>
+              <p className="text-[11px] text-muted-foreground -mt-1">
+                Both ticked = open to everyone (default). Uncheck to
+                restrict — your listing will be hidden from renters
+                who don't match.
+              </p>
+              <label className="flex items-center gap-2.5 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={acceptsBachelor}
+                  onChange={(e) => setAcceptsBachelor(e.target.checked)}
+                  className="size-4 rounded border-input accent-primary cursor-pointer"
+                />
+                <span>Open to bachelors (single tenants, PG-style)</span>
+              </label>
+              <label className="flex items-center gap-2.5 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={acceptsFamily}
+                  onChange={(e) => setAcceptsFamily(e.target.checked)}
+                  className="size-4 rounded border-input accent-primary cursor-pointer"
+                />
+                <span>Open to families (married couples / with children)</span>
+              </label>
+              {!acceptsBachelor && !acceptsFamily && (
+                <p
+                  role="alert"
+                  className="text-[11px] text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-2 py-1.5"
+                >
+                  At least one box should be ticked — otherwise the
+                  listing will be invisible to every renter using these
+                  filters.
+                </p>
+              )}
+            </fieldset>
+
             <div className="flex justify-end gap-2 pt-2">
               <Button asChild variant="ghost">
                 <Link to="/owner/flats">Cancel</Link>

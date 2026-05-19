@@ -121,6 +121,33 @@ public class Flat {
     @Column(name = "description", length = 2000)
     private String description;
 
+    /* ─────────── Tenant-preference filters ───────────
+     * In Indian rentals, "bachelor not allowed" / "family only" is a
+     * common restriction that significantly shrinks a renter's
+     * shortlist. Surface these as explicit booleans rather than
+     * leaving renters to read between the lines of free-text amenity
+     * descriptions.
+     *
+     * Both default to TRUE so legacy listings (and owners who don't
+     * care to filter) stay maximally inclusive — the filter only
+     * excludes a flat when the owner has explicitly turned the
+     * preference off.
+     */
+
+    /** True if the owner accepts bachelor (unmarried, often shared)
+     *  tenants. Setting this to FALSE hides the listing from anyone
+     *  who filters by "Bachelor friendly" on the browse page. */
+    @Column(name = "accepts_bachelor")
+    @Builder.Default
+    private Boolean acceptsBachelor = true;
+
+    /** True if the owner accepts family tenants (typically married
+     *  couples with or without children). FALSE makes the listing
+     *  invisible to the "Family friendly" filter. */
+    @Column(name = "accepts_family")
+    @Builder.Default
+    private Boolean acceptsFamily = true;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

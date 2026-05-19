@@ -56,6 +56,12 @@ public class FlatMapper {
                 .availableFrom(dto.availableFrom())
                 .depositAmount(dto.depositAmount())
                 .description(dto.description())
+                // Default to TRUE when the client omits the field —
+                // keeps legacy + minimally-filled forms maximally
+                // inclusive. The @Builder.Default on the entity also
+                // applies, but explicit here makes the contract clear.
+                .acceptsBachelor(dto.acceptsBachelor() == null ? Boolean.TRUE : dto.acceptsBachelor())
+                .acceptsFamily(dto.acceptsFamily() == null ? Boolean.TRUE : dto.acceptsFamily())
                 .build();
     }
 
@@ -92,7 +98,14 @@ public class FlatMapper {
                 flat.getDescription(),
                 flat.getScheduledVacateDate(),
                 flat.getCreatedAt(),
-                flat.getUpdatedAt()
+                flat.getUpdatedAt(),
+                // Legacy rows pre-migration return null from
+                // getAcceptsBachelor/Family even though the column
+                // has a DB-level default — Hibernate doesn't re-read
+                // the row post-insert. Coerce to TRUE here so the FE
+                // filter doesn't accidentally exclude old listings.
+                flat.getAcceptsBachelor() == null ? Boolean.TRUE : flat.getAcceptsBachelor(),
+                flat.getAcceptsFamily() == null ? Boolean.TRUE : flat.getAcceptsFamily()
         );
     }
 

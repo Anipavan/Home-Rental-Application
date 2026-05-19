@@ -44,8 +44,11 @@ import { toast } from "@/hooks/use-toast";
  */
 
 const SUPPORT_EMAIL = "support@anirudhhomes.in";
-const SUPPORT_WHATSAPP = "919999999999"; // E.164 without `+`
-const SUPPORT_WHATSAPP_DISPLAY = "+91 99999 99999";
+// Real support line. E.164 without `+` for the wa.me deep link to
+// work — Indian numbers need the 91 prefix so WhatsApp routes
+// internationally even when the visitor is on Indian cellular.
+const SUPPORT_WHATSAPP = "919108201223";
+const SUPPORT_WHATSAPP_DISPLAY = "+91 91082 01223";
 
 interface Props {
   variant?: "button" | "menu-item";

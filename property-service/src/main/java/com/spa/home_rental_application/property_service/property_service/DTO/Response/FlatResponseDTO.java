@@ -44,5 +44,11 @@ public record FlatResponseDTO(
          * the flat to vacant on this date. */
         LocalDate scheduledVacateDate,
         LocalDateTime createdAt,
-        LocalDateTime updatedAt
+        LocalDateTime updatedAt,
+        /* Tenant-preference filters. Both default to TRUE on legacy
+         * rows so older listings stay maximally inclusive — the
+         * browse filter excludes a flat only when the owner has
+         * explicitly turned the preference off. */
+        Boolean acceptsBachelor,
+        Boolean acceptsFamily
 ) {}

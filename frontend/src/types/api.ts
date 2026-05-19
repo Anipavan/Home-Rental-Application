@@ -250,6 +250,15 @@ export interface FlatResponseDTO {
   scheduledVacateDate?: string | null;
   createdAt?: string;
   updatedAt?: string;
+  /**
+   * Owner-declared tenant preferences. Default to TRUE server-side
+   * so legacy listings stay maximally inclusive. False = the owner
+   * explicitly opted out of that tenant type ("Family only" / "No
+   * bachelors") and the browse filter excludes the listing when
+   * that filter is active.
+   */
+  acceptsBachelor?: boolean | null;
+  acceptsFamily?: boolean | null;
 }
 
 export interface FlatRequestDTO {
@@ -269,6 +278,12 @@ export interface FlatRequestDTO {
   availableFrom?: string;
   depositAmount?: number;
   description?: string;
+  /** Owner-declared "I'm OK to rent to bachelors" toggle. Defaults
+   *  to true server-side when the request omits it. */
+  acceptsBachelor?: boolean;
+  /** Owner-declared "I'm OK to rent to families" toggle. Defaults
+   *  to true server-side when the request omits it. */
+  acceptsFamily?: boolean;
 }
 
 export interface AssignFlatRequest {

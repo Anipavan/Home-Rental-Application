@@ -425,6 +425,13 @@ public class FlatServiceImpul implements FlatService {
         existing.setAvailableFrom(dto.getAvailableFrom());
         existing.setDepositAmount(dto.getDepositAmount());
         existing.setDescription(dto.getDescription());
+        // Tenant-preference flags — same overwrite semantics. A null
+        // here would clear the value; FlatMapper.toEntity already
+        // defaults to TRUE for new creates, so the update path
+        // preserves the same "default-open" contract by treating
+        // null as TRUE rather than persisting a null.
+        existing.setAcceptsBachelor(dto.getAcceptsBachelor() == null ? Boolean.TRUE : dto.getAcceptsBachelor());
+        existing.setAcceptsFamily(dto.getAcceptsFamily() == null ? Boolean.TRUE : dto.getAcceptsFamily());
         existing.setUpdatedAt(LocalDateTime.now());
         Flat saved = flatRepo.save(existing);
 

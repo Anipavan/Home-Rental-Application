@@ -20,6 +20,8 @@ import {
   Search,
   SlidersHorizontal,
   Sofa,
+  Sparkles,
+  Users,
   X,
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
@@ -74,6 +76,28 @@ import type { BuildingResponseDTO, FlatResponseDTO } from "@/types/api";
 
 type SortKey = "recent" | "priceLow" | "priceHigh" | "areaHigh" | "bedsHigh";
 
+/**
+ * Canonical amenity keywords used by the multi-select chip filter.
+ * Each entry pairs a display label with the lowercased keyword used
+ * for fuzzy matching against the building's free-text `amenities`
+ * column. Matching is substring + case-insensitive so a building
+ * that wrote "Lifts available" still matches the "Lift" chip.
+ *
+ * Keep this list aligned with the icon picker on
+ * pages/public/property-detail.tsx so the chips visually mirror
+ * what the user will see on the listing.
+ */
+export const AMENITY_OPTIONS: Array<{ key: string; label: string; match: RegExp }> = [
+  { key: "wifi", label: "Wi-Fi", match: /wi[-\s]?fi|internet|broadband/i },
+  { key: "parking", label: "Car parking", match: /car park|parking|garage/i },
+  { key: "gym", label: "Gym", match: /gym|fitness/i },
+  { key: "pool", label: "Swimming pool", match: /pool|swim/i },
+  { key: "garden", label: "Garden", match: /garden|lawn|park\b/i },
+  { key: "lift", label: "Lift", match: /lift|elevator/i },
+  { key: "security", label: "24/7 security", match: /security|cctv|guard/i },
+  { key: "power", label: "Power back-up", match: /power[-\s]?back|generator|inverter|backup/i },
+];
+
 const DEFAULT_FILTERS = {
   city: "any",
   bhk: "any",
@@ -95,6 +119,18 @@ const DEFAULT_FILTERS = {
    *  before this date" — flats whose availableFrom is null are
    *  excluded only when the user explicitly picks a date. */
   availableBy: "",
+  /** Tenant-preference filter. "any" = ignore. "bachelor" = only
+   *  flats where acceptsBachelor=true. "family" = only flats where
+   *  acceptsFamily=true. Single-pick rather than multi because a
+   *  renter is one or the other for any given search. */
+  tenantPref: "any" as "any" | "bachelor" | "family",
+  /**
+   * Multi-select amenity keys (see {@link AMENITY_OPTIONS}). A flat
+   * matches when its parent building's free-text `amenities` field
+   * contains EVERY selected keyword (AND semantics, not OR). Empty
+   * array = no amenity filter applied.
+   */
+  amenityKeys: [] as string[],
   sort: "recent" as SortKey,
 };
 
@@ -131,14 +167,17 @@ export function BrowsePage() {
     queryFn: () => propertiesApi.flats.list(0, 60),
   });
 
-  // Buildings query — needed for the Map view to resolve each flat's
-  // lat/lng (the geo-pin lives on the parent Building, not the Flat).
-  // Only fires when the user actually switches to map; until then the
-  // list view doesn't need it. Cached for 5min — buildings don't move.
+  // Buildings query — needed by:
+  //   1. The Map view, to resolve each flat's lat/lng (the geo-pin
+  //      lives on the parent Building, not the Flat).
+  //   2. The amenity filter on the list view (amenities are a
+  //      free-text field on Building too).
+  // Always-fires now — buildings are a small table (~200 rows max
+  // at this scale), cached 5min, and the marginal payload is
+  // dwarfed by the flat list itself.
   const buildingsQ = useQuery({
     queryKey: ["buildings", "all"],
     queryFn: () => propertiesApi.buildings.list(0, 200),
-    enabled: viewMode === "map",
     staleTime: 5 * 60_000,
   });
   const buildingsById = useMemo(() => {
@@ -160,8 +199,8 @@ export function BrowsePage() {
   }, [data]);
 
   const filtered = useMemo(
-    () => applyFilters(data?.content ?? [], q, filters),
-    [data, q, filters],
+    () => applyFilters(data?.content ?? [], q, filters, buildingsById),
+    [data, q, filters, buildingsById],
   );
 
   const activeChips = describeActiveFilters(filters, q);
@@ -621,6 +660,7 @@ function applyFilters(
   rows: FlatResponseDTO[],
   q: string,
   f: Filters,
+  buildingsById: Record<string, BuildingResponseDTO>,
 ): FlatResponseDTO[] {
   let list = rows;
 
@@ -730,6 +770,30 @@ function applyFilters(
     );
   }
 
+  // Tenant preference. Legacy rows where the field is null are
+  // treated as TRUE (matches the backend default-open contract).
+  if (f.tenantPref === "bachelor") {
+    list = list.filter((flat) => flat.acceptsBachelor !== false);
+  } else if (f.tenantPref === "family") {
+    list = list.filter((flat) => flat.acceptsFamily !== false);
+  }
+
+  // Amenity multi-select. AND semantics — a flat matches when its
+  // parent building's amenities text matches EVERY selected
+  // keyword. Substring + case-insensitive so "Lifts available"
+  // matches the "Lift" chip and "Free Wi-Fi" matches "Wi-Fi".
+  if (f.amenityKeys.length > 0) {
+    const selectedPatterns = f.amenityKeys
+      .map((k) => AMENITY_OPTIONS.find((o) => o.key === k))
+      .filter((o): o is (typeof AMENITY_OPTIONS)[number] => Boolean(o))
+      .map((o) => o.match);
+    list = list.filter((flat) => {
+      const haystack = buildingsById[flat.buildingId]?.amenities ?? "";
+      if (!haystack) return false;
+      return selectedPatterns.every((p) => p.test(haystack));
+    });
+  }
+
   // Sort last so it operates on the filtered set.
   switch (f.sort) {
     case "priceLow":
@@ -804,7 +868,9 @@ type ChipKey =
   | "vacantOnly"
   | "furnishing"
   | "petPolicy"
-  | "availableBy";
+  | "availableBy"
+  | "tenantPref"
+  | "amenityKeys";
 
 function describeActiveFilters(f: Filters, q: string): Chip[] {
   const chips: Chip[] = [];
@@ -846,6 +912,24 @@ function describeActiveFilters(f: Filters, q: string): Chip[] {
       label: f.petPolicy === "allowed" ? "Pet friendly" : "No pets",
     });
   if (f.availableBy) chips.push({ key: "availableBy", label: `Move-in by ${f.availableBy}` });
+  if (f.tenantPref !== "any") {
+    chips.push({
+      key: "tenantPref",
+      label: f.tenantPref === "bachelor" ? "Bachelor-friendly" : "Family-friendly",
+    });
+  }
+  if (f.amenityKeys.length > 0) {
+    const labels = f.amenityKeys
+      .map((k) => AMENITY_OPTIONS.find((o) => o.key === k)?.label)
+      .filter(Boolean) as string[];
+    chips.push({
+      key: "amenityKeys",
+      label:
+        labels.length === 1
+          ? labels[0]
+          : `${labels.length} amenities`,
+    });
+  }
   return chips;
 }
 
@@ -890,6 +974,8 @@ function advancedCount(f: Filters): number {
   if (f.furnishing !== "any") n++;
   if (f.petPolicy !== "any") n++;
   if (f.availableBy) n++;
+  if (f.tenantPref !== "any") n++;
+  if (f.amenityKeys.length > 0) n++;
   return n;
 }
 
@@ -929,6 +1015,12 @@ function clearOne(
         break;
       case "availableBy":
         next.availableBy = "";
+        break;
+      case "tenantPref":
+        next.tenantPref = "any";
+        break;
+      case "amenityKeys":
+        next.amenityKeys = [];
         break;
     }
     return next;
@@ -1145,6 +1237,87 @@ function MoreFiltersDialog({
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          {/* Tenant preference — who the listing is open to. Renders
+              as a 3-button segmented control: Any / Bachelor / Family.
+              Matches the owner-side toggle on the flat-new form. */}
+          <div>
+            <Label className="flex items-center gap-1.5 mb-2">
+              <Users className="size-3.5 text-muted-foreground" />
+              Tenant preference
+            </Label>
+            <div className="grid grid-cols-3 gap-1.5 text-sm">
+              {([
+                { v: "any", label: "Any" },
+                { v: "bachelor", label: "Bachelor" },
+                { v: "family", label: "Family" },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.v}
+                  type="button"
+                  onClick={() =>
+                    setDraft((d) => ({ ...d, tenantPref: opt.v }))
+                  }
+                  className={cn(
+                    "rounded-lg border px-2 py-2 transition-colors",
+                    draft.tenantPref === opt.v
+                      ? "border-primary bg-primary/5 text-foreground font-medium"
+                      : "border-border hover:bg-secondary/40 text-muted-foreground",
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-1">
+              Filters by what the owner has marked as acceptable. "Any"
+              shows every listing.
+            </p>
+          </div>
+
+          {/* Amenity multi-select chips. Each chip toggles independently;
+              selecting multiple applies AND semantics — flats must have
+              ALL chosen amenities in their parent building's free-text
+              amenity list. */}
+          <div>
+            <Label className="flex items-center gap-1.5 mb-2">
+              <Sparkles className="size-3.5 text-muted-foreground" />
+              Amenities (all selected required)
+            </Label>
+            <div className="flex flex-wrap gap-1.5">
+              {AMENITY_OPTIONS.map((opt) => {
+                const on = draft.amenityKeys.includes(opt.key);
+                return (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    onClick={() =>
+                      setDraft((d) => ({
+                        ...d,
+                        amenityKeys: on
+                          ? d.amenityKeys.filter((k) => k !== opt.key)
+                          : [...d.amenityKeys, opt.key],
+                      }))
+                    }
+                    className={cn(
+                      "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                      on
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:bg-secondary/40",
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+            {draft.amenityKeys.length > 1 && (
+              <p className="text-[11px] text-muted-foreground mt-1.5">
+                {draft.amenityKeys.length} selected — only flats with ALL
+                of these will appear.
+              </p>
+            )}
           </div>
 
           {/* Move-in date — flats available on or before. */}

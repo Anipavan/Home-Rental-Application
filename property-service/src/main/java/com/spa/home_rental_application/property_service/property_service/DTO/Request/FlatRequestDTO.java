@@ -62,5 +62,21 @@ public record FlatRequestDTO (
         BigDecimal depositAmount,
 
         @Size(max = 2000, message = "Description cannot exceed 2000 characters")
-        String description
+        String description,
+
+        /* ─────────── Tenant-preference filters ───────────
+         * Both default to true server-side when the request omits
+         * them — keeps legacy clients (no checkboxes in their flat
+         * form) maximally inclusive. The browse-page filter only
+         * excludes a flat when the owner has explicitly turned the
+         * preference off.
+         */
+
+        /** True/null = bachelor tenants accepted. False = bachelors hidden
+         *  from the listing when the filter is active. */
+        Boolean acceptsBachelor,
+
+        /** True/null = family tenants accepted. False = families hidden
+         *  from the listing when the filter is active. */
+        Boolean acceptsFamily
 ) {}
