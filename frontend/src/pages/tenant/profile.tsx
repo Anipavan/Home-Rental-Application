@@ -10,6 +10,7 @@ import {
   Download,
   Loader2,
   CheckCircle2,
+  Trash2,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { usersApi } from "@/lib/api/users";
@@ -201,6 +202,44 @@ export function ProfilePage() {
       }),
   });
 
+  /* ── Profile pic removal ─────────────────────────────────────────────── */
+  // We do NOT delete the underlying Document row — only clear the
+  // pointer on the user profile. Reasons:
+  //   1. Document rows are part of an audit trail (KYC, document-
+  //      service retention policy). Deleting them on user-initiated
+  //      avatar removal would break compliance assumptions made by
+  //      downstream services (notification fan-out, compliance-
+  //      service).
+  //   2. The blob in object storage is referenced only by the
+  //      profile URL; once detached, it eventually GCs via the
+  //      document-service retention job (soft-deleted documents).
+  // Wiping just `profilePictureUrl` is the minimal, reversible
+  // action — the user sees their initials avatar again immediately
+  // and can re-upload at any time.
+  const photoRemoveM = useMutation({
+    mutationFn: () => {
+      if (!q.data?.id) throw new Error("No profile to update.");
+      return usersApi.update(q.data.id, {
+        ...userToUpdateDto(q.data),
+        // Empty string (not null) so it serialises as a present
+        // field and the backend's update flow treats it as
+        // "explicitly cleared" rather than "field omitted" (which
+        // would no-op via the notBlank gate).
+        profilePictureUrl: "",
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["me", authUserId] });
+      toast({ title: "Photo removed" });
+    },
+    onError: (e) =>
+      toast({
+        variant: "destructive",
+        title: "Couldn't remove photo",
+        description: extractErrorMessage(e),
+      }),
+  });
+
   /* ── Profile save ────────────────────────────────────────────────────── */
   const updateM = useMutation({
     mutationFn: (body: UserRequestDto) => usersApi.update(q.data!.id, body),
@@ -270,6 +309,29 @@ export function ProfilePage() {
               }}
               className="absolute -bottom-1 -right-1"
             />
+            {/* Remove-picture button. Only rendered when there is
+                actually a picture to remove — keeps the empty-state
+                avatar visually uncluttered. Pinned to the top-right
+                corner of the avatar to balance the upload control at
+                the bottom-right. */}
+            {q.data?.profilePictureUrl && (
+              <Button
+                type="button"
+                variant="destructive"
+                size="icon"
+                aria-label="Remove profile picture"
+                title="Remove profile picture"
+                disabled={photoRemoveM.isPending || photoUploadM.isPending}
+                onClick={() => photoRemoveM.mutate()}
+                className="absolute -top-1 -right-1 size-7 rounded-full shadow-soft"
+              >
+                {photoRemoveM.isPending ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="size-3.5" />
+                )}
+              </Button>
+            )}
           </div>
           <div className="flex-1 min-w-0">
             <p className="font-display text-xl font-semibold truncate">

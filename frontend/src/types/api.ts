@@ -22,10 +22,18 @@ export interface RegisterRequest {
   email: string;
   firstName: string;
   lastName: string;
+  /** MALE | FEMALE | OTHER | PREFER_NOT_TO_SAY (backend regex accepts these). */
   gender?: string;
   phone?: string;
   address?: string;
   dateOfBirth?: string;
+  /** Optional. SINGLE | MARRIED | DIVORCED | WIDOWED. */
+  maritalStatus?: string;
+  /**
+   * Optional. BACHELOR | FAMILY. Only meaningful for TENANT users —
+   * owners may submit it but downstream filters ignore it.
+   */
+  tenantType?: string;
 }
 
 export interface MessageResponse {
@@ -85,6 +93,17 @@ export interface UserResponseDto {
   role?: Role;
   createdAt?: string;
   updatedAt?: string;
+  /** Optional. SINGLE | MARRIED | DIVORCED | WIDOWED. */
+  maritalStatus?: string;
+  /** Optional. BACHELOR | FAMILY (only meaningful for TENANT users). */
+  tenantType?: string;
+  /**
+   * KYC verification status. PENDING (default) | INITIATED | VERIFIED |
+   * FAILED. Mirrors the field on user-service UserResponseDto so the
+   * profile page can show progress and the public detail page can
+   * decide whether to show the "Verified owner" badge.
+   */
+  kycStatus?: string;
 }
 
 export interface UserRequestDto {
@@ -140,6 +159,20 @@ export interface BuildingResponseDTO {
   longitude?: number | null;
   createdDt?: string;
   updatedDt?: string;
+  /**
+   * Optional "What's included" — free-text list of flat-level fittings.
+   * Comma- or newline-separated. When empty, the public detail page
+   * hides the section entirely (no hardcoded fallbacks).
+   */
+  includedItems?: string;
+  /**
+   * Computed on the property-service response by a Feign call to
+   * user-service. True only when the owner has completed KYC. Drives
+   * the "Verified owner" badge on the public detail page. Currently
+   * always false in production (KYC pipeline paused) — the field
+   * exists so flipping KYC back on lights up the badge automatically.
+   */
+  ownerVerified?: boolean;
 }
 
 export interface BuildingRequestDTO {
@@ -151,6 +184,11 @@ export interface BuildingRequestDTO {
   buildingTotalFloors: number;
   buildingTotalFlats: number;
   amenities?: string;
+  /**
+   * Optional "What's included" — comma- or newline-separated free
+   * text. Mirrors {@link BuildingResponseDTO.includedItems}.
+   */
+  includedItems?: string;
   /** Optional FK id from `ref_states` — sent when the cascading dropdown is used. */
   stateId?: number;
   /** Optional FK id from `ref_cities` — sent when the cascading dropdown is used. */

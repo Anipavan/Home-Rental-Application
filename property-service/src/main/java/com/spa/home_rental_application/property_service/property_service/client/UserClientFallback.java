@@ -18,4 +18,14 @@ public class UserClientFallback implements UserClient {
                 userId);
         return UserSummary.empty();
     }
+
+    @Override
+    public UserSummary getUserByAuthId(String authUserId) {
+        // Defaults kycStatus to null → isVerified() returns false → the
+        // Verified-owner badge stays off when user-service is down.
+        // Matches the principle "fail closed for trust signals".
+        log.warn("user-service unavailable — falling back to empty user summary for authUserId={}",
+                authUserId);
+        return UserSummary.empty();
+    }
 }

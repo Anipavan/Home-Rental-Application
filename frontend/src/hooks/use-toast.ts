@@ -6,6 +6,14 @@ type ToasterToast = ToastProps & {
   title?: React.ReactNode;
   description?: React.ReactNode;
   action?: React.ReactNode;
+  /**
+   * Optional dedupe key. If a new toast is fired with the same key
+   * as an existing one, the existing toast is dismissed and removed
+   * before the new one is added — so rapid-fire calls (e.g. wrong
+   * password repeatedly) don't stack a queue of identical messages.
+   * Toasts without a key behave as before (always append).
+   */
+  dedupeKey?: string;
 };
 
 const TOAST_LIMIT = 4;
@@ -69,6 +77,20 @@ export function toast(props: ToastInput) {
   const update = (next: Partial<ToasterToast>) =>
     dispatch({ type: "UPDATE", toast: { ...next, id } });
   const dismiss = () => dispatch({ type: "DISMISS", id });
+
+  // Dedupe: if the caller supplied a key, remove any existing
+  // toast(s) with the same key first. Use REMOVE (not DISMISS) so
+  // the new toast doesn't share screen real-estate with the
+  // outgoing one during its close animation — repeat-press cases
+  // (wrong password again, network blip retry, etc.) should feel
+  // like a single message that just refreshes.
+  if (props.dedupeKey) {
+    for (const existing of memoryState.toasts) {
+      if (existing.dedupeKey === props.dedupeKey) {
+        dispatch({ type: "REMOVE", id: existing.id });
+      }
+    }
+  }
 
   dispatch({
     type: "ADD",

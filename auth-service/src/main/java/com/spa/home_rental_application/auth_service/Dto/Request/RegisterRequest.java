@@ -47,5 +47,28 @@ public record RegisterRequest(
         @Size(max = 4000)
         String address,
 
-        LocalDate dateOfBirth
+        LocalDate dateOfBirth,
+
+        /**
+         * Optional marital status. Persisted on the user-service profile.
+         * Used for tenant-search filtering by some landlords (e.g.
+         * "family-only" listings). Pattern keeps it server-controlled —
+         * a corrupted enum on the wire is a 400, never silently stored.
+         */
+        @Pattern(regexp = "SINGLE|MARRIED|DIVORCED|WIDOWED",
+                 message = "maritalStatus must be SINGLE, MARRIED, DIVORCED or WIDOWED")
+        String maritalStatus,
+
+        /**
+         * Optional tenant category. {@code BACHELOR} = unmarried tenant,
+         * typically interested in shared/PG accommodation. {@code FAMILY}
+         * = looking for whole-flat tenancy. Landlords filter on this
+         * field when restricting their listings (the "bachelor not
+         * allowed" / "family only" toggle in India rental ads). Only
+         * meaningful for TENANT role — owners can submit it but it's
+         * ignored downstream.
+         */
+        @Pattern(regexp = "BACHELOR|FAMILY",
+                 message = "tenantType must be BACHELOR or FAMILY")
+        String tenantType
 ) {}

@@ -19,11 +19,29 @@ import java.util.List;
 
 /**
  * Seeds India's states + major cities into the {@code ref_states} and
- * {@code ref_cities} tables on startup. Idempotent — skipped entirely if
- * {@code ref_states} already has rows.
+ * {@code ref_cities} tables on startup.
  *
  * <p>Source data: {@code classpath:reference/india_geo.csv}. IDs are stable
  * so cross-environment exports are predictable.
+ *
+ * <p><b>Upsert, not insert-once.</b> Previous versions of this seeder
+ * skipped entirely when {@code ref_states} already had rows. That made
+ * adding new cities to the CSV require manual SQL on every deployed
+ * environment — easy to forget, easy to drift. The seeder now runs on
+ * every boot and uses {@code saveAll} (which is JPA merge for
+ * pre-assigned IDs), so:
+ * <ul>
+ *   <li>existing rows are updated in place (e.g. fixing a typo in a city
+ *       name updates everywhere on restart)</li>
+ *   <li>new rows in the CSV are inserted (the user's "missing cities"
+ *       expansion of 2026-05 rolled out via just-a-restart)</li>
+ *   <li>rows removed from the CSV are <em>not</em> deleted — the seeder
+ *       is append/update-only on purpose, so cities referenced by
+ *       existing buildings stay valid</li>
+ * </ul>
+ * The cost is two saveAll calls on every property-service boot
+ * (~36 states + ~500 cities). At this size it's noise (single-digit
+ * milliseconds against an empty cache) — measured at startup.
  *
  * <p>Run order is set to a high value so the demo data seeder runs first
  * (which doesn't touch reference tables) — but this is mostly for clarity;
@@ -46,19 +64,32 @@ public class ReferenceDataSeeder implements CommandLineRunner {
     @Override
     @Transactional
     public void run(String... args) {
-        if (stateRepo.count() > 0) {
-            log.debug("ref_states already has {} rows — skipping seed", stateRepo.count());
-            return;
-        }
+        long stateCountBefore = stateRepo.count();
+        long cityCountBefore = cityRepo.count();
 
         try {
             ParsedData data = parseCsv();
+            // saveAll with pre-assigned IDs = merge: existing rows are
+            // updated, new rows are inserted. Both ref_states and
+            // ref_cities are small (~36 + ~500 rows respectively), so
+            // a full re-sync on every boot is cheap.
             stateRepo.saveAll(data.states);
             cityRepo.saveAll(data.cities);
-            log.info("Seeded reference data: {} states + {} cities",
-                    data.states.size(), data.cities.size());
+
+            long stateCountAfter = stateRepo.count();
+            long cityCountAfter = cityRepo.count();
+            long newStates = stateCountAfter - stateCountBefore;
+            long newCities = cityCountAfter - cityCountBefore;
+
+            if (newStates == 0 && newCities == 0 && stateCountBefore > 0) {
+                log.debug("Reference data already in sync ({} states, {} cities)",
+                        stateCountAfter, cityCountAfter);
+            } else {
+                log.info("Reference data synced: {} states (+{}), {} cities (+{})",
+                        stateCountAfter, newStates, cityCountAfter, newCities);
+            }
         } catch (IOException e) {
-            log.error("Failed to seed reference data from {} — dropdowns will be empty",
+            log.error("Failed to seed reference data from {} — dropdowns may be empty",
                     CSV_PATH, e);
         }
     }

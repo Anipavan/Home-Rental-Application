@@ -62,6 +62,26 @@
         @Builder.Default
         private Boolean isDeleted = false;
 
+        /**
+         * Free-text "What's included" list — separate from {@link #amenities}
+         * so the public detail page can render them as two distinct sections.
+         * Amenities are building-level perks (lift, pool, gym); included
+         * items are flat-level fittings the tenant gets out-of-the-box
+         * (modular kitchen, wardrobes, RO water purifier, AC, etc.).
+         *
+         * <p>Stored as comma- or newline-separated free text. Nullable —
+         * legacy buildings without this field render no "What's included"
+         * section at all (the frontend hides empty sections rather than
+         * showing a sad-default list).
+         *
+         * <p>Length 4000 mirrors the {@code address} column on the user
+         * table — same Oracle VARCHAR2 standard-mode max, sidesteps the
+         * Hibernate-doesn't-widen-to-CLOB-on-update gotcha that bit the
+         * profile picture URL column earlier.
+         */
+        @Column(name = "included_items", length = 4000)
+        private String includedItems;
+
         @Override
         public String toString() {
             return "Building{" +

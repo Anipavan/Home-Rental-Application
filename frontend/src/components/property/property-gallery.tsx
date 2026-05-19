@@ -1,14 +1,15 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, X, ImageOff } from "lucide-react";
 import { propertiesApi } from "@/lib/api/properties";
-import { getPlaceholderImage } from "@/components/property/property-card";
 import { cn } from "@/lib/utils";
 
 /**
  * Hero + thumbnail gallery rendered on the public property-detail
- * page. Falls back to placeholder Unsplash photos when the building
- * has no images, so the page never renders a broken layout.
+ * page. Renders ONLY owner-uploaded images — no Unsplash / stock
+ * placeholders. When the owner hasn't uploaded any photos yet, the
+ * gallery shows a neutral empty state ("No photos yet") rather than
+ * fake stock images that the owner never approved.
  *
  * <p>Click any thumbnail or the hero → opens a lightbox dialog with
  * prev/next arrows. Esc + click-outside both close. Keyboard
@@ -16,12 +17,9 @@ import { cn } from "@/lib/utils";
  */
 export function PropertyGallery({
   buildingId,
-  flatSeed,
   alt,
 }: {
   buildingId: string;
-  /** Used to deterministically pick a placeholder when no images exist. */
-  flatSeed: string;
   alt: string;
 }) {
   const imgsQ = useQuery({
@@ -34,21 +32,29 @@ export function PropertyGallery({
   const images = imgsQ.data ?? [];
   // Map server-side propertyImage rows → loadable URLs via the
   // /images/{id}/raw streaming endpoint.
-  const srcs = images.map((img) => propertiesApi.buildings.imageRawUrl(img.id));
-
-  // Build the gallery: real cover first, then the rest. When the
-  // building has no images, generate 4 deterministic placeholders so
-  // the layout still fills out.
-  const placeholders = [
-    getPlaceholderImage(flatSeed),
-    getPlaceholderImage(flatSeed + "1"),
-    getPlaceholderImage(flatSeed + "2"),
-    getPlaceholderImage(flatSeed + "3"),
-  ];
-  const gallery: string[] = srcs.length > 0 ? srcs : placeholders;
+  const gallery: string[] = images.map((img) =>
+    propertiesApi.buildings.imageRawUrl(img.id),
+  );
 
   // Lightbox state. null = closed. Number = open at that index.
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+
+  // Empty state — no owner images. Render a neutral skeleton-card
+  // rather than fake stock placeholders. The page above still shows
+  // the listing details, so this isn't a dead-end.
+  if (!imgsQ.isLoading && gallery.length === 0) {
+    return (
+      <div className="mb-6 aspect-[16/7] rounded-2xl bg-secondary/40 border border-dashed border-border grid place-items-center text-muted-foreground">
+        <div className="flex flex-col items-center gap-2 text-center px-4">
+          <ImageOff className="size-8" />
+          <p className="text-sm font-medium">No photos yet</p>
+          <p className="text-xs text-muted-foreground/80 max-w-xs">
+            The owner hasn't uploaded any photos for this listing.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>

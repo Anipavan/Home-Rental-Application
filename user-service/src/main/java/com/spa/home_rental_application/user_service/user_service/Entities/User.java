@@ -91,6 +91,21 @@ public class User {
     @Column(name = "whatsapp_number", length = 15)
     private String whatsappNumber;
 
+    // ----- Tenant-preference fields (added with the optional
+    //       registration dropdowns). Both are nullable so existing rows
+    //       remain valid; Hibernate ddl-auto=update will add the
+    //       columns on next boot.
+    //
+    //   maritalStatus: SINGLE | MARRIED | DIVORCED | WIDOWED
+    //   tenantType:    BACHELOR | FAMILY (only meaningful for TENANT
+    //                  users — owners may submit it but no business
+    //                  logic acts on it).
+    @Column(name = "marital_status", length = 16)
+    private String maritalStatus;
+
+    @Column(name = "tenant_type", length = 16)
+    private String tenantType;
+
     @Override
     public String toString() {
         return "User{" +

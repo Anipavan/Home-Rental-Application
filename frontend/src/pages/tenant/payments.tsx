@@ -112,6 +112,13 @@ function DueCard({
   flatLabel: string;
 }) {
   const overdue = payment.status === "OVERDUE";
+  // Invoice is only meaningful once the payment is settled. Before
+  // payment, an "invoice" would just be a copy of the demand on file
+  // — the GST invoice line items, transaction id, paid-on date etc.
+  // don't exist yet. Mirror the same gate the History row uses on its
+  // Receipt button so the UX is consistent: a successfully-paid
+  // payment is the only state where an invoice is downloadable.
+  const isPaid = payment.status === "PAID";
   const [downloadingInvoice, setDownloadingInvoice] = useState(false);
   const [upiOpen, setUpiOpen] = useState(false);
 
@@ -156,7 +163,12 @@ function DueCard({
             variant="outline"
             size="lg"
             onClick={handleInvoiceDownload}
-            disabled={downloadingInvoice}
+            disabled={!isPaid || downloadingInvoice}
+            title={
+              isPaid
+                ? "Download GST invoice PDF"
+                : "Invoice will be available after payment is completed"
+            }
           >
             {downloadingInvoice ? (
               <Loader2 className="animate-spin" />

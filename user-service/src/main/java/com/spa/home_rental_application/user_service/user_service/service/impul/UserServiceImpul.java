@@ -235,9 +235,35 @@ public class UserServiceImpul implements UserService {
             changes.put("address", "updated");
             existing.setAddress(userRequest.address());
         }
-        if (notBlank(userRequest.profilePictureUrl())) {
-            existing.setProfilePictureUrl(userRequest.profilePictureUrl());
-            changes.put("profilePictureUrl", "updated");
+        // Profile picture has a 3-way semantic: non-null + non-blank
+        // means "set", empty string means "clear" (the profile page's
+        // Remove button sends ""), null/missing means "no change".
+        // This deviates from the notBlank pattern used by other fields
+        // because we explicitly need a way for the user to remove the
+        // picture and revert to the initials avatar. Other text fields
+        // (firstName, address, …) don't have a "clear" UX so they
+        // stick to notBlank.
+        if (userRequest.profilePictureUrl() != null) {
+            String incoming = userRequest.profilePictureUrl();
+            if (incoming.isBlank()) {
+                if (existing.getProfilePictureUrl() != null) {
+                    existing.setProfilePictureUrl(null);
+                    changes.put("profilePictureUrl", "cleared");
+                }
+            } else if (!incoming.equals(existing.getProfilePictureUrl())) {
+                existing.setProfilePictureUrl(incoming);
+                changes.put("profilePictureUrl", "updated");
+            }
+        }
+        // Same notBlank-then-only-if-changed pattern as gender/address so
+        // the change-event payload stays meaningful.
+        if (notBlank(userRequest.maritalStatus()) && !userRequest.maritalStatus().equals(existing.getMaritalStatus())) {
+            changes.put("maritalStatus", existing.getMaritalStatus() + " → " + userRequest.maritalStatus());
+            existing.setMaritalStatus(userRequest.maritalStatus());
+        }
+        if (notBlank(userRequest.tenantType()) && !userRequest.tenantType().equals(existing.getTenantType())) {
+            changes.put("tenantType", existing.getTenantType() + " → " + userRequest.tenantType());
+            existing.setTenantType(userRequest.tenantType());
         }
 
         if (changes.isEmpty()) {

@@ -38,14 +38,20 @@ class UserControllerTest {
         return new UserResponseDto("USR-1", "AUTH-1", "Alice", "Smith",
                 "alice@example.com", "+919876543210",
                 LocalDate.of(1995, 4, 12), "FEMALE", "Bangalore",
-                null, null, LocalDateTime.now(), LocalDateTime.now());
+                null, null, LocalDateTime.now(), LocalDateTime.now(),
+                // maritalStatus + tenantType (new optional fields)
+                null, null,
+                // kycStatus
+                "PENDING");
     }
 
     @Test
     void createUser_returnsCreated() throws Exception {
         UserRequestDto req = new UserRequestDto("AUTH-1", "Alice", "Smith",
                 "alice@example.com", "+919876543210",
-                LocalDate.of(1995, 4, 12), "FEMALE", "Bangalore", null, null);
+                LocalDate.of(1995, 4, 12), "FEMALE", "Bangalore", null, null,
+                // maritalStatus + tenantType
+                null, null);
         when(userService.createUser(any())).thenReturn(sampleResponse());
 
         mvc.perform(post("/users/user")
@@ -71,7 +77,9 @@ class UserControllerTest {
     void createUser_duplicateEmail_returns409() throws Exception {
         UserRequestDto req = new UserRequestDto("AUTH-1", "Alice", "Smith",
                 "alice@example.com", "+919876543210",
-                LocalDate.of(1995, 4, 12), "FEMALE", "Bangalore", null, null);
+                LocalDate.of(1995, 4, 12), "FEMALE", "Bangalore", null, null,
+                // maritalStatus + tenantType
+                null, null);
         when(userService.createUser(any()))
                 .thenThrow(new DuplicateUserException("email already in use: alice@example.com"));
 

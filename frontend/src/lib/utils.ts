@@ -26,6 +26,69 @@ export function formatDate(value: string | Date | undefined | null): string {
   }).format(d);
 }
 
+/**
+ * Renders a floor number as its ordinal English word — the owner
+ * enters a number (0, 1, 2, …) and the public detail page shows
+ * "Ground", "First", "Second", …
+ *
+ * Beyond {@code FLOOR_WORDS.length - 1} we fall back to the
+ * numeric ordinal ("21st", "22nd"). Negative values are treated as
+ * basement floors ("Basement", "Basement 2", …) — uncommon but
+ * supported for completeness so an owner who types {@code -1}
+ * doesn't see a weird "negative first" string.
+ *
+ * Returns `"—"` for null/undefined/NaN so callers can drop it
+ * straight into a label without first-checking.
+ */
+const FLOOR_WORDS = [
+  "Ground",
+  "First",
+  "Second",
+  "Third",
+  "Fourth",
+  "Fifth",
+  "Sixth",
+  "Seventh",
+  "Eighth",
+  "Ninth",
+  "Tenth",
+  "Eleventh",
+  "Twelfth",
+  "Thirteenth",
+  "Fourteenth",
+  "Fifteenth",
+  "Sixteenth",
+  "Seventeenth",
+  "Eighteenth",
+  "Nineteenth",
+  "Twentieth",
+];
+
+export function floorLabel(floor: number | string | null | undefined): string {
+  if (floor === null || floor === undefined || floor === "") return "—";
+  const n = typeof floor === "string" ? Number(floor) : floor;
+  if (Number.isNaN(n)) return "—";
+  if (n < 0) {
+    const abs = Math.abs(n);
+    return abs === 1 ? "Basement" : `Basement ${abs}`;
+  }
+  if (n < FLOOR_WORDS.length) return FLOOR_WORDS[n];
+  // 21st, 22nd, 23rd, 24th, … — English ordinal rules.
+  const lastTwo = n % 100;
+  const lastOne = n % 10;
+  const suffix =
+    lastTwo >= 11 && lastTwo <= 13
+      ? "th"
+      : lastOne === 1
+        ? "st"
+        : lastOne === 2
+          ? "nd"
+          : lastOne === 3
+            ? "rd"
+            : "th";
+  return `${n}${suffix}`;
+}
+
 export function relativeFromNow(value: string | Date | undefined | null): string {
   if (!value) return "—";
   const d = typeof value === "string" ? new Date(value) : value;
