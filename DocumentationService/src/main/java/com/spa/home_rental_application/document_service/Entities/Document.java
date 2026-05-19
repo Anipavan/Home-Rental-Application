@@ -104,7 +104,7 @@ public class Document implements Persistable<String> {
      */
     @Enumerated(EnumType.STRING)
     @Column(name = "verification_status", length = 32, nullable = false,
-            columnDefinition = "VARCHAR2(32) DEFAULT 'PENDING' NOT NULL")
+            columnDefinition = "VARCHAR2(32) DEFAULT 'PENDING'")
     @Builder.Default
     private VerificationStatus verificationStatus = VerificationStatus.PENDING;
 
