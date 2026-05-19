@@ -59,5 +59,15 @@ public record BuildingRequestDTO(
          * fine; they're simply omitted from the geosearch endpoint.
          */
         Double latitude,
-        Double longitude
+        Double longitude,
+
+        /**
+         * Optional. "What's included" — comma- or newline-separated list
+         * of flat-level fittings (modular kitchen, wardrobes, RO water
+         * purifier, AC, etc.). Distinct from {@link #amenities}, which
+         * tracks building-level perks (lift, pool, gym). Empty / null
+         * means the public detail page omits the section entirely
+         * rather than rendering a hardcoded fallback list.
+         */
+        String includedItems
 ) {}

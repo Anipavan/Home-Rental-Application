@@ -40,7 +40,9 @@ class UserServiceTest {
     void createUser_publishesUserProfileCreated() {
         UserRequestDto req = new UserRequestDto("AUTH-1", "Asha", "Rao",
                 "asha@example.com", "+919876543210", LocalDate.of(1995, 4, 12),
-                "FEMALE", "1 MG Road", null, null);
+                "FEMALE", "1 MG Road", null, null,
+                // maritalStatus + tenantType (new optional fields)
+                null, null);
 
         when(userRepo.existsByEmailIgnoreCaseAndIsDeletedFalse("asha@example.com")).thenReturn(false);
         when(userRepo.save(any(User.class))).thenAnswer(inv -> {
@@ -64,7 +66,9 @@ class UserServiceTest {
     void createUser_whenEmailExists_throwsDuplicate() {
         when(userRepo.existsByEmailIgnoreCaseAndIsDeletedFalse("dup@example.com")).thenReturn(true);
         UserRequestDto req = new UserRequestDto("AUTH-1", "X", "Y", "dup@example.com",
-                "+911234567890", null, null, null, null, null);
+                "+911234567890", null, null, null, null, null,
+                // maritalStatus + tenantType
+                null, null);
 
         assertThatThrownBy(() -> service().createUser(req))
                 .isInstanceOf(DuplicateUserException.class);

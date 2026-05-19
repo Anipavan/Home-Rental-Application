@@ -1,0 +1,135 @@
+# ──────────────────────────────────────────────────────────────────
+#  docker-compose.dev.yml — local development overlay
+#
+#  Usage:
+#    1. Build & start all backend services + infra (Oracle, Mongo, Kafka):
+#         docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+#
+#    2. Run the frontend on the host (Vite dev server, port 4200):
+#         cd frontend
+#         npm install        # first time only
+#         npm run dev
+#
+#    3. Open http://localhost:4200
+#
+#  How it talks to the gateway:
+#    Vite's dev server proxies /api/* to http://localhost:8080
+#    (PROXY_TARGET in vite.config.ts). The gateway container exposes
+#    8080:8080. CORS_ALLOWED_ORIGINS is widened below to include
+#    common dev ports (4200, 3000, 5173) so any toolchain works.
+#
+#  What this overlay does (intentionally minimal — the base compose
+#  already wires every service to the containerised oracle-db, kafka,
+#  service-registry, etc. and supplies sensible defaults):
+#    1. SPRING_PROFILES_ACTIVE=dev so each service picks up its
+#       application-dev.yaml (jwt + internal-auth dev secrets).
+#    2. Widen CORS to cover the common dev-server ports.
+#
+#  IMPORTANT: do NOT override DB_URL here. The base compose already
+#  points every service to oracle-db:1521/FREEPDB1 with the matching
+#  siva/Pavan@123 credentials. An earlier version of this file
+#  pointed at host.docker.internal:1522 (a host-installed Oracle
+#  that doesn't exist on a fresh machine) which is what broke local
+#  dev. Keep the override surface tiny.
+# ──────────────────────────────────────────────────────────────────
+
+x-dev-env: &dev-env
+  SPRING_PROFILES_ACTIVE: dev
+
+services:
+
+  # ── Infra remaps to avoid clashes with locally-installed services ─
+  # Many devs already have Oracle XE / MongoDB / Kafka installed on
+  # their machine. Remap the container host-ports to the +1 range so
+  # both can coexist. Inside the docker network the services still
+  # talk to oracle-db:1521 / mongodb:27017 / kafka:9092 — only the
+  # HOST-side port (what your SQL client / Mongo Compass / kcat
+  # connects to) changes.
+  #
+  # The `!override` tag is required because Compose's default merge
+  # behaviour for the `ports:` list is APPEND, which would result in
+  # BOTH 1521:1521 (from base) AND 1522:1521 (from this overlay)
+  # being bound — and the first one collides with the host-installed
+  # Oracle. `!override` discards the base list entirely and uses
+  # only the entries below. Requires Compose v2.24+ (Docker Desktop
+  # 4.27+).
+  oracle-db:
+    ports: !override
+      - "1522:1521"
+
+  mongodb:
+    ports: !override
+      - "27018:27017"
+
+  # Kafka port deliberately NOT overridden — the base compose
+  # already exposes it on host 9093 (which is free on a typical dev
+  # machine since Kafka is rarely installed locally). Importantly,
+  # Kafka inside the container runs TWO listeners:
+  #   - PLAINTEXT (external) on :9093
+  #   - PLAINTEXT_INTERNAL on :9092 for other docker services
+  # An override like `9093:9092` would expose the WRONG listener
+  # and break broker-client handshakes.
+
+  # ── Spring services: just flip the profile ────────────────────────
+  service-registry:
+    environment:
+      <<: *dev-env
+
+  config-server:
+    environment:
+      <<: *dev-env
+
+  api-gateway:
+    environment:
+      <<: *dev-env
+      # Allow Vite (4200, 5173) and CRA (3000) so a contributor
+      # running either toolchain locally Just Works.
+      CORS_ALLOWED_ORIGINS: http://localhost:4200,http://localhost:3000,http://localhost:5173
+
+  auth-service:
+    environment:
+      <<: *dev-env
+
+  property-service:
+    environment:
+      <<: *dev-env
+
+  user-service:
+    environment:
+      <<: *dev-env
+
+  payment-service:
+    environment:
+      <<: *dev-env
+
+  analytics-service:
+    environment:
+      <<: *dev-env
+
+  lease-service:
+    environment:
+      <<: *dev-env
+
+  compliance-service:
+    environment:
+      <<: *dev-env
+
+  kyc-service:
+    environment:
+      <<: *dev-env
+
+  document-service:
+    environment:
+      <<: *dev-env
+
+  review-service:
+    environment:
+      <<: *dev-env
+
+  maintenance-service:
+    environment:
+      <<: *dev-env
+
+  notification-service:
+    environment:
+      <<: *dev-env

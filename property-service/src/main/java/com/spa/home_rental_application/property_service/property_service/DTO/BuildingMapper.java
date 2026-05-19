@@ -4,6 +4,7 @@ import com.spa.home_rental_application.property_service.property_service.DTO.Req
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.BuildingResponseDTO;
 import com.spa.home_rental_application.property_service.property_service.Entities.Building;
 import com.spa.home_rental_application.property_service.property_service.Entities.Flat;
+import com.spa.home_rental_application.property_service.property_service.client.UserClient;
 import com.spa.home_rental_application.property_service.property_service.repository.FlatRepo;
 
 import java.time.LocalDateTime;
@@ -34,6 +35,7 @@ public class BuildingMapper {
                 .buildingTotalFloors(String.valueOf(dto.buildingTotalFloors()))
                 .buildingTotalFlats(String.valueOf(dto.buildingTotalFlats()))
                 .amenities(dto.amenities())
+                .includedItems(dto.includedItems())
                 // Optional reference IDs from the cascading dropdown. May be
                 // null when the request comes from an old client / a script.
                 .stateId(dto.stateId())
@@ -49,9 +51,27 @@ public class BuildingMapper {
 
     /**
      * Live-count overload. Pass FlatRepo so we can return real counts for
-     * active / occupied / vacant flats.
+     * active / occupied / vacant flats. Owner-verified status defaults to
+     * {@code false} (cheaper path — skips the user-service round-trip).
+     * Use the 3-arg overload to populate it.
      */
     public static BuildingResponseDTO toDTO(Building building, FlatRepo flatRepo) {
+        return toDTO(building, flatRepo, null);
+    }
+
+    /**
+     * Full-fat overload. Pass a {@link UserClient} so we can populate
+     * {@code ownerVerified} by looking up the owner's KYC status. Use this
+     * for the public detail endpoint where the badge matters; the count-
+     * only overload is fine for owner-side listings (the owner already
+     * knows whether they've verified themselves).
+     *
+     * <p>A failed Feign call falls through the {@code UserClientFallback}
+     * (empty UserSummary → {@code isVerified()} returns false), so the
+     * badge defaults to off when user-service is down — exactly what we
+     * want for a trust signal.
+     */
+    public static BuildingResponseDTO toDTO(Building building, FlatRepo flatRepo, UserClient userClient) {
         if (building == null) return null;
 
         int active = 0;
@@ -62,6 +82,17 @@ public class BuildingMapper {
                 if (Boolean.TRUE.equals(f.getIsDeleted())) continue;
                 active++;
                 if (Boolean.TRUE.equals(f.getIsOccupied())) occupied++;
+            }
+        }
+
+        boolean ownerVerified = false;
+        if (userClient != null && building.getOwnerId() != null && !building.getOwnerId().isBlank()) {
+            try {
+                UserClient.UserSummary summary = userClient.getUserByAuthId(building.getOwnerId());
+                if (summary != null) ownerVerified = summary.isVerified();
+            } catch (Exception ignored) {
+                // Defensive: a transient downstream blip should never
+                // tank the response. ownerVerified just stays false.
             }
         }
 
@@ -81,13 +112,15 @@ public class BuildingMapper {
                 building.getLatitude(),
                 building.getLongitude(),
                 parseDateTimeSafe(building.getCreatedDt()),
-                parseDateTimeSafe(building.getUpdatedDt())
+                parseDateTimeSafe(building.getUpdatedDt()),
+                building.getIncludedItems(),
+                ownerVerified
         );
     }
 
     /** Convenience overload -- returns 0 for live-count fields. */
     public static BuildingResponseDTO toDTO(Building building) {
-        return toDTO(building, null);
+        return toDTO(building, null, null);
     }
 
     /* ----------------------------- helpers ----------------------------- */

@@ -16,5 +16,19 @@ public record UserResponseDto(
         String profilePictureUrl,
         String idProofUrl,
         LocalDateTime createdAt,
-        LocalDateTime updatedAt
+        LocalDateTime updatedAt,
+        /** Optional. SINGLE | MARRIED | DIVORCED | WIDOWED. */
+        String maritalStatus,
+        /** Optional. BACHELOR | FAMILY (only meaningful for TENANT users). */
+        String tenantType,
+        /**
+         * KYC verification status. PENDING (default) | INITIATED | VERIFIED |
+         * FAILED. Surfaced on the wire so property-service can render a
+         * "Verified owner" badge on public listings, and so the user can see
+         * their own KYC progress on /app/profile. KYC service itself is
+         * paused right now — every new account stays at PENDING — but the
+         * code path is wired end-to-end so flipping KYC back on
+         * automatically lights up the badge.
+         */
+        String kycStatus
 ) {}

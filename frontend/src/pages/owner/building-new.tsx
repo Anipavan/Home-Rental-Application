@@ -149,6 +149,9 @@ export function BuildingNewPage() {
       buildingTotalFloors: Number(fd.get("buildingTotalFloors") ?? 0),
       buildingTotalFlats: Number(fd.get("buildingTotalFlats") ?? 0),
       amenities: String(fd.get("amenities") ?? ""),
+      // "What's included" — flat-level fittings (kitchen, AC, etc.)
+      // distinct from building-level amenities (lift, gym, etc.).
+      includedItems: String(fd.get("includedItems") ?? ""),
       latitude,
       longitude,
     });
@@ -260,6 +263,25 @@ export function BuildingNewPage() {
                 className="mt-1.5"
                 placeholder="e.g. Lift, parking, gym, swimming pool"
               />
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Building-level perks. Comma- or newline-separated. Leave blank
+                to hide the section.
+              </p>
+            </div>
+
+            <div>
+              <Label htmlFor="includedItems">What's included</Label>
+              <Textarea
+                id="includedItems"
+                name="includedItems"
+                rows={3}
+                className="mt-1.5"
+                placeholder="e.g. Modular kitchen, RO water purifier, wardrobes in all bedrooms, AC"
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Flat-level fittings the tenant gets out-of-the-box. Comma- or
+                newline-separated. Leave blank to hide the section.
+              </p>
             </div>
 
             <ImagePicker images={images} onChange={setImages} />

@@ -39,5 +39,18 @@ public record UserRequestDto(
         String profilePictureUrl,
 
         @Size(max = 10000)
-        String idProofUrl
+        String idProofUrl,
+
+        // Both fields are optional and added with the registration-page
+        // dropdowns. Empty string is allowed so a partially-filled form
+        // serialization doesn't 400 on backend validation. Keep the
+        // enum list in sync with the frontend Select options on
+        // register.tsx and the tenant profile EditForm.
+        @Pattern(regexp = "^$|SINGLE|MARRIED|DIVORCED|WIDOWED",
+                message = "maritalStatus must be SINGLE, MARRIED, DIVORCED or WIDOWED")
+        String maritalStatus,
+
+        @Pattern(regexp = "^$|BACHELOR|FAMILY",
+                message = "tenantType must be BACHELOR or FAMILY")
+        String tenantType
 ) {}

@@ -68,6 +68,13 @@ export function NotificationBell() {
   // closes any previously open one cleanly and Radix only ever mounts
   // a single Dialog instance.
   const [selected, setSelected] = useState<NotificationResponse | null>(null);
+  // Controlled open-state for the dropdown. Radix would manage this
+  // internally if we didn't care about closing it programmatically,
+  // but the "See all notifications →" link navigates via react-router
+  // — Radix has no idea that happened, so without explicit control
+  // the dropdown stays mounted on top of the destination page. We
+  // close it on link-click below.
+  const [open, setOpen] = useState(false);
 
   const q = useQuery({
     queryKey: ["notifications", authUserId],
@@ -186,12 +193,14 @@ export function NotificationBell() {
   return (
     <>
       <DropdownMenu
-        onOpenChange={(open) => {
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next);
           // Mark everything visible as read the moment the dropdown
           // opens — the optimistic update inside markAllReadM flips
           // the cache instantly; the network call follows. Only fire
           // when there's actually something to clear.
-          if (open && unreadCount > 0 && authUserId) {
+          if (next && unreadCount > 0 && authUserId) {
             markAllReadM.mutate();
           }
         }}
@@ -251,6 +260,12 @@ export function NotificationBell() {
               <DropdownMenuSeparator />
               <Link
                 to={inboxPath}
+                // Close the popover synchronously when the user
+                // navigates to the full inbox — otherwise Radix
+                // keeps the dropdown panel mounted on top of the
+                // destination page (we're a SPA, so the dropdown
+                // never unmounts naturally on navigation).
+                onClick={() => setOpen(false)}
                 className="flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-medium text-primary hover:bg-secondary/60 transition-colors"
               >
                 See all notifications

@@ -9,6 +9,7 @@ import com.spa.home_rental_application.property_service.property_service.DTO.Res
 import com.spa.home_rental_application.property_service.property_service.Entities.Building;
 import com.spa.home_rental_application.property_service.property_service.ExceptionClass.BuildingHasFlatsException;
 import com.spa.home_rental_application.property_service.property_service.ExceptionClass.RecordNotFoundException;
+import com.spa.home_rental_application.property_service.property_service.client.UserClient;
 import com.spa.home_rental_application.property_service.property_service.repository.BuildingRepo;
 import com.spa.home_rental_application.property_service.property_service.repository.FlatRepo;
 import com.spa.home_rental_application.property_service.property_service.security.CallerSecurity;
@@ -34,13 +35,23 @@ public class BuildingImpul implements BuildingService {
     private final BuildingRepo building_repo;
     private final FlatRepo flat_repo;
     private final PropertyServiceEvents eventProducer;
+    /**
+     * Used to populate the {@code ownerVerified} flag on building
+     * responses — drives the "Verified owner" badge on the public
+     * detail page. Failures here are absorbed by UserClientFallback,
+     * so a user-service outage simply means every badge defaults to
+     * off (fail-closed for trust signals).
+     */
+    private final UserClient userClient;
 
     public BuildingImpul(BuildingRepo building_repo,
                          FlatRepo flat_repo,
-                         PropertyServiceEvents eventProducer) {
+                         PropertyServiceEvents eventProducer,
+                         UserClient userClient) {
         this.building_repo = building_repo;
         this.flat_repo = flat_repo;
         this.eventProducer = eventProducer;
+        this.userClient = userClient;
     }
 
     @Override
@@ -89,9 +100,20 @@ public class BuildingImpul implements BuildingService {
 
     @Override
     public BuildingResponseDTO getBuildingById(String buildId) {
+        // The 3-arg toDTO populates ownerVerified by a Feign call to
+        // user-service. We only do this on single-building lookups
+        // (where the public detail page actually renders the badge) —
+        // list/paged endpoints stick to the 2-arg overload to avoid
+        // a per-row Feign round-trip in the listings grid.
+        return getBuildingByIdInternal(buildId);
+    }
+
+    /** Single-building lookup including ownerVerified. Extracted so the
+     *  controller-facing method stays clean even if we later add caching. */
+    private BuildingResponseDTO getBuildingByIdInternal(String buildId) {
         Building building = building_repo.findById(buildId).orElseThrow(
                 () -> new RecordNotFoundException("No Record found with the given id :" + buildId));
-        return BuildingMapper.toDTO(building, flat_repo);
+        return BuildingMapper.toDTO(building, flat_repo, userClient);
     }
 
     @Override
@@ -179,6 +201,14 @@ public class BuildingImpul implements BuildingService {
         }
         if (building.getAmenities() != null && !building.getAmenities().isBlank()) {
             matchedBuilding.setAmenities(building.getAmenities());
+        }
+        // includedItems uses the same "non-null + non-blank ⇒ overwrite"
+        // semantics as amenities. To CLEAR the list explicitly, the
+        // owner can submit a single space — anything blank is treated
+        // as "no change" by design so PATCH-shaped requests that omit
+        // the field don't accidentally wipe it.
+        if (building.getIncludedItems() != null && !building.getIncludedItems().isBlank()) {
+            matchedBuilding.setIncludedItems(building.getIncludedItems());
         }
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
         String now = LocalDateTime.now().format(formatter);

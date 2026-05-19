@@ -6,6 +6,11 @@
 # IDs are intentionally hard-coded so cross-environment data stays
 # consistent. Don't renumber existing rows. Append new rows with
 # fresh IDs (start states at 1000+, cities at 100000+ if you need to).
+#
+# The companion ReferenceDataSeeder always re-syncs this CSV on
+# boot (saveAll = upsert by ID), so adding rows here AND
+# restarting the property-service is sufficient to roll out new
+# cities — no manual SQL needed.
 
 # ---- States + Union Territories (28 + 8 = 36) ----
 STATE,1,AN,Andaman and Nicobar Islands
@@ -306,3 +311,344 @@ CITY,36006,36,Bardhaman,3
 CITY,36007,36,Malda,3
 CITY,36008,36,Kharagpur,3
 CITY,36009,36,Darjeeling,3
+
+# ============================================================================
+# Extended city coverage — added 2026-05.
+# Same ID scheme: <state_id>NNN, continuing from each state's last entry.
+# Drop-in expansion: the seeder upserts by ID, so adding rows here and
+# restarting property-service rolls them out without manual SQL.
+# ============================================================================
+
+# Andhra Pradesh (2) — extended
+CITY,2011,2,Eluru,3
+CITY,2012,2,Chittoor,3
+CITY,2013,2,Ongole,3
+CITY,2014,2,Machilipatnam,3
+CITY,2015,2,Tenali,3
+CITY,2016,2,Proddatur,3
+CITY,2017,2,Hindupur,3
+CITY,2018,2,Srikakulam,3
+CITY,2019,2,Vizianagaram,3
+CITY,2020,2,Bhimavaram,3
+
+# Arunachal Pradesh (3) — extended
+CITY,3003,3,Pasighat,3
+CITY,3004,3,Tezu,3
+CITY,3005,3,Ziro,3
+CITY,3006,3,Bomdila,3
+
+# Assam (4) — extended
+CITY,4006,4,Nagaon,3
+CITY,4007,4,Bongaigaon,3
+CITY,4008,4,Goalpara,3
+CITY,4009,4,Karimganj,3
+CITY,4010,4,Sivasagar,3
+CITY,4011,4,Diphu,3
+CITY,4012,4,North Lakhimpur,3
+
+# Bihar (5) — extended
+CITY,5006,5,Purnia,3
+CITY,5007,5,Begusarai,3
+CITY,5008,5,Ara,3
+CITY,5009,5,Chapra,3
+CITY,5010,5,Munger,3
+CITY,5011,5,Katihar,3
+CITY,5012,5,Saharsa,3
+CITY,5013,5,Hajipur,3
+CITY,5014,5,Bettiah,3
+CITY,5015,5,Sasaram,3
+CITY,5016,5,Motihari,3
+CITY,5017,5,Nalanda,3
+CITY,5018,5,Siwan,3
+
+# Chhattisgarh (7) — extended
+CITY,7005,7,Durg,3
+CITY,7006,7,Rajnandgaon,3
+CITY,7007,7,Jagdalpur,3
+CITY,7008,7,Ambikapur,3
+CITY,7009,7,Raigarh,3
+CITY,7010,7,Dhamtari,3
+
+# Delhi (9) — extended
+CITY,9007,9,Janakpuri,1
+CITY,9008,9,Pitampura,1
+CITY,9009,9,Lajpat Nagar,1
+CITY,9010,9,Connaught Place,1
+CITY,9011,9,Vasant Kunj,1
+CITY,9012,9,Mayur Vihar,1
+
+# Gujarat (11) — extended
+CITY,11009,11,Junagadh,3
+CITY,11010,11,Nadiad,3
+CITY,11011,11,Morbi,3
+CITY,11012,11,Mehsana,3
+CITY,11013,11,Surendranagar,3
+CITY,11014,11,Bharuch,3
+CITY,11015,11,Navsari,3
+CITY,11016,11,Valsad,3
+CITY,11017,11,Veraval,3
+CITY,11018,11,Porbandar,3
+CITY,11019,11,Godhra,3
+CITY,11020,11,Patan,3
+
+# Haryana (12) — extended
+CITY,12008,12,Sonipat,3
+CITY,12009,12,Yamunanagar,3
+CITY,12010,12,Bahadurgarh,3
+CITY,12011,12,Sirsa,3
+CITY,12012,12,Bhiwani,3
+CITY,12013,12,Jind,3
+CITY,12014,12,Rewari,3
+CITY,12015,12,Kurukshetra,3
+CITY,12016,12,Palwal,3
+CITY,12017,12,Kaithal,3
+CITY,12018,12,Jhajjar,3
+CITY,12019,12,Manesar,3
+
+# Himachal Pradesh (13) — extended
+CITY,13005,13,Solan,3
+CITY,13006,13,Mandi,3
+CITY,13007,13,Bilaspur,3
+CITY,13008,13,Una,3
+CITY,13009,13,Hamirpur,3
+CITY,13010,13,Palampur,3
+CITY,13011,13,Kasauli,3
+CITY,13012,13,Chamba,3
+
+# Jammu and Kashmir (14) — extended
+CITY,14004,14,Baramulla,3
+CITY,14005,14,Kathua,3
+CITY,14006,14,Udhampur,3
+CITY,14007,14,Sopore,3
+CITY,14008,14,Pulwama,3
+CITY,14009,14,Kupwara,3
+
+# Jharkhand (15) — extended
+CITY,15005,15,Deoghar,3
+CITY,15006,15,Hazaribagh,3
+CITY,15007,15,Giridih,3
+CITY,15008,15,Ramgarh,3
+CITY,15009,15,Phusro,3
+CITY,15010,15,Medininagar,3
+CITY,15011,15,Chaibasa,3
+
+# Karnataka (16) — extended
+CITY,16013,16,Vijayapura,3
+CITY,16014,16,Raichur,3
+CITY,16015,16,Bagalkot,3
+CITY,16016,16,Chitradurga,3
+CITY,16017,16,Kolar,3
+CITY,16018,16,Mandya,3
+CITY,16019,16,Chikkamagaluru,3
+CITY,16020,16,Karwar,3
+CITY,16021,16,Bidar,3
+CITY,16022,16,Yadgir,3
+CITY,16023,16,Koppal,3
+CITY,16024,16,Gadag,3
+CITY,16025,16,Haveri,3
+CITY,16026,16,Sirsi,3
+CITY,16027,16,Ramanagara,3
+CITY,16028,16,Chamarajanagar,3
+CITY,16029,16,Robertsonpet,3
+CITY,16030,16,Bhadravathi,3
+CITY,16031,16,Hospet,3
+CITY,16032,16,Chickballapur,3
+
+# Kerala (17) — extended
+CITY,17010,17,Kottayam,3
+CITY,17011,17,Pathanamthitta,3
+CITY,17012,17,Idukki,3
+CITY,17013,17,Wayanad,3
+CITY,17014,17,Ernakulam,2
+CITY,17015,17,Kasaragod,3
+CITY,17016,17,Manjeri,3
+CITY,17017,17,Vatakara,3
+CITY,17018,17,Changanassery,3
+CITY,17019,17,Munnar,3
+CITY,17020,17,Varkala,3
+
+# Madhya Pradesh (20) — extended
+CITY,20007,20,Ratlam,3
+CITY,20008,20,Rewa,3
+CITY,20009,20,Satna,3
+CITY,20010,20,Murwara,3
+CITY,20011,20,Singrauli,3
+CITY,20012,20,Burhanpur,3
+CITY,20013,20,Khandwa,3
+CITY,20014,20,Vidisha,3
+CITY,20015,20,Chhindwara,3
+CITY,20016,20,Dewas,3
+CITY,20017,20,Hoshangabad,3
+CITY,20018,20,Itarsi,3
+CITY,20019,20,Shivpuri,3
+CITY,20020,20,Pithampur,3
+
+# Maharashtra (21) — extended
+CITY,21014,21,Latur,3
+CITY,21015,21,Akola,3
+CITY,21016,21,Dhule,3
+CITY,21017,21,Jalgaon,3
+CITY,21018,21,Chandrapur,3
+CITY,21019,21,Parbhani,3
+CITY,21020,21,Ichalkaranji,3
+CITY,21021,21,Bhiwandi,3
+CITY,21022,21,Vasai,3
+CITY,21023,21,Virar,3
+CITY,21024,21,Mira-Bhayandar,3
+CITY,21025,21,Kalyan,2
+CITY,21026,21,Dombivli,3
+CITY,21027,21,Panvel,3
+CITY,21028,21,Ulhasnagar,3
+CITY,21029,21,Pimpri-Chinchwad,2
+CITY,21030,21,Ratnagiri,3
+CITY,21031,21,Satara,3
+CITY,21032,21,Lonavala,3
+
+# Manipur (22) — extended
+CITY,22002,22,Thoubal,3
+CITY,22003,22,Bishnupur,3
+CITY,22004,22,Churachandpur,3
+
+# Meghalaya (23) — extended
+CITY,23003,23,Jowai,3
+CITY,23004,23,Nongstoin,3
+
+# Mizoram (24) — extended
+CITY,24002,24,Lunglei,3
+CITY,24003,24,Champhai,3
+
+# Nagaland (25) — extended
+CITY,25003,25,Mokokchung,3
+CITY,25004,25,Tuensang,3
+CITY,25005,25,Wokha,3
+
+# Odisha (26) — extended
+CITY,26007,26,Balasore,3
+CITY,26008,26,Bhadrak,3
+CITY,26009,26,Baripada,3
+CITY,26010,26,Jharsuguda,3
+CITY,26011,26,Angul,3
+CITY,26012,26,Jeypore,3
+CITY,26013,26,Paradip,3
+CITY,26014,26,Dhenkanal,3
+CITY,26015,26,Konark,3
+
+# Punjab (28) — extended
+CITY,28007,28,Pathankot,3
+CITY,28008,28,Hoshiarpur,3
+CITY,28009,28,Moga,3
+CITY,28010,28,Firozpur,3
+CITY,28011,28,Kapurthala,3
+CITY,28012,28,Phagwara,3
+CITY,28013,28,Sangrur,3
+CITY,28014,28,Barnala,3
+CITY,28015,28,Abohar,3
+CITY,28016,28,Mansa,3
+CITY,28017,28,Zirakpur,3
+
+# Rajasthan (29) — extended
+CITY,29009,29,Sikar,3
+CITY,29010,29,Pali,3
+CITY,29011,29,Tonk,3
+CITY,29012,29,Hanumangarh,3
+CITY,29013,29,Sri Ganganagar,3
+CITY,29014,29,Bharatpur,3
+CITY,29015,29,Churu,3
+CITY,29016,29,Banswara,3
+CITY,29017,29,Mount Abu,3
+CITY,29018,29,Sawai Madhopur,3
+CITY,29019,29,Jhunjhunu,3
+CITY,29020,29,Beawar,3
+CITY,29021,29,Pushkar,3
+CITY,29022,29,Chittorgarh,3
+
+# Sikkim (30) — extended
+CITY,30002,30,Namchi,3
+CITY,30003,30,Gyalshing,3
+CITY,30004,30,Mangan,3
+CITY,30005,30,Pelling,3
+
+# Tamil Nadu (31) — extended
+CITY,31013,31,Karur,3
+CITY,31014,31,Nagercoil,3
+CITY,31015,31,Kanchipuram,3
+CITY,31016,31,Cuddalore,3
+CITY,31017,31,Hosur,3
+CITY,31018,31,Krishnagiri,3
+CITY,31019,31,Tiruvannamalai,3
+CITY,31020,31,Pudukkottai,3
+CITY,31021,31,Namakkal,3
+CITY,31022,31,Sivakasi,3
+CITY,31023,31,Kumbakonam,3
+CITY,31024,31,Ooty,3
+CITY,31025,31,Kodaikanal,3
+CITY,31026,31,Tambaram,2
+CITY,31027,31,Chengalpattu,3
+
+# Telangana (32) — extended
+CITY,32007,32,Mahbubnagar,3
+CITY,32008,32,Adilabad,3
+CITY,32009,32,Suryapet,3
+CITY,32010,32,Miryalaguda,3
+CITY,32011,32,Nalgonda,3
+CITY,32012,32,Siddipet,3
+CITY,32013,32,Sangareddy,3
+CITY,32014,32,Medak,3
+CITY,32015,32,Jagtial,3
+
+# Tripura (33) — extended
+CITY,33002,33,Udaipur,3
+CITY,33003,33,Dharmanagar,3
+CITY,33004,33,Kailashahar,3
+
+# Uttar Pradesh (34) — extended
+CITY,34016,34,Jhansi,3
+CITY,34017,34,Muzaffarnagar,3
+CITY,34018,34,Firozabad,3
+CITY,34019,34,Etawah,3
+CITY,34020,34,Rampur,3
+CITY,34021,34,Shahjahanpur,3
+CITY,34022,34,Faizabad,3
+CITY,34023,34,Mau,3
+CITY,34024,34,Hapur,3
+CITY,34025,34,Etah,3
+CITY,34026,34,Mirzapur,3
+CITY,34027,34,Bulandshahr,3
+CITY,34028,34,Sambhal,3
+CITY,34029,34,Amroha,3
+CITY,34030,34,Loni,3
+CITY,34031,34,Sitapur,3
+CITY,34032,34,Bahraich,3
+CITY,34033,34,Modinagar,3
+CITY,34034,34,Unnao,3
+CITY,34035,34,Jaunpur,3
+CITY,34036,34,Lakhimpur,3
+CITY,34037,34,Hathras,3
+CITY,34038,34,Banda,3
+CITY,34039,34,Ayodhya,3
+CITY,34040,34,Prayagraj,2
+
+# Uttarakhand (35) — extended
+CITY,35007,35,Almora,3
+CITY,35008,35,Pithoragarh,3
+CITY,35009,35,Mussoorie,3
+CITY,35010,35,Pauri,3
+CITY,35011,35,Rudrapur,3
+CITY,35012,35,Kashipur,3
+CITY,35013,35,Ramnagar,3
+
+# West Bengal (36) — extended
+CITY,36010,36,Jalpaiguri,3
+CITY,36011,36,Cooch Behar,3
+CITY,36012,36,Raiganj,3
+CITY,36013,36,Krishnanagar,3
+CITY,36014,36,Berhampore,3
+CITY,36015,36,Habra,3
+CITY,36016,36,Barasat,3
+CITY,36017,36,Bidhannagar,2
+CITY,36018,36,Murshidabad,3
+CITY,36019,36,Bankura,3
+CITY,36020,36,Purulia,3
+CITY,36021,36,Haldia,3
+CITY,36022,36,Krishnagar,3
+CITY,36023,36,Chandannagar,3

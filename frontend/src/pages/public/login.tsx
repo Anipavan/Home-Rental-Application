@@ -32,10 +32,17 @@ export function LoginPage() {
       // a clear distinction between "user not found" and "wrong
       // password" lets an attacker enumerate valid usernames. Always
       // a single generic copy regardless of HTTP status / errorCode.
+      //
+      // dedupeKey: repeated wrong-password attempts otherwise stack
+      // up four identical destructive toasts that obscure the form.
+      // With a stable key, every new failure replaces the previous
+      // one — the user sees a single, fresh "Sign-in failed" instead
+      // of a wall of them.
       toast({
         variant: "destructive",
         title: "Sign-in failed",
         description: "Check your username and password and try again.",
+        dedupeKey: "login-failed",
       });
     },
   });

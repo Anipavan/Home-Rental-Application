@@ -158,7 +158,9 @@ public class AuthServiceImpl implements AuthService {
                     req.gender(),
                     req.address(),
                     null,
-                    null
+                    null,
+                    req.maritalStatus(),
+                    req.tenantType()
             ));
         } catch (Exception ex) {
             log.error("User Service profile-creation failed for authUserId={} — rolling back Auth row", saved.getId(), ex);

@@ -1,0 +1,77 @@
+services:
+
+  service-registry:
+    image: home-rental-service-registry
+    container_name: hra-service-registry-dev
+    ports:
+      - "8762:8761"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+
+  config-server:
+    image: home-rental-config-server
+    container_name: hra-config-server-dev
+    ports:
+      - "8889:8888"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+
+  auth-service:
+    image: home-rental-auth-service
+    container_name: hra-auth-service-dev
+    ports:
+      - "8082:8080"
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      DB_URL: jdbc:oracle:thin:@//host.docker.internal:1522/FREEPDB1
+      DB_USERNAME: hra_dev
+      DB_PASSWORD: Dev123
+
+  user-service:
+    image: home-rental-user-service
+    container_name: hra-user-service-dev
+    ports:
+      - "8083:8080"
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      DB_URL: jdbc:oracle:thin:@//host.docker.internal:1522/FREEPDB1
+      DB_USERNAME: hra_dev
+      DB_PASSWORD: Dev123
+
+  property-service:
+    image: home-rental-property-service
+    container_name: hra-property-service-dev
+    ports:
+      - "8084:8080"
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      DB_URL: jdbc:oracle:thin:@//host.docker.internal:1522/FREEPDB1
+      DB_USERNAME: hra_dev
+      DB_PASSWORD: Dev123
+
+  api-gateway:
+    image: home-rental-api-gateway
+    container_name: hra-api-gateway-dev
+    ports:
+      - "8085:8080"
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      DB_URL: jdbc:oracle:thin:@//host.docker.internal:1522/FREEPDB1
+      DB_USERNAME: hra_dev
+      DB_PASSWORD: Dev123

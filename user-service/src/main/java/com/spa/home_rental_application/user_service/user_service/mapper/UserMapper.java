@@ -18,6 +18,11 @@ public class UserMapper {
                 .address(dto.address())
                 .profilePictureUrl(dto.profilePictureUrl())
                 .idProofUrl(dto.idProofUrl())
+                // Empty-string-to-null so an unfilled dropdown doesn't
+                // get persisted as "" (which then defeats `is null` /
+                // `isPresent()` checks downstream).
+                .maritalStatus(nullIfBlank(dto.maritalStatus()))
+                .tenantType(nullIfBlank(dto.tenantType()))
                 .build();
     }
 
@@ -35,7 +40,14 @@ public class UserMapper {
                 user.getProfilePictureUrl(),
                 user.getIdProofUrl(),
                 user.getCreatedAt(),
-                user.getUpdatedAt()
+                user.getUpdatedAt(),
+                user.getMaritalStatus(),
+                user.getTenantType(),
+                user.getKycStatus()
         );
+    }
+
+    private static String nullIfBlank(String s) {
+        return (s == null || s.isBlank()) ? null : s;
     }
 }

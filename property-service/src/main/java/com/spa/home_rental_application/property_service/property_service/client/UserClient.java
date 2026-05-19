@@ -23,18 +23,34 @@ public interface UserClient {
     @GetMapping("/users/user/{userId}")
     UserSummary getUserById(@PathVariable("userId") String userId);
 
-    /** Subset of {@code user-service UserResponseDto} used by the deed renderer. */
+    /**
+     * Lookup by auth-service user id, used when we have the {@code ownerId}
+     * stored on a Building (which is the {@code authUserId}, not the
+     * user-service surrogate id). Routes to user-service
+     * {@code GET /users/auth/{authUserId}}. Used by the building lookup
+     * path to populate the "verified owner" badge on public listings.
+     */
+    @GetMapping("/users/auth/{authUserId}")
+    UserSummary getUserByAuthId(@PathVariable("authUserId") String authUserId);
+
+    /** Subset of {@code user-service UserResponseDto} used by the deed renderer
+     *  and the verified-owner badge. New fields go on the end — Jackson on the
+     *  receiving side ignores unknown fields, but Java records are positional
+     *  so adding mid-record would break the deed renderer's existing usage. */
     record UserSummary(
             String id,
             String firstName,
             String lastName,
             String email,
             String phone,
-            String address
+            String address,
+            /** PENDING | INITIATED | VERIFIED | FAILED. Null when the
+             *  Feign call failed (fallback path) — treat as not-verified. */
+            String kycStatus
     ) {
         /** Empty placeholder used when the user-service call fails or returns null. */
         public static UserSummary empty() {
-            return new UserSummary(null, null, null, null, null, null);
+            return new UserSummary(null, null, null, null, null, null, null);
         }
 
         public String fullName() {
@@ -42,6 +58,13 @@ public interface UserClient {
             String l = lastName == null ? "" : lastName.trim();
             String joined = (f + " " + l).trim();
             return joined.isEmpty() ? null : joined;
+        }
+
+        /** True only when KYC is explicitly VERIFIED. Any other value
+         *  (PENDING, INITIATED, FAILED, null, missing) is treated as
+         *  "not verified" so the badge defaults to off. */
+        public boolean isVerified() {
+            return "VERIFIED".equalsIgnoreCase(kycStatus);
         }
     }
 }

@@ -17,5 +17,9 @@ public record UserProfileCreateRequest(
         String gender,
         String address,
         String profilePictureUrl,
-        String idProofUrl
+        String idProofUrl,
+        /** Optional. SINGLE | MARRIED | DIVORCED | WIDOWED. */
+        String maritalStatus,
+        /** Optional. BACHELOR | FAMILY. Only meaningful for TENANT users. */
+        String tenantType
 ) {}

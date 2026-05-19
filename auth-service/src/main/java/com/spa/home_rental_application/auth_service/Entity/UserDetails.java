@@ -91,7 +91,7 @@ public class UserDetails implements org.springframework.security.core.userdetail
      * the {@code is_cover} column to PropertyImage.
      */
     @Column(name = "failed_login_attempts", nullable = false,
-            columnDefinition = "NUMBER(10) DEFAULT 0 NOT NULL")
+            columnDefinition = "NUMBER(10) DEFAULT 0 ")
     @Builder.Default
     private Integer failedLoginAttempts = 0;
 
