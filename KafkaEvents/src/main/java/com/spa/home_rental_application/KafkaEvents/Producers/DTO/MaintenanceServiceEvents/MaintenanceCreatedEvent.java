@@ -33,5 +33,19 @@ public class MaintenanceCreatedEvent {
     private String complaintCategory;
     /** Carries the title so the notification consumer can render a useful subject line. */
     private String title;
+    /**
+     * Optional — tenant's display name as known at the time the ticket
+     * was raised. Populated by maintenance-service when it can resolve
+     * the name from user-service; left null on legacy publishers.
+     * Notification templates handle null/blank gracefully via Mustache
+     * truthy sections so the owner-side email still renders.
+     */
+    private String tenantName;
+    /**
+     * Optional — human-readable flat label (e.g. "A-301"). Same null
+     * contract as {@link #tenantName} — listener templates degrade
+     * gracefully when missing.
+     */
+    private String flatNumber;
     private Instant timestamp;
 }

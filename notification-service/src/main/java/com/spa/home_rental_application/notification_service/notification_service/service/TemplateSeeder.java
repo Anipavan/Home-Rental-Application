@@ -110,6 +110,22 @@ public class TemplateSeeder {
         upgradeEmailToHtml(NotificationCategory.LEASE_SIGNED,
                 "Your lease {{leaseNumber}} is signed",
                 buildLeaseSignedEmailHtml());
+        // Owner-side mirrors. Different copy ("your tenant raised X")
+        // and a CTA that points the owner at their tenant-detail or
+        // ticket-management screen rather than the tenant's view.
+        // Subject lines use Mustache truthy sections so we degrade
+        // gracefully when the tenant name isn't on the event (the
+        // KafkaEvents DTOs don't carry it yet — listener passes empty
+        // string and the section is hidden).
+        upgradeEmailToHtml(NotificationCategory.MAINTENANCE_RAISED_FOR_OWNER,
+                "New maintenance request on your property{{#tenantName}} — from {{tenantName}}{{/tenantName}} ({{requestNumber}})",
+                buildMaintenanceRaisedForOwnerEmailHtml());
+        upgradeEmailToHtml(NotificationCategory.COMPLAINT_RAISED_FOR_OWNER,
+                "New complaint on your property{{#tenantName}} — from {{tenantName}}{{/tenantName}} ({{requestNumber}})",
+                buildComplaintRaisedForOwnerEmailHtml());
+        upgradeEmailToHtml(NotificationCategory.REVIEW_RECEIVED_FOR_OWNER,
+                "New review on your property{{#tenantName}} — from {{tenantName}}{{/tenantName}}",
+                buildReviewReceivedForOwnerEmailHtml());
 
         // ── LEASE_WELCOME templates: switched from {{flatId}} (raw UUID)
         // to {{flatNumber}} (human-readable, e.g. "A-301"). UPDATE the
@@ -1069,6 +1085,81 @@ public class TemplateSeeder {
                         + "we'll re-open it for another round.",
                 "Open thread",
                 "{{complaintUrl}}",
+                "— Anirudh Homes")
+                + HTML_TEMPLATE_MARKER;
+    }
+
+    private static String buildMaintenanceRaisedForOwnerEmailHtml() {
+        // tenantName + flatNumber are optional — the listener tries to
+        // populate them but the KafkaEvents DTO may not carry them on
+        // legacy publishers. Mustache truthy sections hide the
+        // "by {{tenantName}}" / "on Flat {{flatNumber}}" fragments when
+        // empty so the body still reads naturally.
+        return EmailTemplateBuilder.build(
+                "A maintenance request was just raised on your property.",
+                "New maintenance request on your property",
+                "Heads-up — a maintenance ticket has been opened on your "
+                        + "property{{#flatNumber}}, <strong>Flat {{flatNumber}}</strong>{{/flatNumber}}"
+                        + "{{#tenantName}} by <strong>{{tenantName}}</strong>{{/tenantName}}.<br><br>"
+                        + "<table cellpadding=\"6\" style=\"font-size:14px;color:#334155;\">"
+                        + "<tr><td style=\"color:#64748b;\">Ticket</td>"
+                        + "<td style=\"font-weight:600;\">{{requestNumber}}</td></tr>"
+                        + "<tr><td style=\"color:#64748b;\">Category</td>"
+                        + "<td style=\"font-weight:600;\">{{category}}</td></tr>"
+                        + "<tr><td style=\"color:#64748b;\">Priority</td>"
+                        + "<td style=\"font-weight:600;\">{{priority}}</td></tr>"
+                        + "{{#title}}<tr><td style=\"color:#64748b;\">Title</td>"
+                        + "<td style=\"font-weight:600;\">{{title}}</td></tr>{{/title}}"
+                        + "</table><br>"
+                        + "Open the ticket in your owner dashboard to assign a technician "
+                        + "or message the tenant directly. Owners who respond within a few "
+                        + "hours get noticeably higher review scores.",
+                "Open ticket",
+                "{{frontendBaseUrl}}/owner/maintenance",
+                "— Anirudh Homes")
+                + HTML_TEMPLATE_MARKER;
+    }
+
+    private static String buildComplaintRaisedForOwnerEmailHtml() {
+        return EmailTemplateBuilder.build(
+                "A complaint was just filed on your property — respond within 24 hours.",
+                "New complaint on your property",
+                "A new complaint has been filed on your "
+                        + "property{{#flatNumber}}, <strong>Flat {{flatNumber}}</strong>{{/flatNumber}}"
+                        + "{{#tenantName}} by <strong>{{tenantName}}</strong>{{/tenantName}}. "
+                        + "Tenants notice fast responses — replying within a few hours "
+                        + "significantly improves your owner rating.<br><br>"
+                        + "<table cellpadding=\"6\" style=\"font-size:14px;color:#334155;\">"
+                        + "<tr><td style=\"color:#64748b;\">Complaint</td>"
+                        + "<td style=\"font-weight:600;\">{{requestNumber}}</td></tr>"
+                        + "<tr><td style=\"color:#64748b;\">About</td>"
+                        + "<td style=\"font-weight:600;\">{{complaintCategory}}</td></tr>"
+                        + "<tr><td style=\"color:#64748b;\">Priority</td>"
+                        + "<td style=\"font-weight:600;\">{{priority}}</td></tr>"
+                        + "</table><br>"
+                        + "Open the thread to acknowledge, reply, or resolve the complaint.",
+                "Open complaint",
+                "{{frontendBaseUrl}}/owner/complaints",
+                "— Anirudh Homes")
+                + HTML_TEMPLATE_MARKER;
+    }
+
+    private static String buildReviewReceivedForOwnerEmailHtml() {
+        return EmailTemplateBuilder.build(
+                "A new review was just left on your property.",
+                "New review on your property",
+                "A <strong>{{rating}}-star review</strong> was just submitted on your "
+                        + "property{{#flatNumber}}, <strong>Flat {{flatNumber}}</strong>{{/flatNumber}}"
+                        + "{{#tenantName}} by <strong>{{tenantName}}</strong>{{/tenantName}}.<br><br>"
+                        + "{{#comment}}<blockquote style=\"margin:0 0 16px;padding:14px 18px;"
+                        + "background:#f1f5f9;border-left:4px solid #14b8a6;border-radius:6px;"
+                        + "font-style:italic;color:#475569;\">"
+                        + "&ldquo;{{comment}}&rdquo;"
+                        + "</blockquote>{{/comment}}"
+                        + "Reviews are public on your listing — replies help future tenants "
+                        + "see how engaged you are. Open the review to respond.",
+                "Read review",
+                "{{frontendBaseUrl}}/owner/reviews",
                 "— Anirudh Homes")
                 + HTML_TEMPLATE_MARKER;
     }

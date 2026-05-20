@@ -14,10 +14,35 @@ public enum NotificationCategory {
     MAINTENANCE_CREATED,
     MAINTENANCE_ASSIGNED,
     MAINTENANCE_RESOLVED,
+    /**
+     * Owner-side mirror of {@link #MAINTENANCE_CREATED}. Fired when a
+     * tenant raises a maintenance request — gives the owner a heads-up
+     * with the tenant's name + ticket details so they can act before
+     * the tenant pings them via phone. Tenant gets the
+     * "we received your request" copy; owner gets this one ("your
+     * tenant just raised a request"). Splitting the categories lets
+     * us render role-appropriate copy without if/else inside the
+     * email template.
+     */
+    MAINTENANCE_RAISED_FOR_OWNER,
     // Complaints share the maintenance pipeline but render different copy.
     COMPLAINT_CREATED,
     COMPLAINT_ACKNOWLEDGED,
     COMPLAINT_RESOLVED,
+    /**
+     * Owner-side mirror of {@link #COMPLAINT_CREATED}. Same rationale
+     * as {@link #MAINTENANCE_RAISED_FOR_OWNER} — tenant gets
+     * "complaint registered", owner gets "your tenant filed a
+     * complaint". Skipped when the complaint category is
+     * OWNER_BEHAVIOR (admin-only escalation path).
+     */
+    COMPLAINT_RAISED_FOR_OWNER,
+    /**
+     * Owner-side notification fired when a tenant submits a review
+     * of the property or owner. Tenant sees nothing on their side —
+     * this is one-way; only the owner is told.
+     */
+    REVIEW_RECEIVED_FOR_OWNER,
     // Visit + enquiry events from the public property-detail page.
     // VISIT_REQUESTED pings owner; VISIT_RESPONDED pings the visitor
     // (confirm / reschedule / cancel). ENQUIRY_RECEIVED is the

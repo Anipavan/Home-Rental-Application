@@ -41,28 +41,43 @@ public class MaintenanceEventListener {
         // Compose template vars — both maintenance + complaint templates
         // pull from the same map; missing keys render as the literal
         // placeholder so accidentally-missing fields stand out.
+        // tenantName + flatNumber aren't currently on MaintenanceCreatedEvent
+        // — they're forwarded as empty strings so the owner-facing
+        // template's Mustache truthy sections hide the "by … / on Flat …"
+        // fragments cleanly. Will populate properly once the producer
+        // (maintenance-service) starts enriching the event.
         Map<String, Object> vars = Map.of(
                 "requestNumber",     safe(e.getRequestNumber()),
                 "category",          safe(e.getCategory()),
                 "complaintCategory", safe(e.getComplaintCategory()),
                 "priority",          safe(e.getPriority()),
-                "title",             safe(e.getTitle()));
+                "title",             safe(e.getTitle()),
+                "tenantName",        safe(e.getTenantName()),
+                "flatNumber",        safe(e.getFlatNumber()));
 
+        // ── Tenant side ────────────────────────────────────────────
+        // "We've received your request" copy — points the CTA back at
+        // the tenant's own /app/maintenance or /app/complaints view.
         NotificationCategory tenantCategory = isComplaint
                 ? NotificationCategory.COMPLAINT_CREATED
                 : NotificationCategory.MAINTENANCE_CREATED;
-
         notifications.fanOut(e.getTenantId(), tenantCategory, vars);
 
-        // Ping the owner too if we know who they are. For complaints
-        // about OWNER_BEHAVIOR we deliberately skip this — that route
-        // is admin-only and the owner shouldn't get a bell ping for a
-        // grievance filed against them.
+        // ── Owner side ─────────────────────────────────────────────
+        // Distinct category with role-appropriate copy ("Your tenant
+        // just raised a ticket on your property"). CTA points at the
+        // owner dashboard, not the tenant dashboard. For complaints
+        // about OWNER_BEHAVIOR we still skip the owner ping — that
+        // route is admin-only and the owner shouldn't be auto-told
+        // they're being complained about.
         String ownerId = e.getOwnerId();
         boolean isOwnerBehavior = isComplaint
                 && "OWNER_BEHAVIOR".equalsIgnoreCase(e.getComplaintCategory());
         if (ownerId != null && !ownerId.isBlank() && !isOwnerBehavior) {
-            notifications.fanOut(ownerId, tenantCategory, vars);
+            NotificationCategory ownerCategory = isComplaint
+                    ? NotificationCategory.COMPLAINT_RAISED_FOR_OWNER
+                    : NotificationCategory.MAINTENANCE_RAISED_FOR_OWNER;
+            notifications.fanOut(ownerId, ownerCategory, vars);
         }
     }
 
