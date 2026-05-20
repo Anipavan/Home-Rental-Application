@@ -407,23 +407,67 @@ public class AgreementServiceImpl implements AgreementService {
      * Resolve human-readable owner/tenant names from user-service so the
      * lease card no longer leaks raw UUIDs (Issue #5). Failure is silently
      * absorbed — names are nice-to-have, not load-bearing for the DTO.
+     *
+     * <p><b>Terms are re-rendered fresh on every read</b> rather than
+     * returning the persisted {@code Agreement.terms} field. Reasons:
+     * <ul>
+     *   <li>The persisted text is a snapshot from the moment the
+     *       agreement was created. Older agreements still carry the
+     *       legacy "Owner ID: 4 / Tenant ID: 5" copy and the
+     *       "two months' deposit" wording.</li>
+     *   <li>The template (parties, address, deposit clause) is
+     *       legitimately platform-policy, not contract-binding text
+     *       — the contract-binding bits are the dates + rent + flat,
+     *       which come from the same flat/building rows and can't
+     *       change behind the parties' back.</li>
+     *   <li>Re-rendering is cheap (single string concat) and a
+     *       safety net so policy fixes (deposit wording, name
+     *       format) actually reach existing leases without a
+     *       backfill migration.</li>
+     * </ul>
+     * If you ever need contract-frozen text (lease law sometimes
+     * requires the same wording forever), gate this on
+     * {@code a.getStatus() == SIGNED} and only re-render PENDING
+     * agreements.
      */
     private AgreementResponseDTO toDto(Agreement a) {
-        String tenantName = null;
-        String ownerName = null;
+        UserSummary ownerSummary = null;
+        UserSummary tenantSummary = null;
         try {
-            UserSummary t = safeFetchUser(a.getTenantId());
-            if (t != null) tenantName = t.fullName();
+            tenantSummary = safeFetchUser(a.getTenantId());
         } catch (Exception ignored) { /* names are best-effort */ }
         try {
-            UserSummary o = safeFetchUser(a.getOwnerId());
-            if (o != null) ownerName = o.fullName();
+            ownerSummary = safeFetchUser(a.getOwnerId());
         } catch (Exception ignored) { /* names are best-effort */ }
+        String tenantName = (tenantSummary != null) ? tenantSummary.fullName() : null;
+        String ownerName = (ownerSummary != null) ? ownerSummary.fullName() : null;
+
+        // Re-render the terms on every read so policy fixes (name
+        // format, deposit wording, floor word) reach existing leases
+        // without a backfill. Falls back to the persisted terms when
+        // the flat / building row can't be loaded (e.g. flat was
+        // hard-deleted) — better stale text than a 500.
+        String terms = a.getTerms();
+        try {
+            Flat flat = (a.getFlatId() != null)
+                    ? flatRepo.findById(a.getFlatId()).orElse(null)
+                    : null;
+            Building b = (a.getBuildingId() != null)
+                    ? buildingRepo.findById(a.getBuildingId()).orElse(null)
+                    : null;
+            if (flat != null) {
+                terms = renderDefaultTerms(flat, b, ownerSummary, tenantSummary);
+            }
+        } catch (Exception ex) {
+            log.warn("Terms re-render failed for agreement={} — falling back to stored copy: {}",
+                    a.getId(), ex.getMessage());
+        }
+
         return new AgreementResponseDTO(
                 a.getId(), a.getFlatId(), a.getBuildingId(), a.getTenantId(), a.getOwnerId(),
                 tenantName, ownerName,
                 a.getRentAmount(), a.getLeaseStartDate(), a.getLeaseEndDate(),
-                a.getTerms(), a.getStatus().name(), a.getSignatureData(),
+                terms, a.getStatus().name(), a.getSignatureData(),
                 a.getSignedAt(), a.getRejectedAt(), a.getRejectionReason(),
                 a.getDocumentPath() != null,
                 a.getSignedDeedPath() != null,
