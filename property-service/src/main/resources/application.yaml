@@ -81,11 +81,24 @@ app:
     notification-topic: notification-events
     auth-topic: auth-events
   uploads:
-    dir: ${PROPERTY_UPLOAD_DIR:uploads}
+    # Absolute path on the container's writable volume (Dockerfile
+    # declares VOLUME /data/uploads and chowns it to the app user).
+    # The legacy default was "uploads" which resolved against
+    # WORKDIR /app — /app/uploads is NOT writable, so every upload
+    # would 500 with AccessDeniedException. Anchored absolute now;
+    # override via PROPERTY_UPLOAD_DIR if you need a different mount.
+    dir: ${PROPERTY_UPLOAD_DIR:/data/uploads}
   agreements:
-    # Where the rendered lease deed PDFs land. Mount a Docker volume here
-    # so deeds survive container restarts.
-    deed-storage-dir: ${AGREEMENT_DEED_DIR:uploads/lease-deeds-property}
+    # Where the rendered lease deed PDFs land. Same reasoning as
+    # uploads.dir above — absolute path under the writable /data
+    # volume so the PDF render doesn't hit AccessDeniedException
+    # on /app/uploads. Override via AGREEMENT_DEED_DIR if needed.
+    deed-storage-dir: ${AGREEMENT_DEED_DIR:/data/uploads/lease-deeds}
+    # Signed-deed copies (post-tenant-signature) — keep them next to
+    # the unsigned originals on the same writable volume but in a
+    # separate folder so the unsigned-vs-signed audit trail stays
+    # legible to operators tarball-grepping the disk.
+    signed-deed-storage-dir: ${AGREEMENT_SIGNED_DEED_DIR:/data/uploads/lease-deeds-signed}
 
 eureka:
   instance:

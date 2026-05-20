@@ -45,7 +45,11 @@ public class AgreementServiceImpl implements AgreementService {
      * from the auto-generated deeds so the original is preserved and
      * reviewers can compare.
      */
-    @Value("${app.agreements.signed-deed-storage-dir:uploads/lease-deeds-property-signed}")
+    // Absolute path on the writable /data volume. Same reasoning
+    // as AgreementPdfGenerator.storageDir — /app/uploads is not
+    // writable for the non-root container user. Override via
+    // AGREEMENT_SIGNED_DEED_DIR env var if a different mount is needed.
+    @Value("${app.agreements.signed-deed-storage-dir:/data/uploads/lease-deeds-signed}")
     private String signedDeedStorageDir;
 
     /** Hard cap on uploaded notarized PDFs — same shape as KYC/profile uploads. */

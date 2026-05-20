@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { agreementsApi } from "@/lib/api/agreements";
+import { useFlatLookup } from "@/hooks/use-flat-lookup";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -156,6 +157,11 @@ function AgreementCard({ agreement }: { agreement: AgreementResponseDTO }) {
   const [signatureEmpty, setSignatureEmpty] = useState(true);
   const padRef = useRef<SignaturePadHandle>(null);
 
+  // Resolve flatId → human-readable flat number ("203") instead of
+  // the raw UUID "FLT-ede7a745-…". Hook caches for 60s so the
+  // re-render between PENDING_SIGNATURE → SIGNED doesn't refetch.
+  const flatLookup = useFlatLookup(agreement.flatId ? [agreement.flatId] : []);
+
   const signMutation = useMutation({
     mutationFn: (signatureData: string) =>
       agreementsApi.sign(agreement.id, { signatureData }),
@@ -220,7 +226,11 @@ function AgreementCard({ agreement }: { agreement: AgreementResponseDTO }) {
                 Residential Lease Agreement
               </h2>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Flat #{agreement.flatId} · Created{" "}
+                {/* Human-readable flat number from the lookup hook —
+                    "Flat 203" instead of "Flat #FLT-ede7a745-..." UUID.
+                    The hook returns "#<id-prefix>…" while the fetch is
+                    in flight so the line never renders empty. */}
+                Flat {flatLookup.nameOf(agreement.flatId)} · Created{" "}
                 {formatDate(agreement.createdAt)}
               </p>
             </div>
