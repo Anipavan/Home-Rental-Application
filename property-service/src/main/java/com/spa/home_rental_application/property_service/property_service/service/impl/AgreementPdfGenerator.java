@@ -61,7 +61,24 @@ public class AgreementPdfGenerator {
     private static final DateTimeFormatter PRETTY_DATE =
             DateTimeFormatter.ofPattern("d MMMM yyyy");
 
-    @Value("${app.agreements.deed-storage-dir:uploads/lease-deeds-property}")
+    /**
+     * Absolute path on the container's writable volume. Defaults to
+     * {@code /data/uploads/lease-deeds} which matches the
+     * {@code /data/uploads} VOLUME declared in the Dockerfile (chowned
+     * to the {@code app} user at image build time).
+     *
+     * <p>The earlier default was a RELATIVE path ({@code
+     * uploads/lease-deeds-property}) which resolved against
+     * {@code WORKDIR /app} — and {@code /app/uploads} is NOT writable
+     * by the non-root {@code app} user, so every PDF render 500'd with
+     * {@code AccessDeniedException}. Switching to the absolute /data
+     * path puts the file on the persistent volume the Dockerfile
+     * already prepares, and survives container restarts.
+     *
+     * <p>Override via {@code APP_AGREEMENTS_DEED_STORAGE_DIR} env var
+     * if you need a different mount point.
+     */
+    @Value("${app.agreements.deed-storage-dir:/data/uploads/lease-deeds}")
     private String storageDir;
 
     /**
