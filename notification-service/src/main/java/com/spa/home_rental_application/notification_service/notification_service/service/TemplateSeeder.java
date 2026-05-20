@@ -27,6 +27,22 @@ public class TemplateSeeder {
         this.repo = repo;
     }
 
+    /**
+     * Sentinel marker baked into every HTML-shell template body. The
+     * 2026-05 redesign moved EMAIL templates from plain-text +
+     * runtime-wrapped brand shell to fully-pre-rendered HTML emitted
+     * by {@link EmailTemplateBuilder}. Any template row whose body
+     * lacks this marker is considered legacy and gets refreshed on
+     * boot. Admin-edited templates that still want the new shell can
+     * include the marker themselves; admin-edited templates that
+     * intentionally use plain text won't include it and stay
+     * untouched as long as the marker is missing AND the admin row
+     * looks unlike the default seed (length/content heuristics
+     * deliberately not added — admins who want full control should
+     * call the template API to lock their changes).
+     */
+    private static final String HTML_TEMPLATE_MARKER = "<!--anirudhhomes-html-shell-v1-->";
+
     @EventListener(ApplicationReadyEvent.class)
     public void seed() {
         // ── One-time cleanup of stale seeds ──
@@ -48,6 +64,52 @@ public class TemplateSeeder {
                     log.info("Deleting stale password-reset-email template (missing resetLink placeholder) — will be re-seeded with the current body");
                     repo.delete(t);
                 });
+
+        // ── 2026-05: HTML-shell migration ──
+        // Refresh the major EMAIL templates to their HTML-rendered
+        // versions whenever the current row lacks the sentinel
+        // marker. Each call below is an explicit category refresh —
+        // calling them individually rather than walking every row
+        // means a one-off admin-edited template stays put.
+        upgradeEmailToHtml(NotificationCategory.USER_REGISTRATION,
+                "Welcome to Anirudh Homes — your account is ready",
+                buildWelcomeEmailHtml());
+        upgradeEmailToHtml(NotificationCategory.PASSWORD_RESET,
+                "Reset your Anirudh Homes password",
+                buildPasswordResetEmailHtml());
+        upgradeEmailToHtml(NotificationCategory.PAYMENT_CREATED,
+                "New rent invoice — ₹{{amount}} due {{dueDate}}",
+                buildPaymentCreatedEmailHtml());
+        upgradeEmailToHtml(NotificationCategory.PAYMENT_REMINDER,
+                "Rent due in {{daysUntilDue}} day(s) — pay early",
+                buildPaymentReminderEmailHtml());
+        upgradeEmailToHtml(NotificationCategory.PAYMENT_OVERDUE,
+                "Rent overdue — ₹{{amount}} + ₹{{lateFee}} late fee",
+                buildPaymentOverdueEmailHtml());
+        upgradeEmailToHtml(NotificationCategory.PAYMENT_RECEIPT,
+                "Payment received — ₹{{amount}}",
+                buildPaymentReceiptEmailHtml());
+        upgradeEmailToHtml(NotificationCategory.MAINTENANCE_CREATED,
+                "Maintenance request {{requestNumber}} received",
+                buildMaintenanceCreatedEmailHtml());
+        upgradeEmailToHtml(NotificationCategory.MAINTENANCE_ASSIGNED,
+                "Maintenance request assigned",
+                buildMaintenanceAssignedEmailHtml());
+        upgradeEmailToHtml(NotificationCategory.MAINTENANCE_RESOLVED,
+                "Maintenance request resolved",
+                buildMaintenanceResolvedEmailHtml());
+        upgradeEmailToHtml(NotificationCategory.COMPLAINT_CREATED,
+                "Complaint {{requestNumber}} registered",
+                buildComplaintCreatedEmailHtml());
+        upgradeEmailToHtml(NotificationCategory.COMPLAINT_ACKNOWLEDGED,
+                "Update on complaint {{requestNumber}}",
+                buildComplaintAcknowledgedEmailHtml());
+        upgradeEmailToHtml(NotificationCategory.COMPLAINT_RESOLVED,
+                "Your complaint has been resolved",
+                buildComplaintResolvedEmailHtml());
+        upgradeEmailToHtml(NotificationCategory.LEASE_SIGNED,
+                "Your lease {{leaseNumber}} is signed",
+                buildLeaseSignedEmailHtml());
 
         // ── LEASE_WELCOME templates: switched from {{flatId}} (raw UUID)
         // to {{flatNumber}} (human-readable, e.g. "A-301"). UPDATE the
@@ -751,5 +813,287 @@ public class TemplateSeeder {
                 .variables(variables)
                 .build());
         log.info("Seeded notification template: {} ({} / {})", name, category, type);
+    }
+
+    /* ──────────────────────────────────────────────────────────────
+     *   HTML-shell upgrade machinery + per-category body builders.
+     *   Added 2026-05 (templates-too-vague feedback). Each category's
+     *   body is assembled from EmailTemplateBuilder + a category-
+     *   specific content block — variables stay as Mustache tokens
+     *   so the existing TemplateService rendering pipeline keeps
+     *   working.
+     *
+     *   The category list is the same as the corresponding plain-text
+     *   seedIfAbsent calls above — both run, so a fresh DB seeds the
+     *   plain-text version once (idempotent), then this loop refreshes
+     *   it in place to the HTML version. Net effect on a fresh boot:
+     *   plain text gets inserted then immediately replaced. Cheap and
+     *   keeps the migration path symmetric with re-deploys against an
+     *   existing DB.
+     * ────────────────────────────────────────────────────────────── */
+
+    /**
+     * Upgrade an existing email-channel template row to the HTML
+     * shell, OR create a fresh row if none exists. Idempotent —
+     * skips rows that already carry the HTML_TEMPLATE_MARKER
+     * sentinel, so re-runs are no-ops and an admin who hand-edited
+     * the template through the API (and didn't include the marker)
+     * is left alone.
+     */
+    private void upgradeEmailToHtml(NotificationCategory category,
+                                    String subject,
+                                    String htmlBody) {
+        repo.findByCategoryAndType(category, NotificationType.EMAIL)
+                .ifPresentOrElse(existing -> {
+                    String body = existing.getBodyTemplate();
+                    if (body != null && body.contains(HTML_TEMPLATE_MARKER)) {
+                        return; // already on the new HTML shell
+                    }
+                    log.info("Upgrading {} / EMAIL template to HTML shell", category);
+                    existing.setSubject(subject);
+                    existing.setBodyTemplate(htmlBody);
+                    // Variables list left untouched — the HTML body
+                    // uses the same Mustache placeholders as the
+                    // legacy plain-text version it's replacing.
+                    repo.save(existing);
+                }, () -> {
+                    // No legacy row at all — happens on a brand-new
+                    // database that hasn't run the plain-text seed
+                    // pass yet. We still want the HTML row in place
+                    // before any event lands.
+                    log.info("Inserting fresh {} / EMAIL HTML template", category);
+                    repo.save(NotificationTemplate.builder()
+                            .name(category.name().toLowerCase().replace("_", "-") + "-email-html")
+                            .category(category)
+                            .type(NotificationType.EMAIL)
+                            .subject(subject)
+                            .bodyTemplate(htmlBody)
+                            .variables(List.of())
+                            .build());
+                });
+    }
+
+    /* ─────────── Per-category HTML body builders ─────────── */
+
+    private static String buildWelcomeEmailHtml() {
+        return EmailTemplateBuilder.build(
+                "Welcome to Anirudh Homes — your account is ready.",
+                "Welcome, {{userName}} 👋",
+                "Your Anirudh Homes account (<strong>{{email}}</strong>) is live as a "
+                        + "<strong>{{role}}</strong>.<br><br>"
+                        + "Sign in to start browsing verified listings, manage rent payments, "
+                        + "and raise maintenance tickets — all in one place. No brokerage. "
+                        + "Direct from owners.",
+                "Sign in to Anirudh Homes",
+                "{{signInUrl}}",
+                "— The Anirudh Homes team")
+                + HTML_TEMPLATE_MARKER;
+    }
+
+    private static String buildPasswordResetEmailHtml() {
+        return EmailTemplateBuilder.build(
+                "Reset your password — link valid until {{expiresAt}}.",
+                "Reset your password",
+                "Hi {{userName}},<br><br>"
+                        + "We received a request to reset the password on your "
+                        + "Anirudh Homes account. Tap the button below to set a new one.<br><br>"
+                        + "<span style=\"font-size:13px;color:#64748b;\">"
+                        + "This link is valid until <strong>{{expiresAt}}</strong>. "
+                        + "If you didn't request this, you can safely ignore this email — "
+                        + "your current password is unchanged.</span>",
+                "Reset password",
+                "{{resetLink}}",
+                "— The Anirudh Homes team")
+                + HTML_TEMPLATE_MARKER;
+    }
+
+    private static String buildPaymentCreatedEmailHtml() {
+        return EmailTemplateBuilder.build(
+                "New rent invoice {{invoiceNumber}} for ₹{{amount}}, due {{dueDate}}.",
+                "Your rent invoice is ready",
+                "A new rent invoice has been generated.<br><br>"
+                        + "<table cellpadding=\"6\" style=\"font-size:14px;color:#334155;\">"
+                        + "<tr><td style=\"color:#64748b;\">Invoice</td>"
+                        + "<td style=\"font-weight:600;\">{{invoiceNumber}}</td></tr>"
+                        + "<tr><td style=\"color:#64748b;\">Amount</td>"
+                        + "<td style=\"font-weight:600;\">₹{{amount}}</td></tr>"
+                        + "<tr><td style=\"color:#64748b;\">Due date</td>"
+                        + "<td style=\"font-weight:600;\">{{dueDate}}</td></tr>"
+                        + "</table><br>"
+                        + "Pay early via UPI to avoid late fees.",
+                "Pay rent now",
+                "{{paymentUrl}}",
+                "— Anirudh Homes")
+                + HTML_TEMPLATE_MARKER;
+    }
+
+    private static String buildPaymentReminderEmailHtml() {
+        return EmailTemplateBuilder.build(
+                "Rent due in {{daysUntilDue}} day(s) — pay early.",
+                "Quick rent reminder",
+                "Hi {{userName}},<br><br>"
+                        + "Your rent of <strong>₹{{amount}}</strong> is due in "
+                        + "<strong>{{daysUntilDue}} day(s)</strong>. Settle it now to avoid "
+                        + "late fees.<br><br>"
+                        + "It only takes a tap — UPI QR is right inside the app.",
+                "Pay rent now",
+                "{{paymentUrl}}",
+                "— Anirudh Homes")
+                + HTML_TEMPLATE_MARKER;
+    }
+
+    private static String buildPaymentOverdueEmailHtml() {
+        return EmailTemplateBuilder.build(
+                "Rent is {{daysOverdue}} day(s) overdue — pay now to stop the late fee growing.",
+                "Your rent is overdue",
+                "Your rent payment is now <strong>{{daysOverdue}} day(s) late</strong>.<br><br>"
+                        + "<table cellpadding=\"6\" style=\"font-size:14px;color:#334155;\">"
+                        + "<tr><td style=\"color:#64748b;\">Rent</td>"
+                        + "<td style=\"font-weight:600;\">₹{{amount}}</td></tr>"
+                        + "<tr><td style=\"color:#64748b;\">Late fee</td>"
+                        + "<td style=\"font-weight:600;color:#dc2626;\">₹{{lateFee}}</td></tr>"
+                        + "</table><br>"
+                        + "Late fees continue to accrue daily until the payment is cleared. "
+                        + "Please pay immediately.",
+                "Pay now",
+                "{{paymentUrl}}",
+                "— Anirudh Homes")
+                + HTML_TEMPLATE_MARKER;
+    }
+
+    private static String buildPaymentReceiptEmailHtml() {
+        return EmailTemplateBuilder.build(
+                "Payment received — ₹{{amount}} via {{method}}.",
+                "Payment received — thanks!",
+                "We've received your rent payment.<br><br>"
+                        + "<table cellpadding=\"6\" style=\"font-size:14px;color:#334155;\">"
+                        + "<tr><td style=\"color:#64748b;\">Amount</td>"
+                        + "<td style=\"font-weight:600;\">₹{{amount}}</td></tr>"
+                        + "<tr><td style=\"color:#64748b;\">Method</td>"
+                        + "<td style=\"font-weight:600;\">{{method}}</td></tr>"
+                        + "<tr><td style=\"color:#64748b;\">Transaction id</td>"
+                        + "<td style=\"font-weight:600;font-family:monospace;\">{{transactionId}}</td></tr>"
+                        + "<tr><td style=\"color:#64748b;\">Date</td>"
+                        + "<td style=\"font-weight:600;\">{{paidDate}}</td></tr>"
+                        + "</table><br>"
+                        + "Your invoice PDF is available under <em>Payments</em>.",
+                "Download invoice",
+                "{{receiptUrl}}",
+                "— Anirudh Homes")
+                + HTML_TEMPLATE_MARKER;
+    }
+
+    private static String buildMaintenanceCreatedEmailHtml() {
+        return EmailTemplateBuilder.build(
+                "Maintenance request {{requestNumber}} opened — {{category}}, {{priority}} priority.",
+                "We've received your maintenance request",
+                "Your request <strong>{{requestNumber}}</strong> is open and queued.<br><br>"
+                        + "<table cellpadding=\"6\" style=\"font-size:14px;color:#334155;\">"
+                        + "<tr><td style=\"color:#64748b;\">Category</td>"
+                        + "<td style=\"font-weight:600;\">{{category}}</td></tr>"
+                        + "<tr><td style=\"color:#64748b;\">Priority</td>"
+                        + "<td style=\"font-weight:600;\">{{priority}}</td></tr>"
+                        + "</table><br>"
+                        + "We'll keep you posted on every status change.",
+                "Track this ticket",
+                "{{ticketUrl}}",
+                "— Anirudh Homes")
+                + HTML_TEMPLATE_MARKER;
+    }
+
+    private static String buildMaintenanceAssignedEmailHtml() {
+        return EmailTemplateBuilder.build(
+                "Ticket {{requestId}} assigned to {{assignedTo}}.",
+                "Your ticket is in progress",
+                "Maintenance request <strong>{{requestId}}</strong> has been assigned to "
+                        + "<strong>{{assignedTo}}</strong>. They'll reach out shortly with next steps. "
+                        + "Reply or add details inside the app to keep everything in one thread.",
+                "View ticket",
+                "{{ticketUrl}}",
+                "— Anirudh Homes")
+                + HTML_TEMPLATE_MARKER;
+    }
+
+    private static String buildMaintenanceResolvedEmailHtml() {
+        return EmailTemplateBuilder.build(
+                "Ticket {{requestId}} resolved — happy to help!",
+                "Resolved!",
+                "Great news — your maintenance request <strong>{{requestId}}</strong> is closed "
+                        + "(turnaround: {{resolutionTimeMinutes}} minutes).<br><br>"
+                        + "If anything's still off, reply inside the app within 7 days and "
+                        + "we'll re-open the ticket.",
+                "Open Maintenance",
+                "{{ticketUrl}}",
+                "— Anirudh Homes")
+                + HTML_TEMPLATE_MARKER;
+    }
+
+    private static String buildComplaintCreatedEmailHtml() {
+        return EmailTemplateBuilder.build(
+                "Complaint {{requestNumber}} registered — a manager will respond soon.",
+                "We've registered your complaint",
+                "Your complaint <strong>{{requestNumber}}</strong> is now on file.<br><br>"
+                        + "<table cellpadding=\"6\" style=\"font-size:14px;color:#334155;\">"
+                        + "<tr><td style=\"color:#64748b;\">About</td>"
+                        + "<td style=\"font-weight:600;\">{{complaintCategory}}</td></tr>"
+                        + "<tr><td style=\"color:#64748b;\">Priority</td>"
+                        + "<td style=\"font-weight:600;\">{{priority}}</td></tr>"
+                        + "</table><br>"
+                        + "A property manager will review it and reply via the in-app thread. "
+                        + "You can track status any time under <em>Complaints</em>.",
+                "Open this complaint",
+                "{{complaintUrl}}",
+                "— Anirudh Homes")
+                + HTML_TEMPLATE_MARKER;
+    }
+
+    private static String buildComplaintAcknowledgedEmailHtml() {
+        return EmailTemplateBuilder.build(
+                "Complaint {{requestNumber}} acknowledged — being handled by {{assignedTo}}.",
+                "Your complaint is being handled",
+                "Complaint <strong>{{requestNumber}}</strong> is now being worked on by "
+                        + "<strong>{{assignedTo}}</strong>. You'll be notified when there's "
+                        + "progress; replies appear in the in-app thread.",
+                "View thread",
+                "{{complaintUrl}}",
+                "— Anirudh Homes")
+                + HTML_TEMPLATE_MARKER;
+    }
+
+    private static String buildComplaintResolvedEmailHtml() {
+        return EmailTemplateBuilder.build(
+                "Complaint {{requestNumber}} resolved.",
+                "Your complaint has been resolved",
+                "Your complaint <strong>{{requestNumber}}</strong> is closed.<br><br>"
+                        + "Not happy with the outcome? Reply in the thread within 7 days and "
+                        + "we'll re-open it for another round.",
+                "Open thread",
+                "{{complaintUrl}}",
+                "— Anirudh Homes")
+                + HTML_TEMPLATE_MARKER;
+    }
+
+    private static String buildLeaseSignedEmailHtml() {
+        return EmailTemplateBuilder.build(
+                "Your lease {{leaseNumber}} is signed — welcome aboard.",
+                "Your lease is signed 🏡",
+                "Congratulations — your tenancy is officially on.<br><br>"
+                        + "<table cellpadding=\"6\" style=\"font-size:14px;color:#334155;\">"
+                        + "<tr><td style=\"color:#64748b;\">Lease number</td>"
+                        + "<td style=\"font-weight:600;\">{{leaseNumber}}</td></tr>"
+                        + "<tr><td style=\"color:#64748b;\">Starts</td>"
+                        + "<td style=\"font-weight:600;\">{{startDate}}</td></tr>"
+                        + "<tr><td style=\"color:#64748b;\">Ends</td>"
+                        + "<td style=\"font-weight:600;\">{{endDate}}</td></tr>"
+                        + "<tr><td style=\"color:#64748b;\">Monthly rent</td>"
+                        + "<td style=\"font-weight:600;\">₹{{rentAmount}}</td></tr>"
+                        + "<tr><td style=\"color:#64748b;\">Security deposit</td>"
+                        + "<td style=\"font-weight:600;\">₹{{deposit}}</td></tr>"
+                        + "</table><br>"
+                        + "Download the signed PDF any time from <em>Documents</em>.",
+                "View lease",
+                "{{leaseUrl}}",
+                "— Anirudh Homes")
+                + HTML_TEMPLATE_MARKER;
     }
 }

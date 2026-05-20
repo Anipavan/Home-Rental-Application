@@ -273,6 +273,23 @@ public class NotificationService {
                     NotificationStatus.SKIPPED, "Channel " + type + " disabled by user", vars);
         }
 
+        // Inject framework-supplied variables into the vars map BEFORE
+        // template rendering. Right now that's:
+        //   • {{frontendBaseUrl}}      — absolute, no trailing slash
+        //   • {{paymentsUrl}}          — frontendBaseUrl + /app/payments
+        //   • {{maintenanceUrl}}       — frontendBaseUrl + /app/maintenance
+        //   • {{complaintsUrl}}        — frontendBaseUrl + /app/complaints
+        //   • {{leaseUrl}}             — frontendBaseUrl + /app/lease
+        //   • {{notificationsUrl}}     — frontendBaseUrl + /app/notifications
+        //   • {{signInUrl}}            — frontendBaseUrl + /sign-in
+        // Listeners can still override these by providing their own
+        // value in vars (mergedVars is built per-call from the
+        // listener-supplied map first, with framework defaults filling
+        // any holes). That makes the listener side optional — old
+        // listeners that don't know about the new variables continue
+        // to work and just rely on the global defaults.
+        Map<String, Object> mergedVars = withFrameworkVars(vars);
+
         String subject = subjectOverride;
         String body    = messageOverride;
         if ((subject == null || body == null) && category != null) {
@@ -285,8 +302,8 @@ public class NotificationService {
             boolean htmlEscape = (type == NotificationType.EMAIL);
             try {
                 NotificationTemplate tmpl = templateService.findOrThrow(category, type);
-                if (subject == null) subject = templateService.render(tmpl.getSubject(), vars, htmlEscape);
-                if (body == null)    body    = templateService.render(tmpl.getBodyTemplate(), vars, htmlEscape);
+                if (subject == null) subject = templateService.render(tmpl.getSubject(), mergedVars, htmlEscape);
+                if (body == null)    body    = templateService.render(tmpl.getBodyTemplate(), mergedVars, htmlEscape);
             } catch (Exception ex) {
                 log.warn("Template lookup failed for category={} type={}: {}", category, type, ex.getMessage());
                 // Fall back to a generic message so the user still hears about it.
@@ -414,5 +431,51 @@ public class NotificationService {
             // the NotificationLog directly via /notifications/user/{userId}.
             case INAPP    -> pref.getUserId();
         };
+    }
+
+    /**
+     * Frontend public URL — drives every deep-link variable injected
+     * into template render. Overridable via FRONTEND_URL env var (or
+     * app.frontend.base-url in application.yaml). Trailing slashes
+     * are stripped at use-site so concatenations are clean.
+     */
+    @org.springframework.beans.factory.annotation.Value(
+            "${app.frontend.base-url:https://anirudhhomes.in}")
+    private String frontendBaseUrl;
+
+    /**
+     * Merge listener-supplied {@code vars} with framework-defaulted
+     * deep-link variables. Listener values win when there's a key
+     * collision so a payment listener that wants the URL to point at
+     * a specific invoice (e.g. {@code /app/payments/PAY-xxx}) can
+     * pass {@code paymentsUrl} explicitly and override the generic
+     * defaults below.
+     *
+     * <p>Always returns a fresh map — never mutates the caller's. The
+     * existing template code in {@code TemplateService} treats the
+     * map as read-only too, but a defensive copy here keeps the
+     * contract obvious and bug-resistant.
+     */
+    private Map<String, Object> withFrameworkVars(Map<String, Object> vars) {
+        String base = frontendBaseUrl == null || frontendBaseUrl.isBlank()
+                ? "https://anirudhhomes.in"
+                : frontendBaseUrl.replaceAll("/+$", "");
+
+        Map<String, Object> merged = new HashMap<>();
+        // Framework defaults — listener can override any of these.
+        merged.put("frontendBaseUrl", base);
+        merged.put("paymentsUrl", base + "/app/payments");
+        merged.put("paymentUrl", base + "/app/payments");
+        merged.put("receiptUrl", base + "/app/payments");
+        merged.put("maintenanceUrl", base + "/app/maintenance");
+        merged.put("ticketUrl", base + "/app/maintenance");
+        merged.put("complaintsUrl", base + "/app/complaints");
+        merged.put("complaintUrl", base + "/app/complaints");
+        merged.put("leaseUrl", base + "/app/lease");
+        merged.put("notificationsUrl", base + "/app/notifications");
+        merged.put("signInUrl", base + "/sign-in");
+        // Listener values take precedence.
+        if (vars != null) merged.putAll(vars);
+        return merged;
     }
 }
