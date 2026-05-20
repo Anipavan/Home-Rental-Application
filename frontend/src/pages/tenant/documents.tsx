@@ -8,7 +8,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuthStore } from "@/stores/auth-store";
 import { documentsApi } from "@/lib/api/documents";
 import { usersApi } from "@/lib/api/users";
@@ -54,6 +54,51 @@ export function DocumentsPage() {
     queryFn: () => documentsApi.byUser(userId!),
     enabled: !!userId,
   });
+
+  // Compute which document types the user has ALREADY uploaded with a
+  // non-rejected status. Those types disappear from the upload
+  // dropdown until the owner rejects them (the dropdown shouldn't
+  // offer "Aadhaar" again when the existing Aadhaar is still pending
+  // review or already approved). When a doc gets rejected, that
+  // type's slot opens up again — the tenant can re-upload a
+  // corrected copy.
+  //
+  // OTHER is intentionally exempt — it's a catch-all for non-standard
+  // documents (driving licence, utility bill, rental agreement
+  // amendments, …) so multiple OTHER uploads make sense.
+  //
+  // "Used" check excludes REJECTED docs so the slot opens again on
+  // rejection. Soft-deleted docs are filtered server-side by
+  // /documents/user/{id}, so the response we get is already
+  // delete-free — we don't need to re-check the flag here.
+  const lockedTypes = useMemo(() => {
+    const set = new Set<DocumentType>();
+    for (const d of listQ.data ?? []) {
+      if (d.verificationStatus === "REJECTED") continue;
+      if (d.documentType === "OTHER") continue;
+      set.add(d.documentType);
+    }
+    return set;
+  }, [listQ.data]);
+
+  // Filter the dropdown options to omit already-uploaded types.
+  // We always keep the current selection visible — otherwise the
+  // Radix Select would render with no value and look broken.
+  const availableTypes = DOCUMENT_TYPES.filter(
+    (t) => !lockedTypes.has(t.value) || t.value === docType,
+  );
+
+  // If the current selection just got locked by an upload completing,
+  // bump the dropdown to the first remaining available type so the
+  // user doesn't see a stale "Aadhaar" pre-selected when Aadhaar is
+  // no longer in the menu.
+  useEffect(() => {
+    if (!lockedTypes.has(docType)) return;
+    const next = DOCUMENT_TYPES.find((t) => !lockedTypes.has(t.value));
+    if (next && next.value !== docType) {
+      setDocType(next.value);
+    }
+  }, [lockedTypes, docType]);
 
   const uploadM = useMutation({
     mutationFn: (file: File) =>
@@ -168,13 +213,23 @@ export function DocumentsPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {DOCUMENT_TYPES.map((t) => (
+                  {availableTypes.map((t) => (
                     <SelectItem key={t.value} value={t.value}>
                       {t.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {/* Helper line — tells the tenant why a previously-
+                  available option disappeared. The dropdown silently
+                  hiding an option would be confusing without this
+                  one-line explanation. */}
+              {lockedTypes.size > 0 && (
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Already uploaded types are hidden. Rejected ones
+                  reappear so you can re-upload.
+                </p>
+              )}
             </div>
             <FileUpload
               accept="application/pdf,image/png,image/jpeg,image/jpg"

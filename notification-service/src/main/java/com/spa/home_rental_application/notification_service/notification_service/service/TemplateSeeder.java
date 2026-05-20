@@ -126,6 +126,16 @@ public class TemplateSeeder {
         upgradeEmailToHtml(NotificationCategory.REVIEW_RECEIVED_FOR_OWNER,
                 "New review on your property{{#tenantName}} — from {{tenantName}}{{/tenantName}}",
                 buildReviewReceivedForOwnerEmailHtml());
+        // Tenant-facing document approval / rejection. Owner reviews
+        // each uploaded doc; rejection emails carry the reason +
+        // a clear re-upload CTA so the tenant doesn't have to hunt
+        // for the right screen.
+        upgradeEmailToHtml(NotificationCategory.DOCUMENT_APPROVED,
+                "Your {{documentType}} was approved",
+                buildDocumentApprovedEmailHtml());
+        upgradeEmailToHtml(NotificationCategory.DOCUMENT_REJECTED,
+                "Your {{documentType}} needs another look — please re-upload",
+                buildDocumentRejectedEmailHtml());
 
         // ── LEASE_WELCOME templates: switched from {{flatId}} (raw UUID)
         // to {{flatNumber}} (human-readable, e.g. "A-301"). UPDATE the
@@ -1160,6 +1170,44 @@ public class TemplateSeeder {
                         + "see how engaged you are. Open the review to respond.",
                 "Read review",
                 "{{frontendBaseUrl}}/owner/reviews",
+                "— Anirudh Homes")
+                + HTML_TEMPLATE_MARKER;
+    }
+
+    private static String buildDocumentApprovedEmailHtml() {
+        return EmailTemplateBuilder.build(
+                "Your {{documentType}} was approved — nothing more to do.",
+                "Your {{documentType}} was approved ✅",
+                "Your owner has approved the <strong>{{documentType}}</strong> you "
+                        + "uploaded. It's filed on your tenant record — no further action "
+                        + "needed.<br><br>"
+                        + "You can review all your uploaded documents any time under "
+                        + "<em>Documents</em> in the Anirudh Homes app.",
+                "View my documents",
+                "{{frontendBaseUrl}}/app/documents",
+                "— Anirudh Homes")
+                + HTML_TEMPLATE_MARKER;
+    }
+
+    private static String buildDocumentRejectedEmailHtml() {
+        return EmailTemplateBuilder.build(
+                "Your {{documentType}} needs another look — please re-upload.",
+                "Please re-upload your {{documentType}}",
+                "Your owner couldn't accept the <strong>{{documentType}}</strong> you uploaded. "
+                        + "Here's why they rejected it:<br><br>"
+                        + "{{#rejectionReason}}<blockquote style=\"margin:0 0 16px;"
+                        + "padding:14px 18px;background:#fef2f2;border-left:4px solid #dc2626;"
+                        + "border-radius:6px;color:#7f1d1d;\">"
+                        + "&ldquo;{{rejectionReason}}&rdquo;"
+                        + "</blockquote>{{/rejectionReason}}"
+                        + "{{^rejectionReason}}<p style=\"margin:0 0 16px;color:#7f1d1d;\">"
+                        + "<em>No specific reason was given. Reach out to the owner via the "
+                        + "app if you'd like more detail.</em></p>{{/rejectionReason}}"
+                        + "Re-upload a corrected copy under <em>Documents</em> in the app. "
+                        + "The owner will review the new version automatically — no need to "
+                        + "ping anyone.",
+                "Re-upload now",
+                "{{frontendBaseUrl}}/app/documents",
                 "— Anirudh Homes")
                 + HTML_TEMPLATE_MARKER;
     }
