@@ -95,13 +95,19 @@ export function TenantDetailPage() {
   // and filter to this tenant on the client. That endpoint returns
   // every payment across the owner's portfolio so the slice we need
   // is guaranteed to be present.
+  //
+  // We share the cache with Dashboard + Tenants + Payments by using
+  // the same ["owner-payments", viewerAuthUserId] key. The
+  // per-tenant slice is computed in a useMemo below from the full
+  // list — so when any of the other pages invalidates the cache
+  // (e.g. owner marks rent as paid), this tenant card refreshes too.
   const paymentsQ = useQuery({
-    queryKey: ["owner-payments-for-tenant", viewerAuthUserId, authUserId],
-    queryFn: () =>
-      paymentsApi
-        .byOwner(viewerAuthUserId!)
-        .then((all) => all.filter((p) => p.tenantId === authUserId)),
-    enabled: !!authUserId && !!viewerAuthUserId,
+    queryKey: ["owner-payments", viewerAuthUserId],
+    queryFn: () => paymentsApi.byOwner(viewerAuthUserId!),
+    enabled: !!viewerAuthUserId,
+    staleTime: 15_000,
+    refetchOnWindowFocus: true,
+    select: (all) => all.filter((p) => p.tenantId === authUserId),
   });
 
   const maintenanceQ = useQuery({

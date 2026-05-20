@@ -54,11 +54,22 @@ export function TenantsPage() {
   //      authUserId via the same requireSelfOrAdmin guard, so this
   //      query succeeds and the data we need is already in the
   //      response — we just filter client-side.
+  //
+  // Cache key is intentionally identical to the Dashboard + Payments
+  // page queries (["owner-payments", authUserId]). All three pages
+  // hit the same endpoint with the same arguments — sharing the
+  // cache means: (a) one HTTP fetch serves all three on a navigation,
+  // (b) when the Payments page's "mark paid" mutation invalidates
+  //     owner-payments, the Tenants list updates too (previously this
+  //     page used a different key and went stale).
+  // refetchOnWindowFocus keeps the numbers honest when the owner
+  // alt-tabs back from their UPI app after settling a payment.
   const paymentsQ = useQuery({
-    queryKey: ["payments", "by-owner", authUserId],
+    queryKey: ["owner-payments", authUserId],
     queryFn: () => paymentsApi.byOwner(authUserId!),
     enabled: !!authUserId,
-    staleTime: 60_000,
+    staleTime: 15_000,
+    refetchOnWindowFocus: true,
   });
 
   const tenantedFlats = (flatsQ.data ?? []).filter((f) => f.tenantId);

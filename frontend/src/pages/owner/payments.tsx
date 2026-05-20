@@ -59,10 +59,18 @@ export function OwnerPaymentsPage() {
 
   useEffect(() => saveReminderLog(reminderLog), [reminderLog]);
 
+  // Shared cache key with Dashboard + Tenants + tenant-detail pages
+  // (all call paymentsApi.byOwner with the same authUserId). Adding
+  // staleTime + refetchOnWindowFocus so the table refreshes when the
+  // owner alt-tabs back from their UPI app or any other surface
+  // mutates the data (the dashboard "mark paid" mutation already
+  // invalidates this key on success).
   const q = useQuery({
     queryKey: ["owner-payments", authUserId],
     queryFn: () => paymentsApi.byOwner(authUserId!),
     enabled: !!authUserId,
+    staleTime: 15_000,
+    refetchOnWindowFocus: true,
   });
 
   const cashMutation = useMutation({

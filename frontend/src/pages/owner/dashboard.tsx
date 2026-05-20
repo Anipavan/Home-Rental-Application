@@ -32,22 +32,32 @@ import { formatINR, formatDate } from "@/lib/utils";
 export function OwnerDashboard() {
   const { authUserId, userName } = useAuthStore();
 
+  // refetchOnWindowFocus + short staleTime so the KPIs stay live —
+  // an owner who flips between Tenants / Payments / Overview tabs
+  // sees the same number on each, instead of a 5-min-stale cache
+  // on whichever page they hit first. Trade-off: a few extra
+  // fetches; payments.byOwner is sub-100ms so it's invisible.
+  const FRESH = { refetchOnWindowFocus: true, staleTime: 15_000 };
+
   const buildingsQ = useQuery({
     queryKey: ["my-buildings", authUserId],
     queryFn: () => propertiesApi.buildings.byOwner(authUserId!),
     enabled: !!authUserId,
+    ...FRESH,
   });
 
   const paymentsQ = useQuery({
     queryKey: ["owner-payments", authUserId],
     queryFn: () => paymentsApi.byOwner(authUserId!),
     enabled: !!authUserId,
+    ...FRESH,
   });
 
   const maintQ = useQuery({
     queryKey: ["owner-maintenance", authUserId],
     queryFn: () => maintenanceApi.byOwner(authUserId!),
     enabled: !!authUserId,
+    ...FRESH,
   });
 
   const totalBuildings = buildingsQ.data?.length ?? 0;
@@ -66,9 +76,19 @@ export function OwnerDashboard() {
     })
     .reduce((s, p) => s + Number(p.totalAmount ?? p.amount), 0);
 
+  // "Outstanding" = everything still owed, regardless of whether
+  // the due-date has passed. Matches what the Tenants list and
+  // /owner/payments compute, so the same ₹15,000 appears as the same
+  // number on every owner-side page. Splitting into overdue (past-
+  // due) vs upcoming (not yet due) so the KPI tile can call out the
+  // urgent slice without hiding the rest.
   const overdueAmount = payments
     .filter((p) => p.status === "OVERDUE")
     .reduce((s, p) => s + Number(p.totalAmount ?? p.amount), 0);
+  const upcomingAmount = payments
+    .filter((p) => p.status === "PENDING")
+    .reduce((s, p) => s + Number(p.totalAmount ?? p.amount), 0);
+  const outstandingAmount = overdueAmount + upcomingAmount;
 
   const openMaint = (maintQ.data ?? []).filter(
     (r) => r.status === "OPEN" || r.status === "IN_PROGRESS",
@@ -100,18 +120,33 @@ export function OwnerDashboard() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
+        {/* "Collected this month" — sum of PAID payments whose
+            paymentDate falls inside the current calendar month. No
+            month-over-month delta (the old hard-coded "+12%" was a
+            placeholder that became misleading once the amount was
+            ₹0 — fake growth on no revenue). */}
         <KpiCard
           icon={IndianRupee}
           label="Collected this month"
           value={formatINR(paidThisMonth)}
-          delta={"+12%"}
           tone="primary"
         />
+        {/* Outstanding = PENDING + OVERDUE — matches the Tenants list
+            and /owner/payments. The hint line surfaces the
+            already-past-due slice in red so the owner can see at a
+            glance whether to chase now or just wait for the due date. */}
         <KpiCard
           icon={TrendingUp}
-          label="Overdue"
-          value={formatINR(overdueAmount)}
-          tone="destructive"
+          label="Outstanding rent"
+          value={formatINR(outstandingAmount)}
+          tone={overdueAmount > 0 ? "destructive" : "warning"}
+          hint={
+            outstandingAmount === 0
+              ? "All clear"
+              : overdueAmount > 0
+                ? `${formatINR(overdueAmount)} overdue · ${formatINR(upcomingAmount)} upcoming`
+                : `${formatINR(upcomingAmount)} upcoming · 0 overdue`
+          }
         />
         <KpiCard
           icon={Building2}
