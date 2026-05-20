@@ -10,6 +10,7 @@ import com.spa.home_rental_application.review_service.DTO.Response.ReviewRespons
 import com.spa.home_rental_application.review_service.Entities.Review;
 import com.spa.home_rental_application.review_service.Exceptionclass.InvalidReviewException;
 import com.spa.home_rental_application.review_service.Exceptionclass.ReviewNotFoundException;
+import com.spa.home_rental_application.review_service.client.PropertyClient;
 import com.spa.home_rental_application.review_service.config.ReviewProperties;
 import com.spa.home_rental_application.review_service.mapper.ReviewMapper;
 import com.spa.home_rental_application.review_service.repository.ReviewRepository;
@@ -37,15 +38,26 @@ public class ReviewServiceImpl implements ReviewService {
     private final ReviewMapper mapper;
     private final ReviewServiceEvents events;
     private final ReviewProperties props;
+    /**
+     * Used to resolve a building's ownerId when a tenant leaves a
+     * PROPERTY-targeted review. Failures fall through to a null
+     * BuildingSummary via {@link com.spa.home_rental_application.review_service.client.PropertyClientFallback},
+     * in which case the published event carries
+     * {@code ownerAuthId = null} and the notification service simply
+     * skips the owner-side email rather than blowing up.
+     */
+    private final PropertyClient propertyClient;
 
     public ReviewServiceImpl(ReviewRepository reviewRepository,
                              ReviewMapper mapper,
                              ReviewServiceEvents events,
-                             ReviewProperties props) {
+                             ReviewProperties props,
+                             PropertyClient propertyClient) {
         this.reviewRepository = reviewRepository;
         this.mapper = mapper;
         this.events = events;
         this.props = props;
+        this.propertyClient = propertyClient;
     }
 
     @Override
@@ -70,6 +82,48 @@ public class ReviewServiceImpl implements ReviewService {
                 .build();
         Review saved = reviewRepository.save(review);
 
+        // Resolve the owner's auth user id so the downstream
+        // notification listener can fan the email straight to them.
+        // For PROPERTY reviews: targetId is a buildingId — call
+        //   property-service via Feign to read Building.ownerId.
+        // For OWNER reviews: the targetId IS the owner's auth id.
+        // For TENANT reviews: leave ownerAuthId null — the
+        //   notification flow currently skips that case (no
+        //   tenant-side reviews surface), so we'd just be filling
+        //   the field with junk.
+        String ownerAuthId = null;
+        String targetType = saved.getTargetType();
+        if ("PROPERTY".equalsIgnoreCase(targetType)) {
+            try {
+                PropertyClient.BuildingSummary b =
+                        propertyClient.getBuildingById(saved.getTargetId());
+                if (b != null && b.ownerId() != null && !b.ownerId().isBlank()) {
+                    ownerAuthId = b.ownerId();
+                } else {
+                    log.warn("Building lookup returned null/empty ownerId for buildingId={}",
+                            saved.getTargetId());
+                }
+            } catch (Exception ex) {
+                // Defensive — the fallback bean already absorbs Feign
+                // failures, but a configuration error (missing
+                // bean / unrecognised path) would otherwise propagate
+                // out of the review-submit flow and tank the review.
+                // Keep the review side alive; just lose the email.
+                log.warn("Couldn't resolve building owner for review={}: {}",
+                        saved.getId(), ex.getMessage());
+            }
+        } else if ("OWNER".equalsIgnoreCase(targetType)) {
+            ownerAuthId = saved.getTargetId();
+        }
+
+        // Short-form comment for the owner email's inline blockquote.
+        // Truncated to a tweet-sized excerpt so big reviews don't
+        // blow up the email rendering; full text stays in the app.
+        String commentExcerpt = saved.getBody();
+        if (commentExcerpt != null && commentExcerpt.length() > 280) {
+            commentExcerpt = commentExcerpt.substring(0, 277) + "…";
+        }
+
         events.sendReviewSubmitted(ReviewSubmittedEvent.builder()
                 .eventType("review.submitted")
                 .reviewId(saved.getId())
@@ -78,6 +132,8 @@ public class ReviewServiceImpl implements ReviewService {
                 .targetId(saved.getTargetId())
                 .targetType(saved.getTargetType())
                 .rating(saved.getRating())
+                .ownerAuthId(ownerAuthId)
+                .comment(commentExcerpt)
                 .createdAt(saved.getCreatedAt())
                 .timestamp(LocalDateTime.now())
                 .build());

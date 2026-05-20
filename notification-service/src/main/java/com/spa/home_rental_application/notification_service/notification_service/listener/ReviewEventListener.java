@@ -64,31 +64,47 @@ public class ReviewEventListener {
             return;
         }
 
-        // The owner's user id is targetId for OWNER reviews, and for
-        // PROPERTY reviews the property-service emits the building
-        // owner's id as targetId (TenantReview entity stores the
-        // resolved owner id on submission). Either way, fanOut takes
-        // an auth user id and looks up the recipient via prefs.
-        String ownerId = e.getTargetId();
+        // Recipient resolution — the producer-side ReviewService
+        // populates {@code ownerAuthId} on the event for both PROPERTY
+        // and OWNER target types. We prefer that explicit field over
+        // targetId because:
+        //   - PROPERTY reviews carry targetId = buildingId (NOT an
+        //     auth user id), and fanOut on a buildingId would silently
+        //     fail to match any UserNotificationPreference row.
+        //   - OWNER reviews have targetId == ownerAuthId already, so
+        //     this just makes the contract explicit.
+        // Legacy publishers that don't carry ownerAuthId fall through
+        // to targetId, with the same caveat — works for OWNER target,
+        // silently no-ops for PROPERTY. Worth keeping for old events
+        // already on disk.
+        String ownerId = e.getOwnerAuthId();
         if (ownerId == null || ownerId.isBlank()) {
-            log.debug("Skipping review notification — no targetId on the event");
+            ownerId = e.getTargetId();
+            log.debug("ownerAuthId missing on event {} — falling back to targetId {}",
+                    e.getReviewId(), ownerId);
+        }
+        if (ownerId == null || ownerId.isBlank()) {
+            log.warn("Skipping review notification {} — no owner id resolvable", e.getReviewId());
             return;
         }
 
-        // Build vars. tenantName / flatNumber / comment aren't on the
-        // event today — owner-side template handles their absence via
+        // Build vars. {@code comment} comes from the event now (~280
+        // char excerpt). tenantName + flatNumber are not yet on the
+        // event — the owner-side template handles their absence via
         // Mustache truthy sections so the email still renders.
         Map<String, Object> vars = new HashMap<>();
         vars.put("rating", safe(e.getRating()));
         vars.put("reviewerId", safe(e.getReviewerId()));
         vars.put("reviewerType", safe(e.getReviewerType()));
         vars.put("targetType", safe(e.getTargetType()));
+        vars.put("comment", safe(e.getComment()));
         // Optional fields — empty strings so the Mustache sections
         // hide cleanly rather than rendering [tenantName] etc.
         vars.put("tenantName", "");
         vars.put("flatNumber", "");
-        vars.put("comment", "");
 
+        log.info("Fanning REVIEW_RECEIVED_FOR_OWNER to ownerAuthId={} (review={})",
+                ownerId, e.getReviewId());
         notifications.fanOut(ownerId,
                 NotificationCategory.REVIEW_RECEIVED_FOR_OWNER, vars);
     }
