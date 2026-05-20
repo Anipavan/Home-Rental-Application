@@ -85,7 +85,14 @@ public class AgreementServiceImpl implements AgreementService {
         }
 
         Building b = buildingRepo.findById(flat.getBuildingId()).orElse(null);
-        String terms = renderDefaultTerms(flat, b);
+        // Resolve owner + tenant names so the deed reads "John Doe"
+        // instead of "Owner ID: AUTH-4". safeFetchUser handles the
+        // null-id and Feign-failure paths internally — returning an
+        // empty summary that renderDefaultTerms then formats with a
+        // sensible fallback ("(name not on file)").
+        UserSummary ownerSummary = b != null ? safeFetchUser(b.getOwnerId()) : null;
+        UserSummary tenantSummary = safeFetchUser(flat.getTenantId());
+        String terms = renderDefaultTerms(flat, b, ownerSummary, tenantSummary);
         LocalDateTime now = LocalDateTime.now();
 
         Agreement a = Agreement.builder()
@@ -284,11 +291,18 @@ public class AgreementServiceImpl implements AgreementService {
      */
     private UserSummary safeFetchUser(String userId) {
         if (userId == null || userId.isBlank()) return null;
+        // Agreement.ownerId / tenantId are auth-service user ids
+        // (sourced from Building.ownerId and Flat.tenantId, both of
+        // which carry the authUserId — not the user-service surrogate
+        // id). Use the by-auth-id endpoint so the lookup actually
+        // hits a row. Previously this called getUserById(userId)
+        // which 404'd silently and made every owner/tenant name
+        // render as blank → the lease text fell back to raw IDs.
         try {
-            UserSummary u = userClient.getUserById(userId);
+            UserSummary u = userClient.getUserByAuthId(userId);
             return u == null ? UserSummary.empty() : u;
         } catch (Exception ex) {
-            log.warn("user-service lookup failed for userId={} — falling back to blanks: {}",
+            log.warn("user-service lookup failed for authUserId={} — falling back to blanks: {}",
                     userId, ex.getMessage());
             return UserSummary.empty();
         }
@@ -299,17 +313,37 @@ public class AgreementServiceImpl implements AgreementService {
                 () -> new RecordNotFoundException("Agreement not found: " + id));
     }
 
-    private String renderDefaultTerms(Flat flat, Building b) {
+    private String renderDefaultTerms(Flat flat, Building b,
+                                      UserSummary owner, UserSummary tenant) {
+        // Resolve display names. fullName() returns null when the
+        // user-service row exists but has no first/last name; fall
+        // through to a sentinel so the deed never renders an empty
+        // line. The auth-id is added in parens for audit /
+        // reconciliation purposes — the deed is a legal document and
+        // someone reading it weeks later may need to map back to a
+        // user record.
+        // Names are the human-readable identity in the deed. Internal
+        // IDs are deliberately omitted — the renter shouldn't see raw
+        // UUIDs in their lease agreement. The ID is still on the
+        // Agreement entity and AgreementResponseDTO for any
+        // audit/reconciliation flow, just not in the printed terms.
+        String ownerName = (owner != null && owner.fullName() != null)
+                ? owner.fullName()
+                : "(name on file)";
+        String tenantName = (tenant != null && tenant.fullName() != null)
+                ? tenant.fullName()
+                : "(name on file)";
+
         StringBuilder t = new StringBuilder(2048);
         t.append("LEASE AGREEMENT\n\n");
         t.append("1. PARTIES\n");
-        t.append("   Owner ID: ").append(b != null ? b.getOwnerId() : "—").append("\n");
-        t.append("   Tenant ID: ").append(flat.getTenantId()).append("\n\n");
+        t.append("   Owner: ").append(ownerName).append("\n");
+        t.append("   Tenant: ").append(tenantName).append("\n\n");
         t.append("2. PROPERTY\n");
         t.append("   Building: ").append(b != null ? b.getBuildingName() : flat.getBuildingId()).append("\n");
         t.append("   Address: ").append(b != null ? b.getBuildingAddress() : "—").append("\n");
         t.append("   Flat: ").append(flat.getFlatNumber())
-                .append(" (Floor ").append(flat.getFloor()).append(")\n\n");
+                .append(", ").append(floorWord(flat.getFloor())).append(" floor\n\n");
         t.append("3. RENT\n");
         t.append("   Monthly rent: Rs. ").append(flat.getRentAmount()).append("\n");
         t.append("   Due date: 5th of every month.\n\n");
@@ -324,7 +358,9 @@ public class AgreementServiceImpl implements AgreementService {
         // Issue #6: deposit is now NON-refundable on termination. The
         // owner retains the entire amount to cover wear-and-tear,
         // outstanding dues, and any damages caused during occupancy.
-        t.append("   Equal to two months' rent, payable at the time of signing this agreement.\n");
+        // The amount is THREE months' rent — matches the
+        // property-detail page's deposit display (rent × 3).
+        t.append("   Equal to three months' rent, payable at the time of signing this agreement.\n");
         t.append("   The security deposit is NON-REFUNDABLE — the Owner shall retain the full\n");
         t.append("   amount upon expiry or early termination of this lease, in lieu of\n");
         t.append("   wear-and-tear adjustments, outstanding dues, and any damages caused by\n");
@@ -332,6 +368,40 @@ public class AgreementServiceImpl implements AgreementService {
         t.append("By signing this agreement the tenant confirms they have read and accepted these terms.");
         return t.toString();
     }
+
+    /**
+     * Owner enters a floor number; the deed prints the English
+     * ordinal ("Ground", "First", … "Twentieth"). Beyond 20 falls
+     * back to the numeric ordinal ("21st", "22nd") so the line
+     * still reads naturally. Mirrors the frontend
+     * {@code floorLabel()} helper on lib/utils.ts.
+     */
+    private static final String[] FLOOR_WORDS = {
+            "Ground", "First", "Second", "Third", "Fourth", "Fifth",
+            "Sixth", "Seventh", "Eighth", "Ninth", "Tenth",
+            "Eleventh", "Twelfth", "Thirteenth", "Fourteenth", "Fifteenth",
+            "Sixteenth", "Seventeenth", "Eighteenth", "Nineteenth", "Twentieth",
+    };
+
+    private static String floorWord(Integer floor) {
+        if (floor == null) return "—";
+        int n = floor;
+        if (n < 0) {
+            int abs = Math.abs(n);
+            return abs == 1 ? "Basement" : "Basement " + abs;
+        }
+        if (n < FLOOR_WORDS.length) return FLOOR_WORDS[n];
+        int lastTwo = n % 100;
+        int lastOne = n % 10;
+        String suffix;
+        if (lastTwo >= 11 && lastTwo <= 13) suffix = "th";
+        else if (lastOne == 1) suffix = "st";
+        else if (lastOne == 2) suffix = "nd";
+        else if (lastOne == 3) suffix = "rd";
+        else suffix = "th";
+        return n + suffix;
+    }
+
 
     /**
      * Resolve human-readable owner/tenant names from user-service so the

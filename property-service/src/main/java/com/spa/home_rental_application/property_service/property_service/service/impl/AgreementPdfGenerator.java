@@ -147,8 +147,13 @@ public class AgreementPdfGenerator {
                     && !owner.address().isBlank()
                     ? owner.address()
                     : LONG_BLANK;
-            doc.add(new Paragraph("Name of the Owner: " + ownerName
-                    + "  (Owner ID: " + nullSafe(agreement.getOwnerId()) + ")", body));
+            // Owner ID is deliberately omitted — the deed reads as a
+            // legal document for humans, raw UUIDs belong on the
+            // Agreement entity (still in the response DTO for audit
+            // flows). Owner name comes from the user-service KYC row;
+            // when the name is missing we fall through to {@code BLANK}
+            // (handwritten in PDF, screen-printed elsewhere).
+            doc.add(new Paragraph("Name of the Owner: " + ownerName, body));
             doc.add(new Paragraph("S/o or D/o: " + BLANK, body));
             doc.add(new Paragraph("Permanent Address: " + ownerAddr, body));
             doc.add(new Paragraph(
@@ -168,8 +173,10 @@ public class AgreementPdfGenerator {
                     && !tenant.address().isBlank()
                     ? tenant.address()
                     : LONG_BLANK;
-            doc.add(new Paragraph("Name of the Tenant: " + tenantName
-                    + "  (Tenant ID: " + nullSafe(agreement.getTenantId()) + ")", body));
+            // Tenant ID dropped for the same reason as the Owner ID
+            // above — the deed is human-facing, the entity carries
+            // the canonical identifier.
+            doc.add(new Paragraph("Name of the Tenant: " + tenantName, body));
             doc.add(new Paragraph("S/o or D/o: " + BLANK, body));
             doc.add(new Paragraph("Working/Studying at: " + LONG_BLANK, body));
             doc.add(new Paragraph("having a permanent address at: " + tenantAddr, body));
@@ -245,17 +252,24 @@ public class AgreementPdfGenerator {
             // Issue #6: the security deposit is no longer refunded by the
             // owner on lease termination. The clause is rewritten to make
             // that explicit so the printed deed matches platform policy.
+            // Deposit amount is THREE months' rent — computed inline so
+            // the clause renders the actual figure instead of a blank.
+            String depositAmount = agreement.getRentAmount() != null
+                    ? agreement.getRentAmount()
+                        .multiply(new java.math.BigDecimal(3))
+                        .toPlainString()
+                    : BLANK;
             doc.add(clause(body,
                     "6. The Tenant shall pay to the Owner a security deposit of Rs. "
-                            + BLANK + " vide cheque no " + BLANK + " dated " + BLANK
-                            + " at the time of signing this Rent Agreement. The said security "
-                            + "deposit is NON-REFUNDABLE — the Owner shall retain the full "
-                            + "amount upon expiry or earlier termination of this Rent "
-                            + "agreement, in lieu of wear-and-tear adjustments, outstanding "
-                            + "dues, and any damages caused by the negligence of the Tenant "
-                            + "or the persons for whom the Tenant is responsible. The Tenant "
-                            + "expressly waives any claim to refund of the security deposit on "
-                            + "the expiry or earlier termination of this Rent agreement."));
+                            + depositAmount + " (equivalent to three months' rent) at the time "
+                            + "of signing this Rent Agreement. The said security deposit is "
+                            + "NON-REFUNDABLE — the Owner shall retain the full amount upon "
+                            + "expiry or earlier termination of this Rent agreement, in lieu of "
+                            + "wear-and-tear adjustments, outstanding dues, and any damages "
+                            + "caused by the negligence of the Tenant or the persons for whom "
+                            + "the Tenant is responsible. The Tenant expressly waives any claim "
+                            + "to refund of the security deposit on the expiry or earlier "
+                            + "termination of this Rent agreement."));
             doc.add(clause(body,
                     "7. That all the sanitary, electrical and other fittings and fixtures and "
                             + "appliances in the premises shall be handed over from the Owner "
@@ -455,7 +469,11 @@ public class AgreementPdfGenerator {
         if (flat != null) {
             sb.append("Flat ").append(nullSafe(flat.getFlatNumber()));
             if (flat.getFloor() != null) {
-                sb.append(" (Floor ").append(flat.getFloor()).append(")");
+                // English ordinal word — "Ground", "First", … —
+                // matches the property-detail page treatment so the
+                // printed PDF reads naturally for the renter rather
+                // than the raw "(Floor 2)" placeholder.
+                sb.append(", ").append(floorWord(flat.getFloor())).append(" floor");
             }
             sb.append(", ");
         }
@@ -470,6 +488,39 @@ public class AgreementPdfGenerator {
             sb.append(LONG_BLANK);
         }
         return sb.toString();
+    }
+
+    /**
+     * Owner enters a floor number; the deed prints the English
+     * ordinal ("Ground", "First", … "Twentieth"). Beyond 20 falls
+     * back to the numeric ordinal ("21st", "22nd"). Mirrors the
+     * helper on {@code AgreementServiceImpl} and the frontend
+     * {@code floorLabel()} in {@code lib/utils.ts}.
+     */
+    private static final String[] FLOOR_WORDS = {
+            "Ground", "First", "Second", "Third", "Fourth", "Fifth",
+            "Sixth", "Seventh", "Eighth", "Ninth", "Tenth",
+            "Eleventh", "Twelfth", "Thirteenth", "Fourteenth", "Fifteenth",
+            "Sixteenth", "Seventeenth", "Eighteenth", "Nineteenth", "Twentieth",
+    };
+
+    private static String floorWord(Integer floor) {
+        if (floor == null) return "—";
+        int n = floor;
+        if (n < 0) {
+            int abs = Math.abs(n);
+            return abs == 1 ? "Basement" : "Basement " + abs;
+        }
+        if (n < FLOOR_WORDS.length) return FLOOR_WORDS[n];
+        int lastTwo = n % 100;
+        int lastOne = n % 10;
+        String suffix;
+        if (lastTwo >= 11 && lastTwo <= 13) suffix = "th";
+        else if (lastOne == 1) suffix = "st";
+        else if (lastOne == 2) suffix = "nd";
+        else if (lastOne == 3) suffix = "rd";
+        else suffix = "th";
+        return n + suffix;
     }
 
     private String joinNonBlank(String sep, String... parts) {
