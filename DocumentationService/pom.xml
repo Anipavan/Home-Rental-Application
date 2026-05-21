@@ -137,6 +137,21 @@
 			<artifactId>lombok</artifactId>
 			<optional>true</optional>
 		</dependency>
+
+		<!--
+		    org.json — used by SandboxOcrAuthClient + SandboxOcrEngine for
+		    constructing the Sandbox.co.in JSON request bodies and parsing
+		    their responses. Declared explicitly because, unlike
+		    payment-service (which gets this transitively via the Razorpay
+		    SDK), DocumentationService doesn't already pull in a library
+		    that depends on org.json.
+		-->
+		<dependency>
+			<groupId>org.json</groupId>
+			<artifactId>json</artifactId>
+			<version>20240303</version>
+		</dependency>
+
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-test</artifactId>

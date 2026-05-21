@@ -115,6 +115,19 @@
 			<artifactId>lombok</artifactId>
 			<optional>true</optional>
 		</dependency>
+
+		<!--
+		    org.json — used by SandboxAuthClient + SandboxKycProvider for
+		    constructing the Sandbox.co.in JSON request bodies and parsing
+		    their responses. payment-service gets this transitively via
+		    the Razorpay SDK; KYC service needs it declared explicitly.
+		-->
+		<dependency>
+			<groupId>org.json</groupId>
+			<artifactId>json</artifactId>
+			<version>20240303</version>
+		</dependency>
+
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-test</artifactId>
