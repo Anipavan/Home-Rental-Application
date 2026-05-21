@@ -32,8 +32,8 @@ frontend/.env.production
 # Root-level prod env file — operators copy .env.example → .env and
 # fill in real secrets. Never commit a real one.
 .env
-.env.local
-.env.production
+.env.*
+!.env.example
 
 # Belt-and-braces: cover any nested target/ that the line 2 rule
 # might miss due to path semantics.
