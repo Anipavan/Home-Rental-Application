@@ -1,5 +1,8 @@
 import { api } from "./client";
 import type {
+  DigiLockerAuthorizeRequest,
+  DigiLockerAuthorizeResponse,
+  DigiLockerCallbackRequest,
   InitiateKycRequest,
   KycReport,
   KycResponse,
@@ -25,4 +28,24 @@ export const kycApi = {
 
   report: (userId: string) =>
     api.get<KycReport>(`/kyc/report/${userId}`).then((r) => r.data),
+
+  /**
+   * Begin a DigiLocker OAuth flow. The response carries the authorize URL —
+   * the page navigates the browser there. The `state` should be stashed
+   * in sessionStorage so the callback page can defence-in-depth verify it
+   * before posting back to /digilocker/callback.
+   */
+  digilockerAuthorize: (userId: string, body: DigiLockerAuthorizeRequest) =>
+    api
+      .post<DigiLockerAuthorizeResponse>(`/kyc/digilocker/authorize/${userId}`, body)
+      .then((r) => r.data),
+
+  /**
+   * Complete a DigiLocker flow. Called by the /app/kyc/callback page with
+   * the {@code code} + {@code state} extracted from the redirect URL.
+   * Server-side this triggers the OAuth token exchange + eAadhaar fetch
+   * and flips the record to VERIFIED.
+   */
+  digilockerCallback: (body: DigiLockerCallbackRequest) =>
+    api.post<KycResponse>("/kyc/digilocker/callback", body).then((r) => r.data),
 };

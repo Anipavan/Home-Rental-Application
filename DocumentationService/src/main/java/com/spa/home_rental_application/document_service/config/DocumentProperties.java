@@ -65,10 +65,58 @@ public class DocumentProperties {
             "application/pdf", "image/png", "image/jpeg", "image/jpg");
 
     private Ocr ocr = new Ocr();
+    private Sandbox sandbox = new Sandbox();
 
     @Getter @Setter
     public static class Ocr {
-        /** STUB | TESSERACT (TESSERACT requires native binaries). */
+        /** STUB | TESSERACT | SANDBOX. TESSERACT requires native binaries; SANDBOX hits a paid API. */
         private String provider = "STUB";
+
+        /**
+         * When true, every successful upload auto-triggers OCR via an async
+         * event listener. Set to false for batch / on-demand-only flows
+         * (admins still hit POST /documents/{id}/extract manually).
+         */
+        private boolean autoExtractOnUpload = true;
+
+        /**
+         * Hard cap on file size we'll ship to a paid OCR API. Sandbox accepts
+         * ~5MB but we cap at 4MB to leave headroom for their multipart envelope.
+         * Larger files are stored normally but OCR is skipped (ocrStatus=FAILED
+         * with reason FILE_TOO_LARGE).
+         */
+        private long maxOcrFileSizeBytes = 4L * 1024 * 1024;
+    }
+
+    /**
+     * Sandbox.co.in (Quicko) OCR provider config. Uses the same credentials
+     * as the KYC service — Sandbox issues one set of keys per account that
+     * unlocks PAN verify, Aadhaar OCR, and PAN OCR. So in production both
+     * KYC_SERVICE and DOC_SERVICE read SANDBOX_API_KEY/SECRET from the same
+     * .env.prod file.
+     *
+     * <p>Pricing (Sandbox sandbox / production):
+     * <ul>
+     *   <li>Aadhaar OCR — first 50 free, ~₹2.5/call after</li>
+     *   <li>PAN OCR     — first 50 free, ~₹2/call after</li>
+     *   <li>PAN verify  — first 100 free, ~₹0.50/call after</li>
+     * </ul>
+     */
+    @Getter @Setter
+    public static class Sandbox {
+        private String baseUrl = "https://api.sandbox.co.in";
+        private String apiKey;
+        private String apiSecret;
+        private String apiVersion = "1.0";
+        /** /authenticate path — yields a short-lived JWT. */
+        private String authPath = "/authenticate";
+        /** Aadhaar OCR endpoint. Configurable in case Sandbox renames the path. */
+        private String aadhaarOcrPath = "/kyc/ocr/aadhaar";
+        /** PAN OCR endpoint. */
+        private String panOcrPath = "/kyc/ocr/pan";
+        /** PAN verify path — used for the secondary fraud check after PAN OCR. */
+        private String panVerifyPath = "/kyc/pan/verify";
+        /** Refresh JWT this many seconds before its stated expiry. */
+        private int tokenRefreshSafetySeconds = 60;
     }
 }

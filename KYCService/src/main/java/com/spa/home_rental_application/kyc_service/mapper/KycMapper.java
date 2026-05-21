@@ -28,7 +28,13 @@ public class KycMapper {
                 r.getFailureCode(),
                 r.getVerifiedAt(),
                 r.getCreatedAt(),
-                r.getUpdatedAt()
+                r.getUpdatedAt(),
+                // DigiLocker-derived display fields. last4 + dob are the
+                // only Aadhaar fragments we ever return — the full 12-digit
+                // value never leaves the parser local variable.
+                r.getAadhaarLast4(),
+                r.getDateOfBirth(),
+                r.getPanHolderName()
         );
     }
 

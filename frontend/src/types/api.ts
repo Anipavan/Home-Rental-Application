@@ -456,6 +456,20 @@ export interface VerifyPaymentRequest {
   signature: string;
 }
 
+/**
+ * Response from {@code GET /payments/vpa/validate?vpa=…}.
+ *
+ * <p>{@code customerName} is the masked holder name returned by NPCI's
+ * UPI directory (e.g. "ANIRUDH P****"). {@code failureReason} is null
+ * on success; carries a human-readable message when {@code valid=false}.
+ */
+export interface VpaValidationResponse {
+  valid: boolean;
+  vpa: string;
+  customerName?: string;
+  failureReason?: string;
+}
+
 export type MaintenanceStatus =
   | "OPEN"
   | "IN_PROGRESS"
@@ -646,6 +660,30 @@ export interface KycResponse {
   verifiedAt?: string;
   createdAt?: string;
   updatedAt?: string;
+  /** Last 4 digits of the Aadhaar (only set after a successful DigiLocker verification). */
+  aadhaarLast4?: string;
+  /** DOB string as DigiLocker returned it (dd-MM-yyyy or yyyy). */
+  dateOfBirth?: string;
+  /** Name as it appears on the Aadhaar card — never user-editable. */
+  nameOnAadhaar?: string;
+}
+
+/** Body for POST /kyc/digilocker/authorize/{userId}. */
+export interface DigiLockerAuthorizeRequest {
+  consentText: string;
+}
+
+/** Returned by /kyc/digilocker/authorize — browser navigates to authorizeUrl. */
+export interface DigiLockerAuthorizeResponse {
+  authorizeUrl: string;
+  state: string;
+  referenceId: string;
+}
+
+/** Body for POST /kyc/digilocker/callback — code + state from the redirect URL. */
+export interface DigiLockerCallbackRequest {
+  code: string;
+  state: string;
 }
 
 export interface KycReport {

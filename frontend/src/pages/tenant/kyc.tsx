@@ -1,5 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ShieldCheck, AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
+import {
+  ShieldCheck,
+  AlertTriangle,
+  CheckCircle2,
+  Loader2,
+} from "lucide-react";
 import { useState } from "react";
 import { useAuthStore } from "@/stores/auth-store";
 import { kycApi } from "@/lib/api/kyc";
@@ -15,16 +20,36 @@ import { extractErrorMessage } from "@/lib/api/client";
 import { toast } from "@/hooks/use-toast";
 import type { KycStatus } from "@/types/api";
 
+/**
+ * sessionStorage key for the DigiLocker OAuth state token. Kept here
+ * (not deleted) so the dormant DigiLocker callback page still compiles —
+ * we'll flip the active flow back to DigiLocker once Anirudh Homes is
+ * incorporated and the partner integration is approved.
+ */
+export const DIGILOCKER_STATE_STORAGE_KEY = "anirudhhomes.kyc.digilocker.state";
+
+/**
+ * Verbatim consent text — persisted on the KYC record so a future
+ * compliance audit can replay exactly what the user agreed to.
+ * Aligned with DPDP Act 2023 §6 (notice + purpose) and Income Tax Act
+ * §139A (PAN-based identity).
+ */
+const PAN_KYC_CONSENT_TEXT =
+  "I authorise Anirudh Homes to verify my PAN against the NSDL database " +
+  "for identity verification, in line with the DPDP Act 2023. My PAN is " +
+  "stored only in masked form (last 4 digits) and never shared with third " +
+  "parties beyond the verification call.";
+
 export function KycPage() {
   const { authUserId } = useAuthStore();
   const qc = useQueryClient();
-  const [showInitiate, setShowInitiate] = useState(false);
+  const [accepted, setAccepted] = useState(false);
 
   // KYC Service stores the user identifier opaquely, so we use authUserId
   // directly. This avoids a cross-service round-trip to user-service that
-  // can fail/lag on legacy tenants and leave the "Start KYC" button
-  // permanently disabled — the original bug. authUserId is on the JWT and
-  // available the moment the user is logged in.
+  // can fail/lag on legacy tenants and leave the verify button permanently
+  // disabled. authUserId is on the JWT and available the moment the user
+  // is logged in.
   const userId = authUserId ?? undefined;
 
   // When KYC is paused platform-wide we still let the page mount
@@ -48,46 +73,39 @@ export function KycPage() {
     retry: false,
   });
 
-  const initiateM = useMutation({
-    mutationFn: (body: {
-      aadhaarNumber: string;
-      fullName: string;
-      panNumber?: string;
-    }) =>
-      kycApi.initiate(userId!, {
-        aadhaarNumber: body.aadhaarNumber,
-        fullName: body.fullName,
-        panNumber: body.panNumber || undefined,
-        consentText:
-          "I consent to RentGenius using my Aadhaar / PAN data to verify my identity, " +
-          "in line with the DPDP Act 2023.",
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["kyc", userId] });
-      setShowInitiate(false);
-      toast({
-        title: "KYC initiated",
-        description: "We've sent a verification request. You'll get an update shortly.",
-      });
-    },
-    onError: (e) =>
-      toast({
-        variant: "destructive",
-        title: "Couldn't start KYC",
-        description: extractErrorMessage(e),
-      }),
-  });
-
+  /**
+   * Primary KYC path — PAN verification via Sandbox.co.in.
+   *
+   * <p>The /verify-pan call is terminal in PAN-only mode:
+   * server-side, a successful PAN check flips the record to VERIFIED
+   * and publishes kyc.verified. Local query invalidation handles the
+   * UI refresh.
+   */
   const verifyPanM = useMutation({
     mutationFn: (body: { panNumber: string; panHolderName: string }) =>
       kycApi.verifyPan({
         userId: userId!,
-        panNumber: body.panNumber,
-        panHolderName: body.panHolderName,
+        panNumber: body.panNumber.toUpperCase().trim(),
+        panHolderName: body.panHolderName.trim(),
       }),
-    onSuccess: () => {
+    onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["kyc", userId] });
-      toast({ title: "PAN verified" });
+      qc.invalidateQueries({ queryKey: ["kyc-report", userId] });
+      if (data.verificationStatus === "VERIFIED") {
+        toast({
+          title: "You're verified",
+          description: data.nameOnAadhaar
+            ? `Welcome, ${data.nameOnAadhaar}.`
+            : "Your PAN was successfully verified.",
+        });
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Verification didn't complete",
+          description:
+            data.failureReason ?? "Please check your PAN and name and try again.",
+        });
+      }
     },
     onError: (e) =>
       toast({
@@ -103,11 +121,13 @@ export function KycPage() {
     return <Skeleton className="h-72 rounded-2xl max-w-3xl" />;
   }
 
+  const isVerified = statusQ.data?.verificationStatus === "VERIFIED";
+
   return (
     <div className="animate-fade-in max-w-3xl">
       <PageHeader
         title="Identity verification"
-        description="Aadhaar + PAN verification to unlock all RentGenius features."
+        description="Verify your PAN to unlock all RentGenius features. Takes ~5 seconds."
       />
 
       <Card className="mb-6">
@@ -134,71 +154,53 @@ export function KycPage() {
           {statusQ.data && (
             <div className="grid sm:grid-cols-2 gap-3 mt-6">
               <Tile
-                label="Aadhaar"
-                value={statusQ.data.aadhaarVerified ? "Verified" : "Pending"}
-                ok={statusQ.data.aadhaarVerified}
-              />
-              <Tile
                 label="PAN"
                 value={
-                  statusQ.data.panMasked ?? (statusQ.data.panVerified ? "Verified" : "Not provided")
+                  statusQ.data.panMasked ??
+                  (statusQ.data.panVerified ? "Verified" : "Not provided")
                 }
                 ok={statusQ.data.panVerified}
               />
               <Tile
-                label="DigiLocker"
-                value={statusQ.data.digilockerLinked ? "Linked" : "Not linked"}
-                ok={statusQ.data.digilockerLinked}
+                label="Name on PAN"
+                value={statusQ.data.nameOnAadhaar ?? "—"}
+                ok={!!statusQ.data.nameOnAadhaar}
               />
               <Tile
                 label="Provider"
                 value={statusQ.data.kycProvider ?? "—"}
                 ok
               />
+              <Tile
+                label="Verified at"
+                value={
+                  statusQ.data.verifiedAt
+                    ? new Date(statusQ.data.verifiedAt).toLocaleString()
+                    : "—"
+                }
+                ok={!!statusQ.data.verifiedAt}
+              />
             </div>
           )}
 
-          {(!statusQ.data || statusQ.data.verificationStatus !== "VERIFIED") && (
-            <div className="mt-6">
-              {showInitiate ? (
-                <InitiateForm
-                  pending={initiateM.isPending}
-                  onCancel={() => setShowInitiate(false)}
-                  onSubmit={(b) => initiateM.mutate(b)}
-                />
-              ) : (
-                <Button
-                  variant="gradient"
-                  onClick={() => setShowInitiate(true)}
-                  disabled={!userId}
-                >
-                  <ShieldCheck className="size-4" />
-                  Start KYC
-                </Button>
-              )}
-            </div>
+          {!isVerified && (
+            <PanVerifyPanel
+              accepted={accepted}
+              setAccepted={setAccepted}
+              pending={verifyPanM.isPending}
+              onSubmit={(b) => verifyPanM.mutate(b)}
+              disabled={!userId}
+            />
           )}
-        </CardContent>
-      </Card>
-
-      <Card className="mb-6">
-        <CardContent className="p-6 sm:p-8">
-          <h3 className="font-display font-semibold text-lg">PAN-only verification</h3>
-          <p className="text-sm text-muted-foreground mt-1">
-            Need to verify just your PAN (e.g. for GST invoices)? Enter it here.
-          </p>
-          <PanForm
-            pending={verifyPanM.isPending}
-            onSubmit={(b) => verifyPanM.mutate(b)}
-            disabled={!userId}
-          />
         </CardContent>
       </Card>
 
       {reportQ.data && (
         <Card>
           <CardContent className="p-6 sm:p-8">
-            <h3 className="font-display font-semibold text-lg">Compliance report</h3>
+            <h3 className="font-display font-semibold text-lg">
+              Compliance report
+            </h3>
             <div className="grid sm:grid-cols-2 gap-3 mt-4 text-sm">
               <Row label="Provider" value={reportQ.data.kycProvider ?? "—"} />
               <Row label="Confidence" value={reportQ.data.confidenceLevel} />
@@ -238,10 +240,8 @@ function StatusIcon({ status }: { status?: KycStatus }) {
 }
 
 function StatusBadge({ status }: { status?: KycStatus }) {
-  if (status === "VERIFIED")
-    return <Badge variant="success">Verified</Badge>;
-  if (status === "FAILED")
-    return <Badge variant="destructive">Failed</Badge>;
+  if (status === "VERIFIED") return <Badge variant="success">Verified</Badge>;
+  if (status === "FAILED") return <Badge variant="destructive">Failed</Badge>;
   if (status === "INITIATED")
     return <Badge variant="warning">In progress</Badge>;
   return <Badge variant="secondary">Not started</Badge>;
@@ -252,11 +252,11 @@ function captionFor(status?: KycStatus) {
     case "VERIFIED":
       return "Identity verified. You're all set.";
     case "INITIATED":
-      return "Verification request submitted. We'll update this page when the provider responds.";
+      return "Last attempt didn't complete. Try again below — your PAN isn't stored unless verification succeeds.";
     case "FAILED":
-      return "Verification didn't go through. Try again with the right details below.";
+      return "Last PAN check didn't go through. Double-check your PAN and the name as it appears on your card.";
     default:
-      return "Run KYC once to unlock paying rent, signing leases, and submitting maintenance requests.";
+      return "Run a quick PAN check to unlock paying rent, signing leases, and submitting maintenance requests.";
   }
 }
 
@@ -289,103 +289,119 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-function InitiateForm({
-  pending,
-  onSubmit,
-  onCancel,
-}: {
-  pending: boolean;
-  onSubmit: (b: { aadhaarNumber: string; fullName: string; panNumber?: string }) => void;
-  onCancel: () => void;
-}) {
-  return (
-    <form
-      className="space-y-3 border rounded-xl p-4 bg-background"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const fd = new FormData(e.currentTarget);
-        onSubmit({
-          aadhaarNumber: String(fd.get("aadhaar") ?? ""),
-          fullName: String(fd.get("fullName") ?? ""),
-          panNumber: String(fd.get("pan") ?? "") || undefined,
-        });
-      }}
-    >
-      <div>
-        <Label htmlFor="aadhaar">Aadhaar number</Label>
-        <Input
-          id="aadhaar"
-          name="aadhaar"
-          inputMode="numeric"
-          pattern="[0-9]{12}"
-          maxLength={12}
-          required
-          placeholder="12 digits"
-          className="mt-1.5"
-        />
-      </div>
-      <div>
-        <Label htmlFor="fullName">Full name (as on Aadhaar)</Label>
-        <Input id="fullName" name="fullName" required className="mt-1.5" />
-      </div>
-      <div>
-        <Label htmlFor="pan">PAN (optional)</Label>
-        <Input
-          id="pan"
-          name="pan"
-          pattern="[A-Z]{5}[0-9]{4}[A-Z]"
-          placeholder="AAAAA9999A"
-          className="mt-1.5"
-        />
-      </div>
-      <p className="text-xs text-muted-foreground">
-        By continuing you consent to RentGenius verifying these details with the
-        government's Aadhaar / PAN system. Your Aadhaar number is hashed before
-        storage — we never persist it in plain text.
-      </p>
-      <div className="flex gap-2 justify-end pt-2">
-        <Button type="button" variant="ghost" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button type="submit" variant="gradient" disabled={pending}>
-          {pending ? "Submitting…" : "Continue"}
-        </Button>
-      </div>
-    </form>
-  );
-}
-
-function PanForm({
+/**
+ * The headline PAN verification card. Shows the consent disclosure
+ * inline, gates the submit on the explicit checkbox, and posts to
+ * /kyc/verify-pan via {@link kycApi.verifyPan}. In PAN-only mode (active
+ * today via Sandbox.co.in), a successful PAN check is the WHOLE KYC —
+ * the server flips status to VERIFIED and publishes kyc.verified.
+ */
+function PanVerifyPanel({
+  accepted,
+  setAccepted,
   pending,
   onSubmit,
   disabled,
 }: {
+  accepted: boolean;
+  setAccepted: (b: boolean) => void;
   pending: boolean;
   onSubmit: (b: { panNumber: string; panHolderName: string }) => void;
   disabled: boolean;
 }) {
   return (
-    <form
-      className="grid sm:grid-cols-3 gap-3 mt-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const fd = new FormData(e.currentTarget);
-        onSubmit({
-          panNumber: String(fd.get("panNumber") ?? "").toUpperCase(),
-          panHolderName: String(fd.get("panHolderName") ?? ""),
-        });
-      }}
-    >
-      <Input
-        name="panNumber"
-        required
-        pattern="[A-Z]{5}[0-9]{4}[A-Z]"
-        placeholder="PAN (AAAAA9999A)"
-      />
-      <Input name="panHolderName" required placeholder="PAN holder's name" />
-      <Button type="submit" variant="outline" disabled={disabled || pending}>
-        {pending ? "Verifying…" : "Verify PAN"}
-      </Button>
-    </form>
+    <div className="mt-6 rounded-xl border bg-gradient-to-br from-emerald-50/60 to-background p-5 dark:from-emerald-950/20">
+      <div className="flex items-start gap-3">
+        <div className="size-10 rounded-lg bg-emerald-500/15 grid place-items-center shrink-0">
+          <ShieldCheck className="size-5 text-emerald-600" />
+        </div>
+        <div className="flex-1">
+          <h4 className="font-semibold text-base">Verify your PAN</h4>
+          <p className="text-sm text-muted-foreground mt-1">
+            We'll cross-check your PAN against the NSDL database (the same
+            source banks use). Your PAN is stored only in masked form — we
+            never persist the full number.
+          </p>
+
+          <form
+            className="grid sm:grid-cols-2 gap-3 mt-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const fd = new FormData(e.currentTarget);
+              onSubmit({
+                panNumber: String(fd.get("panNumber") ?? ""),
+                panHolderName: String(fd.get("panHolderName") ?? ""),
+              });
+            }}
+          >
+            <div className="sm:col-span-1">
+              <Label htmlFor="panNumber">PAN number</Label>
+              <Input
+                id="panNumber"
+                name="panNumber"
+                required
+                pattern="[A-Z]{5}[0-9]{4}[A-Z]"
+                placeholder="AAAAA9999A"
+                className="mt-1.5 font-mono uppercase"
+                maxLength={10}
+                autoComplete="off"
+                spellCheck={false}
+                onChange={(e) => {
+                  e.currentTarget.value = e.currentTarget.value.toUpperCase();
+                }}
+              />
+            </div>
+            <div className="sm:col-span-1">
+              <Label htmlFor="panHolderName">Name as on PAN card</Label>
+              <Input
+                id="panHolderName"
+                name="panHolderName"
+                required
+                placeholder="As printed on your PAN card"
+                className="mt-1.5"
+                maxLength={120}
+                autoComplete="off"
+              />
+            </div>
+
+            <label className="sm:col-span-2 mt-2 flex items-start gap-2 text-sm select-none cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-0.5 size-4 rounded border-border accent-emerald-600"
+                checked={accepted}
+                onChange={(e) => setAccepted(e.target.checked)}
+              />
+              <span className="text-muted-foreground">
+                {PAN_KYC_CONSENT_TEXT}
+              </span>
+            </label>
+
+            <div className="sm:col-span-2 mt-1">
+              <Button
+                type="submit"
+                variant="gradient"
+                disabled={disabled || pending || !accepted}
+              >
+                {pending ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" />
+                    Verifying with NSDL…
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck className="size-4" />
+                    Verify PAN
+                  </>
+                )}
+              </Button>
+              <p className="text-[11px] text-muted-foreground mt-2">
+                Takes ~5 seconds. We'll show you the registered name on your
+                PAN before marking you verified.
+              </p>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
   );
 }

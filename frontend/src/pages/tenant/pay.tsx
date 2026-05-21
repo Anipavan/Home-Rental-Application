@@ -13,9 +13,13 @@ import {
 import { paymentsApi } from "@/lib/api/payments";
 import { paymentGateway } from "@/lib/api/payment-gateway";
 import { useFlatLookup } from "@/hooks/use-flat-lookup";
+import {
+  UpiIdField,
+  isVpaUsable,
+  type VpaState,
+} from "@/components/payment/upi-id-field";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -68,6 +72,11 @@ export function PayPage() {
   const [step, setStep] = useState<Step>("select");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [upiVpa, setUpiVpa] = useState("");
+  // Live validation state of the upiVpa above. Empty until the user
+  // picks "Other UPI"; once they do, we gate the Pay button on this
+  // being {@code valid} so we never send a UPI collect request to a
+  // garbage / mistyped VPA.
+  const [vpaState, setVpaState] = useState<VpaState>({ kind: "empty" });
 
   const selected = useMemo(
     () => methods.find((m) => m.key === selectedKey) ?? null,
@@ -141,6 +150,7 @@ export function PayPage() {
               onSelect={setSelectedKey}
               upiVpa={upiVpa}
               onUpiVpaChange={setUpiVpa}
+              onVpaStateChange={setVpaState}
             />
           )}
           {step === "checkout" && selected && (
@@ -168,7 +178,13 @@ export function PayPage() {
           flatLabel={flatLookup.nameOf(p.flatId)}
           onPay={handlePay}
           payDisabled={
-            !selected || (selected.upiApp === "OTHER" && !upiVpa)
+            !selected ||
+            // For the "Other UPI" path, gate Pay on a fully verified VPA.
+            // {@code isVpaUsable(state, false)} returns true ONLY when the
+            // backend has confirmed the VPA exists on the UPI directory —
+            // not just that the format looks plausible. Prevents firing
+            // collect requests at typo'd VPAs.
+            (selected.upiApp === "OTHER" && !isVpaUsable(vpaState, false))
           }
           payLoading={false}
           method={selected}
@@ -184,11 +200,15 @@ function SelectMethodView({
   onSelect,
   upiVpa,
   onUpiVpaChange,
+  onVpaStateChange,
 }: {
   selectedKey: string | null;
   onSelect: (key: string) => void;
   upiVpa: string;
   onUpiVpaChange: (v: string) => void;
+  /** Bubbles the UpiIdField's live validation state up to the parent
+   *  so the Pay button can be disabled until the VPA is verified. */
+  onVpaStateChange: (s: VpaState) => void;
 }) {
   const showVpa =
     methods.find((m) => m.key === selectedKey)?.upiApp === "OTHER";
@@ -208,20 +228,19 @@ function SelectMethodView({
         </div>
         {showVpa && (
           <div className="mt-3 p-3.5 rounded-xl border bg-card">
-            <label className="text-xs font-medium text-muted-foreground">
-              UPI ID (VPA)
-            </label>
-            <Input
+            {/* Live-validated UPI input. Same component the owner's
+                bank-details form uses — debounced 600ms call to
+                /payments/vpa/validate, renders the bank-registered
+                holder name on success. Pay button stays disabled
+                until the VPA is verified. */}
+            <UpiIdField
+              id="tenant-upi-vpa"
+              label="UPI ID (VPA)"
               value={upiVpa}
-              onChange={(e) => onUpiVpaChange(e.target.value)}
-              placeholder="name@bank"
-              className="mt-1.5"
-              autoComplete="off"
-              spellCheck={false}
+              onChange={onUpiVpaChange}
+              onStateChange={onVpaStateChange}
+              helper="We'll send a collect request to this UPI app."
             />
-            <p className="text-xs text-muted-foreground mt-1.5">
-              We'll send a collect request to your UPI app.
-            </p>
           </div>
         )}
       </Section>

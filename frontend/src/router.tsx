@@ -30,6 +30,7 @@ import { ComplaintDetailPage } from "@/pages/tenant/complaint-detail";
 import { ProfilePage } from "@/pages/tenant/profile";
 import { TenantLeasePage } from "@/pages/tenant/lease";
 import { KycPage } from "@/pages/tenant/kyc";
+import { KycCallbackPage } from "@/pages/tenant/kyc-callback";
 import { DocumentsPage } from "@/pages/tenant/documents";
 import { TenantReviewsPage } from "@/pages/tenant/reviews";
 import { OwnerDashboard } from "@/pages/owner/dashboard";
@@ -122,6 +123,14 @@ export const router = createBrowserRouter([
       // preferences right after registration.
       { path: "notifications/preferences", element: <NotificationPreferencesPage /> },
       { path: "notifications", element: <NotificationsInboxPage /> },
+      // DigiLocker OAuth callback. Lives outside FlatRequiredOutlet so a
+      // tenant who just registered (no flat yet) can still complete
+      // identity verification. Lives outside the FeatureDisabledOutlet
+      // wrapper below for the same reason — when KYC is paused there's
+      // no flow to come back to, so we don't gate this URL on the flag.
+      // The page itself short-circuits with a friendly error if the
+      // backend rejects the code/state.
+      { path: "kyc/callback", element: <KycCallbackPage /> },
       // Browse listings is always available — a tenant with a flat
       // assigned should still be able to look at other homes (longer
       // lease, bigger place, different neighbourhood, etc.). Reuses

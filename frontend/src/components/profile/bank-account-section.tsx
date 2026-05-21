@@ -21,6 +21,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  UpiIdField,
+  isVpaUsable,
+  type VpaState,
+} from "@/components/payment/upi-id-field";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -60,6 +65,10 @@ export function BankAccountSection({
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  // Live VPA validation state — populated by the UpiIdField child. We
+  // gate Save on this being either {@code empty} (optional + blank) or
+  // {@code valid} so we never persist a typo'd VPA.
+  const [vpaState, setVpaState] = useState<VpaState>({ kind: "empty" });
 
   const q = useQuery({
     queryKey: ["bank-account", authUserId],
@@ -162,6 +171,10 @@ export function BankAccountSection({
     form.bankName.trim().length > 0 &&
     /^\d{9,18}$/.test(form.accountNumber.trim()) &&
     /^[A-Z]{4}0[A-Z0-9]{6}$/.test(form.ifscCode.trim().toUpperCase()) &&
+    // VPA is optional — empty is fine. If it's filled, it must validate.
+    // We pass `optional=true` to the field, so {@code isVpaUsable} returns
+    // true on empty + true on valid — exactly the gate we want here.
+    isVpaUsable(vpaState, true) &&
     !saveM.isPending;
 
   return (
@@ -365,21 +378,22 @@ export function BankAccountSection({
               </Select>
             </div>
             <div className="sm:col-span-2">
-              <Label htmlFor="upiId">UPI ID (optional)</Label>
-              <Input
+              {/* Live-validated UPI field. As the user types, we debounce
+                  for 600ms and call /payments/vpa/validate which round-
+                  trips through Razorpay's NPCI lookup. On a hit we render
+                  a green "Verified · NAME" pill so the owner can confirm
+                  the bank-registered name matches the one they typed in
+                  Account holder above. Save is gated on this being either
+                  empty (it's optional) or valid. */}
+              <UpiIdField
                 id="upiId"
+                label="UPI ID"
+                optional
                 value={form.upiId ?? ""}
-                onChange={(e) =>
-                  setForm({ ...form, upiId: e.target.value })
-                }
-                placeholder="username@oksbi"
-                className="mt-1.5 font-mono"
-                maxLength={100}
+                onChange={(v) => setForm({ ...form, upiId: v })}
+                onStateChange={setVpaState}
+                helper="Faster than NEFT for small payouts. We'll show your tenants the bank-registered name when they pay."
               />
-              <p className="text-[11px] text-muted-foreground mt-1">
-                Faster than NEFT for small payouts when both parties
-                are on the same UPI rails.
-              </p>
             </div>
 
             <div className="sm:col-span-2 flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-1">

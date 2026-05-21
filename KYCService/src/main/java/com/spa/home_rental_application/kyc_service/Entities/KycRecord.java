@@ -76,6 +76,27 @@ public class KycRecord {
     @Column(name = "verified_at")
     private LocalDateTime verifiedAt;
 
+    // ---------- DigiLocker-specific fields ----------
+    // The OAuth state token we minted on /authorize. Stored alongside its
+    // expiry so the callback can validate both that the state matches and
+    // that it hasn't aged past the configured TTL (RFC 6749 §10.12).
+    @Column(name = "digilocker_state", length = 100)
+    private String digilockerState;
+
+    @Column(name = "digilocker_state_expires_at")
+    private LocalDateTime digilockerStateExpiresAt;
+
+    // Safe-to-display fragments pulled from the eAadhaar XML. The full
+    // 12-digit Aadhaar is NEVER persisted — we hash + discard it the moment
+    // we parse the XML. last4 + name + dob are what UPI / banks already
+    // show for cross-checks, and are explicitly allowed by UIDAI's
+    // "share masked Aadhaar" guidelines.
+    @Column(name = "aadhaar_last4", length = 4)
+    private String aadhaarLast4;
+
+    @Column(name = "date_of_birth", length = 30)
+    private String dateOfBirth;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

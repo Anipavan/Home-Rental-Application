@@ -16,13 +16,17 @@ import com.spa.home_rental_application.document_service.Exceptionclass.InvalidDo
 import com.spa.home_rental_application.document_service.Exceptionclass.StorageException;
 import com.spa.home_rental_application.document_service.config.DocumentProperties;
 import com.spa.home_rental_application.document_service.mapper.DocumentMapper;
+import com.spa.home_rental_application.document_service.ocr.DocumentUploadedInternalEvent;
 import com.spa.home_rental_application.document_service.ocr.OcrEngine;
 import com.spa.home_rental_application.document_service.repository.DocumentRepository;
 import com.spa.home_rental_application.document_service.storage.DocumentStorage;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -46,6 +50,13 @@ public class DocumentServiceImpl implements DocumentService {
     private final PreSignedUrlSigner urlSigner;
     private final DocumentServiceEvents events;
     private final DocumentProperties props;
+    /**
+     * In-process event publisher used to fire {@link DocumentUploadedInternalEvent}
+     * after a transactional upload commits. Decoupled from Kafka so the
+     * async OCR listener doesn't need to round-trip through the broker —
+     * lower latency + no broker dependency for a within-service signal.
+     */
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     public DocumentServiceImpl(DocumentRepository repository,
                                DocumentMapper mapper,
@@ -53,7 +64,8 @@ public class DocumentServiceImpl implements DocumentService {
                                OcrEngine ocrEngine,
                                PreSignedUrlSigner urlSigner,
                                DocumentServiceEvents events,
-                               DocumentProperties props) {
+                               DocumentProperties props,
+                               ApplicationEventPublisher applicationEventPublisher) {
         this.repository = repository;
         this.mapper = mapper;
         this.storage = storage;
@@ -61,6 +73,7 @@ public class DocumentServiceImpl implements DocumentService {
         this.urlSigner = urlSigner;
         this.events = events;
         this.props = props;
+        this.applicationEventPublisher = applicationEventPublisher;
     }
 
     // ---------- Public API ----------
@@ -100,7 +113,37 @@ public class DocumentServiceImpl implements DocumentService {
         // re-driven via a manual replay if event delivery matters; from
         // the user's perspective the upload should always succeed.
         publishUploadedSafe(saved);
+        // Fire the in-process event AFTER the JPA commit. If we publish
+        // it inline, the async OCR listener can win the race and try to
+        // load a document row that hasn't been flushed yet — repository
+        // .findById would return empty and OCR would 404 itself.
+        // afterCommit() defers the publish until JPA has actually
+        // written the row, so the async thread sees consistent state.
+        registerOcrTriggerAfterCommit(saved);
         return mapper.toResponse(saved);
+    }
+
+    /**
+     * Defer the in-process OCR-trigger event until the surrounding @Transactional
+     * commits. Without this, the async listener can race the JPA flush and
+     * find no row to OCR.
+     *
+     * <p>If we're not inside a transaction (e.g. tests calling upload()
+     * directly), publish immediately — there's nothing to wait for.
+     */
+    private void registerOcrTriggerAfterCommit(Document saved) {
+        DocumentUploadedInternalEvent ev = new DocumentUploadedInternalEvent(
+                saved.getId(), saved.getUserId(), saved.getDocumentType());
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    applicationEventPublisher.publishEvent(ev);
+                }
+            });
+        } else {
+            applicationEventPublisher.publishEvent(ev);
+        }
     }
 
     private void publishUploadedSafe(Document saved) {

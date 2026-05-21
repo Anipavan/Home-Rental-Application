@@ -10,15 +10,20 @@
  */
 export const FEATURE_FLAGS = {
   /**
-   * KYC is currently paused platform-wide. Flips off ALL surfaces:
-   *  - tenant /app/kyc route (gated by FeatureDisabledOutlet)
-   *  - tenant kyc.tsx API queries (skipped via `enabled: !disabled`)
-   *  - owner /owner/tenants/:id KYC badge (hidden when paused)
-   *  - sidebar "Paused" pill on the KYC nav item
+   * KYC is LIVE — backed by Sandbox.co.in PAN verification.
    *
-   * Re-enable by setting to false.
+   * <p>The active flow is PAN-only: tenant types their PAN + name,
+   * server calls Sandbox.co.in's NSDL-backed PAN verify, returns the
+   * matched holder name, flips kyc_status to VERIFIED if the PAN is
+   * valid and the name matches. First 100 verifications are free on
+   * the Sandbox signup tier; ~₹0.50 per call after that.
+   *
+   * <p>The DigiLocker flow stays dormant in the codebase — when
+   * Anirudh Homes incorporates and gets DigiLocker partner approval,
+   * switch {@code app.kyc.provider=DIGILOCKER} + {@code app.kyc.pan-only-kyc=false}
+   * on the backend to upgrade to one-tap Aadhaar verification.
    */
-  KYC_DISABLED: true as const,
+  KYC_DISABLED: false as const,
 
   /**
    * Saved-search Alerts paused platform-wide. Same pattern as KYC:

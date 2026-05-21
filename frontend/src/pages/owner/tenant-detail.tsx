@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -698,6 +698,12 @@ function DocumentRow({ doc }: { doc: DocumentResponse }) {
         </p>
       )}
 
+      {/* OCR evidence panel — populated by Sandbox.co.in's PAN / Aadhaar
+          OCR APIs (or any other configured OcrEngine). Helps the owner
+          decide approve vs. reject without manually squinting at the
+          uploaded image. Hidden for PENDING / failed OCR. */}
+      <OcrEvidence doc={doc} />
+
       {/* Reject-reason dialog */}
       <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
         <DialogContent className="max-w-md">
@@ -745,4 +751,132 @@ function DocumentRow({ doc }: { doc: DocumentResponse }) {
       </Dialog>
     </li>
   );
+}
+
+/**
+ * Inline OCR evidence panel under each document row.
+ *
+ * <p>Pulls the OCR-extracted fields off the {@link DocumentResponse}
+ * (populated server-side by {@code SandboxOcrEngine.extract}) and
+ * surfaces them as a small key→value grid the owner can glance at
+ * before approving / rejecting. When Sandbox's PAN-verify cross-check
+ * flags a forgery the panel switches to a red warning band.
+ *
+ * <p>Visual states:
+ * <ul>
+ *   <li><b>PROCESSING</b> — "Verifying with NSDL…" spinner.</li>
+ *   <li><b>DONE</b> + fraudFlag=false — green "Verified by Sandbox" header
+ *       with the extracted fields below.</li>
+ *   <li><b>DONE</b> + fraudFlag=true — red warning band with the
+ *       failureReason; the owner should reject this document.</li>
+ *   <li><b>FAILED</b> — small muted "OCR unavailable — verify manually"
+ *       note. Doesn't block approval.</li>
+ *   <li><b>PENDING</b> — hidden (queued, hasn't run yet).</li>
+ * </ul>
+ */
+function OcrEvidence({ doc }: { doc: DocumentResponse }) {
+  const status = doc.ocrStatus;
+  const fields = doc.extractedData ?? {};
+  const hasFields = Object.keys(fields).length > 0;
+
+  if (status === "PENDING") return null;
+
+  if (status === "PROCESSING") {
+    return (
+      <div className="mt-2 pl-7 flex items-center gap-2 text-xs text-muted-foreground">
+        <Loader2 className="size-3 animate-spin" />
+        Verifying with NSDL via Sandbox.co.in…
+      </div>
+    );
+  }
+
+  if (status === "FAILED" || !hasFields) {
+    return (
+      <p className="mt-2 pl-7 text-xs text-muted-foreground italic">
+        Auto-verification unavailable — please review the image manually.
+      </p>
+    );
+  }
+
+  // status === "DONE" with extracted fields. Branch on fraudFlag.
+  if (doc.fraudFlag) {
+    return (
+      <div className="mt-2 ml-7 rounded-lg border border-destructive/40 bg-destructive/10 p-2.5 text-xs">
+        <div className="flex items-start gap-1.5">
+          <AlertTriangle className="size-3.5 text-destructive mt-0.5 shrink-0" />
+          <div>
+            <p className="font-semibold text-destructive">
+              ⚠ Cross-check failed — possible forgery
+            </p>
+            <p className="text-muted-foreground mt-0.5">
+              We OCR'd this document and ran it against NSDL. The result
+              doesn't match a valid registration. Reject and ask the
+              tenant for a clearer / genuine copy.
+            </p>
+            <OcrFieldGrid fields={fields} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2 ml-7 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-2.5 text-xs">
+      <div className="flex items-center gap-1.5 font-semibold text-emerald-700 dark:text-emerald-400">
+        <ShieldCheck className="size-3.5" />
+        Verified by Sandbox · NSDL
+        {typeof doc.confidenceScore === "number" && (
+          <span className="font-normal text-muted-foreground ml-auto">
+            confidence {Math.round(doc.confidenceScore * 100)}%
+          </span>
+        )}
+      </div>
+      <OcrFieldGrid fields={fields} />
+    </div>
+  );
+}
+
+/** Tiny 2-column grid that renders {key → value} pairs from the OCR map. */
+function OcrFieldGrid({ fields }: { fields: Record<string, string> }) {
+  // Pretty-print the field keys: panNumber → "PAN", idNumberLast4 → "Aadhaar ····N"
+  const rows = Object.entries(fields).map(([k, v]) => ({
+    label: prettyLabel(k),
+    value: prettyValue(k, v),
+  }));
+  return (
+    <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5">
+      {rows.map((r) => (
+        <Fragment key={r.label}>
+          <dt className="text-muted-foreground">{r.label}</dt>
+          <dd className="font-mono">{r.value}</dd>
+        </Fragment>
+      ))}
+    </dl>
+  );
+}
+
+function prettyLabel(key: string): string {
+  switch (key) {
+    case "panNumber":
+      return "PAN";
+    case "nameOnNsdl":
+      return "NSDL name";
+    case "idNumberLast4":
+      return "Aadhaar";
+    case "dob":
+      return "DOB";
+    case "fatherName":
+      return "Father's name";
+    default:
+      // camelCase → "Camel case"
+      return key.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase());
+  }
+}
+
+function prettyValue(key: string, val: string): string {
+  if (key === "idNumberLast4") return `····${val}`;
+  if (key === "panNumber" && val.length === 10) {
+    return val.substring(0, 4) + "****" + val.substring(8);
+  }
+  return val;
 }

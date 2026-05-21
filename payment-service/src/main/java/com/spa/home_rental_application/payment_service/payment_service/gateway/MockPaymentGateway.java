@@ -98,6 +98,46 @@ public class MockPaymentGateway implements PaymentGateway {
     }
 
     /**
+     * Mock VPA validation. Accepts anything that looks like {@code user@psp}
+     * and returns a deterministic stub name derived from the local part —
+     * which is enough for the frontend's live-preview UX to be exercised
+     * end-to-end in dev without burning a real Razorpay call.
+     *
+     * <p>Returns {@code valid=false} for empty/malformed inputs so the
+     * frontend's error-state branch is also testable locally.
+     */
+    @Override
+    public VpaValidationResult validateVpa(String vpa) {
+        if (vpa == null || !VPA_FORMAT_RE.matcher(vpa).matches()) {
+            return VpaValidationResult.builder()
+                    .valid(false)
+                    .vpa(vpa)
+                    .failureReason("Invalid UPI ID format")
+                    .gatewayName(NAME)
+                    .build();
+        }
+        // Derive a plausible "holder name" from the local part — e.g.
+        // "anirudh.kumar@oksbi" → "ANIRUDH KUMAR". Good enough that
+        // engineers can eyeball the UI flow without a real gateway.
+        String local = vpa.substring(0, vpa.indexOf('@'));
+        String stubName = local
+                .replaceAll("[._\\-]+", " ")
+                .toUpperCase()
+                .trim();
+        log.info("MockPaymentGateway.validateVpa vpa={} -> name={}", vpa, stubName);
+        return VpaValidationResult.builder()
+                .valid(true)
+                .vpa(vpa)
+                .customerName(stubName)
+                .gatewayName(NAME)
+                .build();
+    }
+
+    /** Same regex the controller / frontend use — single source of truth. */
+    private static final java.util.regex.Pattern VPA_FORMAT_RE =
+            java.util.regex.Pattern.compile("^[a-zA-Z0-9.\\-_]{2,256}@[a-zA-Z][a-zA-Z0-9.\\-]{1,63}$");
+
+    /**
      * Builds an app-aware UPI intent URI. When the tenant picks GPay /
      * PhonePe / Paytm in the UI, we generate the app-specific deep link
      * so on Android the OS opens that app directly instead of the chooser.

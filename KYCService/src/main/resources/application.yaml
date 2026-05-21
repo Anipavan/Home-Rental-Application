@@ -95,7 +95,9 @@ app:
     document-topic: document-events
   kyc:
     # Pluggable KYC providers — flip to MOCK locally so engineers don't need
-    # real Digio / Signzy creds for everyday dev.
+    # real DigiLocker / Digio / Signzy creds for everyday dev. In prod set
+    # KYC_PROVIDER=DIGILOCKER once the DIGILOCKER_* env vars are populated
+    # from the secrets vault.
     provider: ${KYC_PROVIDER:MOCK}
     aadhaar-hash-salt: ${KYC_AADHAAR_SALT:change-me-in-prod-aadhaar-pepper}
     digio:
@@ -105,6 +107,29 @@ app:
       callback-url: ${DIGIO_CALLBACK_URL:http://localhost:8092/kyc/webhook/digio}
     pan:
       verify-url: ${PAN_VERIFY_URL:https://api.digio.in/v3/client/kyc/pan_verify}
+    # DigiLocker (MeitY) OAuth 2.0 + eAadhaar XML. clientId/clientSecret
+    # come from the DigiLocker Partner Portal — never check them in. The
+    # redirect-uri must match exactly what's registered there.
+    digilocker:
+      authorize-url: ${DIGILOCKER_AUTHORIZE_URL:https://api.digitallocker.gov.in/public/oauth2/1/authorize}
+      token-url: ${DIGILOCKER_TOKEN_URL:https://api.digitallocker.gov.in/public/oauth2/1/token}
+      eaadhaar-url: ${DIGILOCKER_EAADHAAR_URL:https://api.digitallocker.gov.in/public/oauth2/3/xml/eaadhaar}
+      client-id: ${DIGILOCKER_CLIENT_ID:}
+      client-secret: ${DIGILOCKER_CLIENT_SECRET:}
+      redirect-uri: ${DIGILOCKER_REDIRECT_URI:https://anirudhhomes.in/app/kyc/callback}
+      state-ttl-seconds: ${DIGILOCKER_STATE_TTL_SECONDS:600}
+    # When true, a successful /verify-pan flips the whole KYC record to
+    # VERIFIED. Used with the SANDBOX provider for cheap PAN-only KYC.
+    pan-only-kyc: ${PAN_ONLY_KYC:false}
+    # Sandbox.co.in (Quicko) — solo-dev-friendly KYC aggregator. First
+    # 100 PAN verifications free on signup, ~₹0.50/call after.
+    sandbox:
+      base-url: ${SANDBOX_BASE_URL:https://api.sandbox.co.in}
+      api-key: ${SANDBOX_API_KEY:}
+      api-secret: ${SANDBOX_API_SECRET:}
+      api-version: ${SANDBOX_API_VERSION:1.0}
+      pan-verify-path: ${SANDBOX_PAN_VERIFY_PATH:/kyc/pan/verify}
+      auth-path: ${SANDBOX_AUTH_PATH:/authenticate}
 
 feign:
   circuitbreaker:
@@ -135,6 +160,8 @@ resilience4j:
         registerHealthIndicator: true
     instances:
       digio-client:           { baseConfig: default }
+      digilocker-client:      { baseConfig: default }
+      sandbox-client:         { baseConfig: default }
   timelimiter:
     configs:
       default:
@@ -142,6 +169,8 @@ resilience4j:
         cancelRunningFuture: true
     instances:
       digio-client:           { baseConfig: default }
+      digilocker-client:      { baseConfig: default }
+      sandbox-client:         { baseConfig: default }
   retry:
     configs:
       default:

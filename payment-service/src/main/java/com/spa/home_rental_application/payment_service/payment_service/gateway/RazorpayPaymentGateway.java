@@ -189,6 +189,121 @@ public class RazorpayPaymentGateway implements PaymentGateway {
         }
     }
 
+    /**
+     * Validates a UPI VPA against the NPCI central directory via Razorpay's
+     * {@code POST /v1/payments/validate/vpa} endpoint.
+     *
+     * <p>Razorpay enables this on all Standard accounts — same key_id /
+     * key_secret as our Orders API calls, no extra activation. Test-mode
+     * keys return mocked-but-realistic responses (any well-formed VPA
+     * gets {@code success=true} with a placeholder name), production keys
+     * hit the real NPCI directory.
+     *
+     * <p>Pricing: free on test keys; ₹0.20 per call on production keys
+     * (post-tax). With the frontend's 600ms debounce + same-input caching,
+     * a typical user costs ~1 call per save.
+     *
+     * <p>Failure mapping:
+     * <ul>
+     *   <li>HTTP 200 + {@code success=true} → valid + customer_name</li>
+     *   <li>HTTP 200 + {@code success=false} → not on UPI directory</li>
+     *   <li>HTTP 4xx → caller-error: invalid format, throttled, etc.</li>
+     *   <li>HTTP 5xx / network → graceful failure with a generic message;
+     *       caller can choose to allow save anyway (advisory check).</li>
+     * </ul>
+     */
+    @Override
+    public VpaValidationResult validateVpa(String vpa) {
+        if (vpa == null || !VPA_FORMAT_RE.matcher(vpa).matches()) {
+            return VpaValidationResult.builder()
+                    .valid(false)
+                    .vpa(vpa)
+                    .failureReason("Invalid UPI ID format")
+                    .gatewayName(NAME)
+                    .build();
+        }
+
+        // Use the existing Razorpay SDK only where it adds value (orders + signature).
+        // For this single REST call, HttpURLConnection keeps deps minimal.
+        try {
+            java.net.URL url = new java.net.URL("https://api.razorpay.com/v1/payments/validate/vpa");
+            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setConnectTimeout(5_000);
+            conn.setReadTimeout(8_000);
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setRequestProperty("Accept", "application/json");
+            // HTTP Basic auth, same key_id:key_secret used by the SDK.
+            String basic = java.util.Base64.getEncoder().encodeToString(
+                    (props.getKeyId() + ":" + props.getKeySecret())
+                            .getBytes(StandardCharsets.UTF_8));
+            conn.setRequestProperty("Authorization", "Basic " + basic);
+
+            String body = new JSONObject().put("vpa", vpa).toString();
+            try (var os = conn.getOutputStream()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+
+            int status = conn.getResponseCode();
+            String respBody = readAll(
+                    status >= 400 ? conn.getErrorStream() : conn.getInputStream());
+
+            if (status >= 200 && status < 300) {
+                JSONObject json = new JSONObject(respBody);
+                boolean ok = json.optBoolean("success", false);
+                String name = json.optString("customer_name", null);
+                if (ok && name != null && !name.isBlank()) {
+                    log.info("Razorpay validateVpa vpa={} -> valid, name={}", vpa, name);
+                    return VpaValidationResult.builder()
+                            .valid(true)
+                            .vpa(vpa)
+                            .customerName(name)
+                            .gatewayName(NAME)
+                            .build();
+                }
+                log.info("Razorpay validateVpa vpa={} -> not on UPI directory", vpa);
+                return VpaValidationResult.builder()
+                        .valid(false)
+                        .vpa(vpa)
+                        .failureReason("This UPI ID is not active on the UPI directory")
+                        .gatewayName(NAME)
+                        .build();
+            }
+            // 4xx / 5xx — surface a clean message; don't echo the raw
+            // Razorpay error body (may leak internal codes).
+            log.warn("Razorpay validateVpa vpa={} -> HTTP {}: {}", vpa, status, respBody);
+            return VpaValidationResult.builder()
+                    .valid(false)
+                    .vpa(vpa)
+                    .failureReason(status >= 500
+                            ? "UPI verification is temporarily unavailable"
+                            : "We couldn't verify this UPI ID")
+                    .gatewayName(NAME)
+                    .build();
+        } catch (Exception ex) {
+            log.error("Razorpay validateVpa failed for vpa={}", vpa, ex);
+            return VpaValidationResult.builder()
+                    .valid(false)
+                    .vpa(vpa)
+                    .failureReason("UPI verification is temporarily unavailable")
+                    .gatewayName(NAME)
+                    .build();
+        }
+    }
+
+    /** Single regex used for the pre-flight format gate. Identical to MockPaymentGateway's. */
+    private static final java.util.regex.Pattern VPA_FORMAT_RE =
+            java.util.regex.Pattern.compile("^[a-zA-Z0-9.\\-_]{2,256}@[a-zA-Z][a-zA-Z0-9.\\-]{1,63}$");
+
+    /** Read an InputStream to a UTF-8 String, tolerating null (4xx with empty body). */
+    private static String readAll(java.io.InputStream is) throws java.io.IOException {
+        if (is == null) return "";
+        try (is) {
+            return new String(is.readAllBytes(), StandardCharsets.UTF_8);
+        }
+    }
+
     /* ----------------------- helpers ----------------------- */
 
     /**

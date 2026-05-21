@@ -42,4 +42,27 @@ public interface PaymentGateway {
     default WebhookVerificationResult verifyWebhook(String rawBody, String signatureHeader) {
         return new WebhookVerificationResult(false, null, null, "WEBHOOK_NOT_SUPPORTED");
     }
+
+    /**
+     * Optional: validate that a UPI VPA exists on the NPCI directory and
+     * return the masked holder name registered against it.
+     *
+     * <p>Real gateways (Razorpay, Cashfree, etc.) expose this as a free
+     * or near-free server-to-server lookup. The Mock gateway returns a
+     * deterministic stub for any well-formed VPA so the rest of the
+     * stack can be exercised without external calls.
+     *
+     * <p>Default impl returns an "unsupported" result rather than
+     * throwing — so a gateway that hasn't implemented this yet doesn't
+     * crash the controller; the frontend degrades to format-only
+     * validation in that case.
+     */
+    default VpaValidationResult validateVpa(String vpa) {
+        return VpaValidationResult.builder()
+                .valid(false)
+                .vpa(vpa)
+                .failureReason("VPA validation not supported by this gateway")
+                .gatewayName(name())
+                .build();
+    }
 }

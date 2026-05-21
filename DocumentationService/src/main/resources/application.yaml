@@ -158,8 +158,40 @@ app:
       - image/jpeg
       - image/jpg
     ocr:
-      # OCR backend: STUB | TESSERACT (TESSERACT requires native binaries; STUB is safe for dev)
+      # OCR backend: STUB | TESSERACT | SANDBOX
+      #   STUB      — returns deterministic fake fields, no external call (default for dev/CI).
+      #   TESSERACT — runs locally, needs the libtesseract binary in the image.
+      #   SANDBOX   — calls Sandbox.co.in's OCR + PAN verify APIs. Production-grade. ~₹2-3/call after free tier.
       provider: ${DOCUMENT_OCR_PROVIDER:STUB}
+      # When true, every successful upload kicks off OCR automatically
+      # via an async event listener — tenant uploads, comes back a few
+      # seconds later, sees extracted PAN/name on the document.
+      auto-extract-on-upload: ${DOCUMENT_OCR_AUTO_EXTRACT:true}
+      # Hard cap on file size sent to a paid OCR API (Sandbox accepts ~5MB).
+      max-ocr-file-size-bytes: ${DOCUMENT_OCR_MAX_FILE_BYTES:4194304}
+    # Sandbox.co.in OCR provider. Same API key/secret as the KYC service —
+    # keep them in .env.prod and mount on both services.
+    sandbox:
+      base-url: ${SANDBOX_BASE_URL:https://api.sandbox.co.in}
+      api-key: ${SANDBOX_API_KEY:}
+      api-secret: ${SANDBOX_API_SECRET:}
+      api-version: ${SANDBOX_API_VERSION:1.0}
+      auth-path: ${SANDBOX_AUTH_PATH:/authenticate}
+      aadhaar-ocr-path: ${SANDBOX_AADHAAR_OCR_PATH:/kyc/ocr/aadhaar}
+      pan-ocr-path: ${SANDBOX_PAN_OCR_PATH:/kyc/ocr/pan}
+      pan-verify-path: ${SANDBOX_PAN_VERIFY_PATH:/kyc/pan/verify}
+
+# Resilience4j instances for the Sandbox OCR client (named in @CircuitBreaker
+# annotations on SandboxOcrAuthClient + SandboxOcrEngine). Inherits the
+# default config defined in the parent resilience4j block if one exists,
+# otherwise Spring Cloud's auto-config kicks in.
+resilience4j:
+  circuitbreaker:
+    instances:
+      sandbox-ocr-client: { registerHealthIndicator: true }
+  timelimiter:
+    instances:
+      sandbox-ocr-client: { timeoutDuration: 25s, cancelRunningFuture: true }
 
 eureka:
   instance:

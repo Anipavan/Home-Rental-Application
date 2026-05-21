@@ -4,7 +4,9 @@ import com.spa.home_rental_application.payment_service.payment_service.DTO.Reque
 import com.spa.home_rental_application.payment_service.payment_service.DTO.Request.VerifyPaymentRequest;
 import com.spa.home_rental_application.payment_service.payment_service.DTO.Response.InitiatePaymentResponse;
 import com.spa.home_rental_application.payment_service.payment_service.DTO.Response.PaymentResponse;
+import com.spa.home_rental_application.payment_service.payment_service.DTO.Response.VpaValidationResponse;
 import com.spa.home_rental_application.payment_service.payment_service.gateway.PaymentGateway;
+import com.spa.home_rental_application.payment_service.payment_service.gateway.VpaValidationResult;
 import com.spa.home_rental_application.payment_service.payment_service.gateway.WebhookVerificationResult;
 import com.spa.home_rental_application.payment_service.payment_service.service.PaymentService;
 import com.spa.home_rental_application.payment_service.payment_service.service.PaymentService.WebhookOutcome;
@@ -128,6 +130,42 @@ public class PaymentGatewayController {
                 "duplicate", outcome == PaymentService.WebhookOutcome.DUPLICATE,
                 "paymentId", res.paymentId() == null ? "" : res.paymentId()));
     }
+
+    /**
+     * Validate a UPI VPA against the active gateway. Returns
+     * {@code valid=true} + the masked holder name when the VPA is on
+     * the NPCI directory, {@code valid=false} + a reason otherwise.
+     *
+     * <p>Wired by the frontend's {@code UpiIdField} on both the owner's
+     * bank-details form (saved VPA) and the tenant's "Other UPI"
+     * payment flow. Frontend debounces by 600ms + caches by VPA so a
+     * typical session = one call per saved VPA, not per keystroke.
+     *
+     * <p>Gateway-agnostic: routed through {@link PaymentGateway#validateVpa}.
+     * Mock returns a deterministic stub name; Razorpay hits NPCI for real.
+     *
+     * <p>Format gate is replicated here to fast-fail without burning a
+     * gateway call on obvious garbage ({@code abc}, {@code @oksbi}, etc.).
+     */
+    @Operation(summary = "Validate a UPI VPA and return the registered holder name (Razorpay /v1/payments/validate/vpa).")
+    @GetMapping("/vpa/validate")
+    public ResponseEntity<VpaValidationResponse> validateVpa(@RequestParam("vpa") String vpa) {
+        log.info("GET /payments/vpa/validate vpa={}", vpa);
+        if (vpa == null || !VPA_FORMAT_RE.matcher(vpa.trim()).matches()) {
+            return ResponseEntity.ok(new VpaValidationResponse(
+                    false, vpa, null, "Invalid UPI ID format"));
+        }
+        VpaValidationResult res = gateway.validateVpa(vpa.trim());
+        return ResponseEntity.ok(new VpaValidationResponse(
+                res.valid(),
+                res.vpa(),
+                res.customerName(),
+                res.failureReason()));
+    }
+
+    /** Single regex used to fail-fast malformed input before hitting the gateway. */
+    private static final java.util.regex.Pattern VPA_FORMAT_RE =
+            java.util.regex.Pattern.compile("^[a-zA-Z0-9.\\-_]{2,256}@[a-zA-Z][a-zA-Z0-9.\\-]{1,63}$");
 
     /** Return URL the MockPaymentGateway sends users to after "payment". For local manual testing. */
     @Operation(summary = "MockPaymentGateway return URL — use during dev testing only.")

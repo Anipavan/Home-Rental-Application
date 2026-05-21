@@ -4,6 +4,7 @@ import type {
   InitiatePaymentResponse,
   PaymentResponse,
   VerifyPaymentRequest,
+  VpaValidationResponse,
 } from "@/types/api";
 
 /**
@@ -31,4 +32,22 @@ export const paymentGateway = {
 
   verify: (body: VerifyPaymentRequest) =>
     api.post<PaymentResponse>("/payments/verify", body).then((r) => r.data),
+
+  /**
+   * Validate a UPI VPA against the active gateway. The response carries
+   * the masked holder name (e.g. "ANIRUDH P****") when the VPA exists on
+   * the UPI directory. Used by both the owner's bank-details form
+   * (saved VPA) and the tenant's "Other UPI" flow.
+   *
+   * <p>Backed by Razorpay's /v1/payments/validate/vpa on real gateways;
+   * the in-process MockPaymentGateway returns a deterministic stub name
+   * derived from the local part of the VPA so dev flows can be tested
+   * without external calls.
+   */
+  validateVpa: (vpa: string) =>
+    api
+      .get<VpaValidationResponse>("/payments/vpa/validate", {
+        params: { vpa },
+      })
+      .then((r) => r.data),
 };

@@ -1,9 +1,12 @@
 package com.spa.home_rental_application.kyc_service.controller;
 
+import com.spa.home_rental_application.kyc_service.DTO.Request.DigiLockerAuthorizeRequest;
+import com.spa.home_rental_application.kyc_service.DTO.Request.DigiLockerCallbackRequest;
 import com.spa.home_rental_application.kyc_service.DTO.Request.DigilockerLinkRequest;
 import com.spa.home_rental_application.kyc_service.DTO.Request.DigioWebhookPayload;
 import com.spa.home_rental_application.kyc_service.DTO.Request.InitiateKycRequest;
 import com.spa.home_rental_application.kyc_service.DTO.Request.VerifyPanRequest;
+import com.spa.home_rental_application.kyc_service.DTO.Response.DigiLockerAuthorizeResponse;
 import com.spa.home_rental_application.kyc_service.DTO.Response.KycReportDto;
 import com.spa.home_rental_application.kyc_service.DTO.Response.KycResponseDto;
 import com.spa.home_rental_application.kyc_service.service.KycService;
@@ -74,5 +77,41 @@ public class KycController {
         log.info("Digio webhook received signature-present={} ref={}",
                 signature != null, payload.referenceId());
         return ResponseEntity.ok(kycService.handleDigioCallback(payload));
+    }
+
+    // ---------- DigiLocker OAuth flow ----------
+
+    /**
+     * Begin a DigiLocker OAuth flow. Returns the authorize URL the
+     * frontend should redirect the user's browser to, plus a CSRF
+     * state token. The frontend stashes the state in sessionStorage
+     * and validates it on callback before posting to /digilocker/callback.
+     */
+    @Operation(summary = "Begin a DigiLocker OAuth flow — returns authorize URL + state token")
+    @PostMapping(value = "/digilocker/authorize/{userId}", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<DigiLockerAuthorizeResponse> digilockerAuthorize(
+            @PathVariable String userId,
+            @Valid @RequestBody DigiLockerAuthorizeRequest request) {
+        log.info("POST /kyc/digilocker/authorize/{}", userId);
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+                .body(kycService.beginDigilockerAuthorize(userId, request));
+    }
+
+    /**
+     * Complete a DigiLocker OAuth flow. The frontend calls this with the
+     * {@code code} + {@code state} extracted from DigiLocker's redirect
+     * URL. We validate state, exchange the code for an access token
+     * server-side, fetch + parse the eAadhaar XML, and flip the record
+     * to VERIFIED (publishing {@code kyc.verified}).
+     */
+    @Operation(summary = "Complete a DigiLocker OAuth flow — exchanges code for verification")
+    @PostMapping(value = "/digilocker/callback", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<KycResponseDto> digilockerCallback(
+            @Valid @RequestBody DigiLockerCallbackRequest request) {
+        // Don't log the {@code code} — it's a one-shot secret. State is
+        // safe (it's our own value we minted) but trimmed for cleanliness.
+        log.info("POST /kyc/digilocker/callback state-prefix={}",
+                request.state().substring(0, Math.min(8, request.state().length())));
+        return ResponseEntity.ok(kycService.completeDigilockerCallback(request));
     }
 }
