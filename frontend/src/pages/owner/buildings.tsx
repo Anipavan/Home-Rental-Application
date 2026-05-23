@@ -1,22 +1,67 @@
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { Building2, Plus, MapPin } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { Building2, Loader2, MapPin, Plus, Trash2 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { propertiesApi } from "@/lib/api/properties";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { PageHeader } from "@/components/layout/page-header";
 import { PropertyImage } from "@/components/property/property-image";
+import { extractErrorMessage } from "@/lib/api/client";
+import { toast } from "@/hooks/use-toast";
 import type { BuildingResponseDTO } from "@/types/api";
 
 export function BuildingsPage() {
   const { authUserId } = useAuthStore();
+  const qc = useQueryClient();
+
   const q = useQuery({
     queryKey: ["my-buildings", authUserId],
     queryFn: () => propertiesApi.buildings.byOwner(authUserId!),
     enabled: !!authUserId,
+  });
+
+  /**
+   * Delete target — when non-null, the confirmation dialog opens
+   * showing the building's name + a "this can't be undone" warning.
+   * The actual delete fires through `propertiesApi.buildings.remove`
+   * which the backend soft-deletes (the row stays for audit; only
+   * the active-list view hides it).
+   */
+  const [deleteTarget, setDeleteTarget] = useState<BuildingResponseDTO | null>(
+    null,
+  );
+
+  const deleteM = useMutation({
+    mutationFn: (buildingId: string) =>
+      propertiesApi.buildings.remove(buildingId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["my-buildings"] });
+      qc.invalidateQueries({ queryKey: ["owner-all-flats"] });
+      toast({
+        title: "Building deleted",
+        description:
+          "Removed from your portfolio. Flats inside the building have been deactivated; past records stay for audit.",
+      });
+      setDeleteTarget(null);
+    },
+    onError: (e) =>
+      toast({
+        variant: "destructive",
+        title: "Couldn't delete the building",
+        description: extractErrorMessage(e),
+      }),
   });
 
   return (
@@ -60,9 +105,62 @@ export function BuildingsPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {(q.data ?? []).map((b) => (
-          <BuildingCard key={b.buildingId} building={b} />
+          <BuildingCard
+            key={b.buildingId}
+            building={b}
+            onDelete={() => setDeleteTarget(b)}
+          />
         ))}
       </div>
+
+      {/* Single delete-confirmation dialog mounted at the page level —
+          shared across every card so we don't need one per row. */}
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => {
+          if (!o) setDeleteTarget(null);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="size-4" />
+              Delete {deleteTarget?.buildingName}?
+            </DialogTitle>
+            <DialogDescription>
+              This removes the building and all its flats from your active
+              portfolio. Past payments, agreements, and tenant records are
+              preserved for audit. You can't undo this from the app.
+              <br />
+              <br />
+              <strong className="text-foreground">
+                Heads-up:
+              </strong>{" "}
+              if any flat in this building is currently occupied, the
+              delete will be rejected — vacate active tenants first.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setDeleteTarget(null)}
+              disabled={deleteM.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() =>
+                deleteTarget && deleteM.mutate(deleteTarget.buildingId)
+              }
+              disabled={deleteM.isPending}
+            >
+              {deleteM.isPending && <Loader2 className="size-4 animate-spin" />}
+              <Trash2 className="size-4" /> Delete building
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -71,8 +169,18 @@ export function BuildingsPage() {
  * One building tile on the list page. Pulls the building's image list and
  * uses the first photo as the cover thumbnail. Shows a generic icon when
  * the owner hasn't uploaded any photos yet.
+ *
+ * <p>The card is wrapped in a Link to the detail page, so the new Delete
+ * icon button has to stopPropagation + preventDefault on click so it
+ * doesn't trigger the navigation.
  */
-function BuildingCard({ building: b }: { building: BuildingResponseDTO }) {
+function BuildingCard({
+  building: b,
+  onDelete,
+}: {
+  building: BuildingResponseDTO;
+  onDelete: () => void;
+}) {
   const imagesQ = useQuery({
     queryKey: ["building-images", b.buildingId],
     queryFn: () => propertiesApi.buildings.images(b.buildingId),
@@ -82,39 +190,58 @@ function BuildingCard({ building: b }: { building: BuildingResponseDTO }) {
   const cover = imagesQ.data?.[0];
 
   return (
-    <Link to={`/owner/buildings/${b.buildingId}`}>
-      <Card className="hover:shadow-lift transition-shadow group overflow-hidden">
-        <div className="aspect-[16/9] bg-muted overflow-hidden">
-          {cover ? (
-            <PropertyImage
-              imageId={cover.id}
-              alt={b.buildingName}
-              className="w-full h-full"
-            />
-          ) : (
-            <div className="w-full h-full grid place-items-center text-muted-foreground bg-gradient-to-br from-secondary/40 to-secondary/10">
-              <Building2 className="size-8" />
-            </div>
-          )}
-        </div>
-        <CardContent className="p-5">
-          <h3 className="font-display font-semibold text-lg truncate">
-            {b.buildingName}
-          </h3>
-          <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-            <MapPin className="size-3" />
-            {b.buildingCity}, {b.buildingState}
-          </p>
-          <div className="mt-4 flex items-center gap-2">
-            <Badge variant="secondary">
-              {b.activeFlatsCount ?? b.buildingTotalFlats ?? 0} flats
-            </Badge>
-            <Badge variant="secondary">
-              {b.buildingTotalFloors ?? 0} floors
-            </Badge>
+    <div className="relative group">
+      {/* Delete icon floats on the cover image, top-right. Visible only
+          on hover/focus so it doesn't clutter the default view. Stops
+          the Link navigation when clicked. */}
+      <Button
+        size="icon"
+        variant="ghost"
+        aria-label={`Delete building ${b.buildingName}`}
+        className="absolute top-2 right-2 z-10 size-8 bg-background/80 backdrop-blur opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-muted-foreground hover:text-destructive hover:bg-background"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onDelete();
+        }}
+      >
+        <Trash2 className="size-4" />
+      </Button>
+
+      <Link to={`/owner/buildings/${b.buildingId}`}>
+        <Card className="hover:shadow-lift transition-shadow group overflow-hidden">
+          <div className="aspect-[16/9] bg-muted overflow-hidden">
+            {cover ? (
+              <PropertyImage
+                imageId={cover.id}
+                alt={b.buildingName}
+                className="w-full h-full"
+              />
+            ) : (
+              <div className="w-full h-full grid place-items-center text-muted-foreground bg-gradient-to-br from-secondary/40 to-secondary/10">
+                <Building2 className="size-8" />
+              </div>
+            )}
           </div>
-        </CardContent>
-      </Card>
-    </Link>
+          <CardContent className="p-5">
+            <h3 className="font-display font-semibold text-lg truncate">
+              {b.buildingName}
+            </h3>
+            <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+              <MapPin className="size-3" />
+              {b.buildingCity}, {b.buildingState}
+            </p>
+            <div className="mt-4 flex items-center gap-2">
+              <Badge variant="secondary">
+                {b.activeFlatsCount ?? b.buildingTotalFlats ?? 0} flats
+              </Badge>
+              <Badge variant="secondary">
+                {b.buildingTotalFloors ?? 0} floors
+              </Badge>
+            </div>
+          </CardContent>
+        </Card>
+      </Link>
+    </div>
   );
 }
