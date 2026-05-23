@@ -16,22 +16,22 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/layout/page-header";
-import { ReviewForm } from "@/components/reviews/review-form";
+import { UnifiedStayReviewForm } from "@/components/reviews/unified-stay-review-form";
 
 export function TenantReviewsPage() {
   const { authUserId } = useAuthStore();
-  // `writing` is keyed by the FLAT id (unique per row), not the
-  // review target (buildingId / ownerId). Earlier we keyed on the
-  // target id, which collided when a tenant occupied two flats in
-  // the same building — clicking "Property" on Flat 1 then matched
-  // BOTH rows' render conditions and the ReviewForm appeared twice.
-  // targetId is carried separately so the form still posts the
-  // review against the right building / owner.
-  const [writing, setWriting] = useState<{
-    flatId: string;
-    targetId: string;
-    type: "PROPERTY" | "OWNER";
-  } | null>(null);
+  /**
+   * Which flat the tenant is currently writing a review for. Keyed by
+   * the flat id (unique per row, even when one tenant occupies two
+   * flats in the same building — keying on building/owner id collided
+   * in that edge case previously).
+   *
+   * Replaces the older two-mode {flatId, targetId, type: "PROPERTY"|"OWNER"}
+   * state. The unified form now takes BOTH the propertyTargetId (building)
+   * and ownerTargetId (owner authUserId), so we only need to remember
+   * the flat being reviewed.
+   */
+  const [writingFlatId, setWritingFlatId] = useState<string | null>(null);
 
   const meQ = useQuery({
     queryKey: ["me", authUserId],
@@ -79,66 +79,65 @@ export function TenantReviewsPage() {
               ) : (
                 <div className="space-y-4">
                   <p className="text-sm text-muted-foreground">
-                    You can review the property and the owner separately.
+                    One combined review per stay — rate the property and
+                    the owner separately, write a single comment that
+                    appears under both.
                   </p>
-                  {myFlatsQ.data.map((f) => (
-                    <div
-                      key={f.id}
-                      className="rounded-xl border bg-secondary/30 p-4"
-                    >
-                      <div className="flex items-center justify-between flex-wrap gap-2">
-                        <div>
-                          <p className="font-medium">
-                            {f.buildingName ?? "Flat"} · #{f.flatNumber}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {f.buildingAddress ?? ""}
-                          </p>
-                        </div>
-                        <div className="flex gap-2">
+                  {myFlatsQ.data.map((f) => {
+                    // Owner id may not be on the flat row in every
+                    // response — fall back to the buildingId so the
+                    // owner-review row at least clusters by building
+                    // until the API surfaces ownerId everywhere.
+                    const ownerTargetId =
+                      (f as { ownerId?: string }).ownerId ?? f.buildingId;
+                    return (
+                      <div
+                        key={f.id}
+                        className="rounded-xl border bg-secondary/30 p-4"
+                      >
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <div>
+                            <p className="font-medium">
+                              {f.buildingName ?? "Flat"} · #{f.flatNumber}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {f.buildingAddress ?? ""}
+                            </p>
+                          </div>
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={() =>
-                              setWriting({
-                                flatId: f.id,
-                                targetId: f.buildingId,
-                                type: "PROPERTY",
-                              })
+                              setWritingFlatId(
+                                writingFlatId === f.id ? null : f.id,
+                              )
                             }
                           >
-                            <Pencil /> Property
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() =>
-                              setWriting({
-                                flatId: f.id,
-                                targetId: String(
-                                  (f as { ownerId?: string }).ownerId ?? f.buildingId,
-                                ),
-                                type: "OWNER",
-                              })
-                            }
-                          >
-                            <Pencil /> Owner
+                            <Pencil />
+                            {writingFlatId === f.id
+                              ? "Close"
+                              : "Write review"}
                           </Button>
                         </div>
+                        {writingFlatId === f.id && (
+                          <div className="mt-4">
+                            <UnifiedStayReviewForm
+                              reviewerId={userId ?? ""}
+                              propertyTargetId={f.buildingId}
+                              ownerTargetId={ownerTargetId}
+                              propertyLabel={
+                                f.buildingName
+                                  ? `${f.buildingName} · #${f.flatNumber}`
+                                  : `Flat ${f.flatNumber}`
+                              }
+                              onSubmitted={() => setWritingFlatId(null)}
+                              onCancel={() => setWritingFlatId(null)}
+                            />
+                          </div>
+                        )}
                       </div>
-                      {writing && writing.flatId === f.id && (
-                        <div className="mt-4">
-                          <ReviewForm
-                            reviewerId={userId ?? ""}
-                            reviewerType="TENANT"
-                            targetId={writing.targetId}
-                            targetType={writing.type}
-                            onSubmitted={() => setWriting(null)}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
@@ -160,6 +159,10 @@ export function TenantReviewsPage() {
                 </p>
               ) : (
                 <div className="space-y-3">
+                  {/* Note: with the unified form, each submission creates
+                      TWO review rows (PROPERTY + OWNER). They show up
+                      side-by-side in this list with the same body but
+                      different targetType badges. */}
                   {myReviews.map((r) => (
                     <div
                       key={r.id}
