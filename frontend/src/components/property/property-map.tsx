@@ -230,8 +230,7 @@ export function PropertyMapView({ flats, buildings, userCenter }: Props) {
           className="h-full w-full"
         >
           <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-            + ' &copy; <a href="https://datameet.org">Datameet Maps</a> (states)'
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://datameet.org">Datameet Maps</a> (states)'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
 
