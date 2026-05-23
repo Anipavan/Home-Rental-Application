@@ -275,7 +275,7 @@ public class FlatServiceImpul implements FlatService {
 
     @Override
     @Transactional
-    public FlatResponseDTO scheduleVacate(String flatId, LocalDate effectiveDate) {
+    public FlatResponseDTO scheduleVacate(String flatId, LocalDate effectiveDate, String comments) {
         Flat flat = flatRepo.findById(flatId).orElseThrow(
                 () -> new RecordNotFoundException("Flat not found with id: " + flatId));
 
@@ -338,10 +338,27 @@ public class FlatServiceImpul implements FlatService {
 
         flat.setScheduledVacateDate(effectiveDate);
         flat.setVacateWarningSentAt(null);
+        // Trim to the column max so a paste of a 5000-char essay
+        // doesn't blow up the INSERT. Null comments are persisted as
+        // null (existing rows pre-date this column).
+        if (comments != null) {
+            String trimmed = comments.trim();
+            if (trimmed.isEmpty()) {
+                flat.setScheduledVacateComments(null);
+            } else if (trimmed.length() > 1000) {
+                flat.setScheduledVacateComments(trimmed.substring(0, 1000));
+            } else {
+                flat.setScheduledVacateComments(trimmed);
+            }
+        } else {
+            flat.setScheduledVacateComments(null);
+        }
         flat.setUpdatedAt(LocalDateTime.now());
         Flat saved = flatRepo.save(flat);
-        log.info("Scheduled vacate for flatId={} tenantId={} effectiveDate={}",
-                flatId, flat.getTenantId(), effectiveDate);
+        log.info("Scheduled vacate for flatId={} tenantId={} effectiveDate={} commentsLen={}",
+                flatId, flat.getTenantId(), effectiveDate,
+                saved.getScheduledVacateComments() == null ? 0
+                        : saved.getScheduledVacateComments().length());
         return flatMapper.toResponseDTO(saved);
     }
 
@@ -362,6 +379,9 @@ public class FlatServiceImpul implements FlatService {
         log.info("Cancelling scheduled vacate for flatId={} (was {})", flatId, flat.getScheduledVacateDate());
         flat.setScheduledVacateDate(null);
         flat.setVacateWarningSentAt(null);
+        // Drop the old reason too — if they re-schedule they'll give a
+        // fresh reason. Leaving the stale text would be misleading.
+        flat.setScheduledVacateComments(null);
         flat.setUpdatedAt(LocalDateTime.now());
         return flatMapper.toResponseDTO(flatRepo.save(flat));
     }

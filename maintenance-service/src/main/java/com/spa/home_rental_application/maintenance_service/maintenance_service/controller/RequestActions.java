@@ -59,7 +59,7 @@ public class RequestActions {
                                                               @Valid @RequestBody AddCommentRequest body,
                                                               HttpServletRequest req) {
         MaintenanceRequestResponse current = requestService.getRequestById(id);
-        requireParticipantOrAdmin(current.tenantId(), current.assignedTo(), req);
+        requireParticipantOrAdmin(current.tenantId(), current.assignedTo(), current.ownerId(), req);
         return ResponseEntity.ok(requestService.addComment(id, body));
     }
 
@@ -69,11 +69,11 @@ public class RequestActions {
                                                                    @Valid @RequestBody StatusChangeRequest body,
                                                                    HttpServletRequest req) {
         MaintenanceRequestResponse current = requestService.getRequestById(id);
-        requireParticipantOrAdmin(current.tenantId(), current.assignedTo(), req);
+        requireParticipantOrAdmin(current.tenantId(), current.assignedTo(), current.ownerId(), req);
         // Tenants can only CANCEL their own ticket (close from OPEN).
-        // Any other status flip needs the assigned vendor or admin —
-        // otherwise a tenant could jump a ticket straight to RESOLVED
-        // and lose audit visibility.
+        // Any other status flip needs the assigned vendor, the owner of
+        // the property, or an admin — otherwise a tenant could jump a
+        // ticket straight to RESOLVED and lose audit visibility.
         if (isCallerTheTenant(current.tenantId(), req) && !isAdmin()
                 && !(body.newStatus() == Status.CLOSED && current.status() == Status.OPEN)) {
             throw new AccessDeniedException(
@@ -88,7 +88,7 @@ public class RequestActions {
                                                                   @RequestParam("file") MultipartFile file,
                                                                   HttpServletRequest req) throws IOException {
         MaintenanceRequestResponse current = requestService.getRequestById(id);
-        requireParticipantOrAdmin(current.tenantId(), current.assignedTo(), req);
+        requireParticipantOrAdmin(current.tenantId(), current.assignedTo(), current.ownerId(), req);
         return ResponseEntity.ok(requestService.uploadImage(id, file));
     }
 
@@ -97,7 +97,7 @@ public class RequestActions {
     public ResponseEntity<List<MaintenanceRequestResponse.HistoryEntryResponse>> history(@PathVariable String id,
                                                                                           HttpServletRequest req) {
         MaintenanceRequestResponse current = requestService.getRequestById(id);
-        requireParticipantOrAdmin(current.tenantId(), current.assignedTo(), req);
+        requireParticipantOrAdmin(current.tenantId(), current.assignedTo(), current.ownerId(), req);
         return ResponseEntity.ok(requestService.getHistory(id));
     }
 
@@ -108,12 +108,29 @@ public class RequestActions {
         return tenantId != null && tenantId.equals(caller);
     }
 
-    private static void requireParticipantOrAdmin(String tenantId, String assignedTo, HttpServletRequest req) {
+    /**
+     * A ticket "participant" is the tenant who raised it, the technician
+     * assigned to fix it, OR the owner of the flat that the ticket is
+     * about. Earlier this method only knew about tenant + assignedTo,
+     * which meant the owner clicking "Start" / "Mark resolved" on their
+     * own building's ticket got rejected by Spring's
+     * AccessDeniedException — surfaced as a generic 500 (per the global
+     * handler) because nothing maps AccessDeniedException to 403 here.
+     *
+     * <p>Adding {@code ownerId} closes that gap: the maintenance entity
+     * already stores ownerId at create-time (resolved from the flat),
+     * so we just pass it through and accept the owner as a participant.
+     */
+    private static void requireParticipantOrAdmin(String tenantId,
+                                                  String assignedTo,
+                                                  String ownerId,
+                                                  HttpServletRequest req) {
         if (isAdmin()) return;
         String caller = req.getHeader(GatewayAuthFilter.HDR_UID);
         if (caller == null || caller.isBlank()) return;  // system path
         if (tenantId != null && tenantId.equals(caller)) return;
         if (assignedTo != null && assignedTo.equals(caller)) return;
+        if (ownerId != null && ownerId.equals(caller)) return;
         throw new AccessDeniedException(
                 "You can only act on maintenance requests you're a participant on.");
     }

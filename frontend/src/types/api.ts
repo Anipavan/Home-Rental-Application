@@ -248,6 +248,8 @@ export interface FlatResponseDTO {
    * the 60-day notice window. ISO date string from the backend.
    */
   scheduledVacateDate?: string | null;
+  /** Free-text reason the tenant gave when scheduling vacate. */
+  scheduledVacateComments?: string | null;
   createdAt?: string;
   updatedAt?: string;
   /**

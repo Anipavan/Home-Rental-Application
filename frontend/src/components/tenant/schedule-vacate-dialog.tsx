@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { extractErrorMessage } from "@/lib/api/client";
 import { toast } from "@/hooks/use-toast";
 import { formatDate, formatINR } from "@/lib/utils";
@@ -57,6 +58,13 @@ export function ScheduleVacateDialog({
   // is "should not be default, user should be able to enter a date".
   const [vacateDate, setVacateDate] = useState<string>("");
 
+  // Free-text reason the tenant gives for vacating. Surfaced to the
+  // owner on the 10-day warning email + the flat detail page. Empty
+  // is allowed (it's optional); we trim before sending so accidental
+  // whitespace doesn't get persisted.
+  const [comments, setComments] = useState<string>("");
+  const COMMENTS_MAX = 1000;
+
   // Earliest acceptable date — today + 60 days. Stored as a
   // YYYY-MM-DD string (not a Date) for two reasons:
   //
@@ -80,6 +88,7 @@ export function ScheduleVacateDialog({
   useEffect(() => {
     if (open) {
       setVacateDate("");
+      setComments("");
       setEarliestDateInput(toDateInput(plusDays(new Date(), VACATE_NOTICE_DAYS)));
     }
   }, [open]);
@@ -138,7 +147,7 @@ export function ScheduleVacateDialog({
 
   const scheduleM = useMutation({
     mutationFn: () =>
-      propertiesApi.flats.scheduleVacate(flatId, vacateDate),
+      propertiesApi.flats.scheduleVacate(flatId, vacateDate, comments),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["my-flats"] });
       qc.invalidateQueries({ queryKey: ["flat", flatId] });
@@ -217,6 +226,32 @@ export function ScheduleVacateDialog({
                 <span>{dateError}</span>
               </div>
             )}
+          </div>
+
+          {/* Reason for vacating — free-text, optional but encouraged.
+              Surfaced to the owner so they can act on recurring property
+              issues + plan re-letting. Capped at 1000 chars to match
+              the DB column; over-cap pasted text is trimmed server-side. */}
+          <div>
+            <Label htmlFor="vacateComments">
+              Reason for vacating{" "}
+              <span className="text-muted-foreground font-normal">(optional)</span>
+            </Label>
+            <Textarea
+              id="vacateComments"
+              value={comments}
+              onChange={(e) => setComments(e.target.value.slice(0, COMMENTS_MAX))}
+              placeholder="E.g. Relocating for work, moving to a bigger flat, maintenance issues not resolved…"
+              rows={3}
+              maxLength={COMMENTS_MAX}
+              className="mt-1.5"
+            />
+            <p className="text-[11px] text-muted-foreground mt-1 flex justify-between">
+              <span>Helps your owner plan re-letting and act on recurring issues.</span>
+              <span>
+                {comments.length}/{COMMENTS_MAX}
+              </span>
+            </p>
           </div>
 
           {/* Outstanding-dues panel — only shown when there are blocking dues */}

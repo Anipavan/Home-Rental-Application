@@ -148,7 +148,15 @@ services:
       EUREKA_PASSWORD: ${EUREKA_PASSWORD}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
       MANAGEMENT_TRACING_SAMPLING_PROBABILITY: ${MANAGEMENT_TRACING_SAMPLING_PROBABILITY:-0.1}
-      FRONTEND_URL: ${FRONTEND_URL}
+      # The Java code reads ${app.frontend.base-url:...} which Spring's
+      # relaxed binding maps from APP_FRONTEND_BASE_URL — NOT from
+      # FRONTEND_URL. The legacy FRONTEND_URL name was set but silently
+      # ignored by Spring, so password-reset + welcome emails were
+      # falling back to the hardcoded localhost default. Inject both
+      # names: keep FRONTEND_URL for any existing consumer + add the
+      # Spring-friendly APP_FRONTEND_BASE_URL.
+      APP_FRONTEND_BASE_URL: ${FRONTEND_URL:-https://anirudhhomes.in}
+      FRONTEND_URL: ${FRONTEND_URL:-https://anirudhhomes.in}
       APP_AUTH_LOCKOUT_ENABLED: ${APP_AUTH_LOCKOUT_ENABLED:-true}
     ports: []
     restart: unless-stopped
@@ -263,7 +271,15 @@ services:
       EUREKA_PASSWORD: ${EUREKA_PASSWORD}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
       MANAGEMENT_TRACING_SAMPLING_PROBABILITY: ${MANAGEMENT_TRACING_SAMPLING_PROBABILITY:-0.1}
-      FRONTEND_URL: ${FRONTEND_URL}
+      # The Java code reads ${app.frontend.base-url:...} which Spring's
+      # relaxed binding maps from APP_FRONTEND_BASE_URL — NOT from
+      # FRONTEND_URL. The legacy FRONTEND_URL name was set but silently
+      # ignored by Spring, so password-reset + welcome emails were
+      # falling back to the hardcoded localhost default. Inject both
+      # names: keep FRONTEND_URL for any existing consumer + add the
+      # Spring-friendly APP_FRONTEND_BASE_URL.
+      APP_FRONTEND_BASE_URL: ${FRONTEND_URL:-https://anirudhhomes.in}
+      FRONTEND_URL: ${FRONTEND_URL:-https://anirudhhomes.in}
       SPRING_MAIL_HOST: ${SPRING_MAIL_HOST:-}
       SPRING_MAIL_PORT: ${SPRING_MAIL_PORT:-587}
       SPRING_MAIL_USERNAME: ${SPRING_MAIL_USERNAME:-}

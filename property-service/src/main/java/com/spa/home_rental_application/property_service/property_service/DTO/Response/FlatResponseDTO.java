@@ -43,6 +43,11 @@ public record FlatResponseDTO(
          * until this date arrives; the daily VacateScheduler flips
          * the flat to vacant on this date. */
         LocalDate scheduledVacateDate,
+        /* Free-text reason the tenant gave when scheduling vacate. Null
+         * if no vacate scheduled, or scheduled from a legacy client that
+         * didn't send a reason. Owner sees this on flat detail + the
+         * 10-day warning email so they can act on recurring problems. */
+        String scheduledVacateComments,
         LocalDateTime createdAt,
         LocalDateTime updatedAt,
         /* Tenant-preference filters. Both default to TRUE on legacy
