@@ -165,10 +165,14 @@ public class FlatController {
     public ResponseEntity<FlatResponseDTO> scheduleVacate(
             @PathVariable String flatId,
             @RequestParam("effectiveDate") @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE)
-            java.time.LocalDate effectiveDate) {
-        log.info("POST /properties/flats/{}/schedule-vacate effectiveDate={} (tenant-initiated)",
-                flatId, effectiveDate);
-        return ResponseEntity.ok(flatService.scheduleVacate(flatId, effectiveDate));
+            java.time.LocalDate effectiveDate,
+            // Optional free-text comments — why the tenant is vacating.
+            // Surfaced to the owner in the 10-day warning + flat detail.
+            // Defaults to null when omitted so older clients keep working.
+            @RequestParam(value = "comments", required = false) String comments) {
+        log.info("POST /properties/flats/{}/schedule-vacate effectiveDate={} commentsLen={} (tenant-initiated)",
+                flatId, effectiveDate, comments == null ? 0 : comments.length());
+        return ResponseEntity.ok(flatService.scheduleVacate(flatId, effectiveDate, comments));
     }
 
     /** Cancels a previously-scheduled vacate. Tenant (or admin) only. */

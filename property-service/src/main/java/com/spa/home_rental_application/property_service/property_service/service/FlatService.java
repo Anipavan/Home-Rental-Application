@@ -29,7 +29,7 @@ public interface FlatService {
      * flat (or an admin). Returns the updated flat (still occupied,
      * with scheduledVacateDate set to the picked date).
      */
-    FlatResponseDTO scheduleVacate(String flatId, java.time.LocalDate effectiveDate);
+    FlatResponseDTO scheduleVacate(String flatId, java.time.LocalDate effectiveDate, String comments);
 
     /**
      * Cancel a previously-scheduled vacate. Only the tenant who

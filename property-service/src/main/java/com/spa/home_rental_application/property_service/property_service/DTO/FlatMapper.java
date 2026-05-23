@@ -97,6 +97,7 @@ public class FlatMapper {
                 flat.getDepositAmount(),
                 flat.getDescription(),
                 flat.getScheduledVacateDate(),
+                flat.getScheduledVacateComments(),
                 flat.getCreatedAt(),
                 flat.getUpdatedAt(),
                 // Legacy rows pre-migration return null from

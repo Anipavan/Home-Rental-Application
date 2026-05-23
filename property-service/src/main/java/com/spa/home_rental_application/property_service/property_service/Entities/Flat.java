@@ -74,6 +74,21 @@ public class Flat {
     private LocalDate scheduledVacateDate;
 
     /**
+     * Free-text reason the tenant gave for vacating. Captured on the
+     * Schedule-vacate dialog and surfaced to the owner in the
+     * 10-day-prior warning notification + on the owner's flat detail
+     * screen. Helps the owner plan re-letting and follow up on any
+     * recurring property issues (poor maintenance, noisy neighbours,
+     * affordability) — strictly informational, not a screening tool.
+     *
+     * <p>Optional — pre-existing scheduled vacates that pre-date this
+     * column stay {@code null}. The frontend renders "Not provided"
+     * for the null case.
+     */
+    @Column(name = "scheduled_vacate_comments", length = 1000)
+    private String scheduledVacateComments;
+
+    /**
      * Idempotency stamp for the owner's 10-day-prior vacate warning.
      * Set when {@code VacateScheduler} fires the
      * {@code TENANT_VACATING_NOTICE} notification so re-runs of the

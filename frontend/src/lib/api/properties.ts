@@ -189,12 +189,25 @@ export const propertiesApi = {
      *   move-out date the tenant picked. Must be at least 60 days
      *   from today; backend rejects with 400 otherwise.
      */
-    scheduleVacate: (flatId: number | string, effectiveDate: string) =>
+    scheduleVacate: (
+      flatId: number | string,
+      effectiveDate: string,
+      comments?: string,
+    ) =>
       api
         .post<FlatResponseDTO>(
           `/properties/flats/${flatId}/schedule-vacate`,
           null,
-          { params: { effectiveDate } },
+          {
+            params: {
+              effectiveDate,
+              // Only include comments param if non-empty to keep the
+              // querystring tidy; backend treats absent === null.
+              ...(comments && comments.trim()
+                ? { comments: comments.trim() }
+                : {}),
+            },
+          },
         )
         .then((r) => r.data),
     /** Cancel a previously-scheduled tenant vacate. */
