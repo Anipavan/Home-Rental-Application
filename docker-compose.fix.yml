@@ -1,0 +1,83 @@
+# ─────────────────────────────────────────────────────────────────
+# docker-compose.fix.yml — explicit env injection for every Java
+# service in the prod stack.
+#
+# Why this file exists: docker-compose.prod.yml uses a YAML anchor
+# (`&spring-jpa-env`) referenced via `environment: *spring-jpa-env`.
+# When the base docker-compose.yml ALSO has a flat env map for the
+# same service, Compose's overlay-merge can shadow the alias content
+# entirely — DB_USERNAME falls back to the base's `siva` default and
+# SPRING_PROFILES_ACTIVE never lands. The visible symptoms (until
+# we caught this on 2026-05-23) were:
+#
+#   - Services booting with profile=dev instead of prod, so
+#     spring.jpa.hibernate.ddl-auto stayed at "update" instead of
+#     "validate" → Hibernate kept trying to mutate prod tables on
+#     every restart.
+#   - DB connections going to user SIVA (the dev-mode default user)
+#     instead of HRA_APP, so queries hit a partly-populated dev
+#     schema and Hibernate's getIndexInfo() reported errors on
+#     SIVA.FLAT_FAVORITES.
+#
+# We work around the merge issue by re-declaring the critical env
+# vars here as a flat map. Compose unambiguously merges this on top
+# of the previous two files. The &prod-env anchor below is purely
+# intra-file (no cross-file alias quirks).
+#
+# DO NOT set SPRING_JPA_HIBERNATE_DDL_AUTO here. The prod profile
+# locks it to "validate" and Flyway manages schema migrations.
+# Forcing "update" bypasses Flyway and silently corrupts the schema
+# — which is exactly what was happening before this rewrite (caused
+# the propertyimages duplicate-NOT-NULL + tenant_reviews "COMMENT
+# reserved word" failures).
+# ─────────────────────────────────────────────────────────────────
+
+x-prod-env: &prod-env
+  SPRING_PROFILES_ACTIVE: prod
+  DB_USERNAME: ${DB_USERNAME}
+  DB_PASSWORD: ${DB_PASSWORD}
+
+services:
+  auth-service:
+    environment:
+      <<: *prod-env
+  user-service:
+    environment:
+      <<: *prod-env
+  property-service:
+    environment:
+      <<: *prod-env
+  payment-service:
+    environment:
+      <<: *prod-env
+  lease-service:
+    environment:
+      <<: *prod-env
+  maintenance-service:
+    environment:
+      <<: *prod-env
+  kyc-service:
+    environment:
+      <<: *prod-env
+      KYC_PROVIDER: ${KYC_PROVIDER:-MOCK}
+      PAN_ONLY_KYC: ${PAN_ONLY_KYC:-false}
+      SANDBOX_API_KEY: ${SANDBOX_API_KEY:-}
+      SANDBOX_API_SECRET: ${SANDBOX_API_SECRET:-}
+  review-service:
+    environment:
+      <<: *prod-env
+  compliance-service:
+    environment:
+      <<: *prod-env
+  document-service:
+    environment:
+      <<: *prod-env
+      SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE: 25MB
+      SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE: 25MB
+      DOCUMENT_OCR_PROVIDER: ${DOCUMENT_OCR_PROVIDER:-STUB}
+      DOCUMENT_OCR_AUTO_EXTRACT: ${DOCUMENT_OCR_AUTO_EXTRACT:-true}
+      SANDBOX_API_KEY: ${SANDBOX_API_KEY:-}
+      SANDBOX_API_SECRET: ${SANDBOX_API_SECRET:-}
+  analytics-service:
+    environment:
+      <<: *prod-env
