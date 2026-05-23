@@ -226,10 +226,9 @@ export const propertiesApi = {
           `/properties/flats/${flatId}/schedule-vacate/cancel`,
         )
         .then((r) => r.data),
-    remove: (id: number | string) =>
-      api
-        .delete<FlatResponseDTO>(`/properties/flats/${id}`)
-        .then((r) => r.data),
+    // Note: flats.remove is defined above (immediately after vacate())
+    // — don't redeclare it here. TS errors out with "duplicate property
+    // in object literal" when both versions exist.
   },
 };
 

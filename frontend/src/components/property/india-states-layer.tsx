@@ -97,10 +97,18 @@ export function IndiaStatesLayer({ selectedState, onSelect }: Props) {
    * so they're noticeable without dominating the listing pins
    * underneath. The styling function is recomputed when selection or
    * hover changes, so Leaflet's setStyle picks up the new appearance.
+   *
+   * <p>The parameter is loosely typed (`any`) because react-leaflet's
+   * StyleFunction<any> wants the canonical {@code geojson.Feature<Geometry>}
+   * — that's structurally identical to our local Feature alias but
+   * the nominal-type imports differ across packages, and TS refuses
+   * the narrower local type. Casting inside the function via
+   * stateNameOf() keeps us type-safe past the boundary.
    */
-  const featureStyle = useMemo(
-    () => (feature?: Feature) => {
-      const name = stateNameOf(feature);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const featureStyle = useMemo<(feature?: any) => Record<string, unknown>>(
+    () => (feature?: unknown) => {
+      const name = stateNameOf(feature as Feature | undefined);
       if (name === selectedState) {
         return {
           color: "#0d9488",
