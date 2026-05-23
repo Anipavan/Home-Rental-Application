@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Search,
   ShieldCheck,
@@ -22,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { propertiesApi } from "@/lib/api/properties";
 
 const cities = ["Bengaluru", "Mumbai", "Delhi NCR", "Hyderabad", "Chennai", "Pune"];
 
@@ -48,12 +50,21 @@ const features = [
   },
 ];
 
-const stats = [
-  { v: "12K+", l: "Verified homes" },
-  { v: "₹4.8 Cr", l: "Rent collected" },
-  { v: "98%", l: "On-time payments" },
-  { v: "4.8★", l: "Tenant rating" },
-];
+/**
+ * Pretty-print a count: 1234 → "1,234", 12345 → "12.3K", 1.2M → "1.2M".
+ * Used so the landing-page counters look right at any scale: a fresh
+ * platform shows raw numbers ("3 homes listed"); at scale we collapse
+ * to friendly units. Negative / zero / NaN coerce to "—" so a fetch
+ * failure doesn't blow up the rendered card.
+ */
+function formatCount(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n) || n < 0) return "—";
+  if (n === 0) return "0";
+  if (n < 1_000) return n.toLocaleString("en-IN");
+  if (n < 100_000) return (n / 1_000).toFixed(1).replace(/\.0$/, "") + "K";
+  if (n < 10_000_000) return (n / 100_000).toFixed(1).replace(/\.0$/, "") + "L";
+  return (n / 10_000_000).toFixed(1).replace(/\.0$/, "") + "Cr";
+}
 
 const testimonials = [
   {
@@ -79,6 +90,74 @@ const testimonials = [
 export function LandingPage() {
   const [city, setCity] = useState("Bengaluru");
   const [budget, setBudget] = useState("any");
+
+  /**
+   * Live marketing stats — pulled from existing public endpoints so a
+   * fresh-launch platform shows real (low) numbers instead of the old
+   * hardcoded "12K+ / ₹4.8 Cr / 98% / 4.8★" placeholders. Each query
+   * is independent so a single service blip falls back to "—" without
+   * tanking the whole stats strip.
+   *
+   * What each stat means today (post-wipe, all start at 0):
+   *  - homesQ        → count of flats listed (any status)
+   *  - buildingsQ    → count of buildings (owners' properties)
+   *  - vacantQ       → count of available-now flats (browse target)
+   *  - citiesQ       → distinct cities the platform has any building in
+   */
+  const homesQ = useQuery({
+    queryKey: ["marketing-stats", "homes"],
+    queryFn: () => propertiesApi.flats.list(0, 1),
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const buildingsQ = useQuery({
+    queryKey: ["marketing-stats", "buildings"],
+    queryFn: () => propertiesApi.buildings.list(0, 1),
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const vacantQ = useQuery({
+    queryKey: ["marketing-stats", "vacant"],
+    queryFn: () => propertiesApi.flats.vacant(),
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  // Buildings page also gives us a city set on the response. We do
+  // need to fetch a wider sample to count distinct cities reliably,
+  // so we fetch page 0 size 200 (cheap, deduped by React Query).
+  const citySampleQ = useQuery({
+    queryKey: ["marketing-stats", "city-sample"],
+    queryFn: () => propertiesApi.buildings.list(0, 200),
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+
+  const liveStats = [
+    {
+      v: formatCount(homesQ.data?.totalElements ?? null),
+      l: "Verified homes",
+    },
+    {
+      v: formatCount(buildingsQ.data?.totalElements ?? null),
+      l: "Buildings listed",
+    },
+    {
+      v: formatCount(vacantQ.data?.length ?? null),
+      l: "Available now",
+    },
+    {
+      v: formatCount(
+        citySampleQ.data
+          ? new Set(
+              citySampleQ.data.content
+                .map((b) => b.buildingCity?.trim().toLowerCase())
+                .filter(Boolean),
+            ).size
+          : null,
+      ),
+      l: "Cities covered",
+    },
+  ];
 
   return (
     <>
@@ -169,7 +248,7 @@ export function LandingPage() {
 
       <section className="border-y border-border/60 bg-background">
         <div className="container py-10 grid grid-cols-2 md:grid-cols-4 gap-6">
-          {stats.map((s) => (
+          {liveStats.map((s) => (
             <div key={s.l} className="text-center">
               <div className="font-display text-2xl sm:text-3xl font-bold gradient-text">
                 {s.v}

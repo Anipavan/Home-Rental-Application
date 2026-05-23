@@ -178,6 +178,15 @@ export const propertiesApi = {
         .post<FlatResponseDTO>(`/properties/flats/${flatId}/vacate`)
         .then((r) => r.data),
     /**
+     * Soft-delete a flat. Backend rejects when the flat is currently
+     * occupied (tenant must be vacated first) — surfaces as a 409
+     * Conflict the caller should render with a friendly message.
+     */
+    remove: (flatId: number | string) =>
+      api
+        .delete<FlatResponseDTO>(`/properties/flats/${flatId}`)
+        .then((r) => r.data),
+    /**
      * Tenant-initiated scheduled vacate (Issue #5 + Issue #4).
      *
      * Tenant picks a move-out date (Issue #4 spec) — backend

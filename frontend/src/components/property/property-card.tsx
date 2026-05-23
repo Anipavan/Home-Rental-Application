@@ -45,6 +45,25 @@ export function PropertyCard({
     staleTime: 5 * 60_000,
   });
 
+  /**
+   * Self-fetch the parent building so we can show the REAL city under
+   * each listing. Previously this card had a hardcoded "Bengaluru"
+   * fallback in the city pill — when the caller didn't pass `city`
+   * (which browse.tsx never does), every listing showed Bengaluru
+   * regardless of actual location. React Query dedupes by buildingId,
+   * so a grid with 50 flats across 10 buildings makes 10 requests, not
+   * 50.
+   */
+  const buildingQ = useQuery({
+    queryKey: ["building", flat.buildingId, "summary"],
+    queryFn: () => propertiesApi.buildings.get(flat.buildingId),
+    enabled: !!flat.buildingId && !city,
+    staleTime: 5 * 60_000,
+  });
+
+  const resolvedCity =
+    city ?? buildingQ.data?.buildingCity ?? "Location not specified";
+
   const cover = imgsQ.data?.find((img) => img.isCover) ?? imgsQ.data?.[0];
   const img = cover
     ? propertiesApi.buildings.imageRawUrl(cover.id)
@@ -83,7 +102,7 @@ export function PropertyCard({
             </h3>
             <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
               <MapPin className="size-3" />
-              {city ?? "Bengaluru"}
+              {resolvedCity}
             </p>
           </div>
         </div>

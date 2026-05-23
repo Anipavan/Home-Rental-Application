@@ -261,19 +261,56 @@ export function BrowsePage() {
       return;
     }
     setLocating(true);
+
+    // ────────── Phase 1: get browser coordinates ──────────
+    // The reverse-geocode fetch was bundled into this same try/catch
+    // before, which meant a BigDataCloud rate-limit / DNS error /
+    // CORS hiccup looked the same as the user denying permission.
+    // Splitting them: if we get coords but the city lookup fails,
+    // we still hand the user useful behaviour (map view centred on
+    // them) instead of bailing out entirely. A more diagnostic toast
+    // is also surfaced so support knows whether the issue is
+    // permissions, timeout, or the third-party geocoder.
+    let position: GeolocationPosition;
     try {
-      const position = await new Promise<GeolocationPosition>(
-        (resolve, reject) =>
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: false,
-            timeout: 10_000,
-            maximumAge: 60_000,
-          }),
+      position = await new Promise<GeolocationPosition>((resolve, reject) =>
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: false,
+          // Increased from 10s → 20s. On mobile India networks the
+          // initial GPS lock can take 12-15s, and the previous 10s
+          // ceiling tipped a real-but-slow request into a timeout
+          // error indistinguishable from "location unavailable".
+          timeout: 20_000,
+          maximumAge: 60_000,
+        }),
       );
-      const { latitude, longitude } = position.coords;
-      // Stash the precise coords for the map view — the city filter
-      // is coarse, but the map can centre exactly on the user.
-      setUserCoords({ lat: latitude, lng: longitude });
+    } catch (err) {
+      const code = (err as GeolocationPositionError | undefined)?.code;
+      const msg =
+        code === 1
+          ? "Location permission denied. You can still pick a city from the dropdown."
+          : code === 2
+            ? "Location unavailable — your device may not have GPS or the signal is weak."
+            : code === 3
+              ? "Location request timed out after 20 seconds. Move to an open area or try again."
+              : "Couldn't determine your location.";
+      toast({ variant: "destructive", title: "Location failed", description: msg });
+      setLocating(false);
+      return;
+    }
+
+    const { latitude, longitude } = position.coords;
+    // Stash the precise coords for the map view — the city filter
+    // is coarse, but the map can centre exactly on the user. Done
+    // BEFORE the reverse-geocode call so the map still works even
+    // when BigDataCloud is rate-limited / unreachable.
+    setUserCoords({ lat: latitude, lng: longitude });
+
+    // ────────── Phase 2: reverse-geocode to a city name ──────────
+    // Best-effort: when the third-party API fails we just tell the
+    // user "got your location but couldn't name the city" and let
+    // them switch to map view manually.
+    try {
       const url = new URL(
         "https://api.bigdatacloud.net/data/reverse-geocode-client",
       );
@@ -281,7 +318,9 @@ export function BrowsePage() {
       url.searchParams.set("longitude", String(longitude));
       url.searchParams.set("localityLanguage", "en");
       const resp = await fetch(url.toString());
-      if (!resp.ok) throw new Error(`Reverse geocode failed (${resp.status})`);
+      if (!resp.ok) {
+        throw new Error(`Reverse geocode failed (HTTP ${resp.status})`);
+      }
       const body = (await resp.json()) as {
         city?: string;
         locality?: string;
@@ -290,10 +329,13 @@ export function BrowsePage() {
       const detectedCity =
         body.city ?? body.locality ?? body.principalSubdivision ?? "";
       if (!detectedCity) {
+        // Got an HTTP 200 with no recognisable city field — surfaces
+        // the same UX as a hard failure but keeps the coords cached
+        // so the map view still works.
         toast({
-          variant: "destructive",
-          title: "Couldn't read your city",
-          description: "Try selecting a city from the dropdown instead.",
+          title: "Got your location",
+          description:
+            "Couldn't resolve your city — try the map view to see homes near you.",
         });
         return;
       }
@@ -316,20 +358,18 @@ export function BrowsePage() {
       } else {
         toast({
           title: `You're in ${detectedCity}`,
-          description: `We don't have listings there yet — showing every city instead.`,
+          description: `We don't have listings there yet — try the map view to see what's near you.`,
         });
       }
-    } catch (err) {
-      const code = (err as GeolocationPositionError | undefined)?.code;
-      const msg =
-        code === 1
-          ? "Location permission denied. You can still pick a city from the dropdown."
-          : code === 2
-            ? "Location unavailable. Try again or pick a city manually."
-            : code === 3
-              ? "Location request timed out. Please try again."
-              : "Couldn't determine your location.";
-      toast({ variant: "destructive", title: "Location failed", description: msg });
+    } catch (geocodeErr) {
+      // Reverse-geocoding failed but we DO have coordinates — the
+      // map view will still work, we just can't auto-filter by city.
+      console.warn("Reverse geocode failed:", geocodeErr);
+      toast({
+        title: "Got your location",
+        description:
+          "City lookup service is unavailable right now — switch to map view to see homes near you.",
+      });
     } finally {
       setLocating(false);
     }
