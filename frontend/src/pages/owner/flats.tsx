@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { LogOut, Plus, Search, UserPlus } from "lucide-react";
+import { Loader2, LogOut, Plus, Search, Trash2, UserPlus } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { propertiesApi } from "@/lib/api/properties";
 import { Card } from "@/components/ui/card";
@@ -16,8 +16,18 @@ import {
   TabsTrigger,
   TabsContent,
 } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { AssignTenantDialog } from "@/components/owner/assign-tenant-dialog";
 import { VacateFlatDialog } from "@/components/owner/vacate-flat-dialog";
+import { extractErrorMessage } from "@/lib/api/client";
+import { toast } from "@/hooks/use-toast";
 import { formatINR } from "@/lib/utils";
 
 export function FlatsPage() {
@@ -118,10 +128,34 @@ function FlatTable({
   flats: FlatRow[];
   loading?: boolean;
 }) {
-  // Mutable targets for the per-row Assign / Vacate dialogs. Clicking
-  // a row button sets the right one; closing the dialog clears it.
+  // Mutable targets for the per-row Assign / Vacate / Delete dialogs.
+  // Clicking a row button sets the right one; closing the dialog clears
+  // it. Delete is destructive so it requires a confirmation step.
   const [assignTarget, setAssignTarget] = useState<FlatRow | null>(null);
   const [vacateTarget, setVacateTarget] = useState<FlatRow | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<FlatRow | null>(null);
+
+  const qc = useQueryClient();
+  const deleteM = useMutation({
+    mutationFn: (flatId: string) => propertiesApi.flats.remove(flatId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["owner-all-flats"] });
+      qc.invalidateQueries({ queryKey: ["flats-by-building"] });
+      qc.invalidateQueries({ queryKey: ["my-buildings"] });
+      toast({
+        title: "Flat deleted",
+        description:
+          "The unit has been removed from your portfolio. Past payments + agreements are preserved for audit.",
+      });
+      setDeleteTarget(null);
+    },
+    onError: (e) =>
+      toast({
+        variant: "destructive",
+        title: "Couldn't delete the flat",
+        description: extractErrorMessage(e),
+      }),
+  });
 
   if (loading) {
     return (
@@ -170,7 +204,7 @@ function FlatTable({
               <Badge variant={f.isOccupied ? "secondary" : "success"}>
                 {f.isOccupied ? "Occupied" : "Vacant"}
               </Badge>
-              <div className="sm:text-right col-span-2 sm:col-span-1">
+              <div className="sm:text-right col-span-2 sm:col-span-1 flex items-center justify-end gap-1">
                 {f.isOccupied ? (
                   <Button
                     size="sm"
@@ -187,6 +221,21 @@ function FlatTable({
                     onClick={() => setAssignTarget(f)}
                   >
                     <UserPlus /> Assign
+                  </Button>
+                )}
+                {/* Delete is hidden for occupied flats — the tenant has
+                    to be vacated first. Backend enforces this too
+                    (returns 409 Conflict), but pre-hiding makes the
+                    rule visible without needing to click + see an error. */}
+                {!f.isOccupied && (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    aria-label="Delete flat"
+                    className="size-8 text-muted-foreground hover:text-destructive"
+                    onClick={() => setDeleteTarget(f)}
+                  >
+                    <Trash2 className="size-4" />
                   </Button>
                 )}
               </div>
@@ -219,6 +268,51 @@ function FlatTable({
           tenantId={vacateTarget.tenantId}
         />
       )}
+
+      {/* Delete-confirmation dialog. Stays mounted while deleteTarget is
+          non-null so the loading spinner stays visible during the API
+          call. Closes via setDeleteTarget(null) on cancel or successful
+          delete (handled in deleteM.onSuccess above). */}
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => {
+          if (!o) setDeleteTarget(null);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="size-4" />
+              Delete Flat {deleteTarget?.flatNumber}?
+            </DialogTitle>
+            <DialogDescription>
+              This removes the unit from your portfolio. Past payments,
+              agreements, and maintenance records are preserved for audit —
+              only the listing itself is removed. This action can't be undone
+              from the app.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setDeleteTarget(null)}
+              disabled={deleteM.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => deleteTarget && deleteM.mutate(deleteTarget.id)}
+              disabled={deleteM.isPending}
+            >
+              {deleteM.isPending && (
+                <Loader2 className="size-4 animate-spin" />
+              )}
+              <Trash2 className="size-4" /> Delete flat
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
