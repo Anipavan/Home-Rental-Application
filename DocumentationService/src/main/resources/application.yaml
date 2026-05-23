@@ -36,6 +36,10 @@ spring:
     baseline-description: "Pre-Flyway baseline (Hibernate-managed)"
     locations: classpath:db/migration
     validate-on-migrate: true
+    # Per-service history table — see incident notes 2026-05-23.
+    # All Java services share user HRA_APP; without a unique table
+    # name they collide on Flyway's default flyway_schema_history.
+    table: flyway_schema_history_document
 
   jpa:
     hibernate:

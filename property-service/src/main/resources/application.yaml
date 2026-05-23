@@ -46,6 +46,14 @@ spring:
     baseline-description: "Pre-Flyway baseline (Hibernate-managed)"
     locations: classpath:db/migration
     validate-on-migrate: true
+    # Per-service history table. All 8 Java services share the same
+    # Oracle user (HRA_APP) — without an explicit table name they all
+    # default to "flyway_schema_history" and stomp on each other's
+    # migration records (e.g. kyc's V2__digilocker_columns ended up
+    # blocking property's V2__vacate_comments because they share a
+    # row, different content). Naming the table per-service isolates
+    # each service's migration history. See incident notes 2026-05-23.
+    table: flyway_schema_history_property
 
   jpa:
     hibernate:
