@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Building2, Loader2, MapPin, Plus, Trash2 } from "lucide-react";
+import { Building2, Loader2, MapPin, PencilLine, Plus, Trash2 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { propertiesApi } from "@/lib/api/properties";
 import { Card, CardContent } from "@/components/ui/card";
@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/layout/page-header";
 import { PropertyImage } from "@/components/property/property-image";
+import { EditBuildingDialog } from "@/components/owner/edit-building-dialog";
 import { extractErrorMessage } from "@/lib/api/client";
 import { toast } from "@/hooks/use-toast";
 import type { BuildingResponseDTO } from "@/types/api";
@@ -40,6 +41,15 @@ export function BuildingsPage() {
    * the active-list view hides it).
    */
   const [deleteTarget, setDeleteTarget] = useState<BuildingResponseDTO | null>(
+    null,
+  );
+  /**
+   * Edit target — when non-null, the EditBuildingDialog opens with the
+   * building's current values pre-filled. Save calls
+   * propertiesApi.buildings.update and invalidates the my-buildings
+   * query so the card re-renders with the new data.
+   */
+  const [editTarget, setEditTarget] = useState<BuildingResponseDTO | null>(
     null,
   );
 
@@ -108,10 +118,24 @@ export function BuildingsPage() {
           <BuildingCard
             key={b.buildingId}
             building={b}
+            onEdit={() => setEditTarget(b)}
             onDelete={() => setDeleteTarget(b)}
           />
         ))}
       </div>
+
+      {/* Edit dialog — shared across every card. Mounted only when an
+          edit target is selected so the form's useState defaults are
+          reset on every open. */}
+      {editTarget && (
+        <EditBuildingDialog
+          open={!!editTarget}
+          onOpenChange={(o) => {
+            if (!o) setEditTarget(null);
+          }}
+          building={editTarget}
+        />
+      )}
 
       {/* Single delete-confirmation dialog mounted at the page level —
           shared across every card so we don't need one per row. */}
@@ -176,9 +200,11 @@ export function BuildingsPage() {
  */
 function BuildingCard({
   building: b,
+  onEdit,
   onDelete,
 }: {
   building: BuildingResponseDTO;
+  onEdit: () => void;
   onDelete: () => void;
 }) {
   const imagesQ = useQuery({
@@ -191,22 +217,37 @@ function BuildingCard({
 
   return (
     <div className="relative group">
-      {/* Delete icon floats on the cover image, top-right. Visible only
-          on hover/focus so it doesn't clutter the default view. Stops
-          the Link navigation when clicked. */}
-      <Button
-        size="icon"
-        variant="ghost"
-        aria-label={`Delete building ${b.buildingName}`}
-        className="absolute top-2 right-2 z-10 size-8 bg-background/80 backdrop-blur opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-muted-foreground hover:text-destructive hover:bg-background"
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          onDelete();
-        }}
-      >
-        <Trash2 className="size-4" />
-      </Button>
+      {/* Edit + Delete icon buttons float on the cover image, top-right.
+          Visible only on hover/focus so they don't clutter the default
+          view. Both stop the Link navigation when clicked. */}
+      <div className="absolute top-2 right-2 z-10 flex gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+        <Button
+          size="icon"
+          variant="ghost"
+          aria-label={`Edit building ${b.buildingName}`}
+          className="size-8 bg-background/80 backdrop-blur text-muted-foreground hover:text-primary hover:bg-background"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onEdit();
+          }}
+        >
+          <PencilLine className="size-4" />
+        </Button>
+        <Button
+          size="icon"
+          variant="ghost"
+          aria-label={`Delete building ${b.buildingName}`}
+          className="size-8 bg-background/80 backdrop-blur text-muted-foreground hover:text-destructive hover:bg-background"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onDelete();
+          }}
+        >
+          <Trash2 className="size-4" />
+        </Button>
+      </div>
 
       <Link to={`/owner/buildings/${b.buildingId}`}>
         <Card className="hover:shadow-lift transition-shadow group overflow-hidden">

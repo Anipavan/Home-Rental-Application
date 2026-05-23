@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { Loader2, LogOut, Plus, Search, Trash2, UserPlus } from "lucide-react";
+import { Loader2, LogOut, PencilLine, Plus, Search, Trash2, UserPlus } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { propertiesApi } from "@/lib/api/properties";
 import { Card } from "@/components/ui/card";
@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { AssignTenantDialog } from "@/components/owner/assign-tenant-dialog";
 import { VacateFlatDialog } from "@/components/owner/vacate-flat-dialog";
+import { EditFlatDialog } from "@/components/owner/edit-flat-dialog";
 import { extractErrorMessage } from "@/lib/api/client";
 import { toast } from "@/hooks/use-toast";
 import { formatINR } from "@/lib/utils";
@@ -134,6 +135,7 @@ function FlatTable({
   const [assignTarget, setAssignTarget] = useState<FlatRow | null>(null);
   const [vacateTarget, setVacateTarget] = useState<FlatRow | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<FlatRow | null>(null);
+  const [editTarget, setEditTarget] = useState<FlatRow | null>(null);
 
   const qc = useQueryClient();
   const deleteM = useMutation({
@@ -223,6 +225,18 @@ function FlatTable({
                     <UserPlus /> Assign
                   </Button>
                 )}
+                {/* Edit is always available — owner can fix typos or
+                    update rent even on an occupied flat. The dialog
+                    blocks moving the unit between buildings. */}
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  aria-label="Edit flat"
+                  className="size-8 text-muted-foreground hover:text-primary"
+                  onClick={() => setEditTarget(f)}
+                >
+                  <PencilLine className="size-4" />
+                </Button>
                 {/* Delete is hidden for occupied flats — the tenant has
                     to be vacated first. Backend enforces this too
                     (returns 409 Conflict), but pre-hiding makes the
@@ -266,6 +280,18 @@ function FlatTable({
           flatNumber={vacateTarget.flatNumber}
           buildingName={vacateTarget._buildingName}
           tenantId={vacateTarget.tenantId}
+        />
+      )}
+
+      {/* Edit dialog — mounted only when an edit target is selected so
+          the form's useState defaults are reset on every open. */}
+      {editTarget && (
+        <EditFlatDialog
+          open={!!editTarget}
+          onOpenChange={(o) => {
+            if (!o) setEditTarget(null);
+          }}
+          flat={editTarget}
         />
       )}
 
