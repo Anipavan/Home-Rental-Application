@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Loader2, Search, UserPlus } from "lucide-react";
+import { Check, Loader2, Search, UserPlus, Info } from "lucide-react";
 import { propertiesApi } from "@/lib/api/properties";
 import { usersApi } from "@/lib/api/users";
+import { visitRequestsApi } from "@/lib/api/notifications";
 import {
   Dialog,
   DialogContent,
@@ -62,6 +63,20 @@ export function AssignTenantDialog({
   const [leaseEnd, setLeaseEnd] = useState<string>(
     toDateInput(addMonths(new Date(), 12)),
   );
+  /**
+   * "Show only visited tenants" toggle.
+   *
+   * <p>By default we filter the picker to tenants who have actually
+   * raised a visit request for this specific flat — the business
+   * justification: an owner shouldn't be able to assign a flat to a
+   * random tenant who's never seen it. This also caps the list size:
+   * even with 10,000 registered tenants on the platform, a typical
+   * flat will see 5–20 visits, so the dropdown stays usable.
+   *
+   * <p>Owner can flip this off for the "we already chatted on WhatsApp"
+   * edge case where assignment happens without a recorded visit.
+   */
+  const [visitedOnly, setVisitedOnly] = useState<boolean>(true);
 
   // Reset state every time the dialog opens, so a stale selection /
   // search from a previous flat doesn't leak in.
@@ -69,10 +84,39 @@ export function AssignTenantDialog({
     if (open) {
       setTenantAuthId("");
       setTenantSearch("");
+      setVisitedOnly(true);
       setLeaseStart(toDateInput(new Date()));
       setLeaseEnd(toDateInput(addMonths(new Date(), 12)));
     }
   }, [open]);
+
+  /**
+   * Visit requests submitted for THIS flat. Page-size 200 because we
+   * expect the user count to be small per-flat (most visits come
+   * from a few interested tenants); if a flat ever exceeds 200
+   * visits we'd add pagination here, but for now one page is plenty.
+   *
+   * Filter to non-cancelled visits — we want PENDING, CONFIRMED, and
+   * COMPLETED visits to qualify. Cancelled = the tenant changed their
+   * mind and shouldn't appear in the picker.
+   */
+  const visitsQ = useQuery({
+    queryKey: ["flat-visits", flatId],
+    queryFn: () => visitRequestsApi.byFlat(flatId, 0, 200),
+    enabled: open && visitedOnly,
+    staleTime: 30_000,
+  });
+
+  /** Set of tenant authUserIds who have a non-cancelled visit on this flat. */
+  const visitedTenantIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const v of visitsQ.data?.content ?? []) {
+      // status field shape: PENDING | CONFIRMED | COMPLETED | CANCELLED
+      if (v.status === "CANCELLED") continue;
+      if (v.userId) set.add(v.userId);
+    }
+    return set;
+  }, [visitsQ.data]);
 
   const tenantsQ = useQuery({
     queryKey: ["users-by-role", "TENANT"],
@@ -124,14 +168,22 @@ export function AssignTenantDialog({
     [tenantsQ.data],
   );
 
-  // Tenants minus the ones already assigned to another flat. The
-  // owner only ever sees tenants who are actually available — the
-  // backend's FlatOccupiedException is a defence-in-depth check
-  // for race conditions / direct API calls, never a normal UX
-  // path.
+  // Tenants minus the ones already assigned to another flat, and
+  // (when `visitedOnly` is on) further filtered to tenants who have
+  // visited THIS flat. The backend's FlatOccupiedException is a
+  // defence-in-depth check for race conditions / direct API calls,
+  // never a normal UX path.
   const eligibleTenants = useMemo(
-    () => tenants.filter((t) => !occupiedTenantIds.has(t.authUserId)),
-    [tenants, occupiedTenantIds],
+    () =>
+      tenants
+        .filter((t) => !occupiedTenantIds.has(t.authUserId))
+        .filter((t) =>
+          // When the visited-only toggle is on, the tenant must also
+          // appear in the visit-request set for THIS flat. When off,
+          // every unassigned tenant is fair game.
+          visitedOnly ? visitedTenantIds.has(t.authUserId) : true,
+        ),
+    [tenants, occupiedTenantIds, visitedTenantIds, visitedOnly],
   );
   const hiddenCount = tenants.length - eligibleTenants.length;
 
@@ -221,8 +273,23 @@ export function AssignTenantDialog({
 
         <div className="space-y-4">
           <div>
-            <Label htmlFor="tenantSearch">Tenant</Label>
-            {tenantsQ.isLoading || allFlatsQ.isLoading ? (
+            <div className="flex items-center justify-between">
+              <Label htmlFor="tenantSearch">Tenant</Label>
+              {/* Visited-only toggle. Default ON — only tenants who
+                  actually visited THIS flat appear. Owner can flip off
+                  for the "we agreed via WhatsApp without a recorded
+                  visit" edge case. */}
+              <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  className="size-3 rounded accent-emerald-600"
+                  checked={visitedOnly}
+                  onChange={(e) => setVisitedOnly(e.target.checked)}
+                />
+                Only show tenants who visited this flat
+              </label>
+            </div>
+            {tenantsQ.isLoading || allFlatsQ.isLoading || (visitedOnly && visitsQ.isLoading) ? (
               <div className="mt-1.5 text-sm text-muted-foreground flex items-center gap-2">
                 <Loader2 className="size-4 animate-spin" />
                 Loading tenants…
@@ -233,10 +300,29 @@ export function AssignTenantDialog({
                 TENANT role, they'll show here.
               </p>
             ) : eligibleTenants.length === 0 ? (
-              <p className="mt-1.5 text-sm text-muted-foreground">
-                Every registered tenant is already assigned to a flat. Vacate
-                an existing flat first, or wait for a new tenant to sign up.
-              </p>
+              <div className="mt-1.5 rounded-lg border bg-secondary/30 p-3 text-sm">
+                {visitedOnly ? (
+                  <div className="flex items-start gap-2">
+                    <Info className="size-4 text-muted-foreground mt-0.5 shrink-0" />
+                    <div>
+                      <p className="font-medium">
+                        No one has visited this flat yet.
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Tenants who book a visit via the public listing
+                        page will appear here. To assign without a visit,
+                        uncheck the toggle above.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground">
+                    Every registered tenant is already assigned to a flat.
+                    Vacate an existing flat first, or wait for a new tenant
+                    to sign up.
+                  </p>
+                )}
+              </div>
             ) : (
               <>
                 {/* Live search across name/userName/email/phone. */}
