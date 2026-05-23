@@ -421,11 +421,18 @@ app:
       - GET /rentals/v1/properties/buildings
       - GET /rentals/v1/properties/buildings/**
       - GET /rentals/v1/properties/images/**
+      # Reference data (states + cities) feeds the cascading dropdown on
+      # Add/Edit Building. The form mounts under /owner/buildings/new so
+      # the user IS logged in — but the React Query fires before the
+      # Bearer token is attached on the first paint, AND we want the
+      # same lookup available to anonymous Browse filters. Public GET.
+      - GET /rentals/v1/properties/reference/**
       - GET /api/properties/flats
       - GET /api/properties/flats/**
       - GET /api/properties/buildings
       - GET /api/properties/buildings/**
       - GET /api/properties/images/**
+      - GET /api/properties/reference/**
       # ─── Document blob streaming (HMAC pre-signed URL is the auth) ───
       # The /documents/{id}/blob endpoint verifies its own
       # expires + signature query params (HMAC-SHA256). That IS the

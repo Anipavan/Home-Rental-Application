@@ -72,12 +72,27 @@ export function StateCitySelect({
               const picked = statesQ.data?.find((s) => String(s.id) === v) ?? null;
               onChange({ state: picked, city: null });
             }}
-            disabled={disabled || statesQ.isError}
+            disabled={disabled}
           >
             <SelectTrigger id="state" className="mt-1.5">
-              <SelectValue placeholder="Select state" />
+              <SelectValue
+                placeholder={
+                  statesQ.isError
+                    ? "Couldn't load states — tap to retry"
+                    : "Select state"
+                }
+              />
             </SelectTrigger>
             <SelectContent>
+              {statesQ.isError && (
+                <button
+                  type="button"
+                  onClick={() => statesQ.refetch()}
+                  className="block w-full px-2 py-1.5 text-left text-sm hover:bg-accent rounded-sm"
+                >
+                  Retry loading states
+                </button>
+              )}
               {(statesQ.data ?? []).map((s) => (
                 <SelectItem key={s.id} value={String(s.id)}>
                   {s.name}
