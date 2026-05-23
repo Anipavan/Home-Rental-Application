@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import {
   MapContainer,
   Marker,
@@ -11,9 +12,10 @@ import {
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { Crosshair, X } from "lucide-react";
+import { Crosshair, MapPinned, X } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -23,6 +25,12 @@ import {
 } from "@/components/ui/select";
 import { formatINR } from "@/lib/utils";
 import { propertiesApi } from "@/lib/api/properties";
+import {
+  IndiaStatesLayer,
+  pointInPolygon,
+  stateNameOf,
+  type FeatureCollection,
+} from "@/components/property/india-states-layer";
 import type { BuildingResponseDTO, FlatResponseDTO } from "@/types/api";
 
 /**
@@ -81,6 +89,34 @@ export function PropertyMapView({ flats, buildings, userCenter }: Props) {
   const [searchPin, setSearchPin] = useState<{ lat: number; lng: number } | null>(null);
   const [radiusKm, setRadiusKm] = useState<number>(5);
 
+  /**
+   * Selected India state (via clicking a state polygon). When set,
+   * only flats whose building's lat/lng falls inside that state's
+   * polygon are rendered. Independent of the searchPin radius filter
+   * — they compose: pick a state, then optionally drop a pin inside
+   * it to tighten further.
+   */
+  const [selectedState, setSelectedState] = useState<string | null>(null);
+
+  /**
+   * Pull the same GeoJSON IndiaStatesLayer fetches so we can run
+   * point-in-polygon checks here. React Query dedupes the request —
+   * the layer and the filter share one HTTP call.
+   */
+  const statesGeoQ = useQuery({
+    queryKey: ["india-states-geojson"],
+    queryFn: async () => null as FeatureCollection | null, // populated by IndiaStatesLayer
+    enabled: false, // never fire from here — IndiaStatesLayer owns the fetch
+  });
+  const selectedStateFeature = useMemo(() => {
+    if (!selectedState || !statesGeoQ.data) return null;
+    return (
+      statesGeoQ.data.features.find(
+        (f) => stateNameOf(f) === selectedState,
+      ) ?? null
+    );
+  }, [selectedState, statesGeoQ.data]);
+
   // Build the marker list — only flats whose parent building has a pin.
   const allPins = useMemo(() => {
     return flats.flatMap((flat) => {
@@ -90,14 +126,26 @@ export function PropertyMapView({ flats, buildings, userCenter }: Props) {
     });
   }, [flats, buildings]);
 
-  // Apply the radius filter when a search pin is dropped. Haversine
-  // distance to keep the maths accurate over India-scale ranges.
+  // Apply the radius filter when a search pin is dropped, AND the
+  // state filter when a state polygon is selected. They compose —
+  // a pin within a state-bounded area returns flats inside both.
+  // Haversine for the radius (accurate over India-scale ranges);
+  // ray-casting point-in-polygon for the state check (no library
+  // dependency, microsecond-fast on India-sized polygons).
   const pins = useMemo(() => {
-    if (!searchPin) return allPins;
-    return allPins.filter(
-      (p) => haversineKm(searchPin.lat, searchPin.lng, p.lat, p.lng) <= radiusKm,
-    );
-  }, [allPins, searchPin, radiusKm]);
+    let filtered = allPins;
+    if (selectedStateFeature) {
+      filtered = filtered.filter((p) =>
+        pointInPolygon(p.lat, p.lng, selectedStateFeature),
+      );
+    }
+    if (searchPin) {
+      filtered = filtered.filter(
+        (p) => haversineKm(searchPin.lat, searchPin.lng, p.lat, p.lng) <= radiusKm,
+      );
+    }
+    return filtered;
+  }, [allPins, searchPin, radiusKm, selectedStateFeature]);
 
   // Centre + zoom heuristic.
   let center: [number, number] = INDIA_CENTER;
@@ -117,16 +165,31 @@ export function PropertyMapView({ flats, buildings, userCenter }: Props) {
 
   return (
     <Card className="overflow-hidden">
-      {/* Top control bar — radius preset + clear button. Sits above
-          the map so it's always visible (Leaflet panes can occlude
-          floating overlays during pan/zoom). */}
+      {/* Top control bar — state selection + radius preset + clear
+          buttons. Sits above the map so it's always visible (Leaflet
+          panes can occlude floating overlays during pan/zoom). */}
       <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b text-xs">
         <Crosshair className="size-3.5 text-muted-foreground" />
         <span className="text-muted-foreground">
-          {searchPin
-            ? `Searching within ${radiusKm} km of dropped pin`
-            : "Tip: click anywhere on the map to search around that spot"}
+          {selectedState && searchPin
+            ? `Searching ${radiusKm} km around your pin in ${selectedState}`
+            : selectedState
+              ? `Showing homes in ${selectedState} — tap another state, or click anywhere to drop a pin`
+              : searchPin
+                ? `Searching within ${radiusKm} km of dropped pin`
+                : "Tip: tap a state to filter, or click anywhere on the map to drop a pin"}
         </span>
+        {selectedState && (
+          <Badge
+            variant="success"
+            className="ml-1 cursor-pointer"
+            onClick={() => setSelectedState(null)}
+          >
+            <MapPinned className="size-3" />
+            {selectedState}
+            <X className="size-3 ml-1" />
+          </Badge>
+        )}
         {searchPin && (
           <>
             <div className="ml-auto flex items-center gap-2">
@@ -168,11 +231,26 @@ export function PropertyMapView({ flats, buildings, userCenter }: Props) {
         >
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+            + ' &copy; <a href="https://datameet.org">Datameet Maps</a> (states)'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
 
+          {/* India states overlay — light polygons, click to filter +
+              zoom. Loads async; while loading the map works without
+              the overlay. Z-order: under the markers so flat pins
+              still receive clicks (Leaflet draws layers in mount
+              order). */}
+          <IndiaStatesLayer
+            selectedState={selectedState}
+            onSelect={setSelectedState}
+          />
+
           {/* Click-to-set-search-center event handler. Drops a pin
-              and triggers the radius filter. */}
+              and triggers the radius filter. Bound AFTER the states
+              layer so a state-polygon click is captured by the
+              GeoJSON layer first (stopPropagation on its click
+              handler isn't reliable across Leaflet builds; the
+              event-order trick is more robust). */}
           <MapClickHandler
             onClick={(lat, lng) => setSearchPin({ lat, lng })}
           />
