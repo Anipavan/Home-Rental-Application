@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search, Download } from "lucide-react";
 import { paymentsApi } from "@/lib/api/payments";
+import { authApi } from "@/lib/api/auth";
+import { propertiesApi } from "@/lib/api/properties";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -20,19 +22,85 @@ export function AdminPaymentsPage() {
     queryFn: () => paymentsApi.list(0, 200),
   });
 
+  // Side queries to translate the raw IDs the payments API returns
+  // into human-readable labels. Without these the Admin Payments
+  // table shows things like "Flat #FLT-47423fd3-04ed-... / Tenant 1
+  // / Owner 2" which is uselessly opaque on a demo screen.
+  // Cached separately so a payment-status refresh doesn't refetch
+  // the users + flats lists.
+  const tenantsQ = useQuery({
+    queryKey: ["admin", "users-tenant"],
+    queryFn: () => authApi.byRole("TENANT"),
+    staleTime: 60_000,
+  });
+  const ownersQ = useQuery({
+    queryKey: ["admin", "users-owner"],
+    queryFn: () => authApi.byRole("OWNER"),
+    staleTime: 60_000,
+  });
+  const flatsQ = useQuery({
+    queryKey: ["admin", "all-flats"],
+    queryFn: () => propertiesApi.flats.list(0, 500),
+    staleTime: 60_000,
+  });
+
+  // Build O(1) lookup maps from auth-user-id → display name and
+  // flat-id → "#flatNumber (buildingName)". Resilient to partial
+  // data: if a user or flat row is missing we fall back to the
+  // raw id so the column never goes blank.
+  const tenantLookup = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const u of tenantsQ.data ?? []) {
+      const name = [u.firstName, u.lastName].filter(Boolean).join(" ").trim();
+      m.set(String(u.id), name || u.userName);
+    }
+    return m;
+  }, [tenantsQ.data]);
+
+  const ownerLookup = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const u of ownersQ.data ?? []) {
+      const name = [u.firstName, u.lastName].filter(Boolean).join(" ").trim();
+      m.set(String(u.id), name || u.userName);
+    }
+    return m;
+  }, [ownersQ.data]);
+
+  const flatLookup = useMemo(() => {
+    const m = new Map<string, { flatNumber: string; buildingName?: string }>();
+    for (const f of flatsQ.data?.content ?? []) {
+      m.set(String(f.id), {
+        flatNumber: f.flatNumber,
+        buildingName: f.buildingName,
+      });
+    }
+    return m;
+  }, [flatsQ.data]);
+
   const all = pageQ.data?.content ?? [];
 
   const filtered = useMemo(() => {
     if (!q) return all;
     const n = q.toLowerCase();
-    return all.filter(
-      (p) =>
+    return all.filter((p) => {
+      // Match on the human labels first (what the user actually
+      // sees on the row) and fall back to the raw IDs / txnId so
+      // power users can paste a flat id directly into search.
+      const tenantName = tenantLookup.get(String(p.tenantId)) ?? "";
+      const ownerName = ownerLookup.get(String(p.ownerId)) ?? "";
+      const flat = flatLookup.get(String(p.flatId));
+      return (
+        tenantName.toLowerCase().includes(n) ||
+        ownerName.toLowerCase().includes(n) ||
         p.tenantId?.toLowerCase().includes(n) ||
         p.ownerId?.toLowerCase().includes(n) ||
-        String(p.flatId).includes(q) ||
-        p.transactionId?.toLowerCase().includes(n),
-    );
-  }, [all, q]);
+        flat?.flatNumber.toLowerCase().includes(n) ||
+        flat?.buildingName?.toLowerCase().includes(n) ||
+        String(p.flatId).toLowerCase().includes(n) ||
+        p.transactionId?.toLowerCase().includes(n)
+      );
+    });
+  }, [all, q, tenantLookup, ownerLookup, flatLookup]);
 
   const overdue = filtered.filter((p) => p.status === "OVERDUE");
   const pending = filtered.filter((p) => p.status === "PENDING");
@@ -168,12 +236,29 @@ function Table({
             key={p.id}
             className="grid grid-cols-2 sm:grid-cols-[100px_1.4fr_1.4fr_120px_120px_100px_100px] gap-3 px-5 py-3.5 text-sm items-center"
           >
-            <span className="font-mono">#{p.flatId}</span>
-            <span className="truncate text-muted-foreground hidden sm:block">
-              {p.tenantId}
+            {/* Flat: prefer "#<number> · <building>" via lookup; fall
+                back to the raw flatId when the flats list hasn't
+                resolved yet (or this payment references a deleted
+                flat). Same fallback pattern below for tenant/owner. */}
+            <span className="truncate" title={p.flatId}>
+              {(() => {
+                const f = flatLookup.get(String(p.flatId));
+                if (!f) return <span className="font-mono text-xs">#{p.flatId}</span>;
+                return (
+                  <span>
+                    <span className="font-medium">#{f.flatNumber}</span>
+                    {f.buildingName && (
+                      <span className="text-muted-foreground"> · {f.buildingName}</span>
+                    )}
+                  </span>
+                );
+              })()}
             </span>
-            <span className="truncate text-muted-foreground hidden sm:block">
-              {p.ownerId}
+            <span className="truncate text-muted-foreground hidden sm:block" title={p.tenantId}>
+              {tenantLookup.get(String(p.tenantId)) ?? p.tenantId}
+            </span>
+            <span className="truncate text-muted-foreground hidden sm:block" title={p.ownerId}>
+              {ownerLookup.get(String(p.ownerId)) ?? p.ownerId}
             </span>
             <span className="text-muted-foreground hidden sm:block">
               {formatDate(p.dueDate)}

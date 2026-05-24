@@ -151,7 +151,11 @@ function UserTable({
             </span>
             <RoleBadge role={u.role ?? (u.userRole as typeof u.role) ?? "TENANT"} />
             <span className="text-muted-foreground hidden sm:block">
-              {formatDate(u.createdAt)}
+              {/* Backend (auth-service) sends `recordCreatedDate`;
+                  the legacy `createdAt` alias is checked as a
+                  fallback in case another endpoint ever maps the
+                  field under the modern name. */}
+              {formatDate(u.recordCreatedDate ?? u.createdAt)}
             </span>
             <Badge variant={u.isActive === false ? "secondary" : "success"}>
               {u.isActive === false ? "Disabled" : "Active"}

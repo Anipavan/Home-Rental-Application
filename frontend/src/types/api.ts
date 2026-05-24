@@ -42,6 +42,13 @@ export interface MessageResponse {
 
 export interface AuthUserResponse {
   id: string;
+  /**
+   * The auth-service registration timestamp. Backend sends it as
+   * `recordCreatedDate` (legacy field name kept for compatibility with
+   * older clients). The admin Users page reads this for the "Joined"
+   * column. `createdAt` is the modern alias some other endpoints use.
+   */
+  recordCreatedDate?: string;
   userName: string;
   email?: string;
   /** Legacy alias kept for screens that read this field directly. */
