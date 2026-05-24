@@ -54,6 +54,16 @@ services:
   payment-service:
     environment:
       <<: *prod-env
+      # Required since the production-readiness pass (2026-05-24): the
+      # MockPaymentGateway bean no longer matches-if-missing, so this
+      # MUST be set explicitly or payment-service refuses to boot in
+      # prod profile. Use `mock` for smoke testing; flip to `razorpay`
+      # once APP_RAZORPAY_* secrets are wired in .env.
+      APP_PAYMENT_GATEWAY: ${PAYMENT_GATEWAY:-mock}
+      # Razorpay-specific (no-op when APP_PAYMENT_GATEWAY=mock):
+      APP_RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      APP_RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+      APP_RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
   lease-service:
     environment:
       <<: *prod-env
