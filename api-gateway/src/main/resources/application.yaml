@@ -436,6 +436,24 @@ app:
       # signature stream the file; mutations stay locked.
       - GET /rentals/v1/documents/*/blob
       - GET /api/documents/*/blob
+      # ─── Payment gateway webhooks + mock checkout (unauthenticated) ───
+      # Razorpay / Stripe webhook callbacks reach us from the gateway's
+      # own servers — they cannot supply our user JWT. The webhook
+      # handler itself enforces HMAC signature verification + a strict
+      # body-size cap + idempotency-via-processed_webhooks-table, so
+      # the security model is "auth = valid signature", not JWT.
+      # Without this whitelist EVERY webhook returned 401 at the
+      # gateway and payments NEVER moved to PAID via the async path
+      # (only the synchronous /verify on browser return worked).
+      - POST /rentals/v1/payments/webhook
+      - POST /api/payments/webhook
+      # MockPaymentGateway's stub checkout / return pages — used only
+      # when app.payment.gateway=mock. They're plain HTML / redirect
+      # endpoints with no sensitive data; gating them with JWT broke
+      # the click-through "Pay" button on the mock checkout form
+      # (browser GET, no Authorization header).
+      - GET /rentals/v1/payments/mock/**
+      - GET /api/payments/mock/**
       - /actuator/**
       - /v3/api-docs/**
       - /swagger-ui/**

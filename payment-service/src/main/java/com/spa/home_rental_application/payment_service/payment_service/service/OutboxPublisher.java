@@ -7,7 +7,9 @@ import com.spa.home_rental_application.KafkaEvents.Producers.Events.PaymentServi
 import com.spa.home_rental_application.payment_service.payment_service.entities.OutboxEvent;
 import com.spa.home_rental_application.payment_service.payment_service.repository.OutboxEventRepository;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -63,12 +65,29 @@ public class OutboxPublisher {
     @Value("${app.payment.outbox.batch-size:50}")
     private int batchSize;
 
+    /**
+     * Self-reference (injected through the Spring proxy) so we can call
+     * {@link #publishOne(OutboxEvent)} via the proxy and actually have
+     * its {@code REQUIRES_NEW} transactional boundary respected.
+     *
+     * <p>Without this, the in-class call {@code publishOne(e)} from
+     * {@link #publishPending()} bypasses the Spring proxy entirely —
+     * Spring's transaction interceptor never gets a chance to start a
+     * new transaction. The whole batch then ran in one tx, and a
+     * single poison-pill event would roll back the status updates of
+     * every event that "succeeded" in-memory earlier in the loop.
+     * Routing through {@code self.publishOne(e)} fixes that.
+     */
+    private final OutboxPublisher self;
+
     public OutboxPublisher(OutboxEventRepository repo,
                            PaymentServiceEvents kafkaEvents,
-                           ObjectMapper mapper) {
+                           ObjectMapper mapper,
+                           @Lazy @Autowired OutboxPublisher self) {
         this.repo = repo;
         this.kafkaEvents = kafkaEvents;
         this.mapper = mapper;
+        this.self = self;
     }
 
     /**
@@ -110,7 +129,12 @@ public class OutboxPublisher {
         if (batch.isEmpty()) return;
         log.debug("Outbox: publishing {} pending event(s)", batch.size());
         for (OutboxEvent e : batch) {
-            publishOne(e);
+            // Route through the proxy (self.publishOne) so each event
+            // gets its own REQUIRES_NEW transaction. Direct `publishOne(e)`
+            // would skip the Spring proxy → no new tx → poison event
+            // rolls back the whole batch (see field-level Javadoc on
+            // `self` for the full reasoning).
+            self.publishOne(e);
         }
     }
 

@@ -57,10 +57,18 @@ public class MockPaymentGateway implements PaymentGateway {
                 // Send the user to the in-house mock checkout page. The page
                 // shows a fake card / netbanking form, then on "Pay" redirects
                 // back to the tenant's returnUrl with verification params.
+                //
+                // Critical bug fix (was http://localhost:8084/...): hardcoded
+                // host bound this to dev only. In prod the browser tried to
+                // reach localhost:8084 → connection refused → CARD / NET_BANKING /
+                // WALLET payments dead-ended. Use a relative path so the
+                // SPA's same-origin axios baseURL ("/api/rentals/v1") resolves
+                // it against whatever host is currently serving the SPA
+                // (localhost in dev, anirudhhomes.in in prod).
                 String urlEncodedReturn = req.returnUrl() == null
                         ? ""
                         : URLEncoder.encode(req.returnUrl(), StandardCharsets.UTF_8);
-                b.redirectUrl("http://localhost:8084/payments/mock/checkout"
+                b.redirectUrl("/api/rentals/v1/payments/mock/checkout"
                         + "?orderId=" + orderId
                         + "&paymentId=" + payment.getId()
                         + "&method=" + method.name()
@@ -93,8 +101,34 @@ public class MockPaymentGateway implements PaymentGateway {
 
     @Override
     public WebhookVerificationResult verifyWebhook(String rawBody, String signatureHeader) {
-        // Mock: always valid; useful for end-to-end webhook tests.
-        return new WebhookVerificationResult(true, null, "mock_tx_" + UUID.randomUUID(), null);
+        // Mock: signature is always trusted (this gateway is only used in
+        // dev / smoke-test). The previous version returned paymentId=null
+        // for every webhook, which made the markPaidByWebhook handler
+        // immediately bail with IGNORED — meaning a tester / hand-fired
+        // webhook against the mock gateway could never advance a payment
+        // to PAID. Parse the body as JSON and accept either:
+        //   {"paymentId": "..."}                          ← simplest mock shape
+        //   {"payload": {"payment": {"entity": {"id": "..."}}}}  ← Razorpay-like
+        // Empty / unparseable bodies still return null with a clear log
+        // line so ops can spot a misconfigured webhook caller.
+        String paymentId = null;
+        String txnId = "mock_tx_" + UUID.randomUUID();
+        if (rawBody != null && !rawBody.isBlank()) {
+            try {
+                org.json.JSONObject body = new org.json.JSONObject(rawBody);
+                if (body.has("paymentId")) {
+                    paymentId = body.optString("paymentId", null);
+                } else if (body.has("payload")) {
+                    paymentId = body.getJSONObject("payload")
+                            .getJSONObject("payment")
+                            .getJSONObject("entity")
+                            .optString("id", null);
+                }
+            } catch (Exception ignored) {
+                log.info("MockPaymentGateway.verifyWebhook: body not parseable as JSON, returning paymentId=null");
+            }
+        }
+        return new WebhookVerificationResult(true, paymentId, txnId, null);
     }
 
     /**

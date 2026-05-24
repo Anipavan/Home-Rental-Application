@@ -8,6 +8,7 @@ import com.spa.home_rental_application.payment_service.payment_service.DTO.Respo
 import com.spa.home_rental_application.payment_service.payment_service.gateway.PaymentGateway;
 import com.spa.home_rental_application.payment_service.payment_service.gateway.VpaValidationResult;
 import com.spa.home_rental_application.payment_service.payment_service.gateway.WebhookVerificationResult;
+import com.spa.home_rental_application.payment_service.payment_service.security.CallerSecurity;
 import com.spa.home_rental_application.payment_service.payment_service.service.PaymentService;
 import com.spa.home_rental_application.payment_service.payment_service.service.PaymentService.WebhookOutcome;
 import io.swagger.v3.oas.annotations.Operation;
@@ -39,6 +40,14 @@ public class PaymentGatewayController {
     @PostMapping(value = "/initiate", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<InitiatePaymentResponse> initiate(@Valid @RequestBody InitiatePaymentRequest body) {
         log.info("POST /payments/initiate paymentId={} method={}", body.paymentId(), body.paymentMethod());
+        // Critical authz fix: PaymentController gates per-payment access by
+        // tenant/owner/admin, but this gateway controller previously trusted
+        // the paymentId in the body. Any signed-in user could initiate a
+        // gateway order against someone else's pending payment and harvest
+        // the redirect/UPI URLs. Load the payment first and apply the same
+        // gate before we hit the external gateway.
+        PaymentResponse p = paymentService.getPaymentById(body.paymentId());
+        CallerSecurity.requireTenantOwnerOrAdmin(p.tenantId(), p.ownerId());
         return ResponseEntity.ok(paymentService.initiatePayment(body));
     }
 
@@ -46,6 +55,11 @@ public class PaymentGatewayController {
     @PostMapping(value = "/verify", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<PaymentResponse> verify(@Valid @RequestBody VerifyPaymentRequest body) {
         log.info("POST /payments/verify paymentId={} txn={}", body.paymentId(), body.transactionId());
+        // Same authz gate as /initiate. Without this any signed-in user
+        // could force-FAIL another tenant's payment by POSTing a junk
+        // signature to /verify against their paymentId.
+        PaymentResponse p = paymentService.getPaymentById(body.paymentId());
+        CallerSecurity.requireTenantOwnerOrAdmin(p.tenantId(), p.ownerId());
         return ResponseEntity.ok(paymentService.verifyPayment(body));
     }
 
@@ -150,7 +164,21 @@ public class PaymentGatewayController {
     @Operation(summary = "Validate a UPI VPA and return the registered holder name (Razorpay /v1/payments/validate/vpa).")
     @GetMapping("/vpa/validate")
     public ResponseEntity<VpaValidationResponse> validateVpa(@RequestParam("vpa") String vpa) {
-        log.info("GET /payments/vpa/validate vpa={}", vpa);
+        // VPA lookup returns the holder's real name from the NPCI
+        // directory — that's PII and a unique-person identifier in
+        // India. Previously this endpoint had NO auth gate at all,
+        // letting anyone with an account scrape arbitrary VPAs for
+        // their owners' names. Require a signed-in caller; the
+        // gateway already JWT-validates so getCurrentAuthUserId()
+        // will be present for any legitimate browser request.
+        if (CallerSecurity.getCurrentAuthUserId().isEmpty()
+                && !CallerSecurity.isAdmin()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new VpaValidationResponse(false, vpa, null, "Authentication required"));
+        }
+        // PII hygiene: mask the local part in logs. Helps when log
+        // streams get shipped off-host for aggregation / debugging.
+        log.info("GET /payments/vpa/validate vpa={}", maskVpa(vpa));
         if (vpa == null || !VPA_FORMAT_RE.matcher(vpa.trim()).matches()) {
             return ResponseEntity.ok(new VpaValidationResponse(
                     false, vpa, null, "Invalid UPI ID format"));
@@ -161,6 +189,14 @@ public class PaymentGatewayController {
                 res.vpa(),
                 res.customerName(),
                 res.failureReason()));
+    }
+
+    /** Mask the local part of a VPA for log output: "alice@oksbi" -> "a***@oksbi". */
+    private static String maskVpa(String vpa) {
+        if (vpa == null || !vpa.contains("@")) return "***";
+        int at = vpa.indexOf('@');
+        if (at <= 1) return "***" + vpa.substring(at);
+        return vpa.charAt(0) + "***" + vpa.substring(at);
     }
 
     /** Single regex used to fail-fast malformed input before hitting the gateway. */

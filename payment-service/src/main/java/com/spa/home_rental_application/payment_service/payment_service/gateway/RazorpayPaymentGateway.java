@@ -72,9 +72,15 @@ public class RazorpayPaymentGateway implements PaymentGateway {
                 payment.getId(), req.paymentMethod(), req.upiApp());
 
         // Razorpay wants amount in the smallest currency unit (paise).
-        int amountPaise = payment.getTotalAmount()
+        // Use long, not int — intValueExact() overflows at ₹21,47,483.64
+        // (Integer.MAX_VALUE paise). A high-value commercial property
+        // rent + months of stacked late fees can plausibly cross that,
+        // and we'd throw ArithmeticException from the user-facing
+        // /payments/initiate handler. Razorpay's amount field is a
+        // long server-side; the JSON serializer handles it fine.
+        long amountPaise = payment.getTotalAmount()
                 .multiply(BigDecimal.valueOf(100))
-                .intValueExact();
+                .longValueExact();
 
         String orderId;
         try {
@@ -125,6 +131,23 @@ public class RazorpayPaymentGateway implements PaymentGateway {
 
     @Override
     public PaymentVerificationResult verify(Payment payment, VerifyPaymentRequest req) {
+        // Null/blank guard: a cancelled checkout calls /verify with no
+        // signature / no transactionId. Without this guard
+        // req.signature().getBytes() NPEs and bubbles up as HTTP 500
+        // with a stack-trace toast — the user sees "Payment didn't go
+        // through" with internal garbage instead of a clean "Payment
+        // cancelled" message.
+        if (req == null
+                || req.signature() == null || req.signature().isBlank()
+                || req.transactionId() == null || req.transactionId().isBlank()
+                || req.gatewayOrderId() == null || req.gatewayOrderId().isBlank()) {
+            return PaymentVerificationResult.builder()
+                    .success(false)
+                    .transactionId(null)
+                    .failureReason("Missing signature / transactionId / gatewayOrderId — payment was likely cancelled at the gateway")
+                    .gatewayErrorCode("RAZORPAY_INCOMPLETE_CALLBACK")
+                    .build();
+        }
         // Razorpay's standard signature for client callback:
         //   HMAC-SHA256( razorpay_order_id + "|" + razorpay_payment_id, key_secret )
         String expected = hmac(req.gatewayOrderId() + "|" + req.transactionId(),

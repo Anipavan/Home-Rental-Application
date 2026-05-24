@@ -576,29 +576,49 @@ public class PaymentServiceImpl implements PaymentService {
         return s == null || s.isBlank();
     }
 
-    /** Common path for any successful payment (gateway or cash). */
+    /**
+     * Common path for any successful payment (gateway or cash).
+     *
+     * <p>Race-safety: re-fetch the payment with PESSIMISTIC_WRITE and
+     * re-check {@code status != PAID} inside the lock. Without this,
+     * the synchronous /verify and the async webhook can both observe
+     * status=PENDING between their respective SELECT and UPDATE,
+     * then both run markPaid → two receipts (different numbers), two
+     * payment.completed Kafka events, two duplicate emails to the
+     * tenant. The transactional lock plus the early-return collapse
+     * both paths into a single PAID transition.
+     */
     private void markPaid(Payment p, String transactionId) {
+        // Re-read under lock to catch a concurrent /verify-vs-webhook race.
+        // The lock is held until this transaction commits, so any
+        // concurrent thread on the same row blocks here and finds
+        // status == PAID when it unblocks.
+        Payment locked = paymentRepo.findByIdForUpdate(p.getId()).orElse(p);
+        if (locked.getStatus() == PaymentStatus.PAID) {
+            log.info("Payment {} already PAID (race won by another path) — skipping duplicate markPaid", p.getId());
+            return;
+        }
         Instant now = Instant.now();
-        p.setStatus(PaymentStatus.PAID);
-        p.setTransactionId(transactionId);
-        p.setPaymentDate(now);
-        paymentRepo.save(p);
+        locked.setStatus(PaymentStatus.PAID);
+        locked.setTransactionId(transactionId);
+        locked.setPaymentDate(now);
+        paymentRepo.save(locked);
 
-        Receipt receipt = generateReceipt(p);
+        Receipt receipt = generateReceipt(locked);
 
         events.sendPaymentCompleted(PaymentCompletedEvent.builder()
                 .eventType("payment.completed")
-                .paymentId(p.getId())
-                .tenantId(p.getTenantId())
-                .ownerId(p.getOwnerId())
-                .amount(p.getTotalAmount())
-                .paymentMethod(p.getPaymentMethod() != null ? p.getPaymentMethod().name() : null)
+                .paymentId(locked.getId())
+                .tenantId(locked.getTenantId())
+                .ownerId(locked.getOwnerId())
+                .amount(locked.getTotalAmount())
+                .paymentMethod(locked.getPaymentMethod() != null ? locked.getPaymentMethod().name() : null)
                 .transactionId(transactionId)
                 .paidDate(now)
                 .timestamp(now)
                 .build());
         log.info("Payment {} completed via {} (receipt {}, txn {})",
-                p.getId(), p.getPaymentMethod(), receipt.getReceiptNumber(), transactionId);
+                locked.getId(), locked.getPaymentMethod(), receipt.getReceiptNumber(), transactionId);
     }
 
     @Override

@@ -2,9 +2,11 @@ package com.spa.home_rental_application.payment_service.payment_service.reposito
 
 import com.spa.home_rental_application.payment_service.payment_service.entities.Payment;
 import com.spa.home_rental_application.payment_service.payment_service.enums.PaymentStatus;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 
 import java.time.LocalDate;
@@ -52,4 +54,19 @@ public interface PaymentRepository extends JpaRepository<Payment, String> {
      * paymentId} assumption the previous code had.
      */
     java.util.Optional<Payment> findByGatewayOrderId(String gatewayOrderId);
+
+    /**
+     * Pessimistic SELECT … FOR UPDATE on the payment row. Used by
+     * {@code markPaid} to serialize the status flip across two
+     * concurrent paths: the synchronous /verify call from the
+     * frontend after the user returns from the gateway, AND the
+     * asynchronous webhook from the gateway itself. Without this
+     * both paths could pass the "status != PAID" check between
+     * their SELECT and UPDATE, double-credit the payment, and emit
+     * two payment.completed Kafka events / two receipts / two
+     * notification emails.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT p FROM Payment p WHERE p.id = :id")
+    java.util.Optional<Payment> findByIdForUpdate(String id);
 }
