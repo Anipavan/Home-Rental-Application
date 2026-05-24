@@ -183,16 +183,25 @@ function UserTable({
  * hues so the user table scans visually without reading the Role
  * column. Backgrounds are 500-shade for adequate contrast against
  * white initials (passes WCAG AA on the white card background).
+ *
+ * <p>IMPORTANT: AvatarFallback's default classes include
+ * {@code gradient-brand} (a custom CSS class that paints a teal
+ * linear-gradient via {@code background-image}). twMerge can't
+ * dedupe custom classes, so without `bg-none` here the gradient
+ * keeps painting on top of our solid color and every avatar stays
+ * teal. {@code bg-none} explicitly cancels the gradient via
+ * {@code background-image: none}, letting the solid bg-*-500 show.
  */
 function roleAvatarClass(role: Role): string {
+  const base = "bg-none";
   switch (role) {
     case "ADMIN":
-      return "bg-purple-600 text-white";
+      return `${base} bg-purple-600 text-white`;
     case "OWNER":
-      return "bg-amber-500 text-white";
+      return `${base} bg-amber-500 text-white`;
     case "TENANT":
     default:
-      return "bg-sky-500 text-white";
+      return `${base} bg-sky-500 text-white`;
   }
 }
 
