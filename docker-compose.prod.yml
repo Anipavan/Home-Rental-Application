@@ -85,6 +85,12 @@ services:
     restart: unless-stopped
     # No host port binding — Caddy reaches us on the internal network.
     ports: []
+    # Must be on hra-net so nginx can resolve `api-gateway` for its
+    # upstream proxy. Without this, frontend lands on docker-compose's
+    # auto-created default network while api-gateway is on hra-net,
+    # and nginx crash-loops with "host not found in upstream".
+    networks:
+      - hra-net
     depends_on:
       - api-gateway
     deploy:
