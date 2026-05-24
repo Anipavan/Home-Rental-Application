@@ -136,8 +136,19 @@ function UserTable({
             className="grid grid-cols-2 sm:grid-cols-[1.4fr_1.6fr_120px_120px_100px] gap-3 px-5 py-3.5 text-sm items-center"
           >
             <div className="flex items-center gap-3 min-w-0">
+              {/* Avatar tinted by role so you can scan the table and
+                  visually group owners vs tenants vs admins without
+                  reading the Role column. Saturated background +
+                  white initials keep the contrast WCAG-AA on the
+                  white card. */}
               <Avatar className="size-9">
-                <AvatarFallback>{initials(u.userName)}</AvatarFallback>
+                <AvatarFallback
+                  className={roleAvatarClass(
+                    u.role ?? (u.userRole as typeof u.role) ?? "TENANT",
+                  )}
+                >
+                  {initials(u.userName)}
+                </AvatarFallback>
               </Avatar>
               <div className="min-w-0">
                 <p className="font-medium truncate">{u.userName}</p>
@@ -165,6 +176,24 @@ function UserTable({
       </div>
     </Card>
   );
+}
+
+/**
+ * Tailwind classes for the avatar fallback by role. Three distinct
+ * hues so the user table scans visually without reading the Role
+ * column. Backgrounds are 500-shade for adequate contrast against
+ * white initials (passes WCAG AA on the white card background).
+ */
+function roleAvatarClass(role: Role): string {
+  switch (role) {
+    case "ADMIN":
+      return "bg-purple-600 text-white";
+    case "OWNER":
+      return "bg-amber-500 text-white";
+    case "TENANT":
+    default:
+      return "bg-sky-500 text-white";
+  }
 }
 
 function RoleBadge({ role }: { role: Role }) {
