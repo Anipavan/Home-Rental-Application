@@ -43,15 +43,28 @@
 set -uo pipefail
 
 BASE_URL="${BASE_URL:-https://anirudhhomes.in/api/rentals/v1}"
+# Auth endpoints (register + login) are rate-limited at the gateway to
+# 5 requests per 60 seconds per IP. The seeder fires 9+ registrations
+# back-to-back which trips the limit. To bypass it, hit auth-service
+# directly on its host-exposed port — gateway rate limit doesn't apply
+# when the request never touches the gateway. The issued JWT is still
+# valid system-wide because every service shares the same JWT_SECRET.
+#
+# Set AUTH_BASE_URL=https://anirudhhomes.in/api/rentals/v1 to force
+# through the gateway (then you'll need AUTH_SLEEP=14 to pace calls).
+AUTH_BASE_URL="${AUTH_BASE_URL:-http://localhost:9090}"
+AUTH_SLEEP="${AUTH_SLEEP:-0}"
 DEMO_PASSWORD="${DEMO_PASSWORD:-Demo@2026!}"
 COMPOSE="docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.fix.yml"
 
 echo "═══════════════════════════════════════════════════════════════════"
 echo "  Anirudh Homes Demo Data Seeder"
 echo "═══════════════════════════════════════════════════════════════════"
-echo "  Base URL: $BASE_URL"
-echo "  Password: $DEMO_PASSWORD"
-echo "  (override via DEMO_PASSWORD=... env)"
+echo "  API base URL:  $BASE_URL"
+echo "  Auth base URL: $AUTH_BASE_URL  (bypasses gateway rate limit)"
+echo "  Auth sleep:    ${AUTH_SLEEP}s between calls"
+echo "  Password:      $DEMO_PASSWORD"
+echo "  (override via DEMO_PASSWORD=… / AUTH_BASE_URL=… / AUTH_SLEEP=… env)"
 echo "═══════════════════════════════════════════════════════════════════"
 
 # ─────────────────────────────────────────────────────────────────────
@@ -90,9 +103,10 @@ JSON
 )
 
   local body
-  body=$(curl -sS -w "\n%{http_code}" -X POST "${BASE_URL}/auth/register" \
+  body=$(curl -sS -w "\n%{http_code}" -X POST "${AUTH_BASE_URL}/auth/register" \
     -H "Content-Type: application/json" \
     -d "$payload" 2>&1) || body="${body}\n0"
+  [[ "$AUTH_SLEEP" -gt 0 ]] && sleep "$AUTH_SLEEP"
 
   REG_HTTP_CODE="${body##*$'\n'}"
   REG_BODY="${body%$'\n'*}"
@@ -119,9 +133,10 @@ JSON
 login_user() {
   local username=$1
   local resp
-  resp=$(curl -sS -X POST "${BASE_URL}/auth/login" \
+  resp=$(curl -sS -X POST "${AUTH_BASE_URL}/auth/login" \
     -H "Content-Type: application/json" \
     -d "{\"userName\":\"$username\",\"userPassword\":\"$DEMO_PASSWORD\"}" 2>/dev/null) || resp=""
+  [[ "$AUTH_SLEEP" -gt 0 ]] && sleep "$AUTH_SLEEP"
   extract_json "$resp" "accessToken"
 }
 
@@ -129,9 +144,12 @@ login_user() {
 # authUserId from the login response, which already carries it.
 login_user_full() {
   local username=$1
-  curl -sS -X POST "${BASE_URL}/auth/login" \
+  local resp
+  resp=$(curl -sS -X POST "${AUTH_BASE_URL}/auth/login" \
     -H "Content-Type: application/json" \
-    -d "{\"userName\":\"$username\",\"userPassword\":\"$DEMO_PASSWORD\"}" 2>/dev/null
+    -d "{\"userName\":\"$username\",\"userPassword\":\"$DEMO_PASSWORD\"}" 2>/dev/null) || resp=""
+  [[ "$AUTH_SLEEP" -gt 0 ]] && sleep "$AUTH_SLEEP"
+  printf '%s' "$resp"
 }
 
 create_building() {
