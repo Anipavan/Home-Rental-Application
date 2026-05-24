@@ -47,7 +47,6 @@ management:
 # CHANGE_ME / placeholder value. Nothing extra needed here — the
 # fail-fast is automatic when `spring.profiles.active=prod`.
 
-management:
   tracing:
     sampling:
       # 10% of requests in prod — keeps span volume manageable +

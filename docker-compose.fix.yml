@@ -1,0 +1,87 @@
+# ─────────────────────────────────────────────────────────────────
+# docker-compose.fix.yml — minimal env injection for the pre-batch-1
+# baseline deployment.
+#
+# This file exists because the base docker-compose.yml's flat env
+# block was shadowing the docker-compose.prod.yml `*spring-jpa-env`
+# anchor (a Compose overlay-merge quirk with cross-file YAML
+# aliases). Result: services booted with profile=dev and
+# DB_USERNAME=siva regardless of what prod.yml said.
+#
+# We re-declare the critical env vars here as a flat map so Compose
+# unambiguously merges them on top of both earlier files.
+# ─────────────────────────────────────────────────────────────────
+
+x-prod-env: &prod-env
+  SPRING_PROFILES_ACTIVE: prod
+  DB_USERNAME: ${DB_USERNAME}
+  DB_PASSWORD: ${DB_PASSWORD}
+  # ─────────────────────────────────────────────────────────────────
+  # Schema management — Hibernate, not Flyway. Read before changing!
+  #
+  # The current V1__baseline.sql files in every service are NO-OP
+  # placeholders that just stamp a baseline. There are no CREATE
+  # TABLE migrations — the whole deployment has always relied on
+  # Hibernate's ddl-auto=update to bring up the schema on first
+  # boot. V2+ migrations (e.g. KYC digilocker_columns) are additive
+  # ALTERs that assume the base tables already exist.
+  #
+  # Enforcing prod's ddl-auto=validate + Flyway-managed schema fails
+  # on a fresh DB because nothing creates the tables. Services
+  # crash with "Schema-validation: missing table [foo]".
+  #
+  # Until proper V1__create_schema.sql files are written, these
+  # overrides restore the original working behaviour:
+  #   - Hibernate manages schema: creates tables, adds columns to
+  #     match entity definitions on every restart.
+  #   - Flyway is disabled entirely so it doesn't fight Hibernate
+  #     and doesn't pollute history tables with failed migration
+  #     rows that block subsequent boots.
+  # ─────────────────────────────────────────────────────────────────
+  SPRING_FLYWAY_ENABLED: "false"
+  SPRING_JPA_HIBERNATE_DDL_AUTO: update
+
+services:
+  auth-service:
+    environment:
+      <<: *prod-env
+  user-service:
+    environment:
+      <<: *prod-env
+  property-service:
+    environment:
+      <<: *prod-env
+  payment-service:
+    environment:
+      <<: *prod-env
+  lease-service:
+    environment:
+      <<: *prod-env
+  maintenance-service:
+    environment:
+      <<: *prod-env
+  kyc-service:
+    environment:
+      <<: *prod-env
+      KYC_PROVIDER: ${KYC_PROVIDER:-MOCK}
+      PAN_ONLY_KYC: ${PAN_ONLY_KYC:-false}
+      SANDBOX_API_KEY: ${SANDBOX_API_KEY:-}
+      SANDBOX_API_SECRET: ${SANDBOX_API_SECRET:-}
+  review-service:
+    environment:
+      <<: *prod-env
+  compliance-service:
+    environment:
+      <<: *prod-env
+  document-service:
+    environment:
+      <<: *prod-env
+      SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE: 25MB
+      SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE: 25MB
+      DOCUMENT_OCR_PROVIDER: ${DOCUMENT_OCR_PROVIDER:-STUB}
+      DOCUMENT_OCR_AUTO_EXTRACT: ${DOCUMENT_OCR_AUTO_EXTRACT:-true}
+      SANDBOX_API_KEY: ${SANDBOX_API_KEY:-}
+      SANDBOX_API_SECRET: ${SANDBOX_API_SECRET:-}
+  analytics-service:
+    environment:
+      <<: *prod-env

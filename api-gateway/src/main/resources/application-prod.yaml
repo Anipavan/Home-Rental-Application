@@ -30,7 +30,6 @@ management:
 # cross-origin request from the real SPA will hit the gateway's CORS
 # filter and 403. Treat as a deploy-time check.
 
-management:
   tracing:
     sampling:
       # 10% of requests in prod — keeps span volume manageable +
