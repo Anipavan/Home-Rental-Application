@@ -65,7 +65,10 @@ public class OutboxEvent {
     private String status;
 
     /** Last publisher attempt count — used to back off / quarantine after N failures. */
-    @Column(name = "attempts", nullable = false,
+    // Same ORA-02258 trap as PropertyImage.is_cover — drop nullable=false
+    // to avoid duplicate NOT NULL in the generated DDL. columnDefinition
+    // already enforces NOT NULL at the DB level.
+    @Column(name = "attempts",
             columnDefinition = "NUMBER(10) DEFAULT 0 NOT NULL")
     @Builder.Default
     private Integer attempts = 0;

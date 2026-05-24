@@ -41,7 +41,13 @@ public class PropertyImage {
      * {@code @Builder.Default} is Java-side only — it has no effect
      * on DDL emission.
      */
-    @Column(name = "is_cover", nullable = false,
+    // NOTE: nullable=false intentionally omitted here. columnDefinition
+    // already contains "NOT NULL"; with Hibernate's Oracle dialect
+    // setting nullable=false ALSO appends " not null" to the column,
+    // producing invalid DDL ("NUMBER(1) DEFAULT 0 NOT NULL not null")
+    // → ORA-02258 on fresh table creation. Keep the NOT NULL inside
+    // columnDefinition only.
+    @Column(name = "is_cover",
             columnDefinition = "NUMBER(1) DEFAULT 0 NOT NULL")
     @Builder.Default
     private Boolean isCover = false;
@@ -55,7 +61,9 @@ public class PropertyImage {
      * <p>See {@link #isCover} for the columnDefinition rationale —
      * same Oracle ORA-01758 trap on populated tables.
      */
-    @Column(name = "sort_order", nullable = false,
+    // Same ORA-02258 trap as is_cover above — drop nullable=false to
+    // avoid duplicate NOT NULL in the generated DDL.
+    @Column(name = "sort_order",
             columnDefinition = "NUMBER(10) DEFAULT 1000 NOT NULL")
     @Builder.Default
     private Integer sortOrder = 1000;

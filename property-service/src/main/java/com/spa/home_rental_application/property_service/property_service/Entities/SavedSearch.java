@@ -85,7 +85,9 @@ public class SavedSearch {
      * Soft disable — users can pause alerts without deleting the search.
      * The matcher scheduler skips inactive rows.
      */
-    @Column(name = "is_active", nullable = false,
+    // Same ORA-02258 trap as PropertyImage.is_cover — drop nullable=false
+    // to avoid duplicate NOT NULL in the generated DDL.
+    @Column(name = "is_active",
             columnDefinition = "NUMBER(1) DEFAULT 1 NOT NULL")
     @Builder.Default
     private Boolean isActive = true;

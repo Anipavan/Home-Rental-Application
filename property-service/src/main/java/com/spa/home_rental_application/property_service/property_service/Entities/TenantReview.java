@@ -29,7 +29,11 @@ public class TenantReview {
     /** 1-5 stars. */
     @Column(nullable = false) private Integer rating;
 
-    @Column(length = 1000) private String comment;
+    // `comment` is a reserved word in Oracle — using it unquoted in
+    // DDL fails with ORA-03050. Explicit @Column(name=...) renames
+    // the DB column to a non-reserved identifier. Java field stays
+    // `comment` so no callers need to change.
+    @Column(name = "review_comment", length = 1000) private String comment;
 
     @Column(name = "created_at", nullable = false) private LocalDateTime createdAt;
     @Column(name = "updated_at", nullable = false) private LocalDateTime updatedAt;
