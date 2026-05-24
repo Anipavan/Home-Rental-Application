@@ -48,21 +48,21 @@ export function AdminPaymentsPage() {
   // flat-id → "#flatNumber (buildingName)". Resilient to partial
   // data: if a user or flat row is missing we fall back to the
   // raw id so the column never goes blank.
+  // AuthUserResponse from auth-service only carries (id, userName,
+  // userRole, email, recordCreatedDate, recodeUpdatedDate) — first/
+  // last name live in user-service profiles. Use userName as the
+  // display label; it's already a human-readable identifier
+  // (owner_alice, tenant_dana, etc.) and avoids the extra
+  // user-service round-trip.
   const tenantLookup = useMemo(() => {
     const m = new Map<string, string>();
-    for (const u of tenantsQ.data ?? []) {
-      const name = [u.firstName, u.lastName].filter(Boolean).join(" ").trim();
-      m.set(String(u.id), name || u.userName);
-    }
+    for (const u of tenantsQ.data ?? []) m.set(String(u.id), u.userName);
     return m;
   }, [tenantsQ.data]);
 
   const ownerLookup = useMemo(() => {
     const m = new Map<string, string>();
-    for (const u of ownersQ.data ?? []) {
-      const name = [u.firstName, u.lastName].filter(Boolean).join(" ").trim();
-      m.set(String(u.id), name || u.userName);
-    }
+    for (const u of ownersQ.data ?? []) m.set(String(u.id), u.userName);
     return m;
   }, [ownersQ.data]);
 
@@ -155,7 +155,7 @@ export function AdminPaymentsPage() {
           <TabsTrigger value="paid">Paid ({paid.length})</TabsTrigger>
         </TabsList>
         <TabsContent value="all">
-          <Table loading={pageQ.isLoading} payments={filtered} />
+          <Table loading={pageQ.isLoading} payments={filtered} tenantLookup={tenantLookup} ownerLookup={ownerLookup} flatLookup={flatLookup} />
         </TabsContent>
         <TabsContent value="overdue">
           <Table loading={pageQ.isLoading} payments={overdue} />
@@ -199,10 +199,23 @@ function Stat({
 function Table({
   loading,
   payments,
+  tenantLookup,
+  ownerLookup,
+  flatLookup,
 }: {
   loading?: boolean;
   payments: PaymentResponse[];
+  // Lookups passed down from AdminPaymentsPage so the table can show
+  // human-readable names instead of raw IDs. Default to empty Maps so
+  // older call-sites that haven't been updated still type-check (the
+  // cells then fall back to the raw id, same as if the lookup missed).
+  tenantLookup?: Map<string, string>;
+  ownerLookup?: Map<string, string>;
+  flatLookup?: Map<string, { flatNumber: string; buildingName?: string }>;
 }) {
+  const tLookup = tenantLookup ?? new Map();
+  const oLookup = ownerLookup ?? new Map();
+  const fLookup = flatLookup ?? new Map();
   if (loading) {
     return (
       <Card className="p-3 space-y-2">
@@ -242,7 +255,7 @@ function Table({
                 flat). Same fallback pattern below for tenant/owner. */}
             <span className="truncate" title={p.flatId}>
               {(() => {
-                const f = flatLookup.get(String(p.flatId));
+                const f = fLookup.get(String(p.flatId));
                 if (!f) return <span className="font-mono text-xs">#{p.flatId}</span>;
                 return (
                   <span>
@@ -255,10 +268,10 @@ function Table({
               })()}
             </span>
             <span className="truncate text-muted-foreground hidden sm:block" title={p.tenantId}>
-              {tenantLookup.get(String(p.tenantId)) ?? p.tenantId}
+              {tLookup.get(String(p.tenantId)) ?? p.tenantId}
             </span>
             <span className="truncate text-muted-foreground hidden sm:block" title={p.ownerId}>
-              {ownerLookup.get(String(p.ownerId)) ?? p.ownerId}
+              {oLookup.get(String(p.ownerId)) ?? p.ownerId}
             </span>
             <span className="text-muted-foreground hidden sm:block">
               {formatDate(p.dueDate)}
