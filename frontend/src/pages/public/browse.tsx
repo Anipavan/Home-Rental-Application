@@ -50,7 +50,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/layout/page-header";
-import { cn, formatINR } from "@/lib/utils";
+import {
+  cn,
+  formatINR,
+  canonicalCity,
+  citySearchTokens,
+  sameCity,
+} from "@/lib/utils";
 import type { BuildingResponseDTO, FlatResponseDTO } from "@/types/api";
 
 /**
@@ -189,13 +195,18 @@ export function BrowsePage() {
   }, [buildingsQ.data]);
 
   // Derive the list of cities from results so the dropdown only offers
-  // cities that actually have listings — no dead options.
+  // cities that actually have listings — no dead options. Dedupe by
+  // canonical city name so "Bengaluru" and "Bangalore" collapse into a
+  // single row (we keep the first spelling we see — usually the modern
+  // canonical form that the create-building dropdown enforces).
   const cities = useMemo(() => {
-    const set = new Set<string>();
+    const seen = new Map<string, string>();
     for (const f of data?.content ?? []) {
-      if (f.buildingCity) set.add(f.buildingCity);
+      if (!f.buildingCity) continue;
+      const key = canonicalCity(f.buildingCity);
+      if (!seen.has(key)) seen.set(key, f.buildingCity);
     }
-    return [...set].sort();
+    return [...seen.values()].sort();
   }, [data]);
 
   const filtered = useMemo(
@@ -707,11 +718,16 @@ function applyFilters(
   if (q) {
     const needle = q.toLowerCase();
     list = list.filter((flat) => {
+      // The haystack includes the stored city plus every known alias —
+      // so a tenant typing "bangalore" finds flats stored as "Bengaluru"
+      // (and vice-versa). citySearchTokens returns ["bengaluru","bangalore"]
+      // for either input, which we splat in next to the other fields.
       const hay = [
         flat.flatNumber,
         flat.buildingName,
         flat.buildingAddress,
         flat.buildingCity,
+        ...citySearchTokens(flat.buildingCity),
       ]
         .filter(Boolean)
         .join(" ")
@@ -721,11 +737,11 @@ function applyFilters(
   }
 
   if (f.city !== "any") {
-    list = list.filter(
-      (flat) =>
-        flat.buildingCity &&
-        flat.buildingCity.toLowerCase() === f.city.toLowerCase(),
-    );
+    // Alias-aware equality — picking "Bengaluru" from the dropdown also
+    // matches a building stored as "Bangalore" (could happen for any
+    // owner-typed value that bypassed the create-form's canonical
+    // dropdown, or for legacy data seeded before normalization).
+    list = list.filter((flat) => sameCity(flat.buildingCity, f.city));
   }
 
   if (f.bhk !== "any") {

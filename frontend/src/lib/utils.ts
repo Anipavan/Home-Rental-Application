@@ -174,3 +174,106 @@ export function normalizeDocUrl(url?: string | null): string | undefined {
   if (canonIdx < 0) return path;
   return prefix + path.slice(canonIdx);
 }
+
+/* ─────────────────────────── city aliases ───────────────────────────
+ * Several Indian cities were officially renamed but the older names
+ * are still in common use (Bangalore↔Bengaluru, Bombay↔Mumbai, etc.).
+ * Owners enter the new name on the create-building form (driven by
+ * our state→city dropdown), tenants instinctively type the old name
+ * into the Browse Homes search. Without alias handling the search
+ * silently returns zero results and people think the platform is
+ * empty.
+ *
+ * The maps below are the source of truth for every alias-aware
+ * surface in the app: the Browse Homes free-text search, the city
+ * dropdown deduplication, and (in the future) the saved-search
+ * matcher on the backend.
+ *
+ * Add a new pair here and BOTH directions of the alias just work —
+ * users can type either name, the dropdown collapses duplicates,
+ * and the canonical form is what's compared.
+ *
+ * Canonical form is the modern official name (per IndiaCensus 2011
+ * naming gazette + state government notifications post-2014). All
+ * keys/values are lowercase for lookup; render to the user using
+ * the original casing kept on the row.
+ * ─────────────────────────────────────────────────────────────── */
+
+/** Modern canonical name → array of all historical / colloquial alternates. */
+const CITY_ALIAS_GROUPS: Array<[string, string[]]> = [
+  ["bengaluru", ["bangalore"]],
+  ["mumbai", ["bombay"]],
+  ["chennai", ["madras"]],
+  ["kolkata", ["calcutta"]],
+  ["pune", ["poona"]],
+  ["thiruvananthapuram", ["trivandrum"]],
+  ["kochi", ["cochin", "ernakulam"]],
+  ["mysuru", ["mysore"]],
+  ["mangaluru", ["mangalore"]],
+  ["vadodara", ["baroda"]],
+  ["prayagraj", ["allahabad"]],
+  ["puducherry", ["pondicherry"]],
+  ["belagavi", ["belgaum"]],
+  ["hubballi", ["hubli"]],
+  ["tumakuru", ["tumkur"]],
+  ["kalaburagi", ["gulbarga"]],
+  ["shivamogga", ["shimoga"]],
+  ["vijayapura", ["bijapur"]],
+];
+
+/** Lowercase any-name → lowercase canonical. Built once at module load. */
+const ALIAS_TO_CANONICAL: Map<string, string> = (() => {
+  const m = new Map<string, string>();
+  for (const [canonical, alts] of CITY_ALIAS_GROUPS) {
+    m.set(canonical, canonical);
+    for (const a of alts) m.set(a, canonical);
+  }
+  return m;
+})();
+
+/**
+ * Returns the canonical (modern) lowercase name for any city spelling —
+ * "Bangalore" / "BANGALORE" / "bengaluru" all return "bengaluru".
+ * Falls back to the input lowercased + trimmed when the city has no
+ * known alias (e.g. "Hyderabad" → "hyderabad").
+ *
+ * <p>Use this whenever you need to ask "is this the same city?",
+ * NEVER for what to show on screen — the canonical form is lowercase
+ * and stripped of branding. Use {@link displayCity} for display.
+ */
+export function canonicalCity(name?: string | null): string {
+  if (!name) return "";
+  const k = name.trim().toLowerCase();
+  return ALIAS_TO_CANONICAL.get(k) ?? k;
+}
+
+/**
+ * True when both arguments refer to the same city, regardless of
+ * historical spelling. Equivalent to canonical equality but reads
+ * better at call sites:
+ *
+ * {@code if (sameCity(flat.buildingCity, filter.city)) ...}
+ */
+export function sameCity(a?: string | null, b?: string | null): boolean {
+  if (!a || !b) return false;
+  return canonicalCity(a) === canonicalCity(b);
+}
+
+/**
+ * Lowercase strings to include in a free-text search haystack for a
+ * given city — the original spelling PLUS every known alias. Lets a
+ * tenant typing "bangalore" into the Browse Homes search box find a
+ * building stored as "Bengaluru" (and vice-versa) without surfacing
+ * the dropdown as two separate options.
+ */
+export function citySearchTokens(name?: string | null): string[] {
+  if (!name) return [];
+  const k = name.trim().toLowerCase();
+  if (!k) return [];
+  const canonical = ALIAS_TO_CANONICAL.get(k) ?? k;
+  const group = CITY_ALIAS_GROUPS.find(([c]) => c === canonical);
+  if (!group) return [k];
+  // Dedupe across the original input + canonical + all alts.
+  const out = new Set<string>([k, canonical, ...group[1]]);
+  return [...out];
+}
