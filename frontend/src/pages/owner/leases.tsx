@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   Dialog,
   DialogContent,
@@ -158,9 +159,14 @@ export function OwnerLeasesPage() {
               ))}
             </div>
           ) : leases.length === 0 ? (
-            <p className="mt-6 text-sm text-muted-foreground">
-              No leases yet. Click "New lease" to draft one for one of your flats.
-            </p>
+            <div className="mt-4">
+              <EmptyState
+                variant="info"
+                icon={ScrollText}
+                title="No leases yet"
+                description='Click "New lease" above to draft one for any of your flats. We&apos;ll generate an e-signable agreement and a printable PDF.'
+              />
+            </div>
           ) : (
             <div className="mt-4 space-y-3">
               {leases.map((l) => (

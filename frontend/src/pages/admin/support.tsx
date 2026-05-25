@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   Select,
   SelectContent,
@@ -96,15 +97,12 @@ function TicketList({ status }: { status: SupportTicket["status"] }) {
   const items = q.data?.content ?? [];
   if (items.length === 0) {
     return (
-      <Card>
-        <CardContent className="p-12 text-center">
-          <Inbox className="size-10 mx-auto text-muted-foreground" />
-          <p className="font-medium mt-3">Nothing here</p>
-          <p className="text-sm text-muted-foreground mt-1">
-            No tickets in <strong>{status}</strong>.
-          </p>
-        </CardContent>
-      </Card>
+      <EmptyState
+        variant="info"
+        icon={Inbox}
+        title="Nothing here"
+        description={`No support tickets in "${status}" right now. Tickets raised by tenants and owners land here for triage.`}
+      />
     );
   }
 

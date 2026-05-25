@@ -150,8 +150,15 @@ export function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 bg-secondary/30">
-      <div className="w-full max-w-2xl">
+    <div className="min-h-screen flex items-center justify-center p-6 bg-secondary/30 relative overflow-hidden">
+      {/* One ambient gradient orb — matches the Login page so signup
+          and signin feel like the same brand surface, just with the
+          orb on the opposite side for visual variety. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -top-32 right-[-10%] size-[480px] rounded-full bg-gradient-to-br from-sky-400/20 via-teal-400/15 to-transparent blur-3xl animate-ambient-drift-slower"
+      />
+      <div className="w-full max-w-2xl relative animate-fade-in">
         <div className="flex justify-center mb-6">
           <Logo size="lg" />
         </div>

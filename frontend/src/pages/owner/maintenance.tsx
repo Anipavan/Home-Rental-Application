@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/layout/page-header";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
@@ -59,9 +60,12 @@ export function OwnerMaintenancePage() {
       );
     if (items.length === 0)
       return (
-        <Card className="p-12 text-center text-muted-foreground">
-          Nothing here.
-        </Card>
+        <EmptyState
+          variant="info"
+          icon={Wrench}
+          title="Nothing here"
+          description="No maintenance tickets in this tab. Tenants raise tickets from their app and they'll appear here for you to action."
+        />
       );
     return (
       <div className="grid gap-3 lg:grid-cols-2">

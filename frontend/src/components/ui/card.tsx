@@ -1,19 +1,34 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
-export const Card = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    className={cn(
-      "rounded-2xl border border-border/60 bg-card text-card-foreground shadow-soft",
-      className,
-    )}
-    {...props}
-  />
-));
+export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
+  /**
+   * When true, the card lifts on hover (shadow-lift + small upward
+   * translate + primary-tinted border) and shows a pointer cursor.
+   * Use for any card that's clickable or wraps a Link — gives the
+   * whole app a consistent "this is tappable" affordance without
+   * each call-site having to remember the Tailwind incantation.
+   *
+   * <p>Leave undefined / false for static cards (dashboards, info
+   * panels, form sections) where motion would be misleading.
+   */
+  interactive?: boolean;
+}
+
+export const Card = React.forwardRef<HTMLDivElement, CardProps>(
+  ({ className, interactive, ...props }, ref) => (
+    <div
+      ref={ref}
+      className={cn(
+        "rounded-2xl border border-border/60 bg-card text-card-foreground shadow-soft",
+        interactive &&
+          "cursor-pointer hover:shadow-lift hover:-translate-y-0.5 hover:border-primary/30 transition-all duration-300",
+        className,
+      )}
+      {...props}
+    />
+  ),
+);
 Card.displayName = "Card";
 
 export const CardHeader = React.forwardRef<

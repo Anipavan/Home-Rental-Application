@@ -57,11 +57,19 @@ export function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen grid lg:grid-cols-2">
-      <div className="flex flex-col p-6 sm:p-10">
+    <div className="min-h-screen grid lg:grid-cols-2 relative overflow-hidden">
+      {/* One ambient gradient orb on the form side — same vocabulary as
+          the marketing hero, dialled WAY down (single orb, smaller,
+          subtler). Greets the user with brand polish on their first
+          authenticated screen without overpowering the form. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -top-40 -left-32 size-[420px] rounded-full bg-gradient-to-br from-emerald-400/25 via-teal-400/15 to-transparent blur-3xl animate-ambient-drift-slow"
+      />
+      <div className="flex flex-col p-6 sm:p-10 relative">
         <Logo />
         <div className="flex-1 flex items-center justify-center py-12">
-          <div className="w-full max-w-md">
+          <div className="w-full max-w-md animate-fade-in">
             <h1 className="font-display text-3xl font-bold tracking-tight">
               Welcome back
             </h1>

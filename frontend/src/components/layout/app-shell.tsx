@@ -40,6 +40,7 @@ import { IdleTimer } from "@/components/auth/idle-timer";
 import { NotificationBell } from "./notification-bell";
 import { ContactSupport } from "./contact-support";
 import { GlobalSearch } from "./global-search";
+import { PageEnter } from "@/components/ui/page-enter";
 import { useAuthStore } from "@/stores/auth-store";
 import { authApi } from "@/lib/api/auth";
 import { usersApi } from "@/lib/api/users";
@@ -292,7 +293,13 @@ export function AppShell() {
         </header>
 
         <main className="flex-1 px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
-          <Outlet />
+          {/* One-time fade + slide-up per route change. Productivity
+              surfaces need to feel fast, so this is deliberately the
+              LIGHT motion (0.4s ease-out / 8px travel) — not the
+              full reveal-up vocabulary the marketing pages use. */}
+          <PageEnter>
+            <Outlet />
+          </PageEnter>
         </main>
 
         <nav className="lg:hidden border-t border-border/60 bg-background/95 backdrop-blur sticky bottom-0 z-30">

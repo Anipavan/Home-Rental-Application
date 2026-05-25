@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Banknote, Download, FileText, Loader2, Receipt, Wallet } from "lucide-react";
+import { Banknote, CheckCircle2, Download, FileText, Inbox, Loader2, Receipt, Wallet } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { paymentsApi } from "@/lib/api/payments";
 import { extractErrorMessage } from "@/lib/api/client";
@@ -11,6 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/layout/page-header";
 import { formatINR, formatDate } from "@/lib/utils";
 import type { PaymentResponse, PaymentStatus } from "@/types/api";
@@ -60,14 +61,15 @@ export function PaymentsListPage() {
         <h2 className="font-display font-semibold text-lg mb-3">Due now</h2>
         {q.isLoading && <Skeleton className="h-32 rounded-2xl" />}
         {!q.isLoading && dueNow.length === 0 && (
-          <Card className="p-10 text-center bg-success/5 border-success/20">
-            <p className="font-display font-semibold text-lg">
-              You're all paid up.
-            </p>
-            <p className="text-muted-foreground text-sm mt-1">
-              Your next bill will appear here when it's generated.
-            </p>
-          </Card>
+          // "Success" variant — green wash with the brand gradient.
+          // Being all-paid-up is GOOD news; the gradient reinforces
+          // that rather than reading as a sad / blank state.
+          <EmptyState
+            variant="success"
+            icon={CheckCircle2}
+            title="You're all paid up."
+            description="Your next bill will appear here when it's generated. Until then, enjoy the home."
+          />
         )}
         <div className="space-y-3">
           {dueNow.map((p) => (
@@ -90,9 +92,13 @@ export function PaymentsListPage() {
               </div>
             ))}
           {!q.isLoading && history.length === 0 && (
-            <div className="p-10 text-center text-muted-foreground">
-              No past payments yet.
-            </div>
+            <EmptyState
+              variant="info"
+              icon={Inbox}
+              title="No past payments yet."
+              description="Receipts and invoices appear here after your first rent payment goes through."
+              className="border-0 shadow-none rounded-none"
+            />
           )}
           {history.map((p) => (
             <HistoryRow key={p.id} payment={p} />
