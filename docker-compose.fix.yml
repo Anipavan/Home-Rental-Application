@@ -42,7 +42,52 @@ x-prod-env: &prod-env
   SPRING_JPA_HIBERNATE_DDL_AUTO: update
 
 services:
+  # ─────────────────────────────────────────────────────────────────
+  # Kafka + Zookeeper memory hardening (2026-05-25)
+  #
+  # Why: hra-kafka was OOM-killed (exit 137) on 2026-05-25 while the
+  # 2 GB droplet was running 12+ JVMs. The kernel picks the largest
+  # idle allocator first — Kafka, with its default 1 GB heap + ~500 MB
+  # off-heap, was the obvious target. The kill froze every service
+  # that publishes Kafka events (auth-service login goes through the
+  # outbox), tripped the gateway's circuit breaker, and surfaced as
+  # "Service Unavailable" on every browser login attempt.
+  #
+  # Fix:
+  #   1. Cap the JVM heap so Kafka can't grow into a kill target.
+  #      256m..512m is plenty for the event volume on this deployment
+  #      (a few rent / lease / KYC events per minute at peak).
+  #   2. mem_limit pins Docker's cgroup ceiling slightly above the
+  #      heap so the JVM gets a clean OOM inside the container
+  #      (Docker auto-restart) instead of the kernel killing it
+  #      (slow recovery, breaks circuit breakers).
+  #   3. restart: unless-stopped means even a worst-case OOM
+  #      recovers in seconds without manual intervention.
+  #
+  # Zookeeper is much smaller but capped on the same principle — if
+  # it dies, Kafka can't elect controllers and the whole event bus
+  # silently locks up. Same restart policy as a belt-and-braces.
+  # ─────────────────────────────────────────────────────────────────
+  zookeeper:
+    environment:
+      # cp-zookeeper image reads KAFKA_HEAP_OPTS for its JVM.
+      KAFKA_HEAP_OPTS: "-Xms128m -Xmx256m"
+    mem_limit: 384m
+    mem_reservation: 192m
+    restart: unless-stopped
+
+  kafka:
+    environment:
+      KAFKA_HEAP_OPTS: "-Xms256m -Xmx512m"
+    mem_limit: 768m
+    mem_reservation: 384m
+    restart: unless-stopped
+
+  # Auth-service is the choke point for every UI request — losing it
+  # bricks login site-wide. Auto-restart so a one-off OOM or transient
+  # crash self-heals before the operator notices.
   auth-service:
+    restart: unless-stopped
     environment:
       <<: *prod-env
   user-service:
