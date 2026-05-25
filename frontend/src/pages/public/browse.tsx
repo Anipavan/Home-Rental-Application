@@ -318,72 +318,55 @@ export function BrowsePage() {
     setUserCoords({ lat: latitude, lng: longitude });
 
     // ────────── Phase 2: reverse-geocode to a city name ──────────
-    // Best-effort: when the third-party API fails we just tell the
-    // user "got your location but couldn't name the city" and let
-    // them switch to map view manually.
+    // Two-vendor fallback chain — BigDataCloud first (more generous
+    // free tier, faster from India), then OpenStreetMap Nominatim
+    // (different infra, different CDN, so a single outage on either
+    // side doesn't break "Use my location" entirely). Both APIs
+    // are free + key-less + CORS-enabled.
+    let detectedCity = "";
     try {
-      const url = new URL(
-        "https://api.bigdatacloud.net/data/reverse-geocode-client",
-      );
-      url.searchParams.set("latitude", String(latitude));
-      url.searchParams.set("longitude", String(longitude));
-      url.searchParams.set("localityLanguage", "en");
-      const resp = await fetch(url.toString());
-      if (!resp.ok) {
-        throw new Error(`Reverse geocode failed (HTTP ${resp.status})`);
-      }
-      const body = (await resp.json()) as {
-        city?: string;
-        locality?: string;
-        principalSubdivision?: string;
-      };
-      const detectedCity =
-        body.city ?? body.locality ?? body.principalSubdivision ?? "";
-      if (!detectedCity) {
-        // Got an HTTP 200 with no recognisable city field — surfaces
-        // the same UX as a hard failure but keeps the coords cached
-        // so the map view still works.
-        toast({
-          title: "Got your location",
-          description:
-            "Couldn't resolve your city — try the map view to see homes near you.",
-        });
-        return;
-      }
-      setGeoCity(detectedCity);
-
-      // Try to find a catalog city that matches case-insensitively.
-      // If no exact match (e.g. user is in a town we don't list yet),
-      // we still populate geoCity so the banner shows "Looking in
-      // <city> — no homes there yet" and the rest of the catalog
-      // stays visible.
-      const matched = cities.find(
-        (c) => c.toLowerCase() === detectedCity.toLowerCase(),
-      );
-      if (matched) {
-        setFilters((f) => ({ ...f, city: matched }));
-        toast({
-          title: `Showing homes in ${matched}`,
-          description: "Filter applied based on your current location.",
-        });
-      } else {
-        toast({
-          title: `You're in ${detectedCity}`,
-          description: `We don't have listings there yet — try the map view to see what's near you.`,
-        });
-      }
+      detectedCity = await reverseGeocode(latitude, longitude);
     } catch (geocodeErr) {
-      // Reverse-geocoding failed but we DO have coordinates — the
-      // map view will still work, we just can't auto-filter by city.
-      console.warn("Reverse geocode failed:", geocodeErr);
+      console.warn("Reverse geocode failed on all providers:", geocodeErr);
       toast({
         title: "Got your location",
         description:
-          "City lookup service is unavailable right now — switch to map view to see homes near you.",
+          "City lookup is taking a moment — switch to map view to see homes near you, or pick a city from the dropdown.",
       });
-    } finally {
       setLocating(false);
+      return;
     }
+
+    if (!detectedCity) {
+      toast({
+        title: "Got your location",
+        description:
+          "Couldn't resolve your city — try the map view to see homes near you.",
+      });
+      setLocating(false);
+      return;
+    }
+
+    setGeoCity(detectedCity);
+
+    // Alias-aware match against the catalog. Both sides go through
+    // sameCity() so a detected "Bangalore" lights up a "Bengaluru"
+    // entry in the dropdown (and any of the other Indian renames
+    // covered by CITY_ALIAS_GROUPS in lib/utils.ts).
+    const matched = cities.find((c) => sameCity(c, detectedCity));
+    if (matched) {
+      setFilters((f) => ({ ...f, city: matched }));
+      toast({
+        title: `Showing homes in ${matched}`,
+        description: "Filter applied based on your current location.",
+      });
+    } else {
+      toast({
+        title: `You're in ${detectedCity}`,
+        description: `We don't have listings there yet — try the map view to see what's near you.`,
+      });
+    }
+    setLocating(false);
   }
 
   return (
@@ -880,6 +863,126 @@ function parseNumber(s: string): number | null {
   if (s.trim() === "") return null;
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Resolve a {lat, lng} pair to a city name by trying multiple reverse-
+ * geocoding providers in sequence. Each provider is given a 6-second
+ * budget; the first one to return a usable city wins.
+ *
+ * <p>Why a chain: any single free vendor (no API key, no SLA) can be
+ * down, rate-limited, or returning empty payloads on any given minute
+ * — the old code path called only BigDataCloud and surfaced "City
+ * lookup service is unavailable" the moment that one endpoint
+ * stuttered. A two-vendor chain (BigDataCloud + OSM Nominatim) lives
+ * on completely different infrastructure, so a real outage on both
+ * at the same instant is vanishingly rare.
+ *
+ * <p>Returns an empty string when both providers succeeded HTTP-wise
+ * but neither could resolve the coordinates to a city (e.g. the user
+ * is in international waters, or on a mountain with no nearby settlement).
+ * Throws only when EVERY provider failed with a network/HTTP error —
+ * so the caller can show a different message for "outage" vs "we got
+ * a response but it had no city".
+ */
+async function reverseGeocode(lat: number, lng: number): Promise<string> {
+  const providers: Array<() => Promise<string>> = [
+    () => bigDataCloudReverseGeocode(lat, lng),
+    () => nominatimReverseGeocode(lat, lng),
+  ];
+  let lastErr: unknown = null;
+  for (const provider of providers) {
+    try {
+      const city = await provider();
+      // Empty string is a SUCCESSFUL response (no city at this coord).
+      // Surface to the caller so the UI shows the right message instead
+      // of unnecessarily falling through to the next provider.
+      if (city !== undefined && city !== null) return city;
+    } catch (err) {
+      // Network error / HTTP 4xx-5xx — try the next provider.
+      lastErr = err;
+      console.warn("Reverse geocode provider failed, trying next:", err);
+    }
+  }
+  throw lastErr ?? new Error("All reverse-geocode providers failed");
+}
+
+/** Helper that wraps fetch with an AbortController-driven timeout. */
+async function fetchWithTimeout(
+  url: string,
+  ms: number,
+  init?: RequestInit,
+): Promise<Response> {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+async function bigDataCloudReverseGeocode(
+  lat: number,
+  lng: number,
+): Promise<string> {
+  const url = new URL(
+    "https://api.bigdatacloud.net/data/reverse-geocode-client",
+  );
+  url.searchParams.set("latitude", String(lat));
+  url.searchParams.set("longitude", String(lng));
+  url.searchParams.set("localityLanguage", "en");
+  const resp = await fetchWithTimeout(url.toString(), 6000);
+  if (!resp.ok) throw new Error(`BigDataCloud HTTP ${resp.status}`);
+  const body = (await resp.json()) as {
+    city?: string;
+    locality?: string;
+    principalSubdivision?: string;
+  };
+  return (body.city || body.locality || body.principalSubdivision || "").trim();
+}
+
+async function nominatimReverseGeocode(
+  lat: number,
+  lng: number,
+): Promise<string> {
+  // OSM Nominatim is the canonical free reverse-geocoder. Their usage
+  // policy asks for a custom User-Agent / Referer header to identify
+  // the app — browsers won't let us set User-Agent from JS, but a
+  // descriptive Referer is sent automatically. Rate limit: 1 req/sec
+  // per IP, well within "Use my location" click rates.
+  const url = new URL("https://nominatim.openstreetmap.org/reverse");
+  url.searchParams.set("lat", String(lat));
+  url.searchParams.set("lon", String(lng));
+  url.searchParams.set("format", "jsonv2");
+  url.searchParams.set("accept-language", "en");
+  url.searchParams.set("zoom", "10"); // city-level resolution
+  const resp = await fetchWithTimeout(url.toString(), 6000, {
+    headers: { Accept: "application/json" },
+  });
+  if (!resp.ok) throw new Error(`Nominatim HTTP ${resp.status}`);
+  const body = (await resp.json()) as {
+    address?: {
+      city?: string;
+      town?: string;
+      village?: string;
+      municipality?: string;
+      state_district?: string;
+      county?: string;
+      state?: string;
+    };
+  };
+  const a = body.address ?? {};
+  return (
+    a.city ||
+    a.town ||
+    a.municipality ||
+    a.village ||
+    a.state_district ||
+    a.county ||
+    a.state ||
+    ""
+  ).trim();
 }
 
 /**
