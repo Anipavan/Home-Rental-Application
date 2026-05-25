@@ -1,4 +1,3 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -18,8 +17,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Reveal } from "@/components/ui/reveal";
 import { propertiesApi } from "@/lib/api/properties";
-import { cn } from "@/lib/utils";
 
 /* ────────────────────────────────────────────────────────────────────
  * About — the brand page.
@@ -459,81 +458,6 @@ function ClosingCTA() {
 }
 
 /* ─────────────────────────── helpers ─────────────────────────── */
-
-/**
- * Wraps children in a div that fades + slides up when it crosses the
- * viewport. Uses IntersectionObserver under the hood so it's cheap
- * (no scroll listeners). Only fires once — once a section has been
- * revealed, scrolling back up doesn't re-trigger.
- *
- * <p>An optional `delay` (in ms) staggers grids — applying the same
- * reveal animation with a small offset on each card gives the page
- * a controlled cascade rather than a single flash.
- *
- * <p>Respects `prefers-reduced-motion`: when the user has opted out
- * of motion at the OS level we just render the content fully visible
- * from the start.
- */
-function Reveal({
-  children,
-  delay = 0,
-}: {
-  children: ReactNode;
-  delay?: number;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [revealed, setRevealed] = useState(false);
-  const [reducedMotion, setReducedMotion] = useState(false);
-
-  useEffect(() => {
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setReducedMotion(mq.matches);
-    const onChange = () => setReducedMotion(mq.matches);
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, []);
-
-  useEffect(() => {
-    if (reducedMotion) {
-      setRevealed(true);
-      return;
-    }
-    const el = ref.current;
-    if (!el) return;
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            setRevealed(true);
-            io.disconnect();
-            break;
-          }
-        }
-      },
-      { threshold: 0.15, rootMargin: "0px 0px -10% 0px" },
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, [reducedMotion]);
-
-  return (
-    <div
-      ref={ref}
-      style={{ animationDelay: revealed ? `${delay}ms` : undefined }}
-      className={cn(
-        // Pre-reveal: invisible + nudged down. The `reveal-up`
-        // animation handles getting back to opacity:1 / translateY:0.
-        // Without this initial state the element would flash in
-        // fully-visible during the brief window before IntersectionObserver
-        // fires.
-        !revealed && !reducedMotion && "opacity-0 translate-y-7",
-        revealed && !reducedMotion && "animate-reveal-up",
-      )}
-    >
-      {children}
-    </div>
-  );
-}
 
 /**
  * Same count formatter the landing page uses — kept inline so the

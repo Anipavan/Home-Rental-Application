@@ -80,7 +80,13 @@ import type { BuildingResponseDTO, FlatResponseDTO } from "@/types/api";
  * with these filters pushed down.
  */
 
-type SortKey = "recent" | "priceLow" | "priceHigh" | "areaHigh" | "bedsHigh";
+type SortKey =
+  | "recent"
+  | "nearest"
+  | "priceLow"
+  | "priceHigh"
+  | "areaHigh"
+  | "bedsHigh";
 
 /**
  * Canonical amenity keywords used by the multi-select chip filter.
@@ -210,8 +216,8 @@ export function BrowsePage() {
   }, [data]);
 
   const filtered = useMemo(
-    () => applyFilters(data?.content ?? [], q, filters, buildingsById),
-    [data, q, filters, buildingsById],
+    () => applyFilters(data?.content ?? [], q, filters, buildingsById, userCoords),
+    [data, q, filters, buildingsById, userCoords],
   );
 
   const activeChips = describeActiveFilters(filters, q);
@@ -317,6 +323,15 @@ export function BrowsePage() {
     // when BigDataCloud is rate-limited / unreachable.
     setUserCoords({ lat: latitude, lng: longitude });
 
+    // Auto-switch the sort to "Nearest to me" the moment we have
+    // coords. The list view becomes proximity-ordered immediately;
+    // the user can still pick a different sort from the dropdown,
+    // and we don't override an explicit choice they may have set
+    // BEFORE clicking "Use my location" (price/area/recent etc).
+    // Only override the default ("recent") so we don't surprise
+    // someone mid-shopping.
+    setFilters((f) => (f.sort === "recent" ? { ...f, sort: "nearest" } : f));
+
     // ────────── Phase 2: reverse-geocode to a city name ──────────
     // Two-vendor fallback chain — BigDataCloud first (more generous
     // free tier, faster from India), then OpenStreetMap Nominatim
@@ -327,21 +342,28 @@ export function BrowsePage() {
     try {
       detectedCity = await reverseGeocode(latitude, longitude);
     } catch (geocodeErr) {
+      // Both reverse-geocoders failed. We still have the user's
+      // coords, the nearest-first sort is already applied (auto-set
+      // when setUserCoords succeeded above), so the list is already
+      // proximity-sorted. Frame it as a success rather than an error.
       console.warn("Reverse geocode failed on all providers:", geocodeErr);
       toast({
-        title: "Got your location",
+        title: "Showing what's nearest to you",
         description:
-          "City lookup is taking a moment — switch to map view to see homes near you, or pick a city from the dropdown.",
+          "City lookup is having a moment, but we've sorted the list by distance from where you are.",
       });
       setLocating(false);
       return;
     }
 
     if (!detectedCity) {
+      // No city name but we still have coords — the nearest-first
+      // sort already kicked in via the setFilters above, so the list
+      // is sorted by proximity. Just tell the user that's what we did.
       toast({
-        title: "Got your location",
+        title: "Showing what's nearest to you",
         description:
-          "Couldn't resolve your city — try the map view to see homes near you.",
+          "We couldn't name your city, but the list below is sorted by distance.",
       });
       setLocating(false);
       return;
@@ -358,12 +380,18 @@ export function BrowsePage() {
       setFilters((f) => ({ ...f, city: matched }));
       toast({
         title: `Showing homes in ${matched}`,
-        description: "Filter applied based on your current location.",
+        description: "Nearest to you first — change the sort to override.",
       });
     } else {
+      // City name resolved but we don't have any listings there yet.
+      // The nearest-first sort still ran (any flats anywhere in
+      // India get distance-ordered), so the user sees the closest
+      // listings regardless of catalog gaps. Friendly framing —
+      // "here's what's nearest" beats "we have nothing there".
       toast({
         title: `You're in ${detectedCity}`,
-        description: `We don't have listings there yet — try the map view to see what's near you.`,
+        description:
+          "We don't have listings there yet — showing the homes nearest to you instead.",
       });
     }
     setLocating(false);
@@ -445,6 +473,9 @@ export function BrowsePage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="recent">Most recent</SelectItem>
+              <SelectItem value="nearest" disabled={!userCoords}>
+                Nearest to me{!userCoords && " (use location)"}
+              </SelectItem>
               <SelectItem value="priceLow">Price: low to high</SelectItem>
               <SelectItem value="priceHigh">Price: high to low</SelectItem>
               <SelectItem value="areaHigh">Largest area first</SelectItem>
@@ -695,6 +726,14 @@ function applyFilters(
   q: string,
   f: Filters,
   buildingsById: Record<string, BuildingResponseDTO>,
+  /**
+   * User coordinates from the geolocation flow. When present AND the
+   * sort is "nearest" we compute haversine distance against each
+   * flat's parent-building pin and sort ascending. Null when the user
+   * hasn't clicked "Use my location" yet — the sort dropdown still
+   * works, the "nearest" option just behaves like "recent".
+   */
+  userCoords: { lat: number; lng: number } | null,
 ): FlatResponseDTO[] {
   let list = rows;
 
@@ -851,12 +890,65 @@ function applyFilters(
         (a, b) => (b.bedrooms ?? 0) - (a.bedrooms ?? 0),
       );
       break;
+    case "nearest":
+      // Sort by haversine distance from the user's coords to each
+      // flat's parent-building pin. Flats whose building has no
+      // (lat, lng) get +Infinity so they sink to the bottom — they
+      // still render, they just can't compete on proximity.
+      // Falls back to "recent" ordering (which the backend already
+      // gives us) when userCoords is null, so picking this sort
+      // before clicking "Use my location" doesn't blank the list.
+      if (userCoords) {
+        const distanceOf = (flat: FlatResponseDTO): number => {
+          const b = buildingsById[flat.buildingId];
+          if (
+            b == null ||
+            b.latitude == null ||
+            b.longitude == null
+          ) {
+            return Number.POSITIVE_INFINITY;
+          }
+          return haversineKm(
+            userCoords.lat,
+            userCoords.lng,
+            b.latitude,
+            b.longitude,
+          );
+        };
+        list = [...list].sort((a, b) => distanceOf(a) - distanceOf(b));
+      }
+      break;
     case "recent":
     default:
       // Backend already returns rows newest-first.
       break;
   }
   return list;
+}
+
+/**
+ * Haversine distance between two (lat, lng) pairs in kilometres.
+ * Used by the "Nearest first" sort. The formula models the earth as a
+ * sphere of radius 6371 km — accurate to within ~0.3% for any pair of
+ * points within ~1000 km, which more than covers an Indian intra-city
+ * "homes near me" query.
+ */
+function haversineKm(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number,
+): number {
+  const R = 6371; // Earth radius in km
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
 }
 
 function parseNumber(s: string): number | null {

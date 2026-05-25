@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Reveal } from "@/components/ui/reveal";
 import { propertiesApi } from "@/lib/api/properties";
 
 const cities = ["Bengaluru", "Mumbai", "Delhi NCR", "Hyderabad", "Chennai", "Pune"];
@@ -162,10 +163,22 @@ export function LandingPage() {
   return (
     <>
       <section className="relative overflow-hidden">
+        {/* Two slow-drifting ambient gradient orbs, same vocabulary as
+            the About hero so the brand surfaces feel unified. They sit
+            behind every other layer via `pointer-events-none` so they
+            never intercept the search-card or chip clicks below. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -top-32 -left-24 size-[480px] rounded-full bg-gradient-to-br from-emerald-400/30 via-teal-400/20 to-transparent blur-3xl animate-ambient-drift-slow"
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -top-10 right-[-10%] size-[560px] rounded-full bg-gradient-to-br from-sky-400/25 via-teal-300/15 to-transparent blur-3xl animate-ambient-drift-slower"
+        />
         <div className="absolute inset-0 bg-hero-radial" />
         <div className="absolute inset-0 bg-grid-light bg-[size:32px_32px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_70%)]" />
         <div className="container relative pt-16 lg:pt-24 pb-16">
-          <div className="max-w-3xl mx-auto text-center">
+          <div className="max-w-3xl mx-auto text-center animate-fade-in">
             <Badge className="mb-5">
               <Sparkles className="size-3" /> New · Pay rent with PhonePe in one tap
             </Badge>
@@ -248,49 +261,53 @@ export function LandingPage() {
 
       <section className="border-y border-border/60 bg-background">
         <div className="container py-10 grid grid-cols-2 md:grid-cols-4 gap-6">
-          {liveStats.map((s) => (
-            <div key={s.l} className="text-center">
-              <div className="font-display text-2xl sm:text-3xl font-bold gradient-text">
-                {s.v}
+          {liveStats.map((s, i) => (
+            <Reveal key={s.l} delay={i * 70}>
+              <div className="text-center">
+                <div className="font-display text-2xl sm:text-3xl font-bold gradient-text">
+                  {s.v}
+                </div>
+                <div className="text-xs sm:text-sm text-muted-foreground mt-1">
+                  {s.l}
+                </div>
               </div>
-              <div className="text-xs sm:text-sm text-muted-foreground mt-1">
-                {s.l}
-              </div>
-            </div>
+            </Reveal>
           ))}
         </div>
       </section>
 
       <section className="container py-16 lg:py-24">
-        <div className="max-w-2xl">
-          <h2 className="font-display text-3xl lg:text-4xl font-bold tracking-tight">
-            Renting, the way it should feel.
-          </h2>
-          <p className="mt-3 text-muted-foreground">
-            Every rental ritual — search, sign, pay, fix — designed for the
-            phone in your pocket.
-          </p>
-        </div>
+        <Reveal>
+          <div className="max-w-2xl">
+            <h2 className="font-display text-3xl lg:text-4xl font-bold tracking-tight">
+              Renting, the way it should feel.
+            </h2>
+            <p className="mt-3 text-muted-foreground">
+              Every rental ritual — search, sign, pay, fix — designed for the
+              phone in your pocket.
+            </p>
+          </div>
+        </Reveal>
         <div className="mt-10 grid gap-5 md:grid-cols-2 lg:grid-cols-4">
-          {features.map((f) => (
-            <Card
-              key={f.title}
-              className="p-6 hover:shadow-lift transition-shadow group"
-            >
-              <div className="size-11 rounded-xl bg-primary/10 text-primary grid place-items-center mb-4 group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
-                <f.icon className="size-5" />
-              </div>
-              <h3 className="font-display font-semibold">{f.title}</h3>
-              <p className="text-sm text-muted-foreground mt-1.5">{f.desc}</p>
-            </Card>
+          {features.map((f, i) => (
+            <Reveal key={f.title} delay={i * 90}>
+              <Card className="p-6 hover:shadow-lift hover:-translate-y-0.5 transition-all duration-300 group h-full">
+                <div className="size-11 rounded-xl bg-primary/10 text-primary grid place-items-center mb-4 group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                  <f.icon className="size-5" />
+                </div>
+                <h3 className="font-display font-semibold">{f.title}</h3>
+                <p className="text-sm text-muted-foreground mt-1.5">{f.desc}</p>
+              </Card>
+            </Reveal>
           ))}
         </div>
       </section>
 
       <section className="bg-secondary/30 border-y border-border/60">
         <div className="container py-16 lg:py-20 grid gap-10 lg:grid-cols-2 items-center">
-          <div>
-            <Badge variant="secondary">For Owners</Badge>
+          <Reveal>
+            <div>
+              <Badge variant="secondary">For Owners</Badge>
             <h2 className="mt-4 font-display text-3xl lg:text-4xl font-bold">
               Less paperwork. More peace.
             </h2>
@@ -331,79 +348,95 @@ export function LandingPage() {
                 </Link>
               </Button>
             </div>
-          </div>
-          <div className="relative">
-            <div className="absolute -inset-4 bg-gradient-to-br from-primary/30 to-rose-400/20 blur-3xl rounded-3xl -z-10" />
-            <div className="rounded-3xl overflow-hidden shadow-lift border border-border/60">
-              <img
-                src="https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=1200&q=80"
-                alt="Owner dashboard"
-                className="w-full h-full object-cover"
-              />
             </div>
-          </div>
+          </Reveal>
+          <Reveal delay={150}>
+            <div className="relative">
+              <div className="absolute -inset-4 bg-gradient-to-br from-primary/30 to-rose-400/20 blur-3xl rounded-3xl -z-10" />
+              <div className="rounded-3xl overflow-hidden shadow-lift border border-border/60">
+                <img
+                  src="https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=1200&q=80"
+                  alt="Owner dashboard"
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            </div>
+          </Reveal>
         </div>
       </section>
 
       <section className="container py-16 lg:py-24">
-        <div className="text-center max-w-2xl mx-auto">
-          <h2 className="font-display text-3xl lg:text-4xl font-bold">
-            Loved by 12,000+ renters.
-          </h2>
-          <p className="mt-3 text-muted-foreground">
-            Real reviews from real homes.
-          </p>
-        </div>
+        <Reveal>
+          <div className="text-center max-w-2xl mx-auto">
+            <h2 className="font-display text-3xl lg:text-4xl font-bold">
+              Loved by 12,000+ renters.
+            </h2>
+            <p className="mt-3 text-muted-foreground">
+              Real reviews from real homes.
+            </p>
+          </div>
+        </Reveal>
         <div className="mt-10 grid gap-5 md:grid-cols-3">
-          {testimonials.map((t) => (
-            <Card key={t.name} className="p-6">
-              <div className="flex gap-0.5 text-amber-500 mb-3">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <Star key={i} className="size-4 fill-current" />
-                ))}
-              </div>
-              <p className="text-sm leading-relaxed">"{t.quote}"</p>
-              <div className="mt-5 pt-4 border-t border-border/60">
-                <p className="text-sm font-semibold">{t.name}</p>
-                <p className="text-xs text-muted-foreground">{t.role}</p>
-              </div>
-            </Card>
+          {testimonials.map((t, i) => (
+            <Reveal key={t.name} delay={i * 100}>
+              <Card className="p-6 hover:shadow-lift hover:-translate-y-0.5 transition-all duration-300 h-full">
+                <div className="flex gap-0.5 text-amber-500 mb-3">
+                  {Array.from({ length: 5 }).map((_, idx) => (
+                    <Star key={idx} className="size-4 fill-current" />
+                  ))}
+                </div>
+                <p className="text-sm leading-relaxed">"{t.quote}"</p>
+                <div className="mt-5 pt-4 border-t border-border/60">
+                  <p className="text-sm font-semibold">{t.name}</p>
+                  <p className="text-xs text-muted-foreground">{t.role}</p>
+                </div>
+              </Card>
+            </Reveal>
           ))}
         </div>
       </section>
 
       <section className="container pb-20">
-        <div className="rounded-3xl gradient-brand text-white px-6 py-12 sm:px-12 sm:py-16 text-center shadow-lift relative overflow-hidden">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.18),transparent_50%)]" />
-          <div className="relative">
-            <h2 className="font-display text-3xl lg:text-4xl font-bold">
-              Move in, in 3 days.
-            </h2>
-            <p className="mt-3 text-white/85 max-w-xl mx-auto">
-              Sign up, browse verified homes, sign your agreement, pay rent —
-              all in one place.
-            </p>
-            <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
-              <Button
-                asChild
-                size="lg"
-                className="bg-white text-foreground hover:bg-white/90"
-              >
-                <Link to="/register">Create your account</Link>
-              </Button>
-              <Button
-                asChild
-                size="lg"
-                variant="ghost"
-                className="text-white hover:bg-white/15"
-              >
-                <Link to="/browse">
-                  Browse homes <ArrowRight />
-                </Link>
-              </Button>
+        <Reveal>
+          <div className="rounded-3xl gradient-brand text-white px-6 py-12 sm:px-12 sm:py-16 text-center shadow-lift relative overflow-hidden">
+            {/* Match the About CTA's "book-ending" — one more slow
+                ambient blob inside the gradient panel, keeping the
+                motion vocabulary consistent across landing & about. */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute -top-20 -right-20 size-80 rounded-full bg-white/15 blur-3xl animate-ambient-drift-slower"
+            />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.18),transparent_50%)]" />
+            <div className="relative">
+              <h2 className="font-display text-3xl lg:text-4xl font-bold">
+                Move in, in 3 days.
+              </h2>
+              <p className="mt-3 text-white/85 max-w-xl mx-auto">
+                Sign up, browse verified homes, sign your agreement, pay rent —
+                all in one place.
+              </p>
+              <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
+                <Button
+                  asChild
+                  size="lg"
+                  className="bg-white text-foreground hover:bg-white/90"
+                >
+                  <Link to="/register">Create your account</Link>
+                </Button>
+                <Button
+                  asChild
+                  size="lg"
+                  variant="ghost"
+                  className="text-white hover:bg-white/15"
+                >
+                  <Link to="/browse">
+                    Browse homes <ArrowRight />
+                  </Link>
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
+        </Reveal>
       </section>
     </>
   );
