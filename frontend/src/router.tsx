@@ -12,6 +12,7 @@ import {
 import { LandingPage } from "@/pages/public/landing";
 import { BrowsePage } from "@/pages/public/browse";
 import { PropertyDetailPage } from "@/pages/public/property-detail";
+import { AboutPage } from "@/pages/public/about";
 import { LoginPage } from "@/pages/public/login";
 import { RegisterPage } from "@/pages/public/register";
 import { ForgotPasswordPage } from "@/pages/public/forgot-password";
@@ -72,7 +73,7 @@ export const router = createBrowserRouter([
       { path: "/", element: <LandingPage /> },
       { path: "/browse", element: <BrowsePage /> },
       { path: "/property/:id", element: <PropertyDetailPage /> },
-      { path: "/about", element: <AboutStub /> },
+      { path: "/about", element: <AboutPage /> },
       { path: "/list-property", element: <Navigate to="/register" replace /> },
     ],
   },
@@ -257,15 +258,3 @@ export const router = createBrowserRouter([
   { path: "*", element: <NotFoundPage /> },
 ]);
 
-function AboutStub() {
-  return (
-    <div className="container py-16 max-w-2xl">
-      <h1 className="font-display text-3xl font-bold">About Anirudh Homes</h1>
-      <p className="text-muted-foreground mt-3">
-        Anirudh Homes is a calm, modern rental platform — verified homes,
-        instant payments, and real humans on support. Built in India, for
-        India.
-      </p>
-    </div>
-  );
-}

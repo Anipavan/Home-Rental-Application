@@ -111,6 +111,20 @@ export default {
           from: { opacity: "0", transform: "translateY(8px)" },
           to: { opacity: "1", transform: "translateY(0)" },
         },
+        // About-page scroll reveal — larger travel + slower easing
+        // than fade-in so a section feels intentional (not jumpy)
+        // when it crosses the viewport.
+        "reveal-up": {
+          from: { opacity: "0", transform: "translateY(28px)" },
+          to: { opacity: "1", transform: "translateY(0)" },
+        },
+        // Slow, subtle drift for the ambient gradient orbs in the
+        // About-page hero. Translate / scale only — no rotation or
+        // opacity churn so it stays unobtrusive on long sessions.
+        "ambient-drift": {
+          "0%, 100%": { transform: "translate3d(0, 0, 0) scale(1)" },
+          "50%": { transform: "translate3d(0, -18px, 0) scale(1.04)" },
+        },
         shimmer: {
           "0%": { backgroundPosition: "-1000px 0" },
           "100%": { backgroundPosition: "1000px 0" },
@@ -118,6 +132,11 @@ export default {
       },
       animation: {
         "fade-in": "fade-in 0.4s ease-out both",
+        "reveal-up": "reveal-up 0.8s cubic-bezier(0.22, 1, 0.36, 1) both",
+        "ambient-drift-slow":
+          "ambient-drift 14s ease-in-out infinite",
+        "ambient-drift-slower":
+          "ambient-drift 22s ease-in-out infinite",
         shimmer: "shimmer 2s linear infinite",
       },
     },
