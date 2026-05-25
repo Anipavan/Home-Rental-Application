@@ -1,7 +1,7 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Banknote, Download, FileText, Loader2, QrCode, Receipt } from "lucide-react";
-import { UpiPayDialog } from "@/components/tenant/upi-pay-dialog";
+import { Banknote, Download, FileText, Loader2, Receipt, Wallet } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { paymentsApi } from "@/lib/api/payments";
 import { extractErrorMessage } from "@/lib/api/client";
@@ -120,7 +120,6 @@ function DueCard({
   // payment is the only state where an invoice is downloadable.
   const isPaid = payment.status === "PAID";
   const [downloadingInvoice, setDownloadingInvoice] = useState(false);
-  const [upiOpen, setUpiOpen] = useState(false);
 
   async function handleInvoiceDownload() {
     setDownloadingInvoice(true);
@@ -177,25 +176,19 @@ function DueCard({
             )}
             Invoice
           </Button>
-          {/* Pay-via-UPI is the primary, India-realistic path: tenant
-              scans owner's QR, money goes direct to owner's bank,
-              owner marks as received. The gradient "Pay" button
-              below still routes to the Razorpay flow for users who'd
-              rather have the platform mediate via card / netbanking. */}
-          <Button
-            variant="gradient"
-            size="lg"
-            onClick={() => setUpiOpen(true)}
-          >
-            <QrCode /> Pay {formatINR(payment.totalAmount ?? payment.amount)}
+          {/* Route to the rich checkout page (`/app/payments/:id/pay`)
+              instead of the lightweight QR + bank-fallback dialog.
+              That page renders the UPI app picker (PhonePe, GPay,
+              Paytm, Other UPI) plus the live-validated UpiIdField and
+              card / net-banking fallback, which is what the user
+              expects from a modern rent-collection flow. */}
+          <Button asChild variant="gradient" size="lg">
+            <Link to={`/app/payments/${payment.id}/pay`}>
+              <Wallet /> Pay {formatINR(payment.totalAmount ?? payment.amount)}
+            </Link>
           </Button>
         </div>
       </CardContent>
-      <UpiPayDialog
-        open={upiOpen}
-        onOpenChange={setUpiOpen}
-        payment={payment}
-      />
     </Card>
   );
 }
