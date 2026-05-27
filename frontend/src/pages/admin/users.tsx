@@ -14,11 +14,24 @@ import {
   TabsTrigger,
   TabsContent,
 } from "@/components/ui/tabs";
-import { formatDate, initials } from "@/lib/utils";
+import {
+  UserDetailDialog,
+  roleRowTintClass,
+} from "@/components/admin/user-detail-dialog";
+import { cn, formatDate, initials } from "@/lib/utils";
 import type { AuthUserResponse, Role } from "@/types/api";
 
 export function AdminUsersPage() {
   const [q, setQ] = useState("");
+  // Selected user → drives the detail dialog. Lifted to the page so
+  // clicking a row in any of the four tabs reuses the same dialog
+  // mount (and React Query cache key).
+  const [selected, setSelected] = useState<AuthUserResponse | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const openUser = (u: AuthUserResponse) => {
+    setSelected(u);
+    setDialogOpen(true);
+  };
 
   const tenantsQ = useQuery({
     queryKey: ["admin", "users-tenant"],
@@ -81,18 +94,24 @@ export function AdminUsersPage() {
           <TabsTrigger value="admin">Admins ({adminsQ.data?.length ?? 0})</TabsTrigger>
         </TabsList>
         <TabsContent value="all">
-          <UserTable users={filter(all)} loading={loading} />
+          <UserTable users={filter(all)} loading={loading} onOpen={openUser} />
         </TabsContent>
         <TabsContent value="tenant">
-          <UserTable users={filter(tenantsQ.data ?? [])} loading={loading} />
+          <UserTable users={filter(tenantsQ.data ?? [])} loading={loading} onOpen={openUser} />
         </TabsContent>
         <TabsContent value="owner">
-          <UserTable users={filter(ownersQ.data ?? [])} loading={loading} />
+          <UserTable users={filter(ownersQ.data ?? [])} loading={loading} onOpen={openUser} />
         </TabsContent>
         <TabsContent value="admin">
-          <UserTable users={filter(adminsQ.data ?? [])} loading={loading} />
+          <UserTable users={filter(adminsQ.data ?? [])} loading={loading} onOpen={openUser} />
         </TabsContent>
       </Tabs>
+
+      <UserDetailDialog
+        user={selected}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+      />
     </div>
   );
 }
@@ -100,9 +119,12 @@ export function AdminUsersPage() {
 function UserTable({
   users,
   loading,
+  onOpen,
 }: {
   users: AuthUserResponse[];
   loading?: boolean;
+  /** Click handler — opens the detail dialog with this user. */
+  onOpen: (u: AuthUserResponse) => void;
 }) {
   if (loading) {
     return (
@@ -130,10 +152,22 @@ function UserTable({
         <span>Status</span>
       </div>
       <div className="divide-y">
-        {users.map((u) => (
-          <div
+        {users.map((u) => {
+          const userRole = (u.role ?? (u.userRole as typeof u.role) ?? "TENANT") as Role;
+          return (
+          <button
+            type="button"
             key={u.id}
-            className="grid grid-cols-2 sm:grid-cols-[1.4fr_1.6fr_120px_120px_100px] gap-3 px-5 py-3.5 text-sm items-center"
+            onClick={() => onOpen(u)}
+            // Whole row is the click target. cursor-pointer + role-tinted
+            // hover wash makes it obvious. focus-visible:ring lets
+            // keyboard users see which row is selected before they hit
+            // Enter — important on a 14-row list where Tab through
+            // every cell is the alternative.
+            className={cn(
+              "w-full text-left grid grid-cols-2 sm:grid-cols-[1.4fr_1.6fr_120px_120px_100px] gap-3 px-5 py-3.5 text-sm items-center cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:bg-primary/5",
+              roleRowTintClass(userRole),
+            )}
           >
             <div className="flex items-center gap-3 min-w-0">
               {/* Avatar tinted by role so you can scan the table and
@@ -171,8 +205,9 @@ function UserTable({
             <Badge variant={u.isActive === false ? "secondary" : "success"}>
               {u.isActive === false ? "Disabled" : "Active"}
             </Badge>
-          </div>
-        ))}
+          </button>
+          );
+        })}
       </div>
     </Card>
   );

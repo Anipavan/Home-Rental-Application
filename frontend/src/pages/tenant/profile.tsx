@@ -469,12 +469,16 @@ export function ProfilePage() {
       {/* Bank-account section — separate card so the user can find
           "where do I put my account details" without scrolling through
           the personal-info form. Self-contained: manages its own
-          query / mutations / edit toggle. Same component renders on
-          tenant, owner, and admin profiles since all three routes
-          mount this page. Keyed on the auth-user id so the backend's
-          self-or-admin guard accepts the call. mt-6 to match the
-          gap between the preceding cards. */}
-      {authUserId && (
+          query / mutations / edit toggle.
+          <p>Hidden for ADMIN users: the bank-account row is used for
+          rent payouts (owners) and deposit / cancellation refunds
+          (tenants). Platform admins are neither party to any payment
+          and have no reason to be storing their own bank details on
+          a user-facing profile — surfacing the card would be confusing
+          at best and a needless surface for account-takeover risk at
+          worst. The component itself stays mounted at the route level
+          for tenant / owner. */}
+      {authUserId && role !== "ADMIN" && (
         <div className="mt-6">
           <BankAccountSection authUserId={authUserId} />
         </div>

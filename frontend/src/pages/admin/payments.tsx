@@ -11,11 +11,21 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/layout/page-header";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { PaymentDetailDialog } from "@/components/admin/payment-detail-dialog";
 import { formatINR, formatDate } from "@/lib/utils";
 import type { PaymentResponse, PaymentStatus } from "@/types/api";
 
 export function AdminPaymentsPage() {
   const [q, setQ] = useState("");
+  // Selected payment → drives the detail dialog. Lifted to the page so
+  // clicking a row in any of the four tabs (All / Overdue / Pending /
+  // Paid) reuses the same dialog mount + React Query cache.
+  const [selectedPayment, setSelectedPayment] = useState<PaymentResponse | null>(null);
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const openPayment = (p: PaymentResponse) => {
+    setSelectedPayment(p);
+    setPaymentDialogOpen(true);
+  };
 
   const pageQ = useQuery({
     queryKey: ["admin", "payments"],
@@ -155,18 +165,42 @@ export function AdminPaymentsPage() {
           <TabsTrigger value="paid">Paid ({paid.length})</TabsTrigger>
         </TabsList>
         <TabsContent value="all">
-          <Table loading={pageQ.isLoading} payments={filtered} tenantLookup={tenantLookup} ownerLookup={ownerLookup} flatLookup={flatLookup} />
+          <Table loading={pageQ.isLoading} payments={filtered} tenantLookup={tenantLookup} ownerLookup={ownerLookup} flatLookup={flatLookup} onOpen={openPayment} />
         </TabsContent>
         <TabsContent value="overdue">
-          <Table loading={pageQ.isLoading} payments={overdue} />
+          <Table loading={pageQ.isLoading} payments={overdue} tenantLookup={tenantLookup} ownerLookup={ownerLookup} flatLookup={flatLookup} onOpen={openPayment} />
         </TabsContent>
         <TabsContent value="pending">
-          <Table loading={pageQ.isLoading} payments={pending} />
+          <Table loading={pageQ.isLoading} payments={pending} tenantLookup={tenantLookup} ownerLookup={ownerLookup} flatLookup={flatLookup} onOpen={openPayment} />
         </TabsContent>
         <TabsContent value="paid">
-          <Table loading={pageQ.isLoading} payments={paid} />
+          <Table loading={pageQ.isLoading} payments={paid} tenantLookup={tenantLookup} ownerLookup={ownerLookup} flatLookup={flatLookup} onOpen={openPayment} />
         </TabsContent>
       </Tabs>
+
+      <PaymentDetailDialog
+        payment={selectedPayment}
+        tenantName={
+          selectedPayment
+            ? tenantLookup.get(String(selectedPayment.tenantId))
+            : undefined
+        }
+        ownerName={
+          selectedPayment
+            ? ownerLookup.get(String(selectedPayment.ownerId))
+            : undefined
+        }
+        flatLabel={(() => {
+          if (!selectedPayment) return undefined;
+          const f = flatLookup.get(String(selectedPayment.flatId));
+          if (!f) return undefined;
+          return f.buildingName
+            ? `#${f.flatNumber} · ${f.buildingName}`
+            : `#${f.flatNumber}`;
+        })()}
+        open={paymentDialogOpen}
+        onOpenChange={setPaymentDialogOpen}
+      />
     </div>
   );
 }
@@ -202,6 +236,7 @@ function Table({
   tenantLookup,
   ownerLookup,
   flatLookup,
+  onOpen,
 }: {
   loading?: boolean;
   payments: PaymentResponse[];
@@ -212,6 +247,8 @@ function Table({
   tenantLookup?: Map<string, string>;
   ownerLookup?: Map<string, string>;
   flatLookup?: Map<string, { flatNumber: string; buildingName?: string }>;
+  /** Click handler — opens the payment detail dialog with this row. */
+  onOpen?: (p: PaymentResponse) => void;
 }) {
   const tLookup = tenantLookup ?? new Map();
   const oLookup = ownerLookup ?? new Map();
@@ -245,9 +282,16 @@ function Table({
       </div>
       <div className="divide-y">
         {payments.map((p) => (
-          <div
+          // Each row is the click target — opens the payment detail
+          // dialog. Hover wash + focus ring give clear affordance for
+          // mouse and keyboard users alike. Whole-row click means
+          // admins can scan to a row and tap anywhere on it instead
+          // of hunting for a small "View" button.
+          <button
+            type="button"
             key={p.id}
-            className="grid grid-cols-2 sm:grid-cols-[100px_1.4fr_1.4fr_120px_120px_100px_100px] gap-3 px-5 py-3.5 text-sm items-center"
+            onClick={() => onOpen?.(p)}
+            className="w-full text-left grid grid-cols-2 sm:grid-cols-[100px_1.4fr_1.4fr_120px_120px_100px_100px] gap-3 px-5 py-3.5 text-sm items-center cursor-pointer transition-colors hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:bg-primary/5"
           >
             {/* Flat: prefer "#<number> · <building>" via lookup; fall
                 back to the raw flatId when the flats list hasn't
@@ -283,7 +327,7 @@ function Table({
               {p.paymentMethod?.toLowerCase().replace("_", " ") ?? "—"}
             </span>
             <StatusBadge status={p.status} />
-          </div>
+          </button>
         ))}
       </div>
     </Card>
