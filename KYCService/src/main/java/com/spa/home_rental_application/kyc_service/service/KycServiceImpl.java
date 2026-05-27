@@ -170,7 +170,10 @@ public class KycServiceImpl implements KycService {
             return kycMapper.toResponse(record);
         }
 
-        KycProvider.PanResult res = provider.verifyPan(request.panNumber(), request.panHolderName());
+        KycProvider.PanResult res = provider.verifyPan(
+                request.panNumber(),
+                request.panHolderName(),
+                request.dateOfBirth());
         record.setPanNumber(request.panNumber());
         record.setPanHolderName(res.panHolderName());
         record.setPanVerified(res.valid());

@@ -97,7 +97,11 @@ public class DigiLockerProvider implements KycProvider {
      * clean message rather than blocking the user.
      */
     @Override
-    public PanResult verifyPan(String panNumber, String panHolderName) {
+    public PanResult verifyPan(String panNumber, String panHolderName, String dateOfBirth) {
+        // DigiLocker provider intentionally doesn't expose a PAN-only
+        // endpoint — its flow is the full eAadhaar OAuth round-trip,
+        // not a single-field probe. DOB is accepted in the signature
+        // for interface compatibility but discarded here.
         log.info("DigiLocker verifyPan called — not supported by DigiLocker, returning failure");
         return new PanResult(false, panHolderName,
                 "PAN verification via DigiLocker is unsupported — use the full DigiLocker flow.");

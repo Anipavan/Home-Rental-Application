@@ -33,9 +33,15 @@ public class MockKycProvider implements KycProvider {
     }
 
     @Override
-    public PanResult verifyPan(String panNumber, String panHolderName) {
-        log.info("[MOCK-KYC] verifyPan pan=****{} name={}",
-                panNumber.substring(panNumber.length() - 2), panHolderName);
+    public PanResult verifyPan(String panNumber, String panHolderName, String dateOfBirth) {
+        // Mock provider ignores DOB — it just stamps the request VALID
+        // for any well-formed PAN. Logging the masked DOB so demos can
+        // confirm the value is being threaded through the call chain.
+        String maskedDob = dateOfBirth == null || dateOfBirth.length() < 4
+                ? "(none)"
+                : "****-**-" + dateOfBirth.substring(Math.max(0, dateOfBirth.length() - 2));
+        log.info("[MOCK-KYC] verifyPan pan=****{} name={} dob={}",
+                panNumber.substring(panNumber.length() - 2), panHolderName, maskedDob);
         return new PanResult(true, panHolderName, null);
     }
 }

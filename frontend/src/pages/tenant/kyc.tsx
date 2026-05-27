@@ -8,6 +8,7 @@ import {
 import { useState } from "react";
 import { useAuthStore } from "@/stores/auth-store";
 import { kycApi } from "@/lib/api/kyc";
+import { usersApi } from "@/lib/api/users";
 import { isKycDisabled } from "@/lib/feature-flags";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -73,6 +74,23 @@ export function KycPage() {
     retry: false,
   });
 
+  // Pull the user-service profile so we can pre-fill the PAN form with
+  // the user's name (firstName + lastName) and date of birth. Cuts the
+  // typing they'd otherwise have to do and reduces "name didn't match
+  // NSDL" failures from minor typos. Read-only — the user can still
+  // edit either field if it's wrong / outdated.
+  const profileQ = useQuery({
+    queryKey: ["me", userId],
+    queryFn: () => usersApi.byAuthId(userId!),
+    enabled: !!userId && !kycPaused,
+    staleTime: 5 * 60_000,
+    retry: (failureCount, err) => {
+      const status = (err as { response?: { status?: number } })?.response
+        ?.status;
+      return status !== 404 && failureCount < 1;
+    },
+  });
+
   /**
    * Primary KYC path — PAN verification via Sandbox.co.in.
    *
@@ -82,11 +100,14 @@ export function KycPage() {
    * UI refresh.
    */
   const verifyPanM = useMutation({
-    mutationFn: (body: { panNumber: string; panHolderName: string }) =>
+    mutationFn: (body: { panNumber: string; panHolderName: string; dateOfBirth: string }) =>
       kycApi.verifyPan({
         userId: userId!,
         panNumber: body.panNumber.toUpperCase().trim(),
         panHolderName: body.panHolderName.trim(),
+        // Backend expects ISO yyyy-MM-dd — which is exactly what
+        // the HTML <input type="date"> value already is.
+        dateOfBirth: body.dateOfBirth.trim(),
       }),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["kyc", userId] });
@@ -190,6 +211,17 @@ export function KycPage() {
               pending={verifyPanM.isPending}
               onSubmit={(b) => verifyPanM.mutate(b)}
               disabled={!userId}
+              // Pre-fill name + DOB from the user-service profile so
+              // the user doesn't have to retype what we already have.
+              // They can edit either if their PAN card has a different
+              // spelling.
+              defaultName={
+                profileQ.data
+                  ? `${profileQ.data.firstName ?? ""} ${profileQ.data.lastName ?? ""}`
+                      .trim() || undefined
+                  : undefined
+              }
+              defaultDob={profileQ.data?.dateOfBirth ?? undefined}
             />
           )}
         </CardContent>
@@ -302,13 +334,29 @@ function PanVerifyPanel({
   pending,
   onSubmit,
   disabled,
+  defaultName,
+  defaultDob,
 }: {
   accepted: boolean;
   setAccepted: (b: boolean) => void;
   pending: boolean;
-  onSubmit: (b: { panNumber: string; panHolderName: string }) => void;
+  onSubmit: (b: {
+    panNumber: string;
+    panHolderName: string;
+    dateOfBirth: string;
+  }) => void;
   disabled: boolean;
+  /** Pre-filled name from the user-service profile, if available. */
+  defaultName?: string;
+  /** Pre-filled DOB from the user-service profile, ISO yyyy-MM-dd. */
+  defaultDob?: string;
 }) {
+  // Today minus 18 years — sensible upper bound for the date input
+  // (PAN holders must be 18+ to have applied). The lower bound is
+  // intentionally permissive; NSDL itself rejects invalid DOBs upstream.
+  const maxDob = new Date(Date.now() - 18 * 365 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
   return (
     <div className="mt-6 rounded-xl border bg-gradient-to-br from-emerald-50/60 to-background p-5 dark:from-emerald-950/20">
       <div className="flex items-start gap-3">
@@ -331,6 +379,7 @@ function PanVerifyPanel({
               onSubmit({
                 panNumber: String(fd.get("panNumber") ?? ""),
                 panHolderName: String(fd.get("panHolderName") ?? ""),
+                dateOfBirth: String(fd.get("dateOfBirth") ?? ""),
               });
             }}
           >
@@ -361,7 +410,30 @@ function PanVerifyPanel({
                 className="mt-1.5"
                 maxLength={120}
                 autoComplete="off"
+                // Pre-fill from the user-service profile (if available)
+                // so the user doesn't retype their name. They can edit
+                // if their PAN card uses a different spelling. defaultValue
+                // (not value) so the field remains uncontrolled — keeps
+                // the existing FormData-based onSubmit pattern.
+                defaultValue={defaultName ?? ""}
               />
+            </div>
+
+            <div className="sm:col-span-2">
+              <Label htmlFor="dateOfBirth">Date of birth (as on PAN)</Label>
+              <Input
+                id="dateOfBirth"
+                name="dateOfBirth"
+                type="date"
+                required
+                className="mt-1.5"
+                max={maxDob}
+                defaultValue={defaultDob ?? ""}
+              />
+              <p className="text-[11px] text-muted-foreground mt-1.5">
+                NSDL matches (PAN + DOB) together — without the DOB the
+                verification can't proceed.
+              </p>
             </div>
 
             <label className="sm:col-span-2 mt-2 flex items-start gap-2 text-sm select-none cursor-pointer">

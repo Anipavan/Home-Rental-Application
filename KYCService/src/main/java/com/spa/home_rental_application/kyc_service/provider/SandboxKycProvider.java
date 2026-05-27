@@ -95,29 +95,36 @@ public class SandboxKycProvider implements KycProvider {
     @CircuitBreaker(name = "sandbox-client", fallbackMethod = "panFallback")
     @Retryable(retryFor = RestClientException.class,
             maxAttempts = 3, backoff = @Backoff(delay = 500, multiplier = 2))
-    public PanResult verifyPan(String panNumber, String panHolderName) {
+    public PanResult verifyPan(String panNumber, String panHolderName, String dateOfBirth) {
         log.info("→ Sandbox verifyPan pan=****{} ",
                 panNumber.substring(panNumber.length() - 2));
 
         try {
-            return doVerifyPan(panNumber, panHolderName);
+            return doVerifyPan(panNumber, panHolderName, dateOfBirth);
         } catch (HttpClientErrorException.Unauthorized e) {
             // Token rotated server-side — invalidate cache + retry once
             // with a fresh JWT. A second 401 is genuinely an auth bug
             // (wrong api key/secret); let it bubble up.
             log.warn("Sandbox returned 401 — invalidating cached token and retrying once");
             authClient.invalidate();
-            return doVerifyPan(panNumber, panHolderName);
+            return doVerifyPan(panNumber, panHolderName, dateOfBirth);
         }
     }
 
-    private PanResult doVerifyPan(String panNumber, String panHolderName) {
+    private PanResult doVerifyPan(String panNumber, String panHolderName, String dateOfBirth) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setAccept(java.util.List.of(MediaType.APPLICATION_JSON));
         headers.set("Authorization", authClient.getAccessToken());
         headers.set("x-api-key", props.getSandbox().getApiKey());
         headers.set("x-api-version", props.getSandbox().getApiVersion());
+
+        // Sandbox requires the holder's DOB as a second-factor identity
+        // check — NSDL won't return a name match unless (PAN, DOB) belong
+        // to the same person. Sandbox expects dd/MM/yyyy; we accept ISO
+        // (yyyy-MM-dd) from the controller and convert here so the wire
+        // shape is hidden from the rest of the codebase.
+        String dobForSandbox = toSandboxDateFormat(dateOfBirth);
 
         // Sandbox accepts either a typed envelope or the bare fields.
         // We use the typed envelope per their current recommended schema
@@ -127,6 +134,7 @@ public class SandboxKycProvider implements KycProvider {
                 .put("@entity", "in.co.sandbox.kyc.pan_verification.request")
                 .put("pan", panNumber)
                 .put("name_as_per_pan", panHolderName == null ? "" : panHolderName)
+                .put("date_of_birth", dobForSandbox)
                 .put("consent", "Y")
                 .put("reason", "Rental platform KYC under DPDP Act 2023")
                 .toString();
@@ -187,13 +195,38 @@ public class SandboxKycProvider implements KycProvider {
     }
 
     @SuppressWarnings("unused")
-    private PanResult panFallback(String panNumber, String panHolderName, Throwable ex) {
+    private PanResult panFallback(String panNumber, String panHolderName,
+                                  String dateOfBirth, Throwable ex) {
+        // Resilience4j matches fallback methods by signature — every
+        // verifyPan parameter must appear here (in the same order) so
+        // the circuit breaker can wire the fallback at startup.
         log.error("Sandbox PAN verify circuit open / failed", ex);
         return new PanResult(false, panHolderName,
                 "PAN verification service temporarily unavailable — please try again");
     }
 
     /* ---------- helpers ---------- */
+
+    /**
+     * Convert ISO {@code yyyy-MM-dd} (what the controller sends) to
+     * {@code dd/MM/yyyy} (what Sandbox.co.in expects). Defensive: if the
+     * input is null or already in the Sandbox format, hands it through
+     * unchanged. A malformed input falls through to Sandbox unchanged
+     * and lets Sandbox's 422 surface the user-facing error — better
+     * than swallowing a typo here.
+     */
+    private static String toSandboxDateFormat(String iso) {
+        if (iso == null || iso.isBlank()) return "";
+        // Already dd/MM/yyyy? Pass through.
+        if (iso.matches("^\\d{2}/\\d{2}/\\d{4}$")) return iso;
+        // ISO yyyy-MM-dd?
+        if (iso.matches("^\\d{4}-\\d{2}-\\d{2}$")) {
+            String[] p = iso.split("-");
+            return p[2] + "/" + p[1] + "/" + p[0];
+        }
+        // Unknown shape — pass through and let Sandbox reject.
+        return iso;
+    }
 
     private static String strOf(Object o) {
         return o == null ? null : String.valueOf(o);

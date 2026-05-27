@@ -650,6 +650,14 @@ export interface VerifyPanRequest {
   userId: string;
   panNumber: string;
   panHolderName: string;
+  /**
+   * Holder's date of birth in ISO {@code yyyy-MM-dd} format. Required
+   * by Sandbox.co.in's PAN verification endpoint as a second-factor
+   * identity match — NSDL won't return a name match unless (PAN, DOB)
+   * belong to the same person on file. Mock provider ignores it; real
+   * providers send it to NSDL.
+   */
+  dateOfBirth: string;
 }
 
 export interface KycResponse {

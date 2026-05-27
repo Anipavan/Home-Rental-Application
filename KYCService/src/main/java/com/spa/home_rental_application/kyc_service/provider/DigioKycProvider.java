@@ -92,7 +92,11 @@ public class DigioKycProvider implements KycProvider {
     @CircuitBreaker(name = "digio-client", fallbackMethod = "panFallback")
     @Retryable(retryFor = RestClientException.class,
             maxAttempts = 3, backoff = @Backoff(delay = 500, multiplier = 2))
-    public PanResult verifyPan(String panNumber, String panHolderName) {
+    public PanResult verifyPan(String panNumber, String panHolderName, String dateOfBirth) {
+        // Digio's PAN endpoint historically didn't require DOB — keeping
+        // it optional in the request map so older Digio plans don't 422.
+        // DOB will be added to the body once we move to Digio's V2 PAN
+        // verification endpoint (post-incorporation work).
         Map<String, Object> body = Map.of(
                 "id_no", panNumber,
                 "name", panHolderName);
@@ -112,7 +116,11 @@ public class DigioKycProvider implements KycProvider {
     }
 
     @SuppressWarnings("unused")
-    private PanResult panFallback(String panNumber, String panHolderName, Throwable ex) {
+    private PanResult panFallback(String panNumber, String panHolderName,
+                                  String dateOfBirth, Throwable ex) {
+        // Resilience4j matches fallbacks by signature — must mirror the
+        // public verifyPan parameter list verbatim. DOB is unused but
+        // listed so the circuit-breaker wiring resolves at startup.
         log.error("Digio PAN verify circuit open / failed", ex);
         return new PanResult(false, panHolderName, "PROVIDER_UNAVAILABLE");
     }
