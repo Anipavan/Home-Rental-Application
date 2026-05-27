@@ -90,6 +90,103 @@ services:
     restart: unless-stopped
     environment:
       <<: *prod-env
+
+  # ─────────────────────────────────────────────────────────────────
+  # Low-traffic JVM caps (2026-05-27)
+  #
+  # The host had been running 12+ Spring services on 8 GB RAM with
+  # default JVM heaps (~600-800 MB each), pushing 3.7 GB of swap
+  # usage and triggering 200+ second cold-boot times on the
+  # rarely-used services. When the gateway circuit breaker timeout
+  # is shorter than the cold-boot window, requests during a restart
+  # storm the breaker open and the affected route returns 503 to
+  # the browser even though the service eventually comes up healthy.
+  #
+  # Hard cap each low-traffic JVM at ~256 MB heap + 512 MB container
+  # limit. Frees ~2 GB across the fleet, keeps swap < 1 GB, and
+  # boots come down to <60 s where the gateway's circuit-breaker
+  # tolerates them.
+  #
+  # JAVA_TOOL_OPTIONS is the universal Spring Boot lever — applies
+  # to every JVM in the container without code changes. -Xms is set
+  # equal to ~half of -Xmx so the heap starts compact and grows
+  # only if real load demands it.
+  #
+  # restart: unless-stopped means a true OOM (rare with this cap)
+  # auto-recovers in seconds instead of waiting for an operator.
+  # ─────────────────────────────────────────────────────────────────
+  kyc-service:
+    restart: unless-stopped
+    mem_limit: 512m
+    mem_reservation: 320m
+    environment:
+      <<: *prod-env
+      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx256m -XX:+UseG1GC -XX:MaxRAMPercentage=70"
+      KYC_PROVIDER: ${KYC_PROVIDER:-MOCK}
+      PAN_ONLY_KYC: ${PAN_ONLY_KYC:-false}
+      SANDBOX_API_KEY: ${SANDBOX_API_KEY:-}
+      SANDBOX_API_SECRET: ${SANDBOX_API_SECRET:-}
+
+  compliance-service:
+    restart: unless-stopped
+    mem_limit: 512m
+    mem_reservation: 320m
+    environment:
+      <<: *prod-env
+      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx256m -XX:+UseG1GC -XX:MaxRAMPercentage=70"
+
+  document-service:
+    # Document service handles file uploads + OCR pipelines — needs
+    # slightly more headroom for multipart buffers and image decoding
+    # than the other low-traffic services.
+    restart: unless-stopped
+    mem_limit: 640m
+    mem_reservation: 384m
+    environment:
+      <<: *prod-env
+      JAVA_TOOL_OPTIONS: "-Xms192m -Xmx384m -XX:+UseG1GC -XX:MaxRAMPercentage=70"
+      SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE: 25MB
+      SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE: 25MB
+      DOCUMENT_OCR_PROVIDER: ${DOCUMENT_OCR_PROVIDER:-STUB}
+      DOCUMENT_OCR_AUTO_EXTRACT: ${DOCUMENT_OCR_AUTO_EXTRACT:-true}
+      SANDBOX_API_KEY: ${SANDBOX_API_KEY:-}
+      SANDBOX_API_SECRET: ${SANDBOX_API_SECRET:-}
+
+  review-service:
+    restart: unless-stopped
+    mem_limit: 512m
+    mem_reservation: 320m
+    environment:
+      <<: *prod-env
+      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx256m -XX:+UseG1GC -XX:MaxRAMPercentage=70"
+
+  analytics-service:
+    # Analytics runs heavier in-memory aggregations than the other
+    # back-office services — bump the heap a tad to keep GC sane.
+    restart: unless-stopped
+    mem_limit: 640m
+    mem_reservation: 384m
+    environment:
+      <<: *prod-env
+      JAVA_TOOL_OPTIONS: "-Xms192m -Xmx384m -XX:+UseG1GC -XX:MaxRAMPercentage=70"
+
+  maintenance-service:
+    restart: unless-stopped
+    mem_limit: 512m
+    mem_reservation: 320m
+    environment:
+      <<: *prod-env
+      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx256m -XX:+UseG1GC -XX:MaxRAMPercentage=70"
+
+  # ─────────────────────────────────────────────────────────────────
+  # Hot-path services kept on default heaps for now.
+  #
+  # user-service, property-service, payment-service, lease-service
+  # carry the bulk of the request volume — they get touched on every
+  # browse, every assign-tenant, every rent payment. Capping their
+  # heaps below the default would risk pause-times under real traffic.
+  # If we ever see them under memory pressure too, add caps here.
+  # ─────────────────────────────────────────────────────────────────
   user-service:
     environment:
       <<: *prod-env
@@ -110,33 +207,5 @@ services:
       APP_RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
       APP_RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
   lease-service:
-    environment:
-      <<: *prod-env
-  maintenance-service:
-    environment:
-      <<: *prod-env
-  kyc-service:
-    environment:
-      <<: *prod-env
-      KYC_PROVIDER: ${KYC_PROVIDER:-MOCK}
-      PAN_ONLY_KYC: ${PAN_ONLY_KYC:-false}
-      SANDBOX_API_KEY: ${SANDBOX_API_KEY:-}
-      SANDBOX_API_SECRET: ${SANDBOX_API_SECRET:-}
-  review-service:
-    environment:
-      <<: *prod-env
-  compliance-service:
-    environment:
-      <<: *prod-env
-  document-service:
-    environment:
-      <<: *prod-env
-      SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE: 25MB
-      SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE: 25MB
-      DOCUMENT_OCR_PROVIDER: ${DOCUMENT_OCR_PROVIDER:-STUB}
-      DOCUMENT_OCR_AUTO_EXTRACT: ${DOCUMENT_OCR_AUTO_EXTRACT:-true}
-      SANDBOX_API_KEY: ${SANDBOX_API_KEY:-}
-      SANDBOX_API_SECRET: ${SANDBOX_API_SECRET:-}
-  analytics-service:
     environment:
       <<: *prod-env
