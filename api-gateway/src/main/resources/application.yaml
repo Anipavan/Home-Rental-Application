@@ -23,11 +23,16 @@ spring:
   # Spring Cloud Gateway / WebFlux defaults `spring.codec.max-in-memory-size`
   # to 256KB, which is fine for JSON request/response bodies but truncates
   # any multipart upload larger than that — the downstream service sees a
-  # malformed body and 400s. Documents (Aadhaar / PAN / agreement scans /
-  # profile photos) routinely run 1-8MB, so bump to 10MB to match the
-  # downstream services' own `spring.servlet.multipart.max-file-size`.
+  # malformed body and 400s.
+  #
+  # 30MB matches the frontend nginx `client_max_body_size 30M` (the edge
+  # cap) so anything nginx forwards us survives the gateway too. The
+  # downstream document-service cap is 25MB (production-fix.yml override);
+  # the gateway being 5MB more generous means a genuine borderline upload
+  # gets a clean "file too large" message from document-service rather
+  # than a confusing 400 from the gateway truncating mid-stream.
   codec:
-    max-in-memory-size: 10MB
+    max-in-memory-size: 30MB
 
   cloud:
     loadbalancer:
