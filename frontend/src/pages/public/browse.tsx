@@ -89,6 +89,21 @@ type SortKey =
   | "bedsHigh";
 
 /**
+ * Radius (in kilometres) used by the "Nearest to me" sort. Acts as a
+ * hard cutoff — flats whose building pin is further than this from
+ * the user's coords are excluded from the list entirely (not just
+ * pushed to the bottom).
+ *
+ * <p>50 km is the natural fit for Indian cities: Bengaluru's urban
+ * area is ~30 km across, Mumbai ~40 km north-south, Delhi NCR is the
+ * largest at ~70 km but most listings cluster within 50 km of any
+ * given location inside it. Generous enough to include the next
+ * suburb over, strict enough that "near me" doesn't silently include
+ * Pune when you're standing in Chennai.
+ */
+const NEAR_ME_RADIUS_KM = 50;
+
+/**
  * Canonical amenity keywords used by the multi-select chip filter.
  * Each entry pairs a display label with the lowercased keyword used
  * for fuzzy matching against the building's free-text `amenities`
@@ -343,14 +358,14 @@ export function BrowsePage() {
       detectedCity = await reverseGeocode(latitude, longitude);
     } catch (geocodeErr) {
       // Both reverse-geocoders failed. We still have the user's
-      // coords, the nearest-first sort is already applied (auto-set
-      // when setUserCoords succeeded above), so the list is already
-      // proximity-sorted. Frame it as a success rather than an error.
+      // coords, the nearest-first sort + 50 km radius are already
+      // applied (auto-set when setUserCoords succeeded above), so
+      // the list is already filtered to nearby homes. Frame it as a
+      // success rather than an error.
       console.warn("Reverse geocode failed on all providers:", geocodeErr);
       toast({
-        title: "Showing what's nearest to you",
-        description:
-          "City lookup is having a moment, but we've sorted the list by distance from where you are.",
+        title: "Showing homes near you",
+        description: `City lookup is having a moment, but we've filtered to homes within ${NEAR_ME_RADIUS_KM} km of where you are.`,
       });
       setLocating(false);
       return;
@@ -358,12 +373,11 @@ export function BrowsePage() {
 
     if (!detectedCity) {
       // No city name but we still have coords — the nearest-first
-      // sort already kicked in via the setFilters above, so the list
-      // is sorted by proximity. Just tell the user that's what we did.
+      // sort + 50 km radius are already applied, so the list now only
+      // shows homes near where the user actually is.
       toast({
-        title: "Showing what's nearest to you",
-        description:
-          "We couldn't name your city, but the list below is sorted by distance.",
+        title: "Showing homes near you",
+        description: `We couldn't name your city, but we've filtered the list to homes within ${NEAR_ME_RADIUS_KM} km of you.`,
       });
       setLocating(false);
       return;
@@ -380,18 +394,18 @@ export function BrowsePage() {
       setFilters((f) => ({ ...f, city: matched }));
       toast({
         title: `Showing homes in ${matched}`,
-        description: "Nearest to you first — change the sort to override.",
+        description: `Within ${NEAR_ME_RADIUS_KM} km of you, nearest first. Change the sort to see all of ${matched}.`,
       });
     } else {
       // City name resolved but we don't have any listings there yet.
-      // The nearest-first sort still ran (any flats anywhere in
-      // India get distance-ordered), so the user sees the closest
-      // listings regardless of catalog gaps. Friendly framing —
-      // "here's what's nearest" beats "we have nothing there".
+      // The nearest-first sort + radius cutoff now act as a real
+      // filter — if nothing is within 50 km, the list will be empty
+      // and the existing "No homes match" banner will appear. That's
+      // an honest answer (vs. quietly showing Mumbai flats to a user
+      // in Chennai, which is what the previous behaviour did).
       toast({
         title: `You're in ${detectedCity}`,
-        description:
-          "We don't have listings there yet — showing the homes nearest to you instead.",
+        description: `Showing only homes within ${NEAR_ME_RADIUS_KM} km of you. Clear the sort if you'd rather see the whole catalog.`,
       });
     }
     setLocating(false);
@@ -474,7 +488,8 @@ export function BrowsePage() {
             <SelectContent>
               <SelectItem value="recent">Most recent</SelectItem>
               <SelectItem value="nearest" disabled={!userCoords}>
-                Nearest to me{!userCoords && " (use location)"}
+                Within {NEAR_ME_RADIUS_KM} km of me
+                {!userCoords && " (use location)"}
               </SelectItem>
               <SelectItem value="priceLow">Price: low to high</SelectItem>
               <SelectItem value="priceHigh">Price: high to low</SelectItem>
@@ -891,31 +906,43 @@ function applyFilters(
       );
       break;
     case "nearest":
-      // Sort by haversine distance from the user's coords to each
-      // flat's parent-building pin. Flats whose building has no
-      // (lat, lng) get +Infinity so they sink to the bottom — they
-      // still render, they just can't compete on proximity.
-      // Falls back to "recent" ordering (which the backend already
-      // gives us) when userCoords is null, so picking this sort
-      // before clicking "Use my location" doesn't blank the list.
+      // "Use my location" is a FILTER + sort, not just a sort.
+      //
+      // 1. Compute haversine distance from userCoords to each flat's
+      //    parent-building pin.
+      // 2. DROP anything beyond NEAR_ME_RADIUS_KM (50 km) — that's the
+      //    "near me" guarantee. Without this cutoff the list shows
+      //    every flat in India, just ordered by distance, which is
+      //    not what "find homes near me" means in plain English.
+      // 3. Sort the survivors ascending by distance.
+      //
+      // Flats whose building has no (lat, lng) at all are excluded —
+      // we can't claim they're near the user when we don't know where
+      // they are. They reappear the moment the user clears the
+      // location filter (sort drops back to "recent").
+      //
+      // Edge case: userCoords still null (user picked "Nearest to me"
+      // manually before allowing geolocation) — fall through to
+      // "recent" ordering. The dropdown disables the option until
+      // coords arrive, so this is mostly defensive.
       if (userCoords) {
-        const distanceOf = (flat: FlatResponseDTO): number => {
+        const enriched: Array<[FlatResponseDTO, number]> = [];
+        for (const flat of list) {
           const b = buildingsById[flat.buildingId];
-          if (
-            b == null ||
-            b.latitude == null ||
-            b.longitude == null
-          ) {
-            return Number.POSITIVE_INFINITY;
+          if (b == null || b.latitude == null || b.longitude == null) {
+            continue; // Drop — no pin, can't prove proximity.
           }
-          return haversineKm(
+          const dKm = haversineKm(
             userCoords.lat,
             userCoords.lng,
             b.latitude,
             b.longitude,
           );
-        };
-        list = [...list].sort((a, b) => distanceOf(a) - distanceOf(b));
+          if (dKm > NEAR_ME_RADIUS_KM) continue; // Outside the radius.
+          enriched.push([flat, dKm]);
+        }
+        enriched.sort((a, b) => a[1] - b[1]);
+        list = enriched.map(([flat]) => flat);
       }
       break;
     case "recent":
@@ -1107,6 +1134,7 @@ interface Chip {
 }
 type ChipKey =
   | "q"
+  | "sort"
   | "city"
   | "bhk"
   | "bathrooms"
@@ -1126,6 +1154,11 @@ type ChipKey =
 function describeActiveFilters(f: Filters, q: string): Chip[] {
   const chips: Chip[] = [];
   if (q) chips.push({ key: "q", label: `"${q}"` });
+  // "Near you" chip — sits high in the chip strip because it's the
+  // narrowest geographic filter active. Clearing it drops the sort
+  // back to "recent" via clearOne(), which lifts the radius cutoff.
+  if (f.sort === "nearest")
+    chips.push({ key: "sort", label: `Within ${NEAR_ME_RADIUS_KM} km of you` });
   if (f.city !== "any") chips.push({ key: "city", label: f.city });
   if (f.bhk !== "any")
     chips.push({
@@ -1242,6 +1275,14 @@ function clearOne(
   setFilters((prev) => {
     const next = { ...prev };
     switch (key) {
+      case "sort":
+        // Drop back to "recent" — this lifts the 50 km radius filter
+        // and replays the backend's default newest-first ordering.
+        // Coords stay stashed so the map view still works, and the
+        // user can re-apply the location filter from the sort
+        // dropdown without re-doing the geolocation flow.
+        next.sort = "recent";
+        break;
       case "city":
       case "bhk":
       case "bathrooms":
