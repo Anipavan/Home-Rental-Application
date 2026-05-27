@@ -95,33 +95,33 @@ services:
   # Low-traffic JVM caps (2026-05-27)
   #
   # The host had been running 12+ Spring services on 8 GB RAM with
-  # default JVM heaps (~600-800 MB each), pushing 3.7 GB of swap
-  # usage and triggering 200+ second cold-boot times on the
-  # rarely-used services. When the gateway circuit breaker timeout
-  # is shorter than the cold-boot window, requests during a restart
-  # storm the breaker open and the affected route returns 503 to
-  # the browser even though the service eventually comes up healthy.
+  # default JVM heaps that auto-size to 25 % of the cgroup limit at
+  # startup. Combined with native + JIT + classloader overhead, each
+  # service was pushing 600-800 MB resident, swap was running 3.7 GB
+  # of 4 GB, and the kyc-service cold-boot took 212 seconds — long
+  # enough for the gateway circuit breaker to trip and surface a
+  # "service temporarily unavailable" toast in the browser.
   #
-  # Hard cap each low-traffic JVM at ~256 MB heap + 512 MB container
-  # limit. Frees ~2 GB across the fleet, keeps swap < 1 GB, and
-  # boots come down to <60 s where the gateway's circuit-breaker
-  # tolerates them.
+  # Fix: pin -Xms / -Xmx explicitly via JAVA_TOOL_OPTIONS so the JVM
+  # commits a known small heap up-front instead of probing the cgroup.
+  # JAVA_TOOL_OPTIONS is the universal Spring Boot lever — picked up
+  # by every container without code changes.
   #
-  # JAVA_TOOL_OPTIONS is the universal Spring Boot lever — applies
-  # to every JVM in the container without code changes. -Xms is set
-  # equal to ~half of -Xmx so the heap starts compact and grows
-  # only if real load demands it.
+  # Cgroup limits are NOT redeclared here: docker-compose.prod.yml
+  # already sets them via `deploy.resources.limits.memory` (v3 syntax)
+  # and Compose forbids mixing that with the v2 `mem_limit:` shape.
+  # The existing 512M / 768M caps stay in place; we just stop the
+  # JVM from trying to auto-balloon up to them on startup.
   #
-  # restart: unless-stopped means a true OOM (rare with this cap)
-  # auto-recovers in seconds instead of waiting for an operator.
+  # restart: unless-stopped means a true OOM (rare with these heap
+  # caps) auto-recovers in seconds instead of waiting for an
+  # operator-issued restart.
   # ─────────────────────────────────────────────────────────────────
   kyc-service:
     restart: unless-stopped
-    mem_limit: 512m
-    mem_reservation: 320m
     environment:
       <<: *prod-env
-      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx256m -XX:+UseG1GC -XX:MaxRAMPercentage=70"
+      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx256m -XX:+UseG1GC"
       KYC_PROVIDER: ${KYC_PROVIDER:-MOCK}
       PAN_ONLY_KYC: ${PAN_ONLY_KYC:-false}
       SANDBOX_API_KEY: ${SANDBOX_API_KEY:-}
@@ -129,22 +129,19 @@ services:
 
   compliance-service:
     restart: unless-stopped
-    mem_limit: 512m
-    mem_reservation: 320m
     environment:
       <<: *prod-env
-      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx256m -XX:+UseG1GC -XX:MaxRAMPercentage=70"
+      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx256m -XX:+UseG1GC"
 
   document-service:
     # Document service handles file uploads + OCR pipelines — needs
     # slightly more headroom for multipart buffers and image decoding
-    # than the other low-traffic services.
+    # than the other low-traffic services. prod.yml gives it 768M
+    # already; just pin the heap so it doesn't auto-size higher.
     restart: unless-stopped
-    mem_limit: 640m
-    mem_reservation: 384m
     environment:
       <<: *prod-env
-      JAVA_TOOL_OPTIONS: "-Xms192m -Xmx384m -XX:+UseG1GC -XX:MaxRAMPercentage=70"
+      JAVA_TOOL_OPTIONS: "-Xms192m -Xmx384m -XX:+UseG1GC"
       SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE: 25MB
       SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE: 25MB
       DOCUMENT_OCR_PROVIDER: ${DOCUMENT_OCR_PROVIDER:-STUB}
@@ -154,29 +151,23 @@ services:
 
   review-service:
     restart: unless-stopped
-    mem_limit: 512m
-    mem_reservation: 320m
     environment:
       <<: *prod-env
-      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx256m -XX:+UseG1GC -XX:MaxRAMPercentage=70"
+      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx256m -XX:+UseG1GC"
 
   analytics-service:
     # Analytics runs heavier in-memory aggregations than the other
     # back-office services — bump the heap a tad to keep GC sane.
     restart: unless-stopped
-    mem_limit: 640m
-    mem_reservation: 384m
     environment:
       <<: *prod-env
-      JAVA_TOOL_OPTIONS: "-Xms192m -Xmx384m -XX:+UseG1GC -XX:MaxRAMPercentage=70"
+      JAVA_TOOL_OPTIONS: "-Xms192m -Xmx384m -XX:+UseG1GC"
 
   maintenance-service:
     restart: unless-stopped
-    mem_limit: 512m
-    mem_reservation: 320m
     environment:
       <<: *prod-env
-      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx256m -XX:+UseG1GC -XX:MaxRAMPercentage=70"
+      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx256m -XX:+UseG1GC"
 
   # ─────────────────────────────────────────────────────────────────
   # Hot-path services kept on default heaps for now.
