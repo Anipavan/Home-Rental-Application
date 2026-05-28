@@ -149,7 +149,6 @@ else
 ALTER SESSION SET CONTAINER = FREEPDB1;
 SET SERVEROUTPUT ON SIZE UNLIMITED
 DECLARE
-  v_table  VARCHAR2(128);
   v_count  NUMBER := 0;
 BEGIN
   -- Disable referential integrity for the duration of the wipe so
@@ -165,12 +164,26 @@ BEGIN
       || '" DISABLE CONSTRAINT "' || c.constraint_name || '"';
   END LOOP;
 
-  -- Delete every row from every HRA_APP table (skip Flyway history).
+  -- Delete every row from every HRA_APP table EXCEPT:
+  --   • FLYWAY_SCHEMA_HISTORY  — migration history; wiping breaks Flyway
+  --   • REF_STATES / REF_CITIES — seed data for the cascading state→city
+  --     dropdown. ReferenceDataSeeder re-populates them on every
+  --     property-service boot, but the seed read is async + takes ~5 s
+  --     during which the building-create form would have an empty
+  --     dropdown. Keeping the rows means zero-downtime on the dropdown
+  --     between test cycles.
+  --
+  -- Add table names to the NOT IN list if you discover other reference
+  -- tables that should survive a wipe.
   FOR t IN (
     SELECT table_name
       FROM all_tables
      WHERE owner = 'HRA_APP'
-       AND table_name NOT IN ('FLYWAY_SCHEMA_HISTORY')
+       AND table_name NOT IN (
+         'FLYWAY_SCHEMA_HISTORY',
+         'REF_STATES',
+         'REF_CITIES'
+       )
   ) LOOP
     EXECUTE IMMEDIATE 'DELETE FROM HRA_APP."' || t.table_name || '"';
     v_count := v_count + SQL%ROWCOUNT;
@@ -193,6 +206,7 @@ BEGIN
   COMMIT;
   DBMS_OUTPUT.PUT_LINE('');
   DBMS_OUTPUT.PUT_LINE('Total rows deleted: ' || v_count);
+  DBMS_OUTPUT.PUT_LINE('Preserved tables: FLYWAY_SCHEMA_HISTORY, REF_STATES, REF_CITIES');
 END;
 /
 EXIT;
@@ -261,10 +275,14 @@ ALTER SESSION SET CONTAINER = FREEPDB1;
 SET LINESIZE 100
 SET PAGESIZE 0
 SET FEEDBACK OFF
-SELECT 'users:        ' || COUNT(*) FROM hra_app.user_details_table;
-SELECT 'buildings:    ' || COUNT(*) FROM hra_app.buildings;
-SELECT 'flats:        ' || COUNT(*) FROM hra_app.flats;
-SELECT 'payments:     ' || COUNT(*) FROM hra_app.payments;
+-- User-data tables — all should be 0 after the wipe.
+SELECT 'users:                ' || COUNT(*) FROM hra_app.user_details_table;
+SELECT 'registered_buildings: ' || COUNT(*) FROM hra_app.registered_buildings;
+SELECT 'flats:                ' || COUNT(*) FROM hra_app.flats;
+SELECT 'payments:             ' || COUNT(*) FROM hra_app.payments;
+-- Reference tables — should stay populated (preserved from wipe).
+SELECT 'ref_states (kept):    ' || COUNT(*) FROM hra_app.ref_states;
+SELECT 'ref_cities (kept):    ' || COUNT(*) FROM hra_app.ref_cities;
 EXIT;
 SQL
 
