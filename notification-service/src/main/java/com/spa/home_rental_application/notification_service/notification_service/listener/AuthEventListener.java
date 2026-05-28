@@ -100,15 +100,21 @@ public class AuthEventListener {
      * Compute the absolute URL the user should hit to sign in. Built
      * off the same {@code app.frontend.base-url} property used by the
      * password-reset link so a single env override (FRONTEND_URL)
-     * configures both. The fragment {@code #/sign-in} works for
-     * SPA-hash routers and falls through to {@code /sign-in} for
-     * history-mode routers (the FE's router redirects both forms).
+     * configures both.
+     *
+     * <p>Path is {@code /login} — that's the actual react-router route
+     * declared in {@code frontend/src/router.tsx}. Earlier versions
+     * built {@code /sign-in} URLs that 404'd because no such route
+     * exists; tenants/owners clicking the welcome email's CTA hit a
+     * dead end and bounced. Aligned with the URL the seeder banner
+     * prints + the "Already have an account? Sign in" link in the
+     * registration form footer.
      */
     private String signInUrl() {
         String base = frontendBaseUrl == null || frontendBaseUrl.isBlank()
                 ? "http://localhost:5173"
                 : frontendBaseUrl.replaceAll("/+$", "");
-        return base + "/sign-in";
+        return base + "/login";
     }
 
     @KafkaListener(

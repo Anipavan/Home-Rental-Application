@@ -130,16 +130,18 @@ public class PropertyEventListener {
     private static String safe(Object o) { return o == null ? "" : o.toString(); }
 
     /**
-     * Resolve the public sign-in URL for the lease-welcome CTA (Issue
-     * #7). Built off {@code app.frontend.base-url} so a single env
-     * override (FRONTEND_URL) configures every transactional CTA on
-     * the platform.
+     * Resolve the public sign-in URL for the lease-welcome CTA.
+     * Built off {@code app.frontend.base-url} so a single env override
+     * (FRONTEND_URL) configures every transactional CTA on the platform.
+     *
+     * <p>Path is {@code /login} — the actual react-router route. Older
+     * builds used {@code /sign-in} which 404s.
      */
     private String signInUrl() {
         String base = frontendBaseUrl == null || frontendBaseUrl.isBlank()
                 ? "http://localhost:5173"
                 : frontendBaseUrl.replaceAll("/+$", "");
-        return base + "/sign-in";
+        return base + "/login";
     }
 
     @org.springframework.beans.factory.annotation.Value(

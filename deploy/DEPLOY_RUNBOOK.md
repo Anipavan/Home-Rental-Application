@@ -289,7 +289,7 @@ if you must.
 Open `https://anirudhhomes.in` in a fresh browser:
 
 - [ ] SPA loads, logo says "Anirudh Homes"
-- [ ] Sign-in page reachable at `/sign-in`
+- [ ] Sign-in page reachable at `/login`
 - [ ] Register a tenant + an owner → both get welcome emails
 - [ ] Owner adds a property → tenant sees it on `/browse`
 - [ ] Tenant pays rent via Razorpay test card `4111 1111 1111 1111`

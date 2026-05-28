@@ -281,7 +281,9 @@ public class NotificationService {
         //   • {{complaintsUrl}}        — frontendBaseUrl + /app/complaints
         //   • {{leaseUrl}}             — frontendBaseUrl + /app/lease
         //   • {{notificationsUrl}}     — frontendBaseUrl + /app/notifications
-        //   • {{signInUrl}}            — frontendBaseUrl + /sign-in
+        //   • {{signInUrl}}            — frontendBaseUrl + /login
+        //                                 (Not /sign-in — react-router declares
+        //                                 the route as /login; /sign-in 404s.)
         // Listeners can still override these by providing their own
         // value in vars (mergedVars is built per-call from the
         // listener-supplied map first, with framework defaults filling
@@ -473,7 +475,9 @@ public class NotificationService {
         merged.put("complaintUrl", base + "/app/complaints");
         merged.put("leaseUrl", base + "/app/lease");
         merged.put("notificationsUrl", base + "/app/notifications");
-        merged.put("signInUrl", base + "/sign-in");
+        // /login is the actual react-router route; /sign-in is a dead URL
+        // that 404s on the SPA. See router.tsx for the route declarations.
+        merged.put("signInUrl", base + "/login");
         // Listener values take precedence.
         if (vars != null) merged.putAll(vars);
         return merged;
