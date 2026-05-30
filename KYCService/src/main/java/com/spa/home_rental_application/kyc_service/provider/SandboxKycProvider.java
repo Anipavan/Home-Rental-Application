@@ -122,8 +122,32 @@ public class SandboxKycProvider implements KycProvider {
             // generic "service unavailable" and can actually fix the
             // input. Falls back to a sensible default if the body shape
             // ever changes.
-            String reason = extractSandboxMessage(e.getResponseBodyAsString())
-                    .orElse("Sandbox couldn't verify these details. Check your PAN, name and date of birth match exactly what's on your PAN card.");
+            String rawSandboxMsg = extractSandboxMessage(e.getResponseBodyAsString())
+                    .orElse("");
+            // OPERATIONAL alerts — billing / quota problems are OURS,
+            // not the user's. We MUST NOT leak "insufficient credits"
+            // or "your sandbox account is suspended" verbatim to the
+            // browser — that exposes our supplier relationship and
+            // confuses the user (they'll think THEIR card is wrong).
+            // Log loudly so the operator sees the real problem, then
+            // show the user a friendlier generic message.
+            String lower = rawSandboxMsg.toLowerCase();
+            if (lower.contains("insufficient credit")
+                    || lower.contains("credit")
+                    || lower.contains("balance")
+                    || lower.contains("quota")
+                    || lower.contains("suspended")) {
+                log.error(
+                        "SANDBOX BILLING ALERT — verify-pan rejected: '{}'. "
+                                + "Top up at https://sandbox.co.in/dashboard or set "
+                                + "KYC_PROVIDER=MOCK in .env to keep testing.",
+                        rawSandboxMsg);
+                return new PanResult(false, panHolderName,
+                        "Identity verification is temporarily paused. Our team has been alerted — please try again in a little while.");
+            }
+            String reason = rawSandboxMsg.isBlank()
+                    ? "Sandbox couldn't verify these details. Check your PAN, name and date of birth match exactly what's on your PAN card."
+                    : rawSandboxMsg;
             log.info("Sandbox 422 (data mismatch): {}", reason);
             return new PanResult(false, panHolderName, reason);
         } catch (HttpClientErrorException e) {
