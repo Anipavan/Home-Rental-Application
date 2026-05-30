@@ -7,8 +7,10 @@ import com.spa.home_rental_application.payment_service.payment_service.DTO.Reque
 import com.spa.home_rental_application.payment_service.payment_service.DTO.Request.VerifyPaymentRequest;
 import com.spa.home_rental_application.payment_service.payment_service.config.RazorpayProperties;
 import com.spa.home_rental_application.payment_service.payment_service.entities.Payment;
+import com.spa.home_rental_application.payment_service.payment_service.entities.VendorApiCall;
 import com.spa.home_rental_application.payment_service.payment_service.enums.UpiApp;
 import com.spa.home_rental_application.payment_service.payment_service.repository.PaymentRepository;
+import com.spa.home_rental_application.payment_service.payment_service.service.VendorUsageRecorder;
 import lombok.extern.slf4j.Slf4j;
 import org.json.JSONObject;
 
@@ -47,13 +49,23 @@ public class RazorpayPaymentGateway implements PaymentGateway {
     public static final String NAME = "razorpay";
     private static final HexFormat HEX = HexFormat.of();
 
+    /** Vendor key for the Orders.create call — surfaces as
+     *  "RAZORPAY_ORDER_CREATE" on the admin Vendor Usage dashboard. */
+    private static final String VENDOR_ORDER_CREATE = "RAZORPAY_ORDER_CREATE";
+    /** Vendor key for the VPA validate call. */
+    private static final String VENDOR_VPA_VALIDATE = "RAZORPAY_VPA_VALIDATE";
+
     private final RazorpayProperties props;
     private final RazorpayClient client;
     private final PaymentRepository paymentRepository;
+    private final VendorUsageRecorder usageRecorder;
 
-    public RazorpayPaymentGateway(RazorpayProperties props, PaymentRepository paymentRepository) {
+    public RazorpayPaymentGateway(RazorpayProperties props,
+                                  PaymentRepository paymentRepository,
+                                  VendorUsageRecorder usageRecorder) {
         this.props = props;
         this.paymentRepository = paymentRepository;
+        this.usageRecorder = usageRecorder;
         try {
             this.client = new RazorpayClient(props.getKeyId(), props.getKeySecret());
             log.info("RazorpayPaymentGateway: initialized with keyId={}", props.getKeyId());
@@ -83,6 +95,9 @@ public class RazorpayPaymentGateway implements PaymentGateway {
                 .longValueExact();
 
         String orderId;
+        final long startMs = System.currentTimeMillis();
+        final String triggeredBy = payment.getTenantId() == null
+                ? null : String.valueOf(payment.getTenantId());
         try {
             JSONObject orderRequest = new JSONObject()
                     .put("amount", amountPaise)
@@ -95,9 +110,48 @@ public class RazorpayPaymentGateway implements PaymentGateway {
             Order order = client.orders.create(orderRequest);
             orderId = order.get("id");
             log.info("Razorpay Orders.create -> orderId={} for paymentId={}", orderId, payment.getId());
+            usageRecorder.record(
+                    VENDOR_ORDER_CREATE, "/v1/orders",
+                    VendorApiCall.Status.SUCCESS,
+                    "200", null,
+                    (int) (System.currentTimeMillis() - startMs),
+                    triggeredBy);
         } catch (RazorpayException ex) {
-            log.error("Razorpay Orders.create failed for paymentId={}", payment.getId(), ex);
-            throw new IllegalStateException("Razorpay order creation failed: " + ex.getMessage(), ex);
+            // Discriminate billing-side problems from user-side problems by
+            // sniffing the exception message. Razorpay surfaces account /
+            // balance / activation issues with keywords like "International
+            // payments are not enabled", "account is not activated",
+            // "insufficient balance", "Your account does not have access".
+            // These are operationally urgent — we want them flagged as
+            // BILLING_ALERT so the admin dashboard surfaces them.
+            String msg = ex.getMessage() == null ? "" : ex.getMessage();
+            String lower = msg.toLowerCase();
+            boolean billing =
+                       lower.contains("activated")
+                    || lower.contains("activation")
+                    || lower.contains("not enabled")
+                    || lower.contains("does not have access")
+                    || lower.contains("insufficient balance")
+                    || lower.contains("account is suspended")
+                    || lower.contains("not authorized")
+                    || lower.contains("authentication failed")
+                    || lower.contains("invalid api key");
+            VendorApiCall.Status recordStatus = billing
+                    ? VendorApiCall.Status.BILLING_ALERT
+                    : VendorApiCall.Status.OUTAGE;
+            if (billing) {
+                log.error("RAZORPAY BILLING ALERT — Orders.create rejected: '{}'. "
+                        + "Check Razorpay dashboard / KYC status.", msg);
+            } else {
+                log.error("Razorpay Orders.create failed for paymentId={}", payment.getId(), ex);
+            }
+            usageRecorder.record(
+                    VENDOR_ORDER_CREATE, "/v1/orders",
+                    recordStatus,
+                    null, msg,
+                    (int) (System.currentTimeMillis() - startMs),
+                    triggeredBy);
+            throw new IllegalStateException("Razorpay order creation failed: " + msg, ex);
         }
 
         var b = PaymentInitiationResult.builder()
@@ -238,6 +292,7 @@ public class RazorpayPaymentGateway implements PaymentGateway {
     @Override
     public VpaValidationResult validateVpa(String vpa) {
         if (vpa == null || !VPA_FORMAT_RE.matcher(vpa).matches()) {
+            // Local format guard — no vendor call made, no recording needed.
             return VpaValidationResult.builder()
                     .valid(false)
                     .vpa(vpa)
@@ -246,6 +301,7 @@ public class RazorpayPaymentGateway implements PaymentGateway {
                     .build();
         }
 
+        final long startMs = System.currentTimeMillis();
         // Use the existing Razorpay SDK only where it adds value (orders + signature).
         // For this single REST call, HttpURLConnection keeps deps minimal.
         try {
@@ -276,6 +332,16 @@ public class RazorpayPaymentGateway implements PaymentGateway {
                 JSONObject json = new JSONObject(respBody);
                 boolean ok = json.optBoolean("success", false);
                 String name = json.optString("customer_name", null);
+                // Either way (valid or "not on directory") the vendor
+                // call itself succeeded — record SUCCESS so we can tell
+                // "Razorpay was working but the VPA didn't exist" from
+                // "Razorpay was down".
+                usageRecorder.record(
+                        VENDOR_VPA_VALIDATE, "/v1/payments/validate/vpa",
+                        VendorApiCall.Status.SUCCESS,
+                        String.valueOf(status), null,
+                        (int) (System.currentTimeMillis() - startMs),
+                        null);
                 if (ok && name != null && !name.isBlank()) {
                     log.info("Razorpay validateVpa vpa={} -> valid, name={}", vpa, name);
                     return VpaValidationResult.builder()
@@ -296,6 +362,31 @@ public class RazorpayPaymentGateway implements PaymentGateway {
             // 4xx / 5xx — surface a clean message; don't echo the raw
             // Razorpay error body (may leak internal codes).
             log.warn("Razorpay validateVpa vpa={} -> HTTP {}: {}", vpa, status, respBody);
+            // Discriminate billing/account problems from genuine 5xx
+            // outages and per-request 4xxs. Same keyword sniff as the
+            // Orders.create branch so the admin sees the same labels.
+            String lowerBody = respBody == null ? "" : respBody.toLowerCase();
+            boolean billingHints =
+                       lowerBody.contains("not enabled")
+                    || lowerBody.contains("not authorized")
+                    || lowerBody.contains("activation")
+                    || lowerBody.contains("not activated")
+                    || lowerBody.contains("does not have access");
+            VendorApiCall.Status recordStatus;
+            if (status >= 500) {
+                recordStatus = VendorApiCall.Status.OUTAGE;
+            } else if (status == 401 || status == 403 || billingHints) {
+                recordStatus = VendorApiCall.Status.BILLING_ALERT;
+                log.error("RAZORPAY BILLING ALERT (HTTP {} on validateVpa): {}", status, respBody);
+            } else {
+                recordStatus = VendorApiCall.Status.USER_ERROR;
+            }
+            usageRecorder.record(
+                    VENDOR_VPA_VALIDATE, "/v1/payments/validate/vpa",
+                    recordStatus,
+                    String.valueOf(status), respBody,
+                    (int) (System.currentTimeMillis() - startMs),
+                    null);
             return VpaValidationResult.builder()
                     .valid(false)
                     .vpa(vpa)
@@ -306,6 +397,13 @@ public class RazorpayPaymentGateway implements PaymentGateway {
                     .build();
         } catch (Exception ex) {
             log.error("Razorpay validateVpa failed for vpa={}", vpa, ex);
+            // Transport / connect / timeout — always an outage.
+            usageRecorder.record(
+                    VENDOR_VPA_VALIDATE, "/v1/payments/validate/vpa",
+                    VendorApiCall.Status.OUTAGE,
+                    null, ex.getClass().getSimpleName() + ": " + ex.getMessage(),
+                    (int) (System.currentTimeMillis() - startMs),
+                    null);
             return VpaValidationResult.builder()
                     .valid(false)
                     .vpa(vpa)
