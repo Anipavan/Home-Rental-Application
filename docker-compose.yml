@@ -222,6 +222,13 @@ services:
       EUREKA_URL: http://service-registry:8761/eureka
       INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
       PAYMENT_GATEWAY: ${PAYMENT_GATEWAY:-mock}
+      # Razorpay credentials — only consumed when PAYMENT_GATEWAY=razorpay.
+      # Empty defaults so the mock-gateway dev path (and CI) don't fail
+      # SecretsBootstrapValidator on startup. Real values come from .env in
+      # prod — see RazorpayProperties + RazorpayPaymentGateway constructor.
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
 
   maintenance-service:
     build:
