@@ -274,8 +274,15 @@ function StatusIcon({ status }: { status?: KycStatus }) {
 function StatusBadge({ status }: { status?: KycStatus }) {
   if (status === "VERIFIED") return <Badge variant="success">Verified</Badge>;
   if (status === "FAILED") return <Badge variant="destructive">Failed</Badge>;
-  if (status === "INITIATED")
-    return <Badge variant="warning">In progress</Badge>;
+  // Both INITIATED (user has tried at least once but verification didn't
+  // complete) and PENDING (server-side default for a record that exists
+  // but hasn't been processed yet) read as "in progress" to the user.
+  // Earlier versions only handled INITIATED; PENDING fell through to
+  // "Not started" which contradicted any error message rendered above
+  // it (the user clearly HAD started — that's why a failureReason was
+  // showing). Treating both states the same fixes the contradictory UI.
+  if (status === "INITIATED" || status === "PENDING")
+    return <Badge variant="warning">Needs retry</Badge>;
   return <Badge variant="secondary">Not started</Badge>;
 }
 
@@ -284,7 +291,8 @@ function captionFor(status?: KycStatus) {
     case "VERIFIED":
       return "Identity verified. You're all set.";
     case "INITIATED":
-      return "Last attempt didn't complete. Try again below — your PAN isn't stored unless verification succeeds.";
+    case "PENDING":
+      return "Your last attempt didn't complete. The details from your previous try are pre-filled below — adjust if needed and retry.";
     case "FAILED":
       return "Last PAN check didn't go through. Double-check your PAN and the name as it appears on your card.";
     default:

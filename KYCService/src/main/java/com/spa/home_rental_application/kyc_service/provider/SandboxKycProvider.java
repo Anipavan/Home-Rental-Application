@@ -108,6 +108,37 @@ public class SandboxKycProvider implements KycProvider {
             log.warn("Sandbox returned 401 — invalidating cached token and retrying once");
             authClient.invalidate();
             return doVerifyPan(panNumber, panHolderName, dateOfBirth);
+        } catch (HttpClientErrorException.UnprocessableEntity e) {
+            // 422 = USER DATA problem (PAN+DOB don't match NSDL, name
+            // mismatch, malformed inputs). NOT a service-down condition,
+            // so we MUST return a PanResult instead of re-throwing —
+            // otherwise the circuit breaker treats every "user typed
+            // wrong DOB" as a failed call and trips after a handful,
+            // making the entire route 'temporarily unavailable' even
+            // when Sandbox itself is perfectly healthy.
+            //
+            // Pull the actual {message} out of the Sandbox 422 body so
+            // the user sees "date_of_birth doesn't match" instead of a
+            // generic "service unavailable" and can actually fix the
+            // input. Falls back to a sensible default if the body shape
+            // ever changes.
+            String reason = extractSandboxMessage(e.getResponseBodyAsString())
+                    .orElse("Sandbox couldn't verify these details. Check your PAN, name and date of birth match exactly what's on your PAN card.");
+            log.info("Sandbox 422 (data mismatch): {}", reason);
+            return new PanResult(false, panHolderName, reason);
+        } catch (HttpClientErrorException e) {
+            // Other 4xx — 429 rate limit, 403 forbidden, etc. These are
+            // also user-friendly failures (we tell them, they retry
+            // later or contact support). Same reasoning as 422 —
+            // returning a PanResult avoids needlessly tripping the
+            // breaker on a non-outage condition.
+            int code = e.getStatusCode().value();
+            String reason = code == 429
+                    ? "Verification is rate-limited right now. Please try again in a few minutes."
+                    : extractSandboxMessage(e.getResponseBodyAsString())
+                            .orElse("Verification couldn't complete (HTTP " + code + "). Please try again.");
+            log.info("Sandbox {} (user-actionable): {}", code, reason);
+            return new PanResult(false, panHolderName, reason);
         }
     }
 
@@ -200,9 +231,56 @@ public class SandboxKycProvider implements KycProvider {
         // Resilience4j matches fallback methods by signature — every
         // verifyPan parameter must appear here (in the same order) so
         // the circuit breaker can wire the fallback at startup.
-        log.error("Sandbox PAN verify circuit open / failed", ex);
+        //
+        // Discriminate by exception type so the user gets a useful
+        // message instead of a one-size-fits-all "temporarily
+        // unavailable". This fallback only fires for genuine
+        // infra-level failures now (5xx, timeouts, connection refused,
+        // breaker actually open) — 4xx body-shape errors are caught
+        // and returned cleanly in verifyPan above without reaching us.
+        log.error("Sandbox PAN verify fallback fired ({}): {}",
+                ex.getClass().getSimpleName(), ex.getMessage());
+
+        if (ex instanceof io.github.resilience4j.circuitbreaker.CallNotPermittedException) {
+            return new PanResult(false, panHolderName,
+                    "Verification is paused for a few seconds while we recover from a recent error. Please try again shortly.");
+        }
+        if (ex instanceof java.net.SocketTimeoutException
+                || ex.getMessage() != null && ex.getMessage().toLowerCase().contains("timeout")) {
+            return new PanResult(false, panHolderName,
+                    "NSDL is taking too long to respond. Please try again in a minute.");
+        }
+        if (ex instanceof RestClientException) {
+            return new PanResult(false, panHolderName,
+                    "Can't reach NSDL right now. Please try again in a minute.");
+        }
         return new PanResult(false, panHolderName,
-                "PAN verification service temporarily unavailable — please try again");
+                "Verification didn't complete. Please try again.");
+    }
+
+    /**
+     * Pull the {@code "message"} field out of a Sandbox JSON error body
+     * so the user-facing failure text can be specific
+     * ("date_of_birth doesn't match") instead of generic. Defensive —
+     * returns Optional.empty() on any parse problem so a malformed
+     * payload doesn't take down the whole error path.
+     *
+     * <p>Sandbox error shape:
+     * <pre>
+     *   { "code": 422, "timestamp": ..., "message": "...", "transaction_id": "..." }
+     * </pre>
+     */
+    private static java.util.Optional<String> extractSandboxMessage(String body) {
+        if (body == null || body.isBlank()) return java.util.Optional.empty();
+        try {
+            JSONObject obj = new JSONObject(body);
+            String msg = obj.optString("message", null);
+            return msg == null || msg.isBlank()
+                    ? java.util.Optional.empty()
+                    : java.util.Optional.of(msg);
+        } catch (Exception e) {
+            return java.util.Optional.empty();
+        }
     }
 
     /* ---------- helpers ---------- */
