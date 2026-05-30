@@ -96,6 +96,19 @@ public class ReviewController {
         return ResponseEntity.ok(reviewService.listPendingModeration(p));
     }
 
+    @Operation(summary = "Featured testimonials for the public landing page")
+    @GetMapping("/featured")
+    public ResponseEntity<Page<ReviewResponseDto>> featured(
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "3") @Min(1) int size) {
+        // No auth required. Service layer enforces APPROVED + sort order;
+        // here we only pass the page + size budget. Sort is intentionally
+        // ignored (service overrides) so a future query-string can't
+        // jailbreak the testimonials surface.
+        Pageable p = PageRequest.of(page, size);
+        return ResponseEntity.ok(reviewService.listFeaturedForLandingPage(p));
+    }
+
     @Operation(summary = "Admin: approve / reject / flag a review")
     @PutMapping(value = "/{id}/moderate", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<ReviewResponseDto> moderate(

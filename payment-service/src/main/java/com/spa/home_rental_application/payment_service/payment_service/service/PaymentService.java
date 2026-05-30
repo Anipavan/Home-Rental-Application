@@ -78,6 +78,18 @@ public interface PaymentService {
     PaymentStatsResponse getStatsByTenant(String tenantId);
     PaymentStatsResponse getStatsByOwner(String ownerId);
 
+    /**
+     * Public landing-page stat — the lifetime sum of all PAID rent
+     * payments across the platform. Used by the live-stats strip on
+     * {@code /} and {@code /about} to surface "₹X processed" social
+     * proof. No PII: returns just the aggregate rupee amount, never
+     * per-payment / per-tenant detail.
+     *
+     * <p>Zero when no payments have settled yet — caller (landing) hides
+     * the tile rather than displaying ₹0.
+     */
+    BigDecimal getLifetimeCollectedRupees();
+
     /* --- cross-service consumers --- */
     void onFlatOccupied(String flatId, String tenantId, BigDecimal rentAmount, LocalDate leaseStartDate);
     void onFlatVacated(String flatId, String tenantId);

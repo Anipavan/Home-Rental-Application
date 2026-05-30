@@ -25,6 +25,10 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Reveal } from "@/components/ui/reveal";
 import { propertiesApi } from "@/lib/api/properties";
+import { paymentsApi } from "@/lib/api/payments";
+import { reviewsApi } from "@/lib/api/reviews";
+import { authApi } from "@/lib/api/auth";
+import { formatINR, initials as nameInitials } from "@/lib/utils";
 
 const cities = ["Bengaluru", "Mumbai", "Delhi NCR", "Hyderabad", "Chennai", "Pune"];
 
@@ -67,26 +71,12 @@ function formatCount(n: number | null | undefined): string {
   return (n / 10_000_000).toFixed(1).replace(/\.0$/, "") + "Cr";
 }
 
-const testimonials = [
-  {
-    quote:
-      "Found a 2BHK in Indiranagar in two days, paid the deposit through PhonePe, moved in the same week. The dashboard is a delight.",
-    name: "Aanya Mehta",
-    role: "Tenant · Bengaluru",
-  },
-  {
-    quote:
-      "I manage 14 flats. Anirudh Homes replaced three spreadsheets and a WhatsApp group. The maintenance flow alone saves me an hour a day.",
-    name: "Rahul Iyer",
-    role: "Owner · Pune",
-  },
-  {
-    quote:
-      "The auto-reminders mean my tenants pay on the 3rd, not the 13th. Best part: clean receipts I can hand to my CA.",
-    name: "Sushma R.",
-    role: "Owner · Hyderabad",
-  },
-];
+/* Note: hard-coded testimonials previously lived here as placeholders.
+ * Removed 2026-05-28 in favour of pulling REAL approved reviews via
+ * reviewsApi.featured() — fabricated "Aanya Mehta · Bengaluru" quotes
+ * read as obvious marketing copy and undermined the rest of the
+ * page's honest live counters. Now the testimonials section either
+ * shows real reviews or hides itself when none exist. */
 
 export function LandingPage() {
   const [city, setCity] = useState("Bengaluru");
@@ -132,19 +122,43 @@ export function LandingPage() {
     staleTime: 5 * 60_000,
     retry: false,
   });
+  // Tenant count — public endpoint, returns the AuthUserResponse list
+  // for the TENANT role. We only need the length; React Query keeps a
+  // single cached copy that the admin /users page reuses.
+  const tenantsQ = useQuery({
+    queryKey: ["marketing-stats", "tenants"],
+    queryFn: () => authApi.byRole("TENANT"),
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  // Lifetime ₹ processed — the only number that grows with platform
+  // activity rather than supply. Whitelisted at the gateway so this
+  // works without auth.
+  const lifetimeQ = useQuery({
+    queryKey: ["marketing-stats", "lifetime-collected"],
+    queryFn: () => paymentsApi.publicLifetimeStats(),
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
 
-  const liveStats = [
+  // Six tiles total. Each tile carries a `show` flag so we can hide
+  // those that resolve to 0 — better to surface "9 verified homes"
+  // proudly than "0 verified homes · 0 ₹ processed" embarrassingly.
+  const liveStats: Array<{ v: string; l: string; show: boolean }> = [
     {
       v: formatCount(homesQ.data?.totalElements ?? null),
       l: "Verified homes",
+      show: (homesQ.data?.totalElements ?? 0) > 0,
     },
     {
       v: formatCount(buildingsQ.data?.totalElements ?? null),
       l: "Buildings listed",
+      show: (buildingsQ.data?.totalElements ?? 0) > 0,
     },
     {
       v: formatCount(vacantQ.data?.length ?? null),
       l: "Available now",
+      show: (vacantQ.data?.length ?? 0) > 0,
     },
     {
       v: formatCount(
@@ -157,8 +171,39 @@ export function LandingPage() {
           : null,
       ),
       l: "Cities covered",
+      show: (citySampleQ.data?.content?.length ?? 0) > 0,
+    },
+    // NEW — tenants on platform.
+    {
+      v: formatCount(tenantsQ.data?.length ?? null),
+      l: "Tenants on platform",
+      show: (tenantsQ.data?.length ?? 0) > 0,
+    },
+    // NEW — lifetime ₹ processed. Uses formatINR for the rupee glyph
+    // and the Indian lakh/crore grouping (1,23,45,678 not 12,345,678).
+    {
+      v:
+        lifetimeQ.data?.totalCollectedRupees != null &&
+        lifetimeQ.data.totalCollectedRupees > 0
+          ? formatINR(lifetimeQ.data.totalCollectedRupees)
+          : "—",
+      l: "Processed in rent",
+      show: (lifetimeQ.data?.totalCollectedRupees ?? 0) > 0,
     },
   ];
+  // Only render tiles with usable data. Falls back to "the four
+  // supply-side counters" before any rent has been collected.
+  const visibleLiveStats = liveStats.filter((s) => s.show);
+
+  // Featured testimonials — APPROVED reviews sorted by rating + recency.
+  // Hides the entire section when empty (post-wipe / brand-new day).
+  const featuredReviewsQ = useQuery({
+    queryKey: ["marketing-featured-reviews"],
+    queryFn: () => reviewsApi.featured(3),
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const featuredReviews = featuredReviewsQ.data?.content ?? [];
 
   return (
     <>
@@ -259,22 +304,27 @@ export function LandingPage() {
         </div>
       </section>
 
-      <section className="border-y border-border/60 bg-background">
-        <div className="container py-10 grid grid-cols-2 md:grid-cols-4 gap-6">
-          {liveStats.map((s, i) => (
-            <Reveal key={s.l} delay={i * 70}>
-              <div className="text-center">
-                <div className="font-display text-2xl sm:text-3xl font-bold gradient-text">
-                  {s.v}
+      {visibleLiveStats.length > 0 && (
+        <section className="border-y border-border/60 bg-background">
+          {/* grid-cols-3 at small + lg:grid-cols-6 so the strip handles
+              between 1 and 6 tiles gracefully. Tiles arrange themselves
+              based on how many have real data — no awkward "0" cards. */}
+          <div className="container py-10 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-6">
+            {visibleLiveStats.map((s, i) => (
+              <Reveal key={s.l} delay={i * 70}>
+                <div className="text-center">
+                  <div className="font-display text-2xl sm:text-3xl font-bold gradient-text">
+                    {s.v}
+                  </div>
+                  <div className="text-xs sm:text-sm text-muted-foreground mt-1">
+                    {s.l}
+                  </div>
                 </div>
-                <div className="text-xs sm:text-sm text-muted-foreground mt-1">
-                  {s.l}
-                </div>
-              </div>
-            </Reveal>
-          ))}
-        </div>
-      </section>
+              </Reveal>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="container py-16 lg:py-24">
         <Reveal>
@@ -365,36 +415,71 @@ export function LandingPage() {
         </div>
       </section>
 
-      <section className="container py-16 lg:py-24">
-        <Reveal>
-          <div className="text-center max-w-2xl mx-auto">
-            <h2 className="font-display text-3xl lg:text-4xl font-bold">
-              Loved by 12,000+ renters.
-            </h2>
-            <p className="mt-3 text-muted-foreground">
-              Real reviews from real homes.
-            </p>
+      {/* Real testimonials block — pulled live from APPROVED reviews
+          sorted by rating + recency. Hidden entirely when no reviews
+          exist yet (post-wipe / pre-launch). Hiding > faking. */}
+      {featuredReviews.length > 0 && (
+        <section className="container py-16 lg:py-24">
+          <Reveal>
+            <div className="text-center max-w-2xl mx-auto">
+              <h2 className="font-display text-3xl lg:text-4xl font-bold">
+                What renters are saying.
+              </h2>
+              <p className="mt-3 text-muted-foreground">
+                Real reviews from real tenants on Anirudh Homes.
+              </p>
+            </div>
+          </Reveal>
+          <div className="mt-10 grid gap-5 md:grid-cols-3">
+            {featuredReviews.map((r, i) => {
+              // The reviewer's name isn't on the review row — we only
+              // have reviewerId. To keep the card honest without a
+              // joining round-trip per review, render initials from
+              // the title (a fallback most reviews carry) or "AH" as
+              // the brand-mark, then attribute as "Verified renter".
+              const initialsSrc =
+                r.title?.trim() || (r.reviewerType === "TENANT" ? "Tenant" : "Renter");
+              return (
+                <Reveal key={r.id} delay={i * 100}>
+                  <Card className="p-6 hover:shadow-lift hover:-translate-y-0.5 transition-all duration-300 h-full">
+                    <div className="flex gap-0.5 text-amber-500 mb-3">
+                      {Array.from({ length: 5 }).map((_, idx) => (
+                        <Star
+                          key={idx}
+                          className={
+                            idx < r.rating
+                              ? "size-4 fill-current"
+                              : "size-4 text-muted-foreground/30"
+                          }
+                        />
+                      ))}
+                    </div>
+                    {r.title && (
+                      <p className="font-semibold text-sm mb-1.5">{r.title}</p>
+                    )}
+                    <p className="text-sm leading-relaxed text-muted-foreground">
+                      "{r.body || "—"}"
+                    </p>
+                    <div className="mt-5 pt-4 border-t border-border/60 flex items-center gap-3">
+                      <div className="size-8 rounded-full bg-primary/15 text-primary grid place-items-center text-xs font-semibold">
+                        {nameInitials(initialsSrc)}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold">Verified renter</p>
+                        <p className="text-xs text-muted-foreground">
+                          {r.targetType === "OWNER"
+                            ? "Reviewing their landlord"
+                            : "Reviewing their stay"}
+                        </p>
+                      </div>
+                    </div>
+                  </Card>
+                </Reveal>
+              );
+            })}
           </div>
-        </Reveal>
-        <div className="mt-10 grid gap-5 md:grid-cols-3">
-          {testimonials.map((t, i) => (
-            <Reveal key={t.name} delay={i * 100}>
-              <Card className="p-6 hover:shadow-lift hover:-translate-y-0.5 transition-all duration-300 h-full">
-                <div className="flex gap-0.5 text-amber-500 mb-3">
-                  {Array.from({ length: 5 }).map((_, idx) => (
-                    <Star key={idx} className="size-4 fill-current" />
-                  ))}
-                </div>
-                <p className="text-sm leading-relaxed">"{t.quote}"</p>
-                <div className="mt-5 pt-4 border-t border-border/60">
-                  <p className="text-sm font-semibold">{t.name}</p>
-                  <p className="text-xs text-muted-foreground">{t.role}</p>
-                </div>
-              </Card>
-            </Reveal>
-          ))}
-        </div>
-      </section>
+        </section>
+      )}
 
       <section className="container pb-20">
         <Reveal>

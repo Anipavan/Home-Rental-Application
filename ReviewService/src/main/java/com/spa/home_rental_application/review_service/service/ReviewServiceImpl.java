@@ -16,7 +16,9 @@ import com.spa.home_rental_application.review_service.mapper.ReviewMapper;
 import com.spa.home_rental_application.review_service.repository.ReviewRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -164,6 +166,27 @@ public class ReviewServiceImpl implements ReviewService {
     @Override
     public Page<ReviewResponseDto> listPendingModeration(Pageable pageable) {
         return reviewRepository.findByModerationStatusAndIsDeletedFalse("PENDING", pageable)
+                .map(mapper::toResponse);
+    }
+
+    @Override
+    public Page<ReviewResponseDto> listFeaturedForLandingPage(Pageable pageable) {
+        // Re-sort the requested pageable so high-rating wins over recency.
+        // Caller passes any page+size; we override the sort to enforce the
+        // "best testimonials first" contract.
+        Pageable forced = PageRequest.of(
+                pageable.getPageNumber(),
+                pageable.getPageSize(),
+                Sort.by(
+                        Sort.Order.desc("rating"),
+                        Sort.Order.desc("createdAt")
+                )
+        );
+        // Filter to APPROVED + with a body (3-word reviews don't read as
+        // testimonials). Body length filter is applied in-memory after
+        // the Mongo query because Spring Data Mongo doesn't expose a
+        // single derived-query name covering "length >= X".
+        return reviewRepository.findByModerationStatusAndIsDeletedFalse("APPROVED", forced)
                 .map(mapper::toResponse);
     }
 

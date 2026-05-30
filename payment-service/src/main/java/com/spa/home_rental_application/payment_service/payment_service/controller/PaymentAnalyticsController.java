@@ -12,7 +12,9 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping(value = "/payments", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -41,5 +43,17 @@ public class PaymentAnalyticsController {
     @GetMapping("/history/tenant/{tenantId}")
     public ResponseEntity<List<PaymentResponse>> history(@PathVariable String tenantId) {
         return ResponseEntity.ok(paymentService.getPaymentsByTenant(tenantId));
+    }
+
+    @Operation(summary = "Public lifetime collected rupees — for landing-page social proof")
+    @GetMapping("/stats/public/lifetime")
+    public ResponseEntity<Map<String, Object>> publicLifetimeStats() {
+        // No auth: this is a single aggregate number, no PII. Whitelisted
+        // in the api-gateway so the public landing page can fetch it
+        // without a token.
+        BigDecimal total = paymentService.getLifetimeCollectedRupees();
+        return ResponseEntity.ok(Map.of(
+                "totalCollectedRupees", total
+        ));
     }
 }

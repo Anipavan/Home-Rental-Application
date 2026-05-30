@@ -459,6 +459,15 @@ app:
       # (browser GET, no Authorization header).
       - GET /rentals/v1/payments/mock/**
       - GET /api/payments/mock/**
+      # ─── Public social-proof endpoints (landing / about page stats) ───
+      # Both return only AGGREGATE numbers (lifetime collected ₹, recent
+      # approved reviews). No PII, no per-user data — safe to expose to
+      # unauthenticated visitors. Used by the live-counter strip on the
+      # landing page and the "By the numbers" section on /about.
+      - GET /rentals/v1/payments/stats/public/**
+      - GET /api/payments/stats/public/**
+      - GET /rentals/v1/reviews/featured
+      - GET /api/reviews/featured
       - /actuator/**
       - /v3/api-docs/**
       - /swagger-ui/**

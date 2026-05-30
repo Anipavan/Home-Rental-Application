@@ -19,6 +19,9 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Reveal } from "@/components/ui/reveal";
 import { propertiesApi } from "@/lib/api/properties";
+import { paymentsApi } from "@/lib/api/payments";
+import { authApi } from "@/lib/api/auth";
+import { formatINR } from "@/lib/utils";
 
 /* ────────────────────────────────────────────────────────────────────
  * About — the brand page.
@@ -195,13 +198,32 @@ function LiveNumbers() {
     staleTime: 5 * 60_000,
     retry: false,
   });
+  // Tenant + lifetime-collected match the landing page so the two
+  // surfaces tell the same numerical story. Shared React-Query keys
+  // mean the data fetches once across a page navigation.
+  const tenantsQ = useQuery({
+    queryKey: ["marketing-stats", "tenants"],
+    queryFn: () => authApi.byRole("TENANT"),
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const lifetimeQ = useQuery({
+    queryKey: ["marketing-stats", "lifetime-collected"],
+    queryFn: () => paymentsApi.publicLifetimeStats(),
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
 
+  // Six tiles total. Each carries a `show` flag — when the value is
+  // zero we hide the tile rather than render "0" as a hollow vanity
+  // metric. The grid below filters before rendering.
   const stats = [
     {
       icon: Building2,
       value: formatCount(homesQ.data?.totalElements),
       label: "Verified homes",
       sub: "Listed directly by owners",
+      show: (homesQ.data?.totalElements ?? 0) > 0,
     },
     {
       icon: Globe2,
@@ -216,20 +238,41 @@ function LiveNumbers() {
       ),
       label: "Cities covered",
       sub: "And growing every week",
+      show: (citySampleQ.data?.content?.length ?? 0) > 0,
     },
     {
       icon: Users,
       value: formatCount(buildingsQ.data?.totalElements),
       label: "Buildings on platform",
       sub: "From owners who trust us",
+      show: (buildingsQ.data?.totalElements ?? 0) > 0,
     },
     {
       icon: Sparkles,
       value: formatCount(vacantQ.data?.length),
       label: "Available right now",
       sub: "Move-in ready listings",
+      show: (vacantQ.data?.length ?? 0) > 0,
     },
-  ];
+    {
+      icon: Users,
+      value: formatCount(tenantsQ.data?.length ?? null),
+      label: "Tenants on platform",
+      sub: "Renting through Anirudh Homes",
+      show: (tenantsQ.data?.length ?? 0) > 0,
+    },
+    {
+      icon: IndianRupee,
+      value:
+        lifetimeQ.data?.totalCollectedRupees != null &&
+        lifetimeQ.data.totalCollectedRupees > 0
+          ? formatINR(lifetimeQ.data.totalCollectedRupees)
+          : "—",
+      label: "Processed in rent",
+      sub: "Settled via UPI / card / NEFT",
+      show: (lifetimeQ.data?.totalCollectedRupees ?? 0) > 0,
+    },
+  ].filter((s) => s.show);
 
   return (
     <section className="relative">
@@ -249,7 +292,7 @@ function LiveNumbers() {
             </p>
           </div>
         </Reveal>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 sm:gap-5">
           {stats.map((s, i) => (
             <Reveal key={s.label} delay={i * 80}>
               <Card className="p-6 h-full bg-card/80 backdrop-blur-sm border-border/60 hover:border-primary/40 hover:shadow-lift transition-all duration-300">

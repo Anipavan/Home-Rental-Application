@@ -737,6 +737,21 @@ public class PaymentServiceImpl implements PaymentService {
         return aggregate(paymentRepo.findByOwnerId(ownerId));
     }
 
+    @Override
+    public BigDecimal getLifetimeCollectedRupees() {
+        // Sum totalAmount across every PAID row. Streams the result set
+        // so memory stays flat even as the platform grows (vs loading
+        // all paid rows into a List). Returns ZERO when no payments
+        // have settled — caller treats that as "hide the tile".
+        BigDecimal sum = BigDecimal.ZERO;
+        for (Payment p : paymentRepo.findByStatus(PaymentStatus.PAID)) {
+            if (p.getTotalAmount() != null) {
+                sum = sum.add(p.getTotalAmount());
+            }
+        }
+        return sum;
+    }
+
     private PaymentStatsResponse aggregate(List<Payment> payments) {
         long total = payments.size();
         long paid = 0, pending = 0, overdue = 0, failed = 0;

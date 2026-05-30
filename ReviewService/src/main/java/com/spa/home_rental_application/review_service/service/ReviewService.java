@@ -19,6 +19,17 @@ public interface ReviewService {
 
     Page<ReviewResponseDto> listPendingModeration(Pageable pageable);
 
+    /**
+     * Public landing-page testimonials. Returns APPROVED reviews with a
+     * usable body, sorted by rating desc then createdAt desc so the
+     * highest-rated, newest reviews surface first.
+     *
+     * <p>No auth required — used by the public landing page. Returns an
+     * empty page when no reviews qualify; the caller (landing) hides the
+     * testimonials section entirely rather than fabricating content.
+     */
+    Page<ReviewResponseDto> listFeaturedForLandingPage(Pageable pageable);
+
     ReviewResponseDto moderate(String reviewId, ModerateReviewRequest request);
 
     void softDelete(String reviewId);

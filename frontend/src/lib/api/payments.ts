@@ -49,6 +49,17 @@ export const paymentsApi = {
       .then((r) => r.data),
   overdue: () =>
     api.get<PaymentResponse[]>("/payments/overdue").then((r) => r.data),
+
+  /**
+   * Public landing-page stat: lifetime rupee sum across every settled
+   * (PAID) payment. No auth required (whitelisted at the gateway).
+   * Returns 0 when no payments have settled — the caller (landing
+   * page) hides the tile rather than display ₹0.
+   */
+  publicLifetimeStats: () =>
+    api
+      .get<{ totalCollectedRupees: number }>("/payments/stats/public/lifetime")
+      .then((r) => r.data),
   create: (body: CreatePaymentRequest) =>
     api.post<PaymentResponse>("/payments", body).then((r) => r.data),
   payCash: (id: number | string, body: PayCashRequest) =>

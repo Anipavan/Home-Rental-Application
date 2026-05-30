@@ -53,6 +53,18 @@ export const reviewsApi = {
       })
       .then((r) => r.data),
 
+  /**
+   * Featured testimonials for the public landing page. Returns the
+   * highest-rated, most-recent APPROVED reviews. Whitelisted at the
+   * gateway so no JWT required.
+   *
+   * <p>Default size 3 matches the landing-page testimonial grid.
+   */
+  featured: (size = 3) =>
+    api
+      .get<Page<ReviewResponse>>("/reviews/featured", { params: { size } })
+      .then((r) => r.data),
+
   moderate: (id: string, body: ModerateReviewRequest) =>
     api
       .put<ReviewResponse>(`/reviews/${id}/moderate`, body)
