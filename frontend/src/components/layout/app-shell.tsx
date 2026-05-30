@@ -111,6 +111,7 @@ const ownerNav: NavItem[] = [
   { to: "/owner/complaints", label: "Complaints", icon: MessageSquareWarning },
   { to: "/owner/agreements", label: "Agreements", icon: ScrollText },
   { to: "/owner/leases", label: "Leases", icon: FileText },
+  { to: "/owner/documents", label: "Documents", icon: FileText },
   { to: "/owner/enquiries", label: "Enquiries", icon: Inbox },
   // Compliance pill mirrors the COMPLIANCE_DISABLED feature flag.
   { to: "/owner/compliance", label: "Compliance", icon: Stamp, pausedBadge: isComplianceDisabled() },

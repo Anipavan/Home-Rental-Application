@@ -6,12 +6,18 @@ import {
   ShieldCheck,
   Trash2,
   AlertCircle,
+  ScrollText,
+  Receipt,
+  Loader2,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import { useAuthStore } from "@/stores/auth-store";
 import { documentsApi } from "@/lib/api/documents";
 import { usersApi } from "@/lib/api/users";
+import { leaseApi } from "@/lib/api/lease";
+import { paymentsApi } from "@/lib/api/payments";
+import { formatDate, formatINR } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -53,6 +59,27 @@ export function DocumentsPage() {
     queryKey: ["documents", userId],
     queryFn: () => documentsApi.byUser(userId!),
     enabled: !!userId,
+  });
+
+  // Vault expansion — pull lease docs + payment receipts so this page
+  // becomes the single place a tenant looks for "where's my lease /
+  // where's last month's receipt", instead of jumping between three
+  // screens. Both query on the auth-user-id (which matches what the
+  // payment-service stores as tenantId) so a single id keyed every
+  // surface that the tenant has touched.
+  const leasesQ = useQuery({
+    queryKey: ["my-leases", authUserId],
+    queryFn: () => leaseApi.byTenant(authUserId!),
+    enabled: !!authUserId,
+    staleTime: 60_000,
+    retry: false,
+  });
+  const paymentsQ = useQuery({
+    queryKey: ["my-payments", authUserId],
+    queryFn: () => paymentsApi.byTenant(authUserId!),
+    enabled: !!authUserId,
+    staleTime: 60_000,
+    retry: false,
   });
 
   // Compute which document types the user has ALREADY uploaded with a
@@ -281,7 +308,275 @@ export function DocumentsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* ──── Lease agreements ──── */}
+      <LeaseVaultSection leases={leasesQ.data ?? []} loading={leasesQ.isLoading} />
+
+      {/* ──── Payment receipts (PAID only) ──── */}
+      <ReceiptsVaultSection
+        payments={paymentsQ.data ?? []}
+        loading={paymentsQ.isLoading}
+      />
     </div>
+  );
+}
+
+/* ──────────────────────── Lease vault section ──────────────────────── */
+
+/**
+ * Lease agreements panel — shows every lease this tenant has been
+ * party to, with a download button per lease. The lease-service PDF
+ * carries the rendered terms + RERA stamp + e-signatures, so a
+ * download is exactly what an audit (or a future landlord) would
+ * want to see.
+ *
+ * <p>Hidden entirely when the tenant has no leases — a brand-new
+ * user shouldn't see "0 leases" hollow space.
+ */
+function LeaseVaultSection({
+  leases,
+  loading,
+}: {
+  leases: Array<{
+    id: string;
+    flatId: string;
+    leaseStartDate?: string;
+    leaseEndDate?: string;
+    monthlyRent?: number;
+    status?: string;
+  }>;
+  loading: boolean;
+}) {
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  async function handleDownload(leaseId: string) {
+    setDownloadingId(leaseId);
+    try {
+      const blob = await leaseApi.downloadDocument(leaseId);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `lease-${leaseId.slice(0, 8)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast({
+        variant: "destructive",
+        title: "Couldn't download lease",
+        description: extractErrorMessage(e),
+      });
+    } finally {
+      setDownloadingId(null);
+    }
+  }
+
+  if (!loading && leases.length === 0) return null;
+
+  return (
+    <Card className="mt-6">
+      <CardContent className="p-6 sm:p-8">
+        <h3 className="font-display font-semibold text-lg flex items-center gap-2">
+          <ScrollText className="size-4 text-primary" />
+          Lease agreements {leases.length > 0 && `(${leases.length})`}
+        </h3>
+        <p className="text-sm text-muted-foreground mt-1">
+          Every lease you've signed, with the original PDF on file.
+        </p>
+
+        {loading ? (
+          <div className="mt-4 space-y-3">
+            {[1, 2].map((i) => (
+              <Skeleton key={i} className="h-16 rounded-xl" />
+            ))}
+          </div>
+        ) : (
+          <div className="mt-4 space-y-3">
+            {leases.map((l) => (
+              <div
+                key={l.id}
+                className="rounded-xl border bg-secondary/30 p-4 flex flex-wrap items-center gap-4"
+              >
+                <div className="size-12 rounded-lg bg-background grid place-items-center border shrink-0">
+                  <ScrollText className="size-5 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-medium text-sm">
+                      Lease {l.id.slice(0, 8)}…
+                    </p>
+                    {l.status && (
+                      <Badge
+                        variant={
+                          l.status === "ACTIVE"
+                            ? "success"
+                            : l.status === "TERMINATED" || l.status === "EXPIRED"
+                              ? "secondary"
+                              : "warning"
+                        }
+                        className="text-[10px]"
+                      >
+                        {l.status}
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {l.leaseStartDate
+                      ? `From ${formatDate(l.leaseStartDate)}`
+                      : "Start date not set"}
+                    {l.leaseEndDate
+                      ? ` · until ${formatDate(l.leaseEndDate)}`
+                      : ""}
+                    {l.monthlyRent
+                      ? ` · ${formatINR(l.monthlyRent)}/mo`
+                      : ""}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => handleDownload(l.id)}
+                  disabled={downloadingId === l.id}
+                >
+                  {downloadingId === l.id ? (
+                    <Loader2 className="animate-spin" />
+                  ) : (
+                    <Download />
+                  )}
+                  Download
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ──────────────────────── Receipts vault section ──────────────────────── */
+
+/**
+ * Payment receipts panel — every PAID payment becomes a downloadable
+ * receipt PDF. Carries the platform's GST-compliant invoice format
+ * with payment date, transaction id, amount, late fee breakdown.
+ *
+ * <p>Hidden when no PAID payments yet (new tenants pre-first-rent).
+ */
+function ReceiptsVaultSection({
+  payments,
+  loading,
+}: {
+  payments: Array<{
+    id: string;
+    paymentDate?: string;
+    dueDate: string;
+    amount: number;
+    totalAmount?: number;
+    status: string;
+    transactionId?: string;
+  }>;
+  loading: boolean;
+}) {
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  // Only PAID payments have a receipt PDF — the invoice exists earlier
+  // (at issuance) but the receipt is generated on settlement.
+  const paid = payments
+    .filter((p) => p.status === "PAID")
+    .sort((a, b) => {
+      const aD = a.paymentDate ?? a.dueDate ?? "";
+      const bD = b.paymentDate ?? b.dueDate ?? "";
+      return bD.localeCompare(aD);
+    });
+
+  async function handleDownload(paymentId: string) {
+    setDownloadingId(paymentId);
+    try {
+      const blob = await paymentsApi.receiptPdf(paymentId);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `receipt-${paymentId.slice(0, 8)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast({
+        variant: "destructive",
+        title: "Couldn't download receipt",
+        description: extractErrorMessage(e),
+      });
+    } finally {
+      setDownloadingId(null);
+    }
+  }
+
+  if (!loading && paid.length === 0) return null;
+
+  return (
+    <Card className="mt-6">
+      <CardContent className="p-6 sm:p-8">
+        <h3 className="font-display font-semibold text-lg flex items-center gap-2">
+          <Receipt className="size-4 text-primary" />
+          Payment receipts {paid.length > 0 && `(${paid.length})`}
+        </h3>
+        <p className="text-sm text-muted-foreground mt-1">
+          GST-compliant receipts for every rent payment that's settled.
+        </p>
+
+        {loading ? (
+          <div className="mt-4 space-y-3">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-14 rounded-xl" />
+            ))}
+          </div>
+        ) : (
+          <div className="mt-4 space-y-2">
+            {paid.map((p) => (
+              <div
+                key={p.id}
+                className="rounded-xl border bg-secondary/30 p-3 flex items-center gap-3"
+              >
+                <div className="size-9 rounded-lg bg-background grid place-items-center border shrink-0">
+                  <Receipt className="size-4 text-muted-foreground" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-medium text-sm">
+                      {formatINR(p.totalAmount ?? p.amount)}
+                    </p>
+                    <span className="text-xs text-muted-foreground">
+                      paid {formatDate(p.paymentDate ?? p.dueDate)}
+                    </span>
+                  </div>
+                  {p.transactionId && (
+                    <p className="text-[11px] text-muted-foreground font-mono mt-0.5 truncate">
+                      Txn {p.transactionId}
+                    </p>
+                  )}
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => handleDownload(p.id)}
+                  disabled={downloadingId === p.id}
+                >
+                  {downloadingId === p.id ? (
+                    <Loader2 className="animate-spin" />
+                  ) : (
+                    <Download />
+                  )}
+                  PDF
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

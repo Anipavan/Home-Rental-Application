@@ -33,6 +33,7 @@ import { TenantLeasePage } from "@/pages/tenant/lease";
 import { KycPage } from "@/pages/tenant/kyc";
 import { KycCallbackPage } from "@/pages/tenant/kyc-callback";
 import { DocumentsPage } from "@/pages/tenant/documents";
+import { OwnerDocumentsPage } from "@/pages/owner/documents";
 import { TenantReviewsPage } from "@/pages/tenant/reviews";
 import { OwnerDashboard } from "@/pages/owner/dashboard";
 import { BuildingsPage } from "@/pages/owner/buildings";
@@ -221,6 +222,7 @@ export const router = createBrowserRouter([
           ]
         : [{ path: "compliance", element: <OwnerCompliancePage /> }]),
       { path: "analytics", element: <OwnerAnalyticsPage /> },
+      { path: "documents", element: <OwnerDocumentsPage /> },
       { path: "notifications", element: <NotificationsInboxPage /> },
       { path: "notifications/preferences", element: <NotificationPreferencesPage /> },
       // Owners get the same Profile page as tenants — the user-service
