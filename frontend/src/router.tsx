@@ -53,6 +53,7 @@ import { OwnerEnquiriesPage } from "@/pages/owner/enquiries";
 import { OwnerCompliancePage } from "@/pages/owner/compliance";
 import { AdminDashboard } from "@/pages/admin/dashboard";
 import { AdminUsersPage } from "@/pages/admin/users";
+import { AdminVendorUsagePage } from "@/pages/admin/vendor-usage";
 import { AdminPropertiesPage } from "@/pages/admin/properties";
 import { AdminPaymentsPage } from "@/pages/admin/payments";
 import { AdminMaintenancePage } from "@/pages/admin/maintenance";
@@ -268,6 +269,7 @@ export const router = createBrowserRouter([
       { path: "support", element: <AdminSupportPage /> },
       { path: "visit-requests", element: <AdminVisitRequestsPage /> },
       { path: "announcements", element: <AdminAnnouncementsPage /> },
+      { path: "vendor-usage", element: <AdminVendorUsagePage /> },
       { path: "notifications", element: <NotificationsInboxPage /> },
       { path: "notifications/preferences", element: <NotificationPreferencesPage /> },
       // Admin profile mirrors the owner/tenant Profile page — same UI,

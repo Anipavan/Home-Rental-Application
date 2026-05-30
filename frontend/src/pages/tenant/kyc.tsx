@@ -9,6 +9,7 @@ import { useState } from "react";
 import { useAuthStore } from "@/stores/auth-store";
 import { kycApi } from "@/lib/api/kyc";
 import { usersApi } from "@/lib/api/users";
+import { ContactAdminForKycDialog } from "@/components/kyc/contact-admin-dialog";
 import { isKycDisabled } from "@/lib/feature-flags";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -45,6 +46,11 @@ export function KycPage() {
   const { authUserId } = useAuthStore();
   const qc = useQueryClient();
   const [accepted, setAccepted] = useState(false);
+  // Drives the "contact admin" dialog — opens when the server returns
+  // a vendor-unavailable failure (billing/quota hit on Sandbox).
+  // Separated from the inline status display so the user gets a
+  // foreground escalation prompt instead of a quiet red banner.
+  const [contactDialogOpen, setContactDialogOpen] = useState(false);
 
   // KYC Service stores the user identifier opaquely, so we use authUserId
   // directly. This avoids a cross-service round-trip to user-service that
@@ -119,6 +125,12 @@ export function KycPage() {
             ? `Welcome, ${data.nameOnAadhaar}.`
             : "Your PAN was successfully verified.",
         });
+      } else if (data.failureCode === "VENDOR_UNAVAILABLE") {
+        // Server-side vendor outage / billing alert — open the
+        // contact-admin dialog instead of the inline error banner.
+        // The user can't fix this themselves; they need a phone call
+        // to complete verification manually.
+        setContactDialogOpen(true);
       } else {
         toast({
           variant: "destructive",
@@ -226,6 +238,12 @@ export function KycPage() {
           )}
         </CardContent>
       </Card>
+
+      <ContactAdminForKycDialog
+        open={contactDialogOpen}
+        onOpenChange={setContactDialogOpen}
+        reason={statusQ.data?.failureReason}
+      />
 
       {reportQ.data && (
         <Card>

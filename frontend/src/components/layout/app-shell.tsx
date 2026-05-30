@@ -24,6 +24,7 @@ import {
   Search,
   Heart,
   BellRing,
+  Server,
 } from "lucide-react";
 import { Logo } from "./logo";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -136,6 +137,9 @@ const adminNav: NavItem[] = [
   { to: "/admin/visit-requests", label: "Visit requests", icon: Calendar },
   // Issue #9 — admin announcement broadcast composer.
   { to: "/admin/announcements", label: "Announcements", icon: Megaphone },
+  // Per-vendor API usage + billing alerts. Admin-only — server enforces
+  // the role, nav entry is admin-scoped so non-admins never see the link.
+  { to: "/admin/vendor-usage", label: "Vendor usage", icon: Server },
   { to: "/admin/profile", label: "Profile", icon: Settings },
 ];
 

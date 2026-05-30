@@ -3,6 +3,8 @@ package com.spa.home_rental_application.kyc_service.provider;
 import com.spa.home_rental_application.kyc_service.DTO.Request.InitiateKycRequest;
 import com.spa.home_rental_application.kyc_service.Exceptionclass.KycProviderException;
 import com.spa.home_rental_application.kyc_service.config.KycProperties;
+import com.spa.home_rental_application.kyc_service.entity.VendorApiCall;
+import com.spa.home_rental_application.kyc_service.service.VendorUsageRecorder;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import lombok.extern.slf4j.Slf4j;
 import org.json.JSONObject;
@@ -56,16 +58,25 @@ public class SandboxKycProvider implements KycProvider {
      */
     private static final double NAME_MATCH_MIN_SCORE = 60.0;
 
+    /** Logical vendor name for this provider — used as the key in the
+     *  admin Vendor Usage dashboard and the VendorApiCall.vendorName
+     *  column. Format is {@code <VENDOR>_<PRODUCT>} so a future
+     *  SandboxKycProvider variant (e.g. AADHAAR) gets its own row. */
+    private static final String VENDOR_NAME = "SANDBOX_NSDL_PAN";
+
     private final KycProperties props;
     private final RestTemplate http;
     private final SandboxAuthClient authClient;
+    private final VendorUsageRecorder usageRecorder;
 
     public SandboxKycProvider(KycProperties props,
                               RestTemplate sandboxRestTemplate,
-                              SandboxAuthClient authClient) {
+                              SandboxAuthClient authClient,
+                              VendorUsageRecorder usageRecorder) {
         this.props = props;
         this.http = sandboxRestTemplate;
         this.authClient = authClient;
+        this.usageRecorder = usageRecorder;
     }
 
     @Override
@@ -98,9 +109,26 @@ public class SandboxKycProvider implements KycProvider {
     public PanResult verifyPan(String panNumber, String panHolderName, String dateOfBirth) {
         log.info("→ Sandbox verifyPan pan=****{} ",
                 panNumber.substring(panNumber.length() - 2));
+        final String endpoint = props.getSandbox().getPanVerifyPath();
+        final long startMs = System.currentTimeMillis();
 
         try {
-            return doVerifyPan(panNumber, panHolderName, dateOfBirth);
+            PanResult result = doVerifyPan(panNumber, panHolderName, dateOfBirth);
+            // Mark SUCCESS only when Sandbox said the PAN is VALID AND
+            // we cleared the name-match threshold. doVerifyPan returns
+            // PanResult(false, ...) for "VALID but name mismatched" —
+            // that's a USER_ERROR for the dashboard, not a success.
+            usageRecorder.record(
+                    VENDOR_NAME, endpoint,
+                    result.valid()
+                            ? VendorApiCall.Status.SUCCESS
+                            : VendorApiCall.Status.USER_ERROR,
+                    "200",
+                    result.valid() ? null : result.failureReason(),
+                    (int) (System.currentTimeMillis() - startMs),
+                    null
+            );
+            return result;
         } catch (HttpClientErrorException.Unauthorized e) {
             // Token rotated server-side — invalidate cache + retry once
             // with a fresh JWT. A second 401 is genuinely an auth bug
@@ -142,13 +170,31 @@ public class SandboxKycProvider implements KycProvider {
                                 + "Top up at https://sandbox.co.in/dashboard or set "
                                 + "KYC_PROVIDER=MOCK in .env to keep testing.",
                         rawSandboxMsg);
+                usageRecorder.record(
+                        VENDOR_NAME, endpoint,
+                        VendorApiCall.Status.BILLING_ALERT,
+                        "422", rawSandboxMsg,
+                        (int) (System.currentTimeMillis() - startMs),
+                        null
+                );
+                // VENDOR_UNAVAILABLE failureReason — the frontend
+                // recognises this marker prefix and pops the
+                // "Contact admin" dialog instead of the inline
+                // error banner.
                 return new PanResult(false, panHolderName,
-                        "Identity verification is temporarily paused. Our team has been alerted — please try again in a little while.");
+                        "VENDOR_UNAVAILABLE: Identity verification is temporarily paused. Please contact our team to complete verification.");
             }
             String reason = rawSandboxMsg.isBlank()
                     ? "Sandbox couldn't verify these details. Check your PAN, name and date of birth match exactly what's on your PAN card."
                     : rawSandboxMsg;
             log.info("Sandbox 422 (data mismatch): {}", reason);
+            usageRecorder.record(
+                    VENDOR_NAME, endpoint,
+                    VendorApiCall.Status.USER_ERROR,
+                    "422", rawSandboxMsg,
+                    (int) (System.currentTimeMillis() - startMs),
+                    null
+            );
             return new PanResult(false, panHolderName, reason);
         } catch (HttpClientErrorException e) {
             // Other 4xx — 429 rate limit, 403 forbidden, etc. These are
@@ -157,11 +203,38 @@ public class SandboxKycProvider implements KycProvider {
             // returning a PanResult avoids needlessly tripping the
             // breaker on a non-outage condition.
             int code = e.getStatusCode().value();
-            String reason = code == 429
-                    ? "Verification is rate-limited right now. Please try again in a few minutes."
-                    : extractSandboxMessage(e.getResponseBodyAsString())
-                            .orElse("Verification couldn't complete (HTTP " + code + "). Please try again.");
-            log.info("Sandbox {} (user-actionable): {}", code, reason);
+            String rawMsg = extractSandboxMessage(e.getResponseBodyAsString()).orElse("");
+            // 429 = OUR account rate-limited (vendor billing posture)
+            // → treat as BILLING_ALERT + escalate to user dialog.
+            // Other 4xx without specific cause is logged as USER_ERROR.
+            boolean billing = code == 429
+                    || rawMsg.toLowerCase().contains("credit")
+                    || rawMsg.toLowerCase().contains("quota")
+                    || rawMsg.toLowerCase().contains("suspended");
+            String reason;
+            if (billing) {
+                log.error("SANDBOX BILLING ALERT (HTTP {}): {}", code, rawMsg);
+                usageRecorder.record(
+                        VENDOR_NAME, endpoint,
+                        VendorApiCall.Status.BILLING_ALERT,
+                        String.valueOf(code), rawMsg,
+                        (int) (System.currentTimeMillis() - startMs),
+                        null
+                );
+                reason = "VENDOR_UNAVAILABLE: Identity verification is temporarily paused. Please contact our team to complete verification.";
+            } else {
+                reason = rawMsg.isBlank()
+                        ? "Verification couldn't complete (HTTP " + code + "). Please try again."
+                        : rawMsg;
+                log.info("Sandbox {} (user-actionable): {}", code, reason);
+                usageRecorder.record(
+                        VENDOR_NAME, endpoint,
+                        VendorApiCall.Status.USER_ERROR,
+                        String.valueOf(code), rawMsg,
+                        (int) (System.currentTimeMillis() - startMs),
+                        null
+                );
+            }
             return new PanResult(false, panHolderName, reason);
         }
     }
@@ -264,6 +337,19 @@ public class SandboxKycProvider implements KycProvider {
         // and returned cleanly in verifyPan above without reaching us.
         log.error("Sandbox PAN verify fallback fired ({}): {}",
                 ex.getClass().getSimpleName(), ex.getMessage());
+        // Record as OUTAGE — only genuine vendor unavailability
+        // reaches the fallback now (4xx is caught + returned cleanly
+        // before this point). Helps the admin distinguish "Sandbox
+        // was down at 3pm" from "users typed wrong DOBs all morning".
+        usageRecorder.record(
+                VENDOR_NAME,
+                props.getSandbox().getPanVerifyPath(),
+                VendorApiCall.Status.OUTAGE,
+                null,
+                ex.getClass().getSimpleName() + ": " + ex.getMessage(),
+                null,
+                null
+        );
 
         if (ex instanceof io.github.resilience4j.circuitbreaker.CallNotPermittedException) {
             return new PanResult(false, panHolderName,

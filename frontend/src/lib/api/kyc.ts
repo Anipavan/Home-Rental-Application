@@ -48,4 +48,32 @@ export const kycApi = {
    */
   digilockerCallback: (body: DigiLockerCallbackRequest) =>
     api.post<KycResponse>("/kyc/digilocker/callback", body).then((r) => r.data),
+
+  /**
+   * Admin-only — per-vendor usage breakdown + last 10 billing alerts.
+   * Server enforces the admin role; non-admins get a 403 here. Powers
+   * the /admin/vendor-usage dashboard.
+   */
+  adminVendorUsage: () =>
+    api
+      .get<{
+        generatedAt: string;
+        vendors: Array<{
+          vendorName: string;
+          callsToday: number;
+          callsMonth: number;
+          successToday: number;
+          userErrorsToday: number;
+          billingAlertsMonth: number;
+          outagesMonth: number;
+        }>;
+        recentBillingAlerts: Array<{
+          vendorName: string;
+          vendorEndpoint?: string;
+          errorCode?: string;
+          errorMessage?: string;
+          occurredAt: string;
+        }>;
+      }>("/kyc/admin/vendor-usage")
+      .then((r) => r.data),
 };

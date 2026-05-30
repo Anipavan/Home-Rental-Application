@@ -183,8 +183,20 @@ public class KycServiceImpl implements KycService {
             record.setVerificationStatus("INITIATED");
         }
         if (!res.valid()) {
-            record.setFailureCode("PAN_INVALID");
-            record.setFailureReason(res.failureReason());
+            // SandboxKycProvider returns "VENDOR_UNAVAILABLE: ..." as the
+            // failureReason for billing/quota alerts so the frontend can
+            // pop a "contact admin" dialog instead of an inline error
+            // banner. Split off the marker prefix here so we set a clean
+            // structured failureCode + a human-readable failureReason.
+            String rawReason = res.failureReason() == null ? "" : res.failureReason();
+            if (rawReason.startsWith("VENDOR_UNAVAILABLE:")) {
+                record.setFailureCode("VENDOR_UNAVAILABLE");
+                record.setFailureReason(
+                        rawReason.substring("VENDOR_UNAVAILABLE:".length()).trim());
+            } else {
+                record.setFailureCode("PAN_INVALID");
+                record.setFailureReason(rawReason);
+            }
         }
 
         // PAN-only KYC mode (Sandbox.co.in / Mock): a valid PAN is the WHOLE
