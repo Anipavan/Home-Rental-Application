@@ -41,6 +41,10 @@ import { NotificationBell } from "./notification-bell";
 import { ContactSupport } from "./contact-support";
 import { GlobalSearch } from "./global-search";
 import { PageEnter } from "@/components/ui/page-enter";
+import {
+  OnboardingBanner,
+  OnboardingWizard,
+} from "@/components/onboarding/onboarding-wizard";
 import { useAuthStore } from "@/stores/auth-store";
 import { authApi } from "@/lib/api/auth";
 import { usersApi } from "@/lib/api/users";
@@ -293,6 +297,12 @@ export function AppShell() {
         </header>
 
         <main className="flex-1 px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
+          {/* Persistent "Continue setup" banner. Self-hides when the
+              user has finished all steps (or is an admin, who has no
+              onboarding flow). Lives outside PageEnter so it doesn't
+              fade in and out with every navigation — it just stays
+              put as a stable reference until the user is done. */}
+          <OnboardingBanner />
           {/* One-time fade + slide-up per route change. Productivity
               surfaces need to feel fast, so this is deliberately the
               LIGHT motion (0.4s ease-out / 8px travel) — not the
@@ -301,6 +311,12 @@ export function AppShell() {
             <Outlet />
           </PageEnter>
         </main>
+
+        {/* First-login onboarding modal. Auto-opens ONCE per user on
+            the first authenticated mount; dismissal is persisted in
+            localStorage so the modal never re-pops by itself. The
+            banner above keeps surfacing remaining steps regardless. */}
+        <OnboardingWizard />
 
         <nav className="lg:hidden border-t border-border/60 bg-background/95 backdrop-blur sticky bottom-0 z-30">
           <div className="grid grid-cols-5">
