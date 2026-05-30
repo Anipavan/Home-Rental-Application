@@ -310,13 +310,28 @@ services:
       EUREKA_URL: http://service-registry:8761/eureka
       CONFIG_SERVER_URL: http://config-server:8888
       INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
-      # KYC provider — keep MOCK for dev / CI; switch to DIGIO once creds wired
+      # KYC provider — keep MOCK for dev / CI; switch to DIGIO or SANDBOX once creds wired
       KYC_PROVIDER: ${KYC_PROVIDER:-MOCK}
       KYC_AADHAAR_SALT: ${KYC_AADHAAR_SALT:-change-me-in-prod-aadhaar-pepper}
       DIGIO_BASE_URL: ${DIGIO_BASE_URL:-https://api.digio.in}
       DIGIO_API_KEY: ${DIGIO_API_KEY:-}
       DIGIO_CLIENT_ID: ${DIGIO_CLIENT_ID:-}
       DIGIO_CALLBACK_URL: ${DIGIO_CALLBACK_URL:-http://api-gateway:8080/api/kyc/webhook/digio}
+      # Sandbox.co.in — PAN-only NSDL verification (cheap KYC for solo
+      # developers). Keys are account-scoped and can be rotated
+      # independently of DigiLocker. Empty defaults so MOCK-profile dev
+      # builds don't fail on missing values.
+      SANDBOX_BASE_URL: ${SANDBOX_BASE_URL:-https://api.sandbox.co.in}
+      SANDBOX_API_KEY: ${SANDBOX_API_KEY:-}
+      SANDBOX_API_SECRET: ${SANDBOX_API_SECRET:-}
+      SANDBOX_API_VERSION: ${SANDBOX_API_VERSION:-1.0}
+      SANDBOX_PAN_VERIFY_PATH: ${SANDBOX_PAN_VERIFY_PATH:-/kyc/pan/verify}
+      SANDBOX_AUTH_PATH: ${SANDBOX_AUTH_PATH:-/authenticate}
+      # DigiLocker (MeitY) — paused until incorporation (task #43);
+      # placeholders so SecretsBootstrapValidator doesn't fail-fast.
+      DIGILOCKER_CLIENT_ID: ${DIGILOCKER_CLIENT_ID:-}
+      DIGILOCKER_CLIENT_SECRET: ${DIGILOCKER_CLIENT_SECRET:-}
+      DIGILOCKER_REDIRECT_URI: ${DIGILOCKER_REDIRECT_URI:-}
 
   compliance-service:
     build:
