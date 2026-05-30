@@ -148,7 +148,7 @@ export function KycPage() {
     <div className="animate-fade-in max-w-3xl">
       <PageHeader
         title="Identity verification"
-        description="Verify your PAN to unlock all RentGenius features. Takes ~5 seconds."
+        description="Verify your PAN to unlock all Anirudh Homes features. Takes ~5 seconds."
       />
 
       <Card className="mb-6">

@@ -239,7 +239,7 @@ export function useOnboardingProgress(): OnboardingProgress {
                   ? "Identity confirmed — your listings show the 'Verified owner' badge."
                   : "Renters trust verified owners. Quick PAN check.",
                 complete: kycVerified,
-                href: "/owner/profile",
+                href: "/owner/kyc",
                 icon: BadgeCheck,
               },
             ]),

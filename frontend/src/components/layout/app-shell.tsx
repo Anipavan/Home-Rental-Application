@@ -113,6 +113,11 @@ const ownerNav: NavItem[] = [
   { to: "/owner/leases", label: "Leases", icon: FileText },
   { to: "/owner/documents", label: "Documents", icon: FileText },
   { to: "/owner/enquiries", label: "Enquiries", icon: Inbox },
+  // KYC pill mirrors the same feature flag the tenant /app/kyc nav
+  // uses — single source of truth in lib/feature-flags.ts. Owners
+  // need PAN verification too (powers the 'Verified owner' badge
+  // on their listings + unblocks compliance flows like RERA filings).
+  { to: "/owner/kyc", label: "KYC", icon: BadgeCheck, pausedBadge: isKycDisabled() },
   // Compliance pill mirrors the COMPLIANCE_DISABLED feature flag.
   { to: "/owner/compliance", label: "Compliance", icon: Stamp, pausedBadge: isComplianceDisabled() },
   { to: "/owner/analytics", label: "Analytics", icon: BarChart3 },

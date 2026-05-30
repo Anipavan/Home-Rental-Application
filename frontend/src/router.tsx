@@ -223,6 +223,25 @@ export const router = createBrowserRouter([
         : [{ path: "compliance", element: <OwnerCompliancePage /> }]),
       { path: "analytics", element: <OwnerAnalyticsPage /> },
       { path: "documents", element: <OwnerDocumentsPage /> },
+      // Owners need PAN verification too — the same KycPage component
+      // works for any role (it keys on authUserId, no tenant-specific
+      // assumptions). Wrapped in the same FeatureDisabledOutlet as
+      // the tenant /app/kyc route so a single flag flip toggles both
+      // surfaces. Onboarding wizard's owner "Verify identity" step
+      // links here.
+      ...(isKycDisabled()
+        ? [
+            {
+              element: (
+                <FeatureDisabledOutlet
+                  feature="KYC"
+                  reason="We've paused identity verification while we upgrade the provider integration. You can continue listing properties, collecting rent, and managing leases without it for now."
+                />
+              ),
+              children: [{ path: "kyc", element: <KycPage /> }],
+            },
+          ]
+        : [{ path: "kyc", element: <KycPage /> }]),
       { path: "notifications", element: <NotificationsInboxPage /> },
       { path: "notifications/preferences", element: <NotificationPreferencesPage /> },
       // Owners get the same Profile page as tenants — the user-service
