@@ -203,6 +203,105 @@ public class PaymentGatewayController {
     private static final java.util.regex.Pattern VPA_FORMAT_RE =
             java.util.regex.Pattern.compile("^[a-zA-Z0-9.\\-_]{2,256}@[a-zA-Z][a-zA-Z0-9.\\-]{1,63}$");
 
+    /**
+     * Razorpay hosted-checkout return bridge. Razorpay's {@code redirect=1}
+     * mode does a <strong>form-encoded POST</strong> to the {@code
+     * callback_url} carrying {@code razorpay_payment_id},
+     * {@code razorpay_order_id}, {@code razorpay_signature} on success
+     * (or {@code error[code]} / {@code error[description]} on cancel /
+     * decline). The browser then renders whatever the callback returns.
+     *
+     * <p>The SPA's PaymentReturnPage is a React component served by
+     * nginx as a static GET — POSTing to {@code /app/payments/:id/return}
+     * gets a 405 from nginx and the user sees "405 Not Allowed". This
+     * endpoint is the bridge: it accepts the POST, takes the verify
+     * params off the form body, and 302s the browser to the SPA's GET
+     * route with those params on the query string. The SPA then runs
+     * its existing {@code /payments/verify} flow exactly as it would
+     * after a UPI / mock-gateway return.
+     *
+     * <p>No JWT required — Razorpay can't supply one. The endpoint is
+     * idempotent and only does a redirect (no DB writes happen here;
+     * the subsequent {@code /payments/verify} call from the SPA does
+     * the HMAC check + status flip). Whitelisted in the gateway under
+     * {@code app.gateway.public-paths}.
+     */
+    @Operation(summary = "Razorpay POST-redirect bridge — converts the form POST into a SPA-friendly GET redirect.")
+    @PostMapping(value = "/razorpay-return/{paymentId}", consumes = MediaType.APPLICATION_FORM_URLENCODED_VALUE)
+    public ResponseEntity<Void> razorpayReturn(
+            @PathVariable("paymentId") String paymentId,
+            @RequestParam(name = "razorpay_payment_id", required = false) String razorpayPaymentId,
+            @RequestParam(name = "razorpay_order_id",   required = false) String razorpayOrderId,
+            @RequestParam(name = "razorpay_signature",  required = false) String razorpaySignature,
+            // Failure-path params (user closed the iframe, card declined, etc.)
+            @RequestParam(name = "error[code]",          required = false) String errorCode,
+            @RequestParam(name = "error[description]",   required = false) String errorDescription,
+            @RequestParam(name = "error[reason]",        required = false) String errorReason) {
+
+        // PII hygiene: don't log full Razorpay payment_id which can be
+        // used in their dashboard searches. First-6 / last-4 mask
+        // matches the same pattern we use for VPA + PAN.
+        log.info("Razorpay POST callback → paymentId={} txn={} hasSig={} errorCode={}",
+                paymentId,
+                mask(razorpayPaymentId),
+                razorpaySignature != null && !razorpaySignature.isBlank(),
+                errorCode);
+
+        StringBuilder loc = new StringBuilder("/app/payments/")
+                .append(paymentId)
+                .append("/return");
+        boolean first = true;
+        if (razorpayPaymentId != null && !razorpayPaymentId.isBlank()) {
+            loc.append(first ? "?" : "&").append("razorpay_payment_id=")
+                    .append(urlEncode(razorpayPaymentId));
+            first = false;
+        }
+        if (razorpayOrderId != null && !razorpayOrderId.isBlank()) {
+            loc.append(first ? "?" : "&").append("razorpay_order_id=")
+                    .append(urlEncode(razorpayOrderId));
+            first = false;
+        }
+        if (razorpaySignature != null && !razorpaySignature.isBlank()) {
+            loc.append(first ? "?" : "&").append("razorpay_signature=")
+                    .append(urlEncode(razorpaySignature));
+            first = false;
+        }
+        // Pass error context too so the SPA can render a friendly
+        // "Payment failed: <reason>" instead of a generic message.
+        if (errorCode != null && !errorCode.isBlank()) {
+            loc.append(first ? "?" : "&").append("error_code=")
+                    .append(urlEncode(errorCode));
+            first = false;
+        }
+        if (errorDescription != null && !errorDescription.isBlank()) {
+            loc.append(first ? "?" : "&").append("error_description=")
+                    .append(urlEncode(errorDescription));
+            first = false;
+        }
+        if (errorReason != null && !errorReason.isBlank()) {
+            loc.append(first ? "?" : "&").append("error_reason=")
+                    .append(urlEncode(errorReason));
+        }
+
+        return ResponseEntity.status(HttpStatus.SEE_OTHER)
+                .header("Location", loc.toString())
+                // Defense in depth: don't let an intermediate proxy
+                // cache the redirect with the params attached.
+                .header("Cache-Control", "no-store")
+                .build();
+    }
+
+    private static String urlEncode(String s) {
+        if (s == null) return "";
+        return java.net.URLEncoder.encode(s, java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    private static String mask(String s) {
+        if (s == null) return "(null)";
+        if (s.length() <= 10) return "***";
+        return s.substring(0, 6) + "***" + s.substring(s.length() - 4);
+    }
+
     /** Return URL the MockPaymentGateway sends users to after "payment". For local manual testing. */
     @Operation(summary = "MockPaymentGateway return URL — use during dev testing only.")
     @GetMapping("/mock/return")

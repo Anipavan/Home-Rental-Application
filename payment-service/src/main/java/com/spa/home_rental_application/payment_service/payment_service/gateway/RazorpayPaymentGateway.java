@@ -182,17 +182,17 @@ public class RazorpayPaymentGateway implements PaymentGateway {
                     // order_id; either way the same orderId binds the call.
                     //
                     // Pass `redirect=1` + `callback_url` so Razorpay returns
-                    // the user to /app/payments/:id/return with the verify
-                    // params on the query string. Without these, the user
-                    // sees Razorpay's own "Payment Successful" page and
-                    // never reaches our backend → payment row stuck in
-                    // PROCESSING, no PAID flip, no Kafka event, no emails,
-                    // owner dashboard never updates. The webhook (server-
-                    // to-server) is a parallel source-of-truth path; this
-                    // redirect is the user-facing one and the only way the
-                    // tenant ever sees a green "Payment successful" screen.
+                    // the user to our backend bridge after success. The
+                    // bridge then 302s to /app/payments/:id/return with the
+                    // verify params on the query string. Without this two-
+                    // hop, Razorpay's POST hits nginx (which only serves GET
+                    // for the SPA) and the user sees "405 Not Allowed".
+                    //
+                    // The bridge endpoint is a backend route — gateway-
+                    // whitelisted (no JWT required, mirrors the webhook
+                    // pattern) so Razorpay's POST passes through cleanly.
                     String callbackUrl = frontendBaseUrl
-                            + "/app/payments/" + payment.getId() + "/return";
+                            + "/rentals/v1/payments/razorpay-return/" + payment.getId();
                     String encodedCallback = java.net.URLEncoder.encode(
                             callbackUrl, java.nio.charset.StandardCharsets.UTF_8);
                     b.redirectUrl("https://api.razorpay.com/v1/checkout/embedded?key_id="

@@ -452,6 +452,15 @@ app:
       # (only the synchronous /verify on browser return worked).
       - POST /rentals/v1/payments/webhook
       - POST /api/payments/webhook
+      # Razorpay hosted-checkout POST redirect bridge. Razorpay's
+      # `redirect=1` mode does a form-encoded POST to the callback_url
+      # which carries no JWT (Razorpay can't supply one). The bridge
+      # endpoint accepts the POST, lifts the verify params off the form
+      # body, and 302s to the SPA's static /app/payments/:id/return
+      # route. Without this whitelist the gateway returns 401 and the
+      # user lands on "401 Unauthorized" after their card payment.
+      - POST /rentals/v1/payments/razorpay-return/**
+      - POST /api/payments/razorpay-return/**
       # MockPaymentGateway's stub checkout / return pages — used only
       # when app.payment.gateway=mock. They're plain HTML / redirect
       # endpoints with no sensitive data; gating them with JWT broke
