@@ -89,6 +89,9 @@ public class TemplateSeeder {
         upgradeEmailToHtml(NotificationCategory.PAYMENT_RECEIPT,
                 "Payment received — ₹{{amount}}",
                 buildPaymentReceiptEmailHtml());
+        upgradeEmailToHtml(NotificationCategory.PAYMENT_RECEIVED_FOR_OWNER,
+                "Rent received — ₹{{amount}} via {{method}}",
+                buildPaymentReceivedOwnerEmailHtml());
         upgradeEmailToHtml(NotificationCategory.MAINTENANCE_CREATED,
                 "Maintenance request {{requestNumber}} received",
                 buildMaintenanceCreatedEmailHtml());
@@ -240,6 +243,18 @@ public class TemplateSeeder {
                 "Thanks! We've received your rent payment of ₹{{amount}} via {{method}}.\n\nTransaction id: {{transactionId}}\nDate: {{paidDate}}",
                 List.of("amount", "method", "transactionId", "paidDate"));
 
+        // Owner-side mirror of the receipt — fired alongside, recipient is
+        // the owner. "Rent received" framing keeps the message scannable
+        // in a busy inbox; full details (txn id, method) included for the
+        // accountant who reconciles them against the bank statement.
+        seedIfAbsent("payment-received-owner-email",
+                NotificationCategory.PAYMENT_RECEIVED_FOR_OWNER, NotificationType.EMAIL,
+                "Rent received — ₹{{amount}} via {{method}}",
+                "Good news — rent of ₹{{amount}} has been received via {{method}}.\n\n"
+                        + "Transaction id: {{transactionId}}\nDate: {{paidDate}}\n\n"
+                        + "View full details in your Anirudh Homes dashboard.",
+                List.of("amount", "method", "transactionId", "paidDate", "paymentId"));
+
         seedIfAbsent("maintenance-created-email", NotificationCategory.MAINTENANCE_CREATED, NotificationType.EMAIL,
                 "Maintenance request {{requestNumber}} received",
                 "We've received your maintenance request {{requestNumber}} (category: {{category}}, priority: {{priority}}). We'll keep you posted.",
@@ -300,6 +315,11 @@ public class TemplateSeeder {
                 "Anirudh Homes: payment of ₹{{amount}} received via {{method}}. Txn {{transactionId}}.",
                 List.of("amount", "method", "transactionId"));
 
+        seedIfAbsent("payment-received-owner-sms",
+                NotificationCategory.PAYMENT_RECEIVED_FOR_OWNER, NotificationType.SMS, null,
+                "Anirudh Homes: rent of ₹{{amount}} received via {{method}}. Txn {{transactionId}}.",
+                List.of("amount", "method", "transactionId"));
+
         seedIfAbsent("maintenance-created-sms", NotificationCategory.MAINTENANCE_CREATED,
                 NotificationType.SMS, null,
                 "Anirudh Homes: maintenance ticket {{requestNumber}} ({{category}}) opened. Track it in the app.",
@@ -333,6 +353,13 @@ public class TemplateSeeder {
                 NotificationType.WHATSAPP, null,
                 "Hi {{userName}} ✅\n\nWe've received your rent of *₹{{amount}}* via {{method}}.\n\n"
                         + "Transaction id: `{{transactionId}}`\nDate: {{paidDate}}\n\nThanks!",
+                List.of("userName", "amount", "method", "transactionId", "paidDate"));
+
+        seedIfAbsent("payment-received-owner-whatsapp",
+                NotificationCategory.PAYMENT_RECEIVED_FOR_OWNER, NotificationType.WHATSAPP, null,
+                "Hi {{userName}} 💰\n\nRent of *₹{{amount}}* received via {{method}}.\n\n"
+                        + "Transaction id: `{{transactionId}}`\nDate: {{paidDate}}\n\n"
+                        + "Open the Anirudh Homes app for the full payment view.",
                 List.of("userName", "amount", "method", "transactionId", "paidDate"));
 
         seedIfAbsent("maintenance-created-whatsapp", NotificationCategory.MAINTENANCE_CREATED,
@@ -1005,6 +1032,35 @@ public class TemplateSeeder {
                         + "Your invoice PDF is available under <em>Payments</em>.",
                 "Download invoice",
                 "{{receiptUrl}}",
+                "— Anirudh Homes")
+                + HTML_TEMPLATE_MARKER;
+    }
+
+    /**
+     * Owner-side mirror of the payment-receipt email. Same data points
+     * (amount, method, txn id, date) but framed for the landlord — "rent
+     * landed" not "thanks for paying". Fires alongside the tenant receipt
+     * via {@code PaymentEventListener.onCompleted}.
+     */
+    private static String buildPaymentReceivedOwnerEmailHtml() {
+        return EmailTemplateBuilder.build(
+                "Rent of ₹{{amount}} received via {{method}}.",
+                "Rent received",
+                "Good news — a rent payment just landed in your account.<br><br>"
+                        + "<table cellpadding=\"6\" style=\"font-size:14px;color:#334155;\">"
+                        + "<tr><td style=\"color:#64748b;\">Amount</td>"
+                        + "<td style=\"font-weight:600;color:#16a34a;\">₹{{amount}}</td></tr>"
+                        + "<tr><td style=\"color:#64748b;\">Method</td>"
+                        + "<td style=\"font-weight:600;\">{{method}}</td></tr>"
+                        + "<tr><td style=\"color:#64748b;\">Transaction id</td>"
+                        + "<td style=\"font-weight:600;font-family:monospace;\">{{transactionId}}</td></tr>"
+                        + "<tr><td style=\"color:#64748b;\">Date</td>"
+                        + "<td style=\"font-weight:600;\">{{paidDate}}</td></tr>"
+                        + "</table><br>"
+                        + "Open the Anirudh Homes app to see the full payment history "
+                        + "and download GST invoices for your records.",
+                "View payments",
+                "{{ownerPaymentsUrl}}",
                 "— Anirudh Homes")
                 + HTML_TEMPLATE_MARKER;
     }

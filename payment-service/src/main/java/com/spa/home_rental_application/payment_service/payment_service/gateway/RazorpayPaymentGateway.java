@@ -59,13 +59,23 @@ public class RazorpayPaymentGateway implements PaymentGateway {
     private final RazorpayClient client;
     private final PaymentRepository paymentRepository;
     private final VendorUsageRecorder usageRecorder;
+    /** Base URL of the SPA — used to build the {@code callback_url} the
+     *  Razorpay hosted checkout redirects users back to after they submit
+     *  payment details. Defaults to {@code https://anirudhhomes.in} in
+     *  prod and {@code http://localhost:4200} in dev via
+     *  {@code APP_FRONTEND_URL} env. */
+    private final String frontendBaseUrl;
 
     public RazorpayPaymentGateway(RazorpayProperties props,
                                   PaymentRepository paymentRepository,
-                                  VendorUsageRecorder usageRecorder) {
+                                  VendorUsageRecorder usageRecorder,
+                                  String frontendBaseUrl) {
         this.props = props;
         this.paymentRepository = paymentRepository;
         this.usageRecorder = usageRecorder;
+        this.frontendBaseUrl = frontendBaseUrl == null || frontendBaseUrl.isBlank()
+                ? "https://anirudhhomes.in"
+                : frontendBaseUrl.replaceAll("/+$", ""); // strip trailing slash
         try {
             this.client = new RazorpayClient(props.getKeyId(), props.getKeySecret());
             log.info("RazorpayPaymentGateway: initialized with keyId={}", props.getKeyId());
@@ -166,12 +176,31 @@ public class RazorpayPaymentGateway implements PaymentGateway {
                  .upiIntentUrl(buildUpiIntent(req.upiApp(), vpa,
                          payment.getTotalAmount().doubleValue(), orderId));
             }
-            case CARD, NET_BANKING, WALLET ->
+            case CARD, NET_BANKING, WALLET -> {
                     // Razorpay's hosted Checkout. The SPA can also load the
                     // Razorpay JS Checkout widget client-side using key_id +
                     // order_id; either way the same orderId binds the call.
+                    //
+                    // Pass `redirect=1` + `callback_url` so Razorpay returns
+                    // the user to /app/payments/:id/return with the verify
+                    // params on the query string. Without these, the user
+                    // sees Razorpay's own "Payment Successful" page and
+                    // never reaches our backend → payment row stuck in
+                    // PROCESSING, no PAID flip, no Kafka event, no emails,
+                    // owner dashboard never updates. The webhook (server-
+                    // to-server) is a parallel source-of-truth path; this
+                    // redirect is the user-facing one and the only way the
+                    // tenant ever sees a green "Payment successful" screen.
+                    String callbackUrl = frontendBaseUrl
+                            + "/app/payments/" + payment.getId() + "/return";
+                    String encodedCallback = java.net.URLEncoder.encode(
+                            callbackUrl, java.nio.charset.StandardCharsets.UTF_8);
                     b.redirectUrl("https://api.razorpay.com/v1/checkout/embedded?key_id="
-                            + props.getKeyId() + "&order_id=" + orderId);
+                            + props.getKeyId()
+                            + "&order_id=" + orderId
+                            + "&redirect=1"
+                            + "&callback_url=" + encodedCallback);
+            }
             case BANK_TRANSFER ->
                     // Real Razorpay uses Smart Collect virtual accounts here;
                     // a separate API not modelled in this stub.

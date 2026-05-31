@@ -57,12 +57,31 @@ public class PaymentEventListener {
     public void onCompleted(PaymentCompletedEvent e) {
         if (e == null || !"payment.completed".equals(e.getEventType())) return;
         log.info("Received {} for paymentId={}", e.getEventType(), e.getPaymentId());
+
+        // Tenant — "thanks, we got your payment"
         notifications.fanOut(e.getTenantId(),
                 NotificationCategory.PAYMENT_RECEIPT,
                 Map.of("amount",        safe(e.getAmount()),
                         "method",       safe(e.getPaymentMethod()),
                         "transactionId",safe(e.getTransactionId()),
                         "paidDate",     safe(e.getPaidDate())));
+
+        // Owner — "rent landed for Flat X". Same trigger, separate
+        // category so the template can read role-appropriate copy
+        // without if/else inside the Mustache file. Skipped if the
+        // event somehow has no ownerId (defence — every captured
+        // payment is bound to an owner via PaymentServiceImpl.markPaid,
+        // but null-guard here so a producer bug doesn't take down the
+        // tenant receipt too).
+        if (e.getOwnerId() != null && !e.getOwnerId().isBlank()) {
+            notifications.fanOut(e.getOwnerId(),
+                    NotificationCategory.PAYMENT_RECEIVED_FOR_OWNER,
+                    Map.of("amount",        safe(e.getAmount()),
+                            "method",       safe(e.getPaymentMethod()),
+                            "transactionId",safe(e.getTransactionId()),
+                            "paidDate",     safe(e.getPaidDate()),
+                            "paymentId",    safe(e.getPaymentId())));
+        }
     }
 
     @KafkaListener(

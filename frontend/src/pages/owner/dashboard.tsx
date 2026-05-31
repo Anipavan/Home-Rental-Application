@@ -45,7 +45,18 @@ export function OwnerDashboard() {
   // sees the same number on each, instead of a 5-min-stale cache
   // on whichever page they hit first. Trade-off: a few extra
   // fetches; payments.byOwner is sub-100ms so it's invisible.
-  const FRESH = { refetchOnWindowFocus: true, staleTime: 15_000 };
+  //
+  // refetchInterval of 30s also picks up tenant-side activity (a rent
+  // payment just landed, a maintenance request was raised) without the
+  // owner needing to focus the tab. Without this the dashboard tile
+  // shows ₹0 for up to 5 minutes after a tenant successfully pays.
+  // 30s is the sweet spot — fast enough to feel live, slow enough to
+  // keep three small queries off the critical path.
+  const FRESH = {
+    refetchOnWindowFocus: true,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+  };
 
   const buildingsQ = useQuery({
     queryKey: ["my-buildings", authUserId],

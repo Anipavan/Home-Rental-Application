@@ -11,6 +11,17 @@ public enum NotificationCategory {
     PAYMENT_REMINDER,
     PAYMENT_OVERDUE,
     PAYMENT_RECEIPT,
+    /**
+     * Owner-side mirror of {@link #PAYMENT_RECEIPT}. Fired alongside the
+     * tenant's receipt when a payment is captured. Lets the owner see
+     * "money landed for Flat X" without having to refresh the dashboard,
+     * which is how landlords used to find out about rent in the era
+     * before this notification existed. Separate category from
+     * PAYMENT_RECEIPT so the template can read "we received rent of
+     * ₹X from your tenant for Flat Y" instead of the tenant's "thanks,
+     * we got your payment" copy.
+     */
+    PAYMENT_RECEIVED_FOR_OWNER,
     MAINTENANCE_CREATED,
     MAINTENANCE_ASSIGNED,
     MAINTENANCE_RESOLVED,

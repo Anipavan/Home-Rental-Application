@@ -229,6 +229,11 @@ services:
       RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
       RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
       RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
+      # Used to build the Razorpay checkout callback_url so the user is
+      # redirected back to /app/payments/:id/return after they submit
+      # card / netbanking details. Without it Razorpay shows its own
+      # success page and the payment row stays stuck in PROCESSING.
+      FRONTEND_URL: ${FRONTEND_URL:-https://anirudhhomes.in}
 
   maintenance-service:
     build:

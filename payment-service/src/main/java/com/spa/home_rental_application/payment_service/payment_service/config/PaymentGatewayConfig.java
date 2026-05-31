@@ -40,9 +40,11 @@ public class PaymentGatewayConfig {
     public PaymentGateway razorpayPaymentGateway(
             RazorpayProperties props,
             com.spa.home_rental_application.payment_service.payment_service.repository.PaymentRepository paymentRepository,
-            com.spa.home_rental_application.payment_service.payment_service.service.VendorUsageRecorder usageRecorder) {
-        log.info("Active payment gateway: razorpay (keyId={})", props.getKeyId());
-        return new RazorpayPaymentGateway(props, paymentRepository, usageRecorder);
+            com.spa.home_rental_application.payment_service.payment_service.service.VendorUsageRecorder usageRecorder,
+            @Value("${app.frontend-url:${FRONTEND_URL:https://anirudhhomes.in}}") String frontendBaseUrl) {
+        log.info("Active payment gateway: razorpay (keyId={}, callbackBase={})",
+                props.getKeyId(), frontendBaseUrl);
+        return new RazorpayPaymentGateway(props, paymentRepository, usageRecorder, frontendBaseUrl);
     }
 
     /**
