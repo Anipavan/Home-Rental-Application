@@ -67,6 +67,10 @@ import { NotificationPreferencesPage } from "@/pages/notifications-preferences";
 import { SavedListingsPage } from "@/pages/tenant/saved";
 import { SavedSearchesPage } from "@/pages/tenant/saved-searches";
 import { ComparePage } from "@/pages/tenant/compare";
+import { OwnerSocietyPage } from "@/pages/owner/society";
+import { OwnerSocietiesOverviewPage } from "@/pages/owner/societies-overview";
+import { TenantSocietyPage } from "@/pages/tenant/society";
+import { PublicSocietyLedgerPage } from "@/pages/public/society-ledger";
 
 export const router = createBrowserRouter([
   {
@@ -83,6 +87,11 @@ export const router = createBrowserRouter([
   { path: "/register", element: <RegisterPage /> },
   { path: "/forgot-password", element: <ForgotPasswordPage /> },
   { path: "/reset-password", element: <ResetPasswordPage /> },
+  // ─── Public society ledger ───
+  // Standalone page (no AppShell). The {token} in the URL is the only
+  // credential — gateway whitelisted under
+  // GET /rentals/v1/society/public/**. Anyone with the link can view.
+  { path: "/society/view/:token", element: <PublicSocietyLedgerPage /> },
   {
     path: "/app",
     element: (
@@ -179,6 +188,8 @@ export const router = createBrowserRouter([
             : { path: "kyc", element: <KycPage /> },
           { path: "documents", element: <DocumentsPage /> },
           { path: "reviews", element: <TenantReviewsPage /> },
+          // Society read-only ledger for the tenant's building.
+          { path: "society", element: <TenantSocietyPage /> },
         ],
       },
     ],
@@ -195,6 +206,10 @@ export const router = createBrowserRouter([
       { path: "buildings", element: <BuildingsPage /> },
       { path: "buildings/new", element: <BuildingNewPage /> },
       { path: "buildings/:id", element: <BuildingDetailPage /> },
+      // Society / common-area maintenance — overview list + per-building
+      // ledger view (with first-time setup wizard).
+      { path: "society", element: <OwnerSocietiesOverviewPage /> },
+      { path: "buildings/:id/society", element: <OwnerSocietyPage /> },
       { path: "flats", element: <FlatsPage /> },
       { path: "flats/new", element: <FlatNewPage /> },
       { path: "tenants", element: <TenantsPage /> },

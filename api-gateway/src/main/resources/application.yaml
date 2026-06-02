@@ -461,6 +461,15 @@ app:
       # user lands on "401 Unauthorized" after their card payment.
       - POST /rentals/v1/payments/razorpay-return/**
       - POST /api/payments/razorpay-return/**
+      # ─── Society public ledger view ───
+      # The shareable read-only ledger URL (e.g.
+      # https://anirudhhomes.in/society/view/<token>) loads its data
+      # from /society/public/{token}/ledger. The token itself is the
+      # bearer credential — 192 bits of entropy + rotatable when
+      # leaked — so a JWT gate would be redundant and would actually
+      # break the share-in-WhatsApp UX.
+      - GET /rentals/v1/society/public/**
+      - GET /api/society/public/**
       # MockPaymentGateway's stub checkout / return pages — used only
       # when app.payment.gateway=mock. They're plain HTML / redirect
       # endpoints with no sensitive data; gating them with JWT broke

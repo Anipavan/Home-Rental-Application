@@ -17,6 +17,20 @@ public enum Roles {
     OWNER(Set.of(permissions.HRA_WRITE, permissions.HRA_READ,
             permissions.HRA_DELETE, permissions.HRA_UPDATE)),
 
+    /**
+     * Society / common-area maintainer for one or more buildings.
+     * Same broad permission set as OWNER (their main job is to write
+     * expense rows + collection markings), but in practice they're
+     * scoped to the buildings their {@code authUserId} appears as
+     * {@code maintainer_user_id} on. Application-level checks
+     * (SocietyServiceImpl) enforce per-building scope; the role
+     * permissions are deliberately broad so the same JWT doesn't
+     * need to be re-issued every time an owner re-assigns the
+     * maintainer for a different building.
+     */
+    MAINTAINER(Set.of(permissions.HRA_WRITE, permissions.HRA_READ,
+            permissions.HRA_DELETE, permissions.HRA_UPDATE)),
+
     TENANT(Set.of(permissions.HRA_READ, permissions.HRA_UPDATE)),
 
     /** @deprecated misspelled — use {@link #TENANT}. */

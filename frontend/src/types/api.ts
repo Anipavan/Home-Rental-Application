@@ -931,3 +931,89 @@ export interface RatingSummary {
   averageRating: number;
   ratingHistogram: Record<string, number>;   // {"5": 12, "4": 7, ...}
 }
+
+/* ───────────────────────── Society / common-area maintenance ─────────────────────────
+ *
+ * Per-building ledger of common expenses (water bill, security salary,
+ * cleaner, gardener, lift AMC, etc.) and shared dues. Designed today
+ * as pure record-keeping — the actual payment integration for tenant
+ * "Pay maintenance" lands in a future milestone.
+ */
+
+export type ExpenseCategory =
+  | "UTILITY"
+  | "SALARY"
+  | "SUPPLIES"
+  | "REPAIR_COMMON"
+  | "INSURANCE"
+  | "TAX"
+  | "OTHER";
+
+export type CollectionStatus = "DUE" | "PAID" | "WAIVED" | "OVERDUE";
+
+export interface SocietyConfig {
+  id: string;
+  buildingId: string;
+  monthlyDueDay: number;
+  defaultPerFlatAmount: number;
+  maintainerUserId: string;
+  publicViewToken: string;
+  /** Full shareable URL synthesised by the backend mapper. */
+  publicViewUrl: string;
+  societyDisplayName: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SetupSocietyRequest {
+  defaultPerFlatAmount: number;
+  monthlyDueDay?: number;
+  maintainerUserId?: string;
+  societyDisplayName?: string;
+}
+
+export interface MaintenanceExpense {
+  id: string;
+  buildingId: string;
+  expenseMonth: string;      // YYYY-MM
+  category: ExpenseCategory;
+  subcategory: string | null;
+  amount: number;
+  vendorName: string | null;
+  paidOnDate: string;        // YYYY-MM-DD
+  receiptDocId: string | null;
+  notes: string | null;
+  addedByUserId: string;
+  addedAt: string;
+}
+
+export interface AddExpenseRequest {
+  expenseMonth: string;
+  category: ExpenseCategory;
+  subcategory?: string;
+  amount: number;
+  vendorName?: string;
+  paidOnDate: string;
+  receiptDocId?: string;
+  notes?: string;
+}
+
+/**
+ * Combined ledger payload — one-shot read for owner / tenant / public
+ * society pages. Collections are 0 in MVP (no payment integration
+ * yet) but exposed in the shape so the UI can render placeholders
+ * without a follow-up schema change.
+ */
+export interface SocietyLedger {
+  buildingId: string;
+  societyDisplayName: string | null;
+  month: string;                                // YYYY-MM
+  expensesThisMonth: number;
+  collectedThisMonth: number;
+  outstandingThisMonth: number;
+  balanceLifetime: number;
+  expensesLifetime: number;
+  collectedLifetime: number;
+  byCategory: Partial<Record<ExpenseCategory, number>>;
+  expenses: MaintenanceExpense[];
+}

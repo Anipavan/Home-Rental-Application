@@ -25,6 +25,7 @@ import {
   Heart,
   BellRing,
   Server,
+  HandCoins,
 } from "lucide-react";
 import { Logo } from "./logo";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -99,6 +100,11 @@ const tenantNav: NavItem[] = [
   { to: "/app/kyc", label: "KYC", icon: BadgeCheck, pausedBadge: isKycDisabled() },
   { to: "/app/documents", label: "Documents", icon: FileText },
   { to: "/app/reviews", label: "Reviews", icon: Star },
+  // Society — read-only common-area maintenance ledger for the
+  // tenant's building. Empty state when the owner hasn't enabled it
+  // yet, otherwise shows the monthly expense breakdown the entire
+  // residents-group can see for transparency.
+  { to: "/app/society", label: "Society", icon: HandCoins },
   { to: "/app/profile", label: "Profile", icon: Settings },
 ];
 
@@ -122,6 +128,9 @@ const ownerNav: NavItem[] = [
   // Compliance pill mirrors the COMPLIANCE_DISABLED feature flag.
   { to: "/owner/compliance", label: "Compliance", icon: Stamp, pausedBadge: isComplianceDisabled() },
   { to: "/owner/analytics", label: "Analytics", icon: BarChart3 },
+  // Society — common-area maintenance ledger overview. Lists every
+  // building the owner owns, with quick-setup or open-ledger CTA.
+  { to: "/owner/society", label: "Society", icon: HandCoins },
   { to: "/owner/profile", label: "Profile", icon: Settings },
 ];
 
