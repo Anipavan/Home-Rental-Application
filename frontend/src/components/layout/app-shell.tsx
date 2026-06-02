@@ -152,8 +152,18 @@ const adminNav: NavItem[] = [
   { to: "/admin/profile", label: "Profile", icon: Settings },
 ];
 
+/** Slimmed sidebar for MAINTAINER users — they only need Society +
+ *  Profile (no buildings/flats/tenants/payments). Owners who self-
+ *  assigned as maintainer for one of their buildings keep the full
+ *  OWNER nav since they wear both hats. */
+const maintainerNav: NavItem[] = [
+  { to: "/owner/society", label: "Society", icon: HandCoins },
+  { to: "/owner/profile", label: "Profile", icon: Settings },
+];
+
 function navFor(role: Role | null): NavItem[] {
   if (role === "OWNER") return ownerNav;
+  if (role === "MAINTAINER") return maintainerNav;
   if (role === "ADMIN") return adminNav;
   return tenantNav;
 }

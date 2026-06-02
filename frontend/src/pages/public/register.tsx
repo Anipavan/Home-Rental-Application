@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
-import { Eye, EyeOff, Loader2, Home, Building2 } from "lucide-react";
+import { Eye, EyeOff, Loader2, Home, Building2, HandCoins } from "lucide-react";
 import { Logo } from "@/components/layout/logo";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -171,7 +171,20 @@ export function RegisterPage() {
             Two minutes. Then you're in.
           </p>
 
-          <div className="grid grid-cols-2 gap-3 mt-6">
+          {/*
+            Three-tile role picker. The maintainer tile registers a user
+            with the MAINTAINER role — the same broad permission set as
+            OWNER, but the SocietyService scopes their actions to the
+            specific buildings where they're assigned as the
+            maintainer_user_id. Owner nominates them post-registration
+            via the society config (the future invite-code flow will
+            link this at signup time; for now the owner pastes the
+            maintainer's authUserId into the society setup form).
+
+            grid-cols-1 on mobile so the third tile stacks legibly;
+            sm:grid-cols-3 above for the desktop balanced row.
+          */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-6">
             <RoleCard
               label="I'm renting"
               desc="Find a home and pay rent online"
@@ -185,6 +198,13 @@ export function RegisterPage() {
               icon={Building2}
               active={role === "OWNER"}
               onClick={() => setRole("OWNER")}
+            />
+            <RoleCard
+              label="I'm a maintainer"
+              desc="Manage common-area expenses and dues"
+              icon={HandCoins}
+              active={role === "MAINTAINER"}
+              onClick={() => setRole("MAINTAINER")}
             />
           </div>
 

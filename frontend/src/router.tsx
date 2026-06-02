@@ -197,7 +197,7 @@ export const router = createBrowserRouter([
   {
     path: "/owner",
     element: (
-      <ProtectedRoute roles={["OWNER"]}>
+      <ProtectedRoute roles={["OWNER", "MAINTAINER"]}>
         <AppShell />
       </ProtectedRoute>
     ),

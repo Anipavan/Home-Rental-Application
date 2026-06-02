@@ -18,7 +18,8 @@ export function ProtectedRoute({
 
   if (roles && role && !roles.includes(role)) {
     const home =
-      role === "OWNER" ? "/owner" : role === "ADMIN" ? "/admin" : "/app";
+      role === "OWNER" || role === "MAINTAINER" ? "/owner"
+        : role === "ADMIN" ? "/admin" : "/app";
     return <Navigate to={home} replace />;
   }
 

@@ -23,7 +23,9 @@ export function LoginPage() {
       setSession(data);
       const dest =
         location.state?.from ??
-        (data.role === "OWNER" ? "/owner" : data.role === "ADMIN" ? "/admin" : "/app");
+        (data.role === "OWNER" || data.role === "MAINTAINER"
+          ? "/owner"
+          : data.role === "ADMIN" ? "/admin" : "/app");
       toast({ title: `Welcome back, ${data.userName}` });
       navigate(dest, { replace: true });
     },
