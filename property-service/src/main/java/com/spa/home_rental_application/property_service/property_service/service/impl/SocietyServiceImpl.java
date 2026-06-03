@@ -1,18 +1,28 @@
 package com.spa.home_rental_application.property_service.property_service.service.impl;
 
 import com.spa.home_rental_application.property_service.property_service.DTO.Request.AddExpenseRequest;
+import com.spa.home_rental_application.property_service.property_service.DTO.Request.PromoteTenantToMaintainerRequest;
 import com.spa.home_rental_application.property_service.property_service.DTO.Request.SetupSocietyRequest;
+import com.spa.home_rental_application.property_service.property_service.DTO.Request.UpsertFlatCollectionRequest;
+import com.spa.home_rental_application.property_service.property_service.DTO.Response.EligibleMaintainerResponse;
+import com.spa.home_rental_application.property_service.property_service.DTO.Response.FlatMaintenanceRowResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.MaintenanceExpenseResponse;
+import com.spa.home_rental_application.property_service.property_service.DTO.Response.PromoteTenantResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyConfigResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyLedgerResponse;
 import com.spa.home_rental_application.property_service.property_service.Entities.Building;
 import com.spa.home_rental_application.property_service.property_service.Entities.Flat;
+import com.spa.home_rental_application.property_service.property_service.Entities.MaintenanceCollection;
 import com.spa.home_rental_application.property_service.property_service.Entities.MaintenanceExpense;
 import com.spa.home_rental_application.property_service.property_service.Entities.SocietyConfig;
 import com.spa.home_rental_application.property_service.property_service.Mapper.SocietyMapper;
+import com.spa.home_rental_application.property_service.property_service.client.AuthClient;
+import com.spa.home_rental_application.property_service.property_service.client.UserClient;
+import com.spa.home_rental_application.property_service.property_service.enums.CollectionStatus;
 import com.spa.home_rental_application.property_service.property_service.enums.ExpenseCategory;
 import com.spa.home_rental_application.property_service.property_service.repository.BuildingRepo;
 import com.spa.home_rental_application.property_service.property_service.repository.FlatRepo;
+import com.spa.home_rental_application.property_service.property_service.repository.MaintenanceCollectionRepository;
 import com.spa.home_rental_application.property_service.property_service.repository.MaintenanceExpenseRepository;
 import com.spa.home_rental_application.property_service.property_service.repository.SocietyConfigRepository;
 import com.spa.home_rental_application.property_service.property_service.security.CallerSecurity;
@@ -58,20 +68,29 @@ public class SocietyServiceImpl implements SocietyService {
 
     private final SocietyConfigRepository configRepo;
     private final MaintenanceExpenseRepository expenseRepo;
+    private final MaintenanceCollectionRepository collectionRepo;
     private final BuildingRepo buildingRepo;
     private final FlatRepo flatRepo;
     private final SocietyMapper mapper;
+    private final UserClient userClient;
+    private final AuthClient authClient;
 
     public SocietyServiceImpl(SocietyConfigRepository configRepo,
                               MaintenanceExpenseRepository expenseRepo,
+                              MaintenanceCollectionRepository collectionRepo,
                               BuildingRepo buildingRepo,
                               FlatRepo flatRepo,
-                              SocietyMapper mapper) {
+                              SocietyMapper mapper,
+                              UserClient userClient,
+                              AuthClient authClient) {
         this.configRepo = configRepo;
         this.expenseRepo = expenseRepo;
+        this.collectionRepo = collectionRepo;
         this.buildingRepo = buildingRepo;
         this.flatRepo = flatRepo;
         this.mapper = mapper;
+        this.userClient = userClient;
+        this.authClient = authClient;
     }
 
     // ── Config ────────────────────────────────────────────────────
@@ -316,11 +335,24 @@ public class SocietyServiceImpl implements SocietyService {
 
         BigDecimal expensesThisMonth = expenseRepo.sumForMonth(buildingId, resolvedMonth);
         BigDecimal expensesLifetime = expenseRepo.sumLifetime(buildingId);
-        // Collections are 0 in the MVP — payment integration ships
-        // these numbers in a later milestone.
-        BigDecimal collectedThisMonth = BigDecimal.ZERO;
-        BigDecimal collectedLifetime = BigDecimal.ZERO;
-        BigDecimal outstandingThisMonth = BigDecimal.ZERO;
+        // Collections now come from maintenance_collection rows the
+        // maintainer marks PAID via the per-flat dashboard. Until a
+        // single PAID row exists, every number stays at zero — same
+        // visual result as the previous MVP placeholder, but driven by
+        // real data instead of hard-coded zeros.
+        BigDecimal collectedThisMonth =
+                collectionRepo.sumCollectedForMonth(buildingId, resolvedMonth);
+        BigDecimal collectedLifetime =
+                collectionRepo.sumCollectedLifetime(buildingId);
+        BigDecimal outstandingThisMonth =
+                collectionRepo.sumOutstandingForMonth(buildingId, resolvedMonth);
+        // "This year" derived from the resolved month's YYYY prefix —
+        // covers the (rare) case where the user is browsing back to a
+        // prior calendar year and wants the year-total for THAT year,
+        // not the current calendar year.
+        String yearPrefix = resolvedMonth.substring(0, 4) + "-%";
+        BigDecimal collectedThisYear =
+                collectionRepo.sumCollectedForYear(buildingId, yearPrefix);
         BigDecimal balanceLifetime = collectedLifetime.subtract(expensesLifetime);
 
         List<MaintenanceExpense> rows = expenseRepo
@@ -336,6 +368,7 @@ public class SocietyServiceImpl implements SocietyService {
                 .month(resolvedMonth)
                 .expensesThisMonth(expensesThisMonth)
                 .collectedThisMonth(collectedThisMonth)
+                .collectedThisYear(collectedThisYear)
                 .outstandingThisMonth(outstandingThisMonth)
                 .balanceLifetime(balanceLifetime)
                 .expensesLifetime(expensesLifetime)
@@ -345,7 +378,272 @@ public class SocietyServiceImpl implements SocietyService {
                 .build();
     }
 
+    // ── Maintainer assignment (owner-driven) ──────────────────────
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<EligibleMaintainerResponse> listEligibleMaintainers(String buildingId) {
+        Building b = requireBuilding(buildingId);
+        // Only the owner / admin can see the tenant roster for the
+        // purpose of picking a maintainer. Tenants and other roles do
+        // not get this list — even the existing maintainer can't see
+        // it (they can't reassign themselves anyway).
+        CallerSecurity.requireOwnerOrAdmin(b.getOwnerId());
+
+        List<Flat> flats = flatRepo.findByBuildingId(buildingId);
+        return flats.stream()
+                // Only consider currently-occupied flats. Vacant flats
+                // have no tenantId, so they trivially fall out of the
+                // filter.
+                .filter(f -> f.getTenantId() != null && !f.getTenantId().isBlank())
+                .map(f -> {
+                    UserClient.UserSummary u;
+                    try {
+                        u = userClient.getUserByAuthId(f.getTenantId());
+                    } catch (Exception ex) {
+                        // user-service unavailable / Feign blip — render
+                        // a "Flat 101 — Tenant abc12345…" entry so the
+                        // owner still has SOMETHING to pick. Worst case
+                        // they don't recognise the placeholder and ask
+                        // the tenant directly.
+                        log.warn("eligible-maintainers user-service blip authUserId={}", f.getTenantId(), ex);
+                        u = UserClient.UserSummary.empty();
+                    }
+                    String fullName = u == null ? null : u.fullName();
+                    String shownName = (fullName == null || fullName.isBlank())
+                            ? ("Tenant " + safeShortId(f.getTenantId()))
+                            : fullName;
+                    String displayName = "Flat " + f.getFlatNumber() + " — " + shownName;
+                    return EligibleMaintainerResponse.builder()
+                            .tenantUserId(f.getTenantId())
+                            .flatId(f.getId())
+                            .flatNumber(f.getFlatNumber())
+                            .tenantName(shownName)
+                            .displayName(displayName)
+                            .email(u == null ? null : u.email())
+                            .phone(u == null ? null : u.phone())
+                            .build();
+                })
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    public PromoteTenantResponse promoteTenantToMaintainer(
+            String buildingId, PromoteTenantToMaintainerRequest req) {
+        SocietyConfig cfg = requireConfig(buildingId);
+        Building b = requireBuilding(buildingId);
+        // Owner / admin only — a maintainer cannot replace themselves
+        // by promoting someone else.
+        CallerSecurity.requireOwnerOrAdmin(b.getOwnerId());
+
+        // Verify the target is currently a tenant of one of THIS
+        // building's flats. Defends against the owner POSTing a random
+        // authUserId (or a tenant of a different building they don't
+        // own) by manipulating the API.
+        boolean ok = flatRepo.findByBuildingId(buildingId).stream()
+                .anyMatch(f -> req.tenantUserId().equals(f.getTenantId()));
+        if (!ok) {
+            throw new IllegalArgumentException(
+                    "User is not a tenant of any flat in this building — "
+                            + "refresh the list and pick a current resident.");
+        }
+
+        // 1. auth-service: role flip + password reset + token revoke.
+        //    Feign exceptions bubble; controller's global handler maps
+        //    them to a meaningful HTTP error.
+        Long authId;
+        try {
+            authId = Long.valueOf(req.tenantUserId());
+        } catch (NumberFormatException nfe) {
+            throw new IllegalArgumentException(
+                    "Internal: tenantUserId is not a numeric authUserId — "
+                            + "auth-service stores Long ids.");
+        }
+        AuthClient.AuthUserSummary updated = authClient.promoteToMaintainer(
+                authId, new AuthClient.PromoteBody(req.temporaryPassword()));
+
+        // 2. society config: link the new maintainer.
+        cfg.setMaintainerUserId(req.tenantUserId().trim());
+        cfg.setUpdatedAt(LocalDateTime.now());
+        configRepo.save(cfg);
+
+        log.info("Tenant promoted to maintainer buildingId={} tenantUserId={} byOwner={}",
+                buildingId, req.tenantUserId(),
+                CallerSecurity.getCurrentAuthUserId().orElse("(no-caller)"));
+
+        String msg = "Share these credentials with " + updated.userName()
+                + " via WhatsApp / in-person. Ask them to change the password "
+                + "on first login.";
+        return PromoteTenantResponse.builder()
+                .tenantUserId(req.tenantUserId())
+                .userName(updated.userName())
+                .temporaryPassword(req.temporaryPassword())
+                .message(msg)
+                .build();
+    }
+
+    // ── Per-flat collections (maintainer dashboard) ───────────────
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<FlatMaintenanceRowResponse> listFlatsForMonth(String buildingId, String month) {
+        SocietyConfig cfg = requireConfig(buildingId);
+        // Owner / maintainer / admin only — tenants don't see other
+        // tenants' bills.
+        requireOwnerOrMaintainerOrAdmin(cfg, requireBuilding(buildingId));
+
+        String resolvedMonth = (month == null || month.isBlank())
+                ? java.time.YearMonth.now().toString()
+                : month;
+
+        BigDecimal defaultAmount = cfg.getDefaultPerFlatAmount();
+        List<Flat> flats = flatRepo.findByBuildingId(buildingId);
+        return flats.stream().map(f -> {
+            // Resolve the tenant's display name. Stays best-effort —
+            // an empty UserSummary falls through to "—" rather than
+            // blocking the whole dashboard on a user-service blip.
+            String tenantName = "(vacant)";
+            if (f.getTenantId() != null && !f.getTenantId().isBlank()) {
+                try {
+                    UserClient.UserSummary u = userClient.getUserByAuthId(f.getTenantId());
+                    String fullName = u == null ? null : u.fullName();
+                    tenantName = (fullName == null || fullName.isBlank())
+                            ? ("Tenant " + safeShortId(f.getTenantId()))
+                            : fullName;
+                } catch (Exception ex) {
+                    log.warn("flats-for-month user-service blip authUserId={}", f.getTenantId(), ex);
+                    tenantName = "Tenant " + safeShortId(f.getTenantId());
+                }
+            }
+
+            // Look up the (flat, month) collection row. Missing row =
+            // "no entry yet for this month" — render the building
+            // default as the displayed amount and flag status NEW_FLAT.
+            Optional<MaintenanceCollection> row = collectionRepo
+                    .findByFlatIdAndForMonth(f.getId(), resolvedMonth);
+            BigDecimal monthAmount = row.map(MaintenanceCollection::getAmountDue)
+                    .orElse(defaultAmount);
+            String status = row.map(r -> r.getStatus().name()).orElse("NEW_FLAT");
+
+            return FlatMaintenanceRowResponse.builder()
+                    .flatId(f.getId())
+                    .flatNumber(f.getFlatNumber())
+                    .tenantUserId(f.getTenantId())
+                    .tenantName(tenantName)
+                    .monthAmount(monthAmount)
+                    .status(status)
+                    .defaultAmount(defaultAmount)
+                    .forMonth(resolvedMonth)
+                    .notes(row.map(MaintenanceCollection::getNotes).orElse(null))
+                    .paidOn(row.map(MaintenanceCollection::getPaidOn).orElse(null))
+                    .paidVia(row.map(MaintenanceCollection::getPaidVia).orElse(null))
+                    .amountPaid(row.map(MaintenanceCollection::getAmountPaid).orElse(null))
+                    .build();
+        }).toList();
+    }
+
+    @Override
+    @Transactional
+    public FlatMaintenanceRowResponse upsertFlatCollection(
+            String buildingId, String flatId, UpsertFlatCollectionRequest req) {
+        SocietyConfig cfg = requireConfig(buildingId);
+        Building b = requireBuilding(buildingId);
+        // Owner + maintainer + admin can write. Tenants cannot — they
+        // would otherwise be able to mark their own bills PAID without
+        // money changing hands.
+        requireOwnerOrMaintainerOrAdmin(cfg, b);
+
+        // Verify the flat actually belongs to this building. Cross-
+        // building writes via path-param tampering get a 400.
+        Flat flat = flatRepo.findById(flatId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Flat not found: " + flatId));
+        if (!buildingId.equals(flat.getBuildingId())) {
+            throw new IllegalArgumentException(
+                    "Flat " + flatId + " does not belong to building " + buildingId);
+        }
+
+        String me = CallerSecurity.getCurrentAuthUserId().orElse(cfg.getMaintainerUserId());
+        LocalDateTime now = LocalDateTime.now();
+
+        MaintenanceCollection row = collectionRepo
+                .findByFlatIdAndForMonth(flatId, req.forMonth())
+                .orElseGet(() -> MaintenanceCollection.builder()
+                        .buildingId(buildingId)
+                        .flatId(flatId)
+                        .forMonth(req.forMonth())
+                        .amountDue(req.amountDue())
+                        .status(CollectionStatus.DUE)
+                        .createdAt(now)
+                        .updatedAt(now)
+                        .build());
+
+        // Update fields. amountDue is required; status defaults to DUE
+        // on create and keeps prior value on update if not specified.
+        row.setAmountDue(req.amountDue());
+        if (req.status() != null) {
+            row.setStatus(req.status());
+        }
+        row.setNotes(req.notes());
+        row.setMarkedByUserId(me);
+        if (req.paidOn() != null) row.setPaidOn(req.paidOn());
+        if (req.amountPaid() != null) row.setAmountPaid(req.amountPaid());
+        if (req.paidVia() != null && !req.paidVia().isBlank()) {
+            row.setPaidVia(req.paidVia().trim());
+        }
+        row.setUpdatedAt(now);
+
+        // Ensure required-on-insert fields when JpaRepository.save flips
+        // into INSERT path on the orElseGet branch.
+        if (row.getCreatedAt() == null) row.setCreatedAt(now);
+        if (row.getBuildingId() == null) row.setBuildingId(buildingId);
+        if (row.getFlatId() == null) row.setFlatId(flatId);
+        if (row.getForMonth() == null) row.setForMonth(req.forMonth());
+
+        MaintenanceCollection saved = collectionRepo.save(row);
+        log.info("Flat collection upserted buildingId={} flatId={} month={} status={}",
+                buildingId, flatId, req.forMonth(), saved.getStatus());
+
+        // Re-resolve the tenant display name for the response — keeps
+        // the maintainer dashboard's optimistic-update path consistent
+        // with the listFlatsForMonth shape.
+        String tenantName = "(vacant)";
+        if (flat.getTenantId() != null && !flat.getTenantId().isBlank()) {
+            try {
+                UserClient.UserSummary u = userClient.getUserByAuthId(flat.getTenantId());
+                String fullName = u == null ? null : u.fullName();
+                tenantName = (fullName == null || fullName.isBlank())
+                        ? ("Tenant " + safeShortId(flat.getTenantId()))
+                        : fullName;
+            } catch (Exception ignored) {
+                tenantName = "Tenant " + safeShortId(flat.getTenantId());
+            }
+        }
+
+        return FlatMaintenanceRowResponse.builder()
+                .flatId(flat.getId())
+                .flatNumber(flat.getFlatNumber())
+                .tenantUserId(flat.getTenantId())
+                .tenantName(tenantName)
+                .monthAmount(saved.getAmountDue())
+                .status(saved.getStatus().name())
+                .defaultAmount(cfg.getDefaultPerFlatAmount())
+                .forMonth(saved.getForMonth())
+                .notes(saved.getNotes())
+                .paidOn(saved.getPaidOn())
+                .paidVia(saved.getPaidVia())
+                .amountPaid(saved.getAmountPaid())
+                .build();
+    }
+
     // ── Helpers ───────────────────────────────────────────────────
+
+    /** Short-id helper for placeholder tenant names — never NPEs on null. */
+    private static String safeShortId(String id) {
+        if (id == null || id.length() < 8) return id == null ? "?" : id;
+        return id.substring(0, 8) + "…";
+    }
 
     private Building requireBuilding(String buildingId) {
         return buildingRepo.findById(buildingId)

@@ -21,11 +21,17 @@ export function LoginPage() {
     mutationFn: authApi.login,
     onSuccess: (data) => {
       setSession(data);
+      // MAINTAINER lands on its slim dashboard — owners (and self-
+      // assigned owner-maintainers) keep the full /owner shell.
       const dest =
         location.state?.from ??
-        (data.role === "OWNER" || data.role === "MAINTAINER"
-          ? "/owner"
-          : data.role === "ADMIN" ? "/admin" : "/app");
+        (data.role === "MAINTAINER"
+          ? "/maintainer"
+          : data.role === "OWNER"
+            ? "/owner"
+            : data.role === "ADMIN"
+              ? "/admin"
+              : "/app");
       toast({ title: `Welcome back, ${data.userName}` });
       navigate(dest, { replace: true });
     },

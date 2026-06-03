@@ -469,6 +469,77 @@ public class AuthServiceImpl implements AuthService {
                 .orElse(null);
     }
 
+    /* ---------- Internal: owner promotes a tenant to maintainer ----------
+     * The endpoint sits under /auth/internal/**, so the gateway HMAC is
+     * the access control. Property-service is the only legitimate caller
+     * — it validates that the calling owner actually owns the building +
+     * the targeted authUserId is a tenant in one of that building's
+     * flats before it issues the call. We therefore don't double-check
+     * the social facts here; we just perform the role flip + password
+     * reset, and rely on @Transactional for atomicity.
+     */
+    @Override
+    @Transactional
+    public AuthUserResponse promoteToMaintainer(Long authUserId, String newPassword) {
+        UserDetails user = userRepository.findById(authUserId)
+                .orElseThrow(() -> new AuthRecordNotFoundException(
+                        "User not found with id: " + authUserId));
+
+        Roles before = user.getUserRole();
+        // Defensive: never demote OWNER → MAINTAINER and never overwrite
+        // ADMIN. Property-service's eligible-maintainers filter only
+        // surfaces tenants of flats, so this branch is mostly safety
+        // net against a hand-crafted POST that targets an
+        // owner/admin user id by mistake.
+        if (before == Roles.ADMIN || before == Roles.OWNER) {
+            log.warn("promoteToMaintainer refused — refusing to demote {} authUserId={}",
+                    before, authUserId);
+            throw new IllegalStateException(
+                    "Cannot promote a " + before.name() + " user to MAINTAINER. "
+                            + "Pick a tenant of the building's flats instead.");
+        }
+        if (before != Roles.MAINTAINER) {
+            log.info("promoteToMaintainer authUserId={} role {} -> MAINTAINER",
+                    authUserId, before);
+            user.setUserRole(Roles.MAINTAINER);
+        }
+
+        // BCrypt-hash the new password. Cost factor 12 — same as the
+        // PasswordEncoder bean's default; no per-call override.
+        user.setUserPassword(passwordEncoder.encode(newPassword));
+
+        // Bump the tokens-revoked-before watermark to now() so any
+        // access JWT the user might still be carrying (from when they
+        // were a TENANT) dies on the next gateway hop. Forces them to
+        // re-login with the temp credentials.
+        Instant now = Instant.now();
+        user.setTokensRevokedBefore(now);
+
+        // If the account happened to be locked, clear the lock — the
+        // owner just verbally reset the credentials, so the auto-
+        // lockout window is no longer informative.
+        user.setAccountNonLocked(true);
+        user.setFailedLoginAttempts(0);
+        user.setLockedUntil(null);
+
+        user.setRecodeUpdatedDate(now);
+        UserDetails saved = userRepository.save(user);
+
+        // P1-12-style audit trail. Useful when investigating who got
+        // promoted-when-by-whom; we don't have caller-side identity
+        // here (the HMAC only confirms the call came through the
+        // gateway). Property-service logs the owner's authUserId
+        // separately on its own promote-tenant endpoint.
+        audit.publishSuccess("auth.promote-to-maintainer",
+                saved.getId().toString(),
+                saved.getId().toString(),
+                saved.getId().toString(),
+                java.util.Map.of("priorRole", before.name(),
+                        "newRole", Roles.MAINTAINER.name()));
+
+        return AuthUserMapper.toAuthUserResponse(saved);
+    }
+
     /* ---------- Helpers ---------- */
 
     /**

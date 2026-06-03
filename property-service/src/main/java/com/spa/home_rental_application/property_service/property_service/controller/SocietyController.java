@@ -1,8 +1,13 @@
 package com.spa.home_rental_application.property_service.property_service.controller;
 
 import com.spa.home_rental_application.property_service.property_service.DTO.Request.AddExpenseRequest;
+import com.spa.home_rental_application.property_service.property_service.DTO.Request.PromoteTenantToMaintainerRequest;
 import com.spa.home_rental_application.property_service.property_service.DTO.Request.SetupSocietyRequest;
+import com.spa.home_rental_application.property_service.property_service.DTO.Request.UpsertFlatCollectionRequest;
+import com.spa.home_rental_application.property_service.property_service.DTO.Response.EligibleMaintainerResponse;
+import com.spa.home_rental_application.property_service.property_service.DTO.Response.FlatMaintenanceRowResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.MaintenanceExpenseResponse;
+import com.spa.home_rental_application.property_service.property_service.DTO.Response.PromoteTenantResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyConfigResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyLedgerResponse;
 import com.spa.home_rental_application.property_service.property_service.service.SocietyService;
@@ -150,5 +155,47 @@ public class SocietyController {
             @RequestParam(name = "month", required = false) String month) {
         log.info("Public ledger view token=*** month={}", month);
         return ResponseEntity.ok(service.getPublicLedger(token, month));
+    }
+
+    // ── Maintainer assignment (owner-driven) ──────────────────────
+
+    @Operation(summary = "Owner: list tenants currently in this building's flats — pick one to promote to maintainer.")
+    @GetMapping("/{buildingId}/eligible-maintainers")
+    public ResponseEntity<List<EligibleMaintainerResponse>> eligibleMaintainers(
+            @PathVariable String buildingId) {
+        return ResponseEntity.ok(service.listEligibleMaintainers(buildingId));
+    }
+
+    @Operation(summary = "Owner: promote an existing tenant to MAINTAINER + reset their password.")
+    @PostMapping(value = "/{buildingId}/maintainer/promote-tenant",
+            consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<PromoteTenantResponse> promoteTenant(
+            @PathVariable String buildingId,
+            @Valid @RequestBody PromoteTenantToMaintainerRequest body) {
+        log.info("POST /society/{}/maintainer/promote-tenant tenant={}",
+                buildingId, body.tenantUserId());
+        return ResponseEntity.ok(service.promoteTenantToMaintainer(buildingId, body));
+    }
+
+    // ── Per-flat maintainer dashboard ────────────────────────────
+
+    @Operation(summary = "Owner / maintainer: per-flat per-month rows for the maintainer dashboard.")
+    @GetMapping("/{buildingId}/flats")
+    public ResponseEntity<List<FlatMaintenanceRowResponse>> flatsForMonth(
+            @PathVariable String buildingId,
+            @RequestParam(name = "month", required = false) String month) {
+        return ResponseEntity.ok(service.listFlatsForMonth(buildingId, month));
+    }
+
+    @Operation(summary = "Maintainer / owner: upsert the (flat, month) collection row (usage-based dues + notes + paid marker).")
+    @PostMapping(value = "/{buildingId}/flats/{flatId}/collection",
+            consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<FlatMaintenanceRowResponse> upsertFlatCollection(
+            @PathVariable String buildingId,
+            @PathVariable String flatId,
+            @Valid @RequestBody UpsertFlatCollectionRequest body) {
+        log.info("POST /society/{}/flats/{}/collection month={} amountDue={} status={}",
+                buildingId, flatId, body.forMonth(), body.amountDue(), body.status());
+        return ResponseEntity.ok(service.upsertFlatCollection(buildingId, flatId, body));
     }
 }

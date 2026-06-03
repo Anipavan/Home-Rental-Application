@@ -143,6 +143,31 @@ public class AuthController {
                 "epochMs", when == null ? -1L : when.toEpochMilli()));
     }
 
+    /**
+     * Internal: owner-initiated tenant → maintainer promotion. Called by
+     * property-service's {@code SocietyService.promoteTenantToMaintainer}
+     * after it has verified that:
+     * <ol>
+     *   <li>the caller is the building's owner,</li>
+     *   <li>the targeted authUserId is currently a tenant of one of the
+     *       building's flats.</li>
+     * </ol>
+     *
+     * <p>The route is gated by the gateway HMAC (the {@code /auth/internal/**}
+     * permitAll at the Spring layer is intentional — see SecurityConfig).
+     * Direct hits without the HMAC header are blocked by
+     * {@link com.spa.home_rental_application.auth_commons.GatewayAuthFilter}.
+     */
+    @Operation(summary = "Promote a tenant to MAINTAINER + reset their password (internal)")
+    @PostMapping(value = "/internal/users/{authUserId}/promote-to-maintainer",
+            consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<AuthUserResponse> promoteToMaintainer(
+            @PathVariable Long authUserId,
+            @Valid @RequestBody PromoteToMaintainerRequest req) {
+        log.info("POST /auth/internal/users/{}/promote-to-maintainer", authUserId);
+        return ResponseEntity.ok(authService.promoteToMaintainer(authUserId, req.newPassword()));
+    }
+
 
     private static Roles parseRole(String input) {
         try {

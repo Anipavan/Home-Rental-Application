@@ -44,6 +44,25 @@ public interface MaintenanceCollectionRepository extends JpaRepository<Maintenan
            """)
     BigDecimal sumCollectedLifetime(@Param("buildingId") String buildingId);
 
+    /**
+     * Total collected across all 12 months of a single year — drives the
+     * owner's "Collected this year" KPI tile. {@code yearPrefix} is the
+     * 4-digit YYYY string ("2026"); the LIKE clause matches every
+     * {@code forMonth} in that year (forMonth is YYYY-MM, so "2026-%"
+     * cleanly partitions). Using a string prefix here keeps the query
+     * independent of any database-specific date-extraction syntax —
+     * Oracle EXTRACT vs Postgres date_part would otherwise diverge.
+     */
+    @Query("""
+            SELECT COALESCE(SUM(c.amountPaid), 0)
+              FROM MaintenanceCollection c
+             WHERE c.buildingId = :buildingId
+               AND c.forMonth LIKE :yearPrefix
+               AND c.status = 'PAID'
+           """)
+    BigDecimal sumCollectedForYear(@Param("buildingId") String buildingId,
+                                   @Param("yearPrefix") String yearPrefix);
+
     /** Outstanding (amount_due not yet paid) for the month — drives
      *  the "Outstanding" tile + the reminder list. */
     @Query("""

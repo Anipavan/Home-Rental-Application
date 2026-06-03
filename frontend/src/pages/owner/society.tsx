@@ -1,14 +1,15 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Building2,
   Calendar,
+  CalendarRange,
   Copy,
   Droplets,
-  Plus,
+  HandCoins,
   RefreshCw,
-  Trash2,
+  Sparkles,
   UserPlus,
   Wallet,
   Wrench,
@@ -32,7 +33,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -45,7 +45,7 @@ import { useToast } from "@/hooks/use-toast";
 import { formatINR } from "@/lib/utils";
 import { extractErrorMessage } from "@/lib/api/client";
 import type {
-  AddExpenseRequest,
+  EligibleMaintainer,
   ExpenseCategory,
   SetupSocietyRequest,
 } from "@/types/api";
@@ -66,11 +66,24 @@ const currentMonth = () => {
 };
 
 /**
- * Owner / maintainer landing page for a building's society ledger.
- * Combines: one-time "Set up society" wizard (shown when no config
- * exists yet), monthly ledger view (expenses + KPIs), add-expense
- * dialog, and shareable-link UI. Tenants see a slimmer read-only
- * version of the same data at /app/society.
+ * Owner landing page for a building's society ledger.
+ *
+ * <p>Post-restructure responsibilities are READ-ONLY for the owner:
+ * <ul>
+ *   <li>Setup the society (one-time wizard, still here).</li>
+ *   <li>Assign / replace the maintainer — picked from existing
+ *       tenants in the building's flats, not free-form user creation.</li>
+ *   <li>See collected / outstanding KPIs (per month + per year + lifetime).</li>
+ *   <li>Read the expense list the maintainer is recording — the
+ *       "Add expense" button has moved off this page. Maintainers now
+ *       own expense entry on their per-flat dashboard.</li>
+ *   <li>Manage the public read-only shareable URL.</li>
+ * </ul>
+ *
+ * <p>If the same auth user is BOTH the building owner AND the
+ * assigned maintainer (the common solo-landlord case), the maintainer
+ * dashboard is still reachable from the sidebar — this page stays
+ * focused on the financial overview.
  */
 export function OwnerSocietyPage() {
   const { id: buildingId } = useParams<{ id: string }>();
@@ -121,7 +134,7 @@ export function OwnerSocietyPage() {
     <div className="animate-fade-in max-w-6xl">
       <PageHeader
         title={`Society — ${buildingQ.data?.buildingName ?? ""}`}
-        description="Track common-area expenses (water bill, security salary, etc.) and share the ledger with residents."
+        description="Track collections, outstanding dues, and common-area expenses. Day-to-day expense entry is owned by the maintainer."
         actions={
           <Button asChild variant="ghost" size="sm">
             <Link to={`/owner/buildings/${buildingId}`}>← Back to building</Link>
@@ -143,7 +156,6 @@ export function OwnerSocietyPage() {
             <MaintainerCard
               buildingId={buildingId}
               currentMaintainerUserId={configQ.data!.maintainerUserId}
-              currentDefaultAmount={configQ.data!.defaultPerFlatAmount}
             />
             <Card>
               <CardContent className="p-5 h-full flex flex-col">
@@ -189,7 +201,7 @@ export function OwnerSocietyPage() {
             </Card>
           </div>
 
-          {/* Month selector + KPIs */}
+          {/* Month selector */}
           <div className="flex items-center gap-3 mb-4">
             <Calendar className="size-4 text-muted-foreground" />
             <Input
@@ -200,6 +212,36 @@ export function OwnerSocietyPage() {
             />
           </div>
 
+          {/* Collected / outstanding KPIs — the headline owners want to see */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-4">
+            <Kpi
+              icon={HandCoins}
+              label="Collected this month"
+              value={formatINR(ledgerQ.data?.collectedThisMonth ?? 0)}
+              tone="success"
+            />
+            <Kpi
+              icon={CalendarRange}
+              label="Collected this year"
+              value={formatINR(ledgerQ.data?.collectedThisYear ?? 0)}
+              tone="success"
+              hint={`Year ${month.slice(0, 4)}`}
+            />
+            <Kpi
+              icon={Sparkles}
+              label="Collected lifetime"
+              value={formatINR(ledgerQ.data?.collectedLifetime ?? 0)}
+              tone="success"
+            />
+            <Kpi
+              icon={Wrench}
+              label="Outstanding this month"
+              value={formatINR(ledgerQ.data?.outstandingThisMonth ?? 0)}
+              tone="destructive"
+            />
+          </div>
+
+          {/* Expense + balance KPIs — secondary, less prominent */}
           <div className="grid gap-4 sm:grid-cols-3 mb-6">
             <Kpi
               icon={Droplets}
@@ -216,6 +258,7 @@ export function OwnerSocietyPage() {
                   ? "success"
                   : "destructive"
               }
+              hint="Collected − Expensed"
             />
             <Kpi
               icon={Building2}
@@ -226,14 +269,16 @@ export function OwnerSocietyPage() {
             />
           </div>
 
-          {/* Add expense + expense list */}
+          {/* Expense list — read-only for owner */}
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-display font-semibold text-lg">
                   Expenses — {month}
                 </h3>
-                <AddExpenseDialog buildingId={buildingId} month={month} />
+                <Badge variant="secondary" className="text-[10px]">
+                  Recorded by maintainer
+                </Badge>
               </div>
 
               {ledgerQ.isLoading ? (
@@ -243,7 +288,7 @@ export function OwnerSocietyPage() {
                   variant="info"
                   icon={Wrench}
                   title="No expenses recorded for this month"
-                  description="Click 'Add expense' to record the first one (water bill, security salary, etc.)."
+                  description="The maintainer hasn't logged any common-area expenses for this month yet. Once they do, the entries appear here."
                 />
               ) : (
                 <div className="space-y-2">
@@ -277,29 +322,6 @@ export function OwnerSocietyPage() {
                         <p className="font-semibold font-display">
                           {formatINR(e.amount)}
                         </p>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 px-2 text-destructive mt-1"
-                          onClick={async () => {
-                            if (!confirm("Delete this expense?")) return;
-                            try {
-                              await societyApi.deleteExpense(buildingId, e.id);
-                              qc.invalidateQueries({
-                                queryKey: ["society-ledger", buildingId],
-                              });
-                              toast({ title: "Expense deleted." });
-                            } catch (err) {
-                              toast({
-                                title: "Couldn't delete",
-                                description: extractErrorMessage(err),
-                                variant: "destructive",
-                              });
-                            }
-                          }}
-                        >
-                          <Trash2 className="size-3.5" />
-                        </Button>
                       </div>
                     </div>
                   ))}
@@ -372,7 +394,7 @@ function SetupWizard({ buildingId }: { buildingId: string }) {
       toast({
         title: "Society set up!",
         description:
-          "Now record your first expense or share the public link with residents.",
+          "Assign a maintainer next, then they'll start recording per-flat dues + common expenses.",
       });
     },
     onError: (err) =>
@@ -391,7 +413,7 @@ function SetupWizard({ buildingId }: { buildingId: string }) {
         </h3>
         <p className="text-sm text-muted-foreground mt-1">
           One-time setup. You'll be assigned as the maintainer by default;
-          you can hand it to someone else later.
+          assign one of your tenants as the day-to-day maintainer after this.
         </p>
 
         <div className="grid gap-4 mt-6">
@@ -463,17 +485,15 @@ function SetupWizard({ buildingId }: { buildingId: string }) {
  * Shows the currently-assigned maintainer's name + an "Assign / Replace"
  * button that opens the {@link AssignMaintainerDialog}. The owner-as-
  * maintainer (the common case) is rendered as "You're managing this".
- * Other-user maintainers show their name + username so the owner can
+ * Other-user maintainers show their name + email so the owner can
  * verify they assigned the right person.
  */
 function MaintainerCard({
   buildingId,
   currentMaintainerUserId,
-  currentDefaultAmount,
 }: {
   buildingId: string;
   currentMaintainerUserId: string;
-  currentDefaultAmount: number;
 }) {
   const { authUserId } = useAuthStore();
   const isSelf = currentMaintainerUserId === authUserId;
@@ -497,7 +517,8 @@ function MaintainerCard({
             <>
               <p className="text-sm font-semibold">You're managing this</p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Assign someone else to share the workload.
+                Promote one of your tenants so they can take over day-to-day
+                entry.
               </p>
             </>
           ) : maintainerQ.isLoading ? (
@@ -518,10 +539,7 @@ function MaintainerCard({
           )}
         </div>
         <div className="mt-3">
-          <AssignMaintainerDialog
-            buildingId={buildingId}
-            currentDefaultAmount={currentDefaultAmount}
-          />
+          <AssignMaintainerDialog buildingId={buildingId} />
         </div>
       </CardContent>
     </Card>
@@ -529,81 +547,97 @@ function MaintainerCard({
 }
 
 /**
- * Owner-only flow that creates a MAINTAINER user with credentials the
- * owner picks, then links them as the maintainer on the building. Two
- * sequential API calls (auth-service /register + society/:id PUT)
- * intentionally NOT atomic — if the second fails, the user account
- * still exists (the owner can retry the link via the API or re-run
- * the dialog with the same username, which surfaces a "duplicate"
- * error that the owner can act on).
+ * Cryptographically-light password generator for the maintainer's
+ * temporary login. Mixes 3 char classes (upper / lower / digit) +
+ * 12 char length so it passes the auth-service password validator
+ * (8+ chars, one upper, one lower, one digit) without being so weird
+ * the owner can't read it over the phone.
  *
- * <p>Owner shares the username + password with the maintainer manually
- * (WhatsApp, in-person, email). This is by design — no auto-emailing
- * credentials, which is a non-starter for password hygiene.
+ * <p>Excludes visually-ambiguous chars (O/0, l/1) so the temp
+ * password survives a WhatsApp screenshot or a verbal handoff.
+ *
+ * <p>{@link crypto.getRandomValues} feeds the picks — never
+ * {@code Math.random}, even for a throwaway temp password.
  */
-function AssignMaintainerDialog({
-  buildingId,
-  currentDefaultAmount,
-}: {
-  buildingId: string;
-  currentDefaultAmount: number;
-}) {
+function generateTempPassword(): string {
+  const UPPER = "ABCDEFGHJKMNPQRSTUVWXYZ"; // O removed
+  const LOWER = "abcdefghjkmnpqrstuvwxyz"; // l removed
+  const DIGIT = "23456789";                // 0, 1 removed
+  const ALL = UPPER + LOWER + DIGIT;
+  const pickFrom = (s: string) => {
+    const arr = new Uint32Array(1);
+    crypto.getRandomValues(arr);
+    return s[arr[0] % s.length];
+  };
+  const out = [pickFrom(UPPER), pickFrom(LOWER), pickFrom(DIGIT)];
+  for (let i = 0; i < 9; i++) out.push(pickFrom(ALL));
+  // Shuffle so the first 3 picks aren't always upper/lower/digit in order.
+  for (let i = out.length - 1; i > 0; i--) {
+    const r = new Uint32Array(1);
+    crypto.getRandomValues(r);
+    const j = r[0] % (i + 1);
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out.join("");
+}
+
+/**
+ * Owner-only flow: pick an existing tenant of one of the building's
+ * flats from a dropdown, set a temporary password (auto-generate
+ * supported), and the backend handles the role flip + password reset
+ * + society maintainer link in a single call.
+ *
+ * <p>The previous version of this dialog created a brand-new user via
+ * {@code /auth/register}, which was wrong on two counts: (1) the
+ * maintainer is usually already a resident, so the new account
+ * duplicated their identity; (2) the owner had to fill in name +
+ * email + phone for someone who already had all that in user-service.
+ *
+ * <p>Pattern: the dropdown is hydrated from
+ * {@code GET /society/{buildingId}/eligible-maintainers} (only flats
+ * with an assigned tenantId show up). Vacant flats are filtered out
+ * server-side. If the owner wants to assign someone outside the
+ * building's flats, they have to add that person as a tenant first —
+ * which is the right shape, since maintainers are part of the
+ * community.
+ */
+function AssignMaintainerDialog({ buildingId }: { buildingId: string }) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({
-    firstName: "",
-    lastName: "",
-    userName: "",
-    email: "",
-    phone: "",
-    userPassword: "",
+  const [selectedTenantId, setSelectedTenantId] = useState<string>("");
+  const [password, setPassword] = useState<string>("");
+
+  // Re-fetch every dialog-open so the list reflects new tenants the
+  // owner may have added since the page first loaded.
+  const eligibleQ = useQuery({
+    queryKey: ["eligible-maintainers", buildingId],
+    queryFn: () => societyApi.eligibleMaintainers(buildingId),
+    enabled: open,
+    staleTime: 30_000,
   });
 
+  const selectedTenant: EligibleMaintainer | undefined = useMemo(
+    () => eligibleQ.data?.find((t) => t.tenantUserId === selectedTenantId),
+    [eligibleQ.data, selectedTenantId],
+  );
+
   const assignMut = useMutation({
-    mutationFn: async () => {
-      // 1. Create the user with MAINTAINER role. The owner is acting
-      //    on behalf of the maintainer — T&C acceptance is implicit
-      //    in that the owner is a signed-in user who already accepted
-      //    it themselves. The auth-service /register endpoint doesn't
-      //    require a separate consent flag at the wire level.
-      const created = await authApi.register({
-        userName: form.userName.trim(),
-        userPassword: form.userPassword,
-        userRole: "MAINTAINER",
-        email: form.email.trim(),
-        firstName: form.firstName.trim(),
-        lastName: form.lastName.trim(),
-        phone: form.phone.trim(),
-      });
-      // 2. Link the new authUserId as the maintainer on this building.
-      //    The backend SetupSocietyRequest DTO marks defaultPerFlatAmount
-      //    as @NotNull (it's shared with the setup endpoint), so we
-      //    echo the current value alongside the maintainer change. The
-      //    service treats absent monthlyDueDay / societyDisplayName as
-      //    "keep current".
-      await societyApi.update(buildingId, {
-        defaultPerFlatAmount: currentDefaultAmount,
-        maintainerUserId: created.authUserId,
-      });
-      return created;
-    },
-    onSuccess: (created) => {
+    mutationFn: () =>
+      societyApi.promoteTenant(buildingId, {
+        tenantUserId: selectedTenantId,
+        temporaryPassword: password,
+      }),
+    onSuccess: (resp) => {
       qc.invalidateQueries({ queryKey: ["society", buildingId] });
       qc.invalidateQueries({ queryKey: ["my-societies"] });
       toast({
         title: "Maintainer assigned",
-        description: `${created.userName} can now log in and start recording expenses. Share the username + password with them.`,
+        description: `${resp.userName} can log in now. Temporary password: ${resp.temporaryPassword}. Share via WhatsApp — they should change it on first login.`,
       });
       setOpen(false);
-      setForm({
-        firstName: "",
-        lastName: "",
-        userName: "",
-        email: "",
-        phone: "",
-        userPassword: "",
-      });
+      setSelectedTenantId("");
+      setPassword("");
     },
     onError: (err) =>
       toast({
@@ -613,16 +647,28 @@ function AssignMaintainerDialog({
       }),
   });
 
-  const canSubmit =
-    form.firstName.trim() &&
-    form.lastName.trim() &&
-    form.userName.trim() &&
-    form.email.trim() &&
-    form.phone.trim() &&
-    form.userPassword.length >= 8;
+  // Validate against the same regex the backend enforces — keeps the
+  // submit button disabled until the password would actually be
+  // accepted. Better than letting the user submit + see a 400.
+  const passwordOk =
+    password.length >= 8 &&
+    /[A-Z]/.test(password) &&
+    /[a-z]/.test(password) &&
+    /\d/.test(password);
+  const canSubmit = !!selectedTenantId && passwordOk && !assignMut.isPending;
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (!o) {
+          // Reset on close so re-opening doesn't show stale state.
+          setSelectedTenantId("");
+          setPassword("");
+        }
+      }}
+    >
       <DialogTrigger asChild>
         <Button variant="outline" size="sm">
           <UserPlus className="size-4" /> Assign / replace
@@ -633,242 +679,93 @@ function AssignMaintainerDialog({
           <DialogTitle>Assign a maintainer</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
-          Create an account for the person who'll manage this building's
-          society ledger. Share the username + password with them — they
-          can change the password after logging in.
+          Pick one of the tenants living in this building — they'll be able
+          to log in with a fresh password and start recording per-flat dues
+          + common-area expenses.
         </p>
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>First name</Label>
-              <Input
-                value={form.firstName}
-                onChange={(e) =>
-                  setForm({ ...form, firstName: e.target.value })
-                }
-              />
-            </div>
-            <div>
-              <Label>Last name</Label>
-              <Input
-                value={form.lastName}
-                onChange={(e) =>
-                  setForm({ ...form, lastName: e.target.value })
-                }
-              />
-            </div>
-          </div>
-          <div>
-            <Label>Username</Label>
-            <Input
-              placeholder="e.g. ramesh.society"
-              value={form.userName}
-              onChange={(e) => setForm({ ...form, userName: e.target.value })}
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              They'll log in with this. Letters, digits, dots — no spaces.
-            </p>
-          </div>
-          <div>
-            <Label>Email</Label>
-            <Input
-              type="email"
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-            />
-          </div>
-          <div>
-            <Label>Phone</Label>
-            <Input
-              placeholder="+91-9876543210"
-              value={form.phone}
-              onChange={(e) => setForm({ ...form, phone: e.target.value })}
-            />
-          </div>
-          <div>
-            <Label>Temporary password</Label>
-            <Input
-              type="text"
-              placeholder="At least 8 chars, 1 upper, 1 lower, 1 digit"
-              value={form.userPassword}
-              onChange={(e) =>
-                setForm({ ...form, userPassword: e.target.value })
-              }
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              Visible so you can copy it. Ask them to change it on first
-              login.
-            </p>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => setOpen(false)}>
-            Cancel
-          </Button>
-          <Button
-            variant="gradient"
-            disabled={!canSubmit || assignMut.isPending}
-            onClick={() => assignMut.mutate()}
-          >
-            {assignMut.isPending ? "Creating…" : "Create + assign"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
 
-function AddExpenseDialog({
-  buildingId,
-  month,
-}: {
-  buildingId: string;
-  month: string;
-}) {
-  const qc = useQueryClient();
-  const { toast } = useToast();
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<AddExpenseRequest>({
-    expenseMonth: month,
-    category: "UTILITY",
-    paidOnDate: new Date().toISOString().slice(0, 10),
-    amount: 0,
-  });
-
-  const addMut = useMutation({
-    mutationFn: (req: AddExpenseRequest) =>
-      societyApi.addExpense(buildingId, req),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["society-ledger", buildingId] });
-      toast({ title: "Expense added." });
-      setOpen(false);
-      setForm({
-        expenseMonth: month,
-        category: "UTILITY",
-        paidOnDate: new Date().toISOString().slice(0, 10),
-        amount: 0,
-      });
-    },
-    onError: (err) =>
-      toast({
-        title: "Couldn't add expense",
-        description: extractErrorMessage(err),
-        variant: "destructive",
-      }),
-  });
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="gradient" size="sm">
-          <Plus className="size-4" /> Add expense
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Add a common-area expense</DialogTitle>
-        </DialogHeader>
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Expense month</Label>
-              <Input
-                type="month"
-                value={form.expenseMonth}
-                onChange={(e) =>
-                  setForm({ ...form, expenseMonth: e.target.value })
-                }
+          <div>
+            <Label>Tenant</Label>
+            {eligibleQ.isLoading ? (
+              <Skeleton className="h-10 mt-1.5" />
+            ) : eligibleQ.isError ? (
+              <p className="text-sm text-destructive mt-1.5">
+                Couldn't load tenants — try reopening this dialog.
+              </p>
+            ) : !eligibleQ.data?.length ? (
+              <EmptyState
+                variant="info"
+                icon={Building2}
+                title="No tenants in this building yet"
+                description="Add tenants to the building's flats first, then come back to promote one as the maintainer."
               />
-            </div>
-            <div>
-              <Label>Paid on</Label>
-              <Input
-                type="date"
-                value={form.paidOnDate}
-                onChange={(e) =>
-                  setForm({ ...form, paidOnDate: e.target.value })
-                }
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Category</Label>
+            ) : (
               <Select
-                value={form.category}
-                onValueChange={(v) =>
-                  setForm({ ...form, category: v as ExpenseCategory })
-                }
+                value={selectedTenantId}
+                onValueChange={(v) => setSelectedTenantId(v)}
               >
-                <SelectTrigger>
-                  <SelectValue />
+                <SelectTrigger className="mt-1.5">
+                  <SelectValue placeholder="Pick a tenant" />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.entries(CATEGORY_LABELS).map(([k, label]) => (
-                    <SelectItem key={k} value={k}>
-                      {label}
+                  {eligibleQ.data.map((t) => (
+                    <SelectItem key={t.tenantUserId} value={t.tenantUserId}>
+                      {t.displayName}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+            )}
+            {selectedTenant && (
+              <p className="text-xs text-muted-foreground mt-1.5">
+                {selectedTenant.email ?? "no email on file"}
+                {selectedTenant.phone ? ` · ${selectedTenant.phone}` : ""}
+              </p>
+            )}
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <Label>Temporary password</Label>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={() => setPassword(generateTempPassword())}
+              >
+                <Sparkles className="size-3.5" /> Generate
+              </Button>
             </div>
-            <div>
-              <Label>Amount (₹)</Label>
-              <Input
-                type="number"
-                min={0}
-                step={1}
-                value={form.amount}
-                onChange={(e) =>
-                  setForm({ ...form, amount: Number(e.target.value) || 0 })
-                }
-              />
-            </div>
-          </div>
-
-          <div>
-            <Label>Subcategory / line item</Label>
             <Input
-              placeholder="e.g. BWSSB water bill - May"
-              value={form.subcategory ?? ""}
-              onChange={(e) =>
-                setForm({ ...form, subcategory: e.target.value })
-              }
+              type="text"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="At least 8 chars, 1 upper, 1 lower, 1 digit"
             />
-          </div>
-
-          <div>
-            <Label>Vendor name</Label>
-            <Input
-              placeholder="e.g. Ramesh (security)"
-              value={form.vendorName ?? ""}
-              onChange={(e) =>
-                setForm({ ...form, vendorName: e.target.value })
-              }
-            />
-          </div>
-
-          <div>
-            <Label>Notes (optional)</Label>
-            <Textarea
-              placeholder="Any context for the residents — annual prepay, rate hike, etc."
-              value={form.notes ?? ""}
-              onChange={(e) => setForm({ ...form, notes: e.target.value })}
-              rows={2}
-            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Shown in plain text so you can copy it. Ask the tenant to
+              change it after their first login.
+            </p>
+            {password && !passwordOk && (
+              <p className="text-xs text-destructive mt-1">
+                Needs 8+ chars including one uppercase, one lowercase, one digit.
+              </p>
+            )}
           </div>
         </div>
+
         <DialogFooter>
           <Button variant="ghost" onClick={() => setOpen(false)}>
             Cancel
           </Button>
           <Button
             variant="gradient"
-            disabled={addMut.isPending || !form.amount}
-            onClick={() => addMut.mutate(form)}
+            disabled={!canSubmit}
+            onClick={() => assignMut.mutate()}
           >
-            {addMut.isPending ? "Adding…" : "Add expense"}
+            {assignMut.isPending ? "Assigning…" : "Assign maintainer"}
           </Button>
         </DialogFooter>
       </DialogContent>

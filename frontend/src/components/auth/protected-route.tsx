@@ -17,9 +17,16 @@ export function ProtectedRoute({
   }
 
   if (roles && role && !roles.includes(role)) {
+    // Maintainer lands on its slim dashboard. Owners (and owner-as-
+    // maintainer dual-hat users) get the full owner shell.
     const home =
-      role === "OWNER" || role === "MAINTAINER" ? "/owner"
-        : role === "ADMIN" ? "/admin" : "/app";
+      role === "MAINTAINER"
+        ? "/maintainer"
+        : role === "OWNER"
+          ? "/owner"
+          : role === "ADMIN"
+            ? "/admin"
+            : "/app";
     return <Navigate to={home} replace />;
   }
 

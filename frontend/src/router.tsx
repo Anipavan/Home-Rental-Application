@@ -71,6 +71,11 @@ import { OwnerSocietyPage } from "@/pages/owner/society";
 import { OwnerSocietiesOverviewPage } from "@/pages/owner/societies-overview";
 import { TenantSocietyPage } from "@/pages/tenant/society";
 import { PublicSocietyLedgerPage } from "@/pages/public/society-ledger";
+import {
+  MaintainerFlatsPage,
+  MaintainerHomePage,
+} from "@/pages/maintainer/dashboard";
+import { MaintainerExpensesPage } from "@/pages/maintainer/expenses";
 
 export const router = createBrowserRouter([
   {
@@ -263,6 +268,31 @@ export const router = createBrowserRouter([
       // Owners get the same Profile page as tenants — the user-service
       // schema is role-agnostic (first/last name, email, phone, photo,
       // address). Same component, just a different route.
+      { path: "profile", element: <ProfilePage /> },
+    ],
+  },
+  // ─── Maintainer (society-only role) ───
+  // Slim sidebar; only the per-flat dashboard + expense ledger + profile.
+  // OWNER role is whitelisted too so an owner who self-assigned can use
+  // the same screens without bouncing back through the owner shell.
+  {
+    path: "/maintainer",
+    element: (
+      <ProtectedRoute roles={["MAINTAINER", "OWNER"]}>
+        <AppShell />
+      </ProtectedRoute>
+    ),
+    children: [
+      // Society list — auto-redirects to the single building's flat
+      // dashboard when the maintainer manages exactly one (the common
+      // case). Otherwise renders a picker.
+      { index: true, element: <MaintainerHomePage /> },
+      { path: ":buildingId/flats", element: <MaintainerFlatsPage /> },
+      { path: ":buildingId/expenses", element: <MaintainerExpensesPage /> },
+      { path: "notifications", element: <NotificationsInboxPage /> },
+      { path: "notifications/preferences", element: <NotificationPreferencesPage /> },
+      // Reuse the tenant ProfilePage component (role-agnostic — keys
+      // off authUserId only). Same UI, same user-service backend.
       { path: "profile", element: <ProfilePage /> },
     ],
   },

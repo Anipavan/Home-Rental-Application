@@ -198,4 +198,58 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+
+  /*
+   * Native date / month / time picker indicator styling.
+   *
+   * Out of the box Chrome / Edge render a hard-coded grey calendar icon
+   * that visually fights with the soft mint-tinted Input + brand emerald
+   * focus ring. The result is a "1990s form" look that the team flagged
+   * on the society Add-Expense dialog.
+   *
+   * We can't restyle the indicator with arbitrary SVG (vendor pseudo-
+   * element), but we CAN recolour it via filter() and pad the click
+   * target. The filter chain rotates the indicator's hue from grey to
+   * a slate-emerald that matches the design tokens, and `cursor: pointer`
+   * + the bigger padding make it feel like a real button. The whole
+   * picker still opens via the native control — no third-party date
+   * library to drag in.
+   */
+  input[type="date"]::-webkit-calendar-picker-indicator,
+  input[type="month"]::-webkit-calendar-picker-indicator,
+  input[type="time"]::-webkit-calendar-picker-indicator,
+  input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+  input[type="week"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.6;
+    padding: 4px;
+    margin-right: -2px;
+    border-radius: 6px;
+    /* hue-rotate aimed at our emerald 158deg primary so the indicator
+       picks up the brand colour. Saturate boosts the rendered glyph,
+       sepia/invert anchor the starting hue so the rotate lands on the
+       intended tone. */
+    filter: invert(34%) sepia(76%) saturate(420%) hue-rotate(110deg)
+      brightness(95%) contrast(92%);
+    transition:
+      opacity 120ms,
+      background-color 120ms;
+  }
+  input[type="date"]::-webkit-calendar-picker-indicator:hover,
+  input[type="month"]::-webkit-calendar-picker-indicator:hover,
+  input[type="time"]::-webkit-calendar-picker-indicator:hover,
+  input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover,
+  input[type="week"]::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+    background-color: hsl(var(--primary) / 0.08);
+  }
+  .dark input[type="date"]::-webkit-calendar-picker-indicator,
+  .dark input[type="month"]::-webkit-calendar-picker-indicator,
+  .dark input[type="time"]::-webkit-calendar-picker-indicator,
+  .dark input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+  .dark input[type="week"]::-webkit-calendar-picker-indicator {
+    /* In dark mode the default indicator is already light-grey; we
+       just need to nudge it towards the brighter emerald accent. */
+    filter: invert(80%) sepia(35%) saturate(380%) hue-rotate(110deg);
+  }
 }

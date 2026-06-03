@@ -25,8 +25,9 @@ public record SocietyLedgerResponse(
         String societyDisplayName,
         String month,                              // YYYY-MM the slice was for
         BigDecimal expensesThisMonth,
-        BigDecimal collectedThisMonth,             // 0 in MVP (no payment integration yet)
-        BigDecimal outstandingThisMonth,           // 0 in MVP
+        BigDecimal collectedThisMonth,             // SUM(amount_paid) where status=PAID + forMonth=month
+        BigDecimal collectedThisYear,              // SUM(amount_paid) across this calendar year
+        BigDecimal outstandingThisMonth,           // SUM(amount_due) where status in (DUE,OVERDUE)
         BigDecimal balanceLifetime,                // collectedLifetime - expensesLifetime
         BigDecimal expensesLifetime,
         BigDecimal collectedLifetime,

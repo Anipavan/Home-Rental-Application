@@ -1,8 +1,13 @@
 package com.spa.home_rental_application.property_service.property_service.service;
 
 import com.spa.home_rental_application.property_service.property_service.DTO.Request.AddExpenseRequest;
+import com.spa.home_rental_application.property_service.property_service.DTO.Request.PromoteTenantToMaintainerRequest;
 import com.spa.home_rental_application.property_service.property_service.DTO.Request.SetupSocietyRequest;
+import com.spa.home_rental_application.property_service.property_service.DTO.Request.UpsertFlatCollectionRequest;
+import com.spa.home_rental_application.property_service.property_service.DTO.Response.EligibleMaintainerResponse;
+import com.spa.home_rental_application.property_service.property_service.DTO.Response.FlatMaintenanceRowResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.MaintenanceExpenseResponse;
+import com.spa.home_rental_application.property_service.property_service.DTO.Response.PromoteTenantResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyConfigResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyLedgerResponse;
 
@@ -58,4 +63,50 @@ public interface SocietyService {
 
     /** Public read-only view via the shareable token. No auth. */
     SocietyLedgerResponse getPublicLedger(String token, String month);
+
+    // ── Maintainer assignment (owner-driven) ──────────────────────
+
+    /**
+     * Tenants currently assigned to any flat in the building. Owner-only;
+     * powers the AssignMaintainerDialog dropdown so owners pick from
+     * existing residents instead of creating a brand-new account.
+     */
+    List<EligibleMaintainerResponse> listEligibleMaintainers(String buildingId);
+
+    /**
+     * Promote an existing tenant to the building's MAINTAINER role.
+     * Owner-only. Side-effects across services:
+     * <ul>
+     *   <li>auth-service: role flip + password reset + token revocation.</li>
+     *   <li>property-service: society's {@code maintainerUserId} updated.</li>
+     * </ul>
+     * The caller (owner) is expected to share the username + temp
+     * password with the maintainer out-of-band (WhatsApp / in-person).
+     */
+    PromoteTenantResponse promoteTenantToMaintainer(
+            String buildingId, PromoteTenantToMaintainerRequest req);
+
+    // ── Per-flat collections (maintainer dashboard) ───────────────
+
+    /**
+     * Per-flat per-month rows for the maintainer's dashboard (and the
+     * owner's read-only "all flats / dues / collected" view). One row
+     * per flat in the building, with the resolved {@code monthAmount}
+     * sourced from the maintenance_collection row when present, falling
+     * back to the building's {@code defaultPerFlatAmount} otherwise.
+     *
+     * <p>{@code month} is YYYY-MM. Null/blank falls back to the current
+     * calendar month — matches the ledger endpoint's behaviour.
+     */
+    List<FlatMaintenanceRowResponse> listFlatsForMonth(String buildingId, String month);
+
+    /**
+     * Maintainer creates or updates the (flat, month) collection row.
+     * Inserts on first call for that pair, updates on subsequent calls
+     * (composite unique on {@code uq_collection_flat_month}). Owner is
+     * also allowed (so they can backfill while the maintainer is being
+     * onboarded).
+     */
+    FlatMaintenanceRowResponse upsertFlatCollection(
+            String buildingId, String flatId, UpsertFlatCollectionRequest req);
 }

@@ -1,10 +1,15 @@
 import { api } from "./client";
 import type {
   AddExpenseRequest,
+  EligibleMaintainer,
+  FlatMaintenanceRow,
   MaintenanceExpense,
+  PromoteTenantRequest,
+  PromoteTenantResponse,
   SetupSocietyRequest,
   SocietyConfig,
   SocietyLedger,
+  UpsertFlatCollectionRequest,
 } from "@/types/api";
 
 /**
@@ -87,5 +92,58 @@ export const societyApi = {
       .get<SocietyLedger>(`/society/public/${token}/ledger`, {
         params: month ? { month } : undefined,
       })
+      .then((r) => r.data),
+
+  // ── Maintainer assignment (owner-driven) ───────────────────────
+  /**
+   * Owner-only: the list of tenants currently in the building's flats.
+   * Powers the AssignMaintainerDialog dropdown.
+   */
+  eligibleMaintainers: (buildingId: string) =>
+    api
+      .get<EligibleMaintainer[]>(`/society/${buildingId}/eligible-maintainers`)
+      .then((r) => r.data),
+
+  /**
+   * Owner-only: promote a tenant to MAINTAINER + reset their password to
+   * {@code temporaryPassword}. Server-side: role flip in auth-service +
+   * config update in property-service, both wrapped in @Transactional.
+   */
+  promoteTenant: (buildingId: string, body: PromoteTenantRequest) =>
+    api
+      .post<PromoteTenantResponse>(
+        `/society/${buildingId}/maintainer/promote-tenant`,
+        body,
+      )
+      .then((r) => r.data),
+
+  // ── Per-flat collections (maintainer dashboard) ────────────────
+  /**
+   * Owner / maintainer: per-flat per-month rows. One row per flat in
+   * the building, with monthAmount resolved from the collection row or
+   * the society default.
+   */
+  flatsForMonth: (buildingId: string, month?: string) =>
+    api
+      .get<FlatMaintenanceRow[]>(`/society/${buildingId}/flats`, {
+        params: month ? { month } : undefined,
+      })
+      .then((r) => r.data),
+
+  /**
+   * Maintainer / owner: upsert the (flat, month) collection — typically
+   * used to set the usage-based monthly amount + line-item notes
+   * (water bill / gas / common-area share / etc.).
+   */
+  upsertFlatCollection: (
+    buildingId: string,
+    flatId: string,
+    body: UpsertFlatCollectionRequest,
+  ) =>
+    api
+      .post<FlatMaintenanceRow>(
+        `/society/${buildingId}/flats/${flatId}/collection`,
+        body,
+      )
       .then((r) => r.data),
 };

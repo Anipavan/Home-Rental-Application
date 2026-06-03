@@ -152,13 +152,14 @@ const adminNav: NavItem[] = [
   { to: "/admin/profile", label: "Profile", icon: Settings },
 ];
 
-/** Slimmed sidebar for MAINTAINER users — they only need Society +
- *  Profile (no buildings/flats/tenants/payments). Owners who self-
- *  assigned as maintainer for one of their buildings keep the full
+/** Slimmed sidebar for MAINTAINER users — they only need their per-
+ *  flat dashboard + the expense ledger + Profile. No buildings / flats
+ *  / tenants list (those are owner-scoped). Owners who self-assigned
+ *  as the maintainer for one of their own buildings keep the full
  *  OWNER nav since they wear both hats. */
 const maintainerNav: NavItem[] = [
-  { to: "/owner/society", label: "Society", icon: HandCoins },
-  { to: "/owner/profile", label: "Profile", icon: Settings },
+  { to: "/maintainer", label: "Flats & dues", icon: HandCoins },
+  { to: "/maintainer/profile", label: "Profile", icon: Settings },
 ];
 
 function navFor(role: Role | null): NavItem[] {

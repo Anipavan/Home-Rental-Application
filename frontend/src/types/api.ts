@@ -1013,9 +1013,10 @@ export interface AddExpenseRequest {
 
 /**
  * Combined ledger payload — one-shot read for owner / tenant / public
- * society pages. Collections are 0 in MVP (no payment integration
- * yet) but exposed in the shape so the UI can render placeholders
- * without a follow-up schema change.
+ * society pages. {@code collectedThisMonth} / {@code collectedThisYear} /
+ * {@code collectedLifetime} are sums over {@code maintenance_collection}
+ * rows the maintainer has marked PAID; they stay at 0 until the
+ * maintainer starts recording payments on the per-flat dashboard.
  */
 export interface SocietyLedger {
   buildingId: string;
@@ -1023,10 +1024,74 @@ export interface SocietyLedger {
   month: string;                                // YYYY-MM
   expensesThisMonth: number;
   collectedThisMonth: number;
+  collectedThisYear: number;
   outstandingThisMonth: number;
   balanceLifetime: number;
   expensesLifetime: number;
   collectedLifetime: number;
   byCategory: Partial<Record<ExpenseCategory, number>>;
   expenses: MaintenanceExpense[];
+}
+
+/**
+ * One row in the "pick a tenant to promote to maintainer" dropdown.
+ * Owners see this list when assigning a maintainer; backend filters
+ * to currently-occupied flats only.
+ */
+export interface EligibleMaintainer {
+  tenantUserId: string;
+  flatId: string;
+  flatNumber: string;
+  tenantName: string;
+  /** Pre-formatted "Flat 101 — Ramesh K." string; render verbatim. */
+  displayName: string;
+  email: string | null;
+  phone: string | null;
+}
+
+/** Body for {@code POST /society/{buildingId}/maintainer/promote-tenant}. */
+export interface PromoteTenantRequest {
+  tenantUserId: string;
+  temporaryPassword: string;
+}
+
+/** Response from the promote endpoint — echo of the credentials the
+ *  owner just set, plus a friendly hand-it-to-them message. */
+export interface PromoteTenantResponse {
+  tenantUserId: string;
+  userName: string;
+  temporaryPassword: string;
+  message: string;
+}
+
+/**
+ * One row in the maintainer's per-flat dashboard. Backend resolves
+ * monthAmount as the collection.amountDue when a row exists, else the
+ * society's default. Status NEW_FLAT signals "no row created yet for
+ * this (flat, month)".
+ */
+export interface FlatMaintenanceRow {
+  flatId: string;
+  flatNumber: string;
+  tenantUserId: string | null;
+  tenantName: string;
+  monthAmount: number;
+  status: CollectionStatus | "NEW_FLAT";
+  defaultAmount: number;
+  forMonth: string;
+  notes: string | null;
+  paidOn: string | null;
+  paidVia: string | null;
+  amountPaid: number | null;
+}
+
+/** Body for {@code POST /society/{buildingId}/flats/{flatId}/collection}. */
+export interface UpsertFlatCollectionRequest {
+  forMonth: string;
+  amountDue: number;
+  status?: CollectionStatus;
+  notes?: string;
+  paidOn?: string;
+  amountPaid?: number;
+  paidVia?: string;
 }

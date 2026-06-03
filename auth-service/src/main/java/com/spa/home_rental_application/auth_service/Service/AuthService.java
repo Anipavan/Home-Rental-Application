@@ -30,4 +30,33 @@ public interface AuthService {
      * cache) to enforce immediate logout.
      */
     java.time.Instant tokensRevokedBefore(Long userId);
+
+    /**
+     * Owner-driven flow: an existing tenant of a building's flats is
+     * promoted to MAINTAINER of the society. Property-service is the
+     * only legitimate caller (it validates building-ownership before
+     * issuing this call) — hence the endpoint sits under
+     * {@code /auth/internal/**} guarded by the gateway HMAC.
+     *
+     * <p>Side-effects:
+     * <ul>
+     *   <li>{@code userRole} flipped to MAINTAINER (no-op if already).</li>
+     *   <li>{@code userPassword} replaced with a BCrypt hash of
+     *       {@code newPassword}. The user changes it on first login.</li>
+     *   <li>{@code tokensRevokedBefore} bumped to {@code now()} so any
+     *       access JWT the user currently holds dies immediately. They
+     *       must re-login with the temp credentials.</li>
+     *   <li>{@code accountNonLocked} reset to true + failedLoginAttempts
+     *       cleared — covers the corner case where the user happened
+     *       to be in the 15-min lockout window when the owner
+     *       promoted them.</li>
+     * </ul>
+     *
+     * <p>Idempotent: re-running with the same {@code authUserId} and
+     * a fresh password simply resets the password again. We do NOT
+     * publish a "role-changed" Kafka event today — the maintainer
+     * dashboard inheriting OWNER capabilities is purely a UI / API
+     * permission shift; no downstream consumer cares.
+     */
+    AuthUserResponse promoteToMaintainer(Long authUserId, String newPassword);
 }
