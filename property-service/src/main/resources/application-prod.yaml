@@ -18,6 +18,27 @@ spring:
     enabled: true
     baseline-on-migrate: true
     validate-on-migrate: true
+    # ─── Per-service Flyway history table ───
+    # Multiple microservices share the HRA_APP Oracle schema (one DB
+    # user, one schema, many app services). Without a per-service
+    # table name, ALL of them would write to the default
+    # `flyway_schema_history` and trip "description mismatch" /
+    # "checksum mismatch" on every restart because each service's
+    # V2/V3/… is a different migration.
+    #
+    # The fix is to give each service its own history table. This
+    # change combined with `baseline-version: 3` below (and the
+    # pre-populated rows on first boot — see deploy notes) lets
+    # property-service walk through its own migration timeline
+    # independently of kyc-service / payment-service / etc.
+    table: property_flyway_history
+    # On an existing prod where the underlying schema is ALREADY at
+    # the property-service V3 state (vacate_comments + society
+    # tables present), baseline at V3 so Flyway doesn't try to
+    # re-apply V1/V2/V3 over rows that are already there. Future
+    # migrations (V4+) run normally.
+    baseline-version: 3
+    baseline-description: "Pre-existing schema baseline (per-service table migration)"
 
   jpa:
     hibernate:
