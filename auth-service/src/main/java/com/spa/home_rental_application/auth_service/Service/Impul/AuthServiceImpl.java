@@ -532,6 +532,19 @@ public class AuthServiceImpl implements AuthService {
                     "Cannot grant maintainer access to an ADMIN user.");
         }
 
+        // Self-heal: if the row STILL carries user_role=MAINTAINER
+        // (an orphaned state left by the V2-era promote flow that
+        // overwrote user_role), reset it back to TENANT. V4 migration
+        // does this at boot time as a sweep; doing it here too means
+        // any new promote call cleans up the row even if the
+        // operator forgot to deploy the migration first.
+        if (before == Roles.MAINTAINER) {
+            log.info("promoteToMaintainer self-heal authUserId={} reverting "
+                    + "stale user_role MAINTAINER → TENANT",
+                    authUserId);
+            user.setUserRole(Roles.TENANT);
+        }
+
         // ── KEY CHANGE (V3): dual-credential model ──
         // We DO NOT change user_role or user_password anymore.
         // Doing so destroyed the user's tenant access — they'd lose
