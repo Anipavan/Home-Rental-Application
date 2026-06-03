@@ -391,6 +391,11 @@ public class SocietyServiceImpl implements SocietyService {
         CallerSecurity.requireOwnerOrAdmin(b.getOwnerId());
 
         List<Flat> flats = flatRepo.findByBuildingId(buildingId);
+        long withTenants = flats.stream()
+                .filter(f -> f.getTenantId() != null && !f.getTenantId().isBlank())
+                .count();
+        log.info("eligible-maintainers buildingId={} flatsTotal={} flatsWithTenant={}",
+                buildingId, flats.size(), withTenants);
         return flats.stream()
                 // Only consider currently-occupied flats. Vacant flats
                 // have no tenantId, so they trivially fall out of the
@@ -450,18 +455,44 @@ public class SocietyServiceImpl implements SocietyService {
         }
 
         // 1. auth-service: role flip + password reset + token revoke.
-        //    Feign exceptions bubble; controller's global handler maps
-        //    them to a meaningful HTTP error.
+        //    Wrap the Feign call so the operator-facing error message
+        //    surfaces *which* downstream failure happened — naked
+        //    FeignException dumps "[500 Internal Server Error] during
+        //    [POST] to [http://...]" into the toast, which is useless
+        //    for triage.
         Long authId;
         try {
             authId = Long.valueOf(req.tenantUserId());
         } catch (NumberFormatException nfe) {
             throw new IllegalArgumentException(
-                    "Internal: tenantUserId is not a numeric authUserId — "
-                            + "auth-service stores Long ids.");
+                    "Internal: tenantUserId '" + req.tenantUserId()
+                            + "' is not a numeric authUserId — auth-service "
+                            + "stores Long ids. This means the tenant on "
+                            + "Flat.tenantId wasn't created through the "
+                            + "standard /auth/register flow.");
         }
-        AuthClient.AuthUserSummary updated = authClient.promoteToMaintainer(
-                authId, new AuthClient.PromoteBody(req.temporaryPassword()));
+        AuthClient.AuthUserSummary updated;
+        try {
+            updated = authClient.promoteToMaintainer(
+                    authId, new AuthClient.PromoteBody(req.temporaryPassword()));
+        } catch (feign.FeignException fe) {
+            // Surface the downstream HTTP body when present — auth-
+            // service's validators (password regex, "cannot demote
+            // OWNER") return readable JSON we want the operator to see.
+            String body = fe.contentUTF8();
+            log.error("auth-service promote-to-maintainer failed authUserId={} status={} body={}",
+                    authId, fe.status(), body);
+            String snippet = (body == null || body.isBlank())
+                    ? fe.getMessage()
+                    : body;
+            throw new IllegalStateException(
+                    "Couldn't update auth-service: " + snippet, fe);
+        } catch (Exception ex) {
+            log.error("Unexpected Feign error during promote-to-maintainer authUserId={}",
+                    authId, ex);
+            throw new IllegalStateException(
+                    "Couldn't reach auth-service: " + ex.getMessage(), ex);
+        }
 
         // 2. society config: link the new maintainer.
         cfg.setMaintainerUserId(req.tenantUserId().trim());

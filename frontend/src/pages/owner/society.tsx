@@ -701,21 +701,28 @@ function AssignMaintainerDialog({ buildingId }: { buildingId: string }) {
                 description="Add tenants to the building's flats first, then come back to promote one as the maintainer."
               />
             ) : (
-              <Select
-                value={selectedTenantId}
-                onValueChange={(v) => setSelectedTenantId(v)}
-              >
-                <SelectTrigger className="mt-1.5">
-                  <SelectValue placeholder="Pick a tenant" />
-                </SelectTrigger>
-                <SelectContent>
-                  {eligibleQ.data.map((t) => (
-                    <SelectItem key={t.tenantUserId} value={t.tenantUserId}>
-                      {t.displayName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <>
+                <Select
+                  value={selectedTenantId}
+                  onValueChange={(v) => setSelectedTenantId(v)}
+                >
+                  <SelectTrigger className="mt-1.5">
+                    <SelectValue placeholder="Pick a tenant" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {eligibleQ.data.map((t) => (
+                      <SelectItem key={t.tenantUserId} value={t.tenantUserId}>
+                        {t.displayName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Only flats with a tenant currently assigned appear here.
+                  Vacant flats — and tenants of OTHER buildings — are
+                  intentionally excluded.
+                </p>
+              </>
             )}
             {selectedTenant && (
               <p className="text-xs text-muted-foreground mt-1.5">

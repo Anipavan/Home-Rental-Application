@@ -185,6 +185,46 @@ public class ExceptionClass {
         return build(HttpStatus.BAD_REQUEST, ex.getMessage(), "ILLEGAL_ARGUMENT", req);
     }
 
+    /**
+     * Stale-state / inter-service-call failures (e.g. auth-service
+     * promote-to-maintainer Feign call returning 4xx/5xx, with the
+     * downstream body wrapped). We map to 502 Bad Gateway so the
+     * frontend knows this is an upstream service problem, not a user
+     * input problem, AND we keep the wrapper message readable so the
+     * operator's toast actually says WHICH downstream failed.
+     *
+     * <p>Previously these landed in the catch-all and the user saw the
+     * useless "An unexpected error occurred. Please contact support."
+     * regardless of the real reason.
+     */
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<APIErrorResponse> handleIllegalState(IllegalStateException ex, HttpServletRequest req) {
+        log.warn("Downstream / stale-state failure at {}: {}", req.getRequestURI(), ex.getMessage());
+        return build(HttpStatus.BAD_GATEWAY, ex.getMessage(), "DOWNSTREAM_ERROR", req);
+    }
+
+    /**
+     * Catches Feign exceptions that escape the per-call try/catch wraps
+     * (any code path that forgot to translate Feign → IllegalState).
+     * Keeps the operator's toast useful instead of dumping the full
+     * Feign default message. Status pass-through matches the downstream
+     * code where possible — a 404 from auth-service shouldn't become a
+     * 502 from property-service.
+     */
+    @ExceptionHandler(feign.FeignException.class)
+    public ResponseEntity<APIErrorResponse> handleFeign(feign.FeignException ex, HttpServletRequest req) {
+        int downstream = ex.status();
+        String body = ex.contentUTF8();
+        String snippet = (body == null || body.isBlank()) ? ex.getMessage() : body;
+        log.error("Feign call failed at {} status={} body={}", req.getRequestURI(), downstream, body);
+        HttpStatus status = (downstream >= 400 && downstream < 500)
+                ? HttpStatus.BAD_GATEWAY        // 4xx downstream = inter-service contract drift, surface as 502
+                : HttpStatus.BAD_GATEWAY;       // 5xx / network = 502 too
+        return build(status,
+                "Inter-service call failed (downstream " + downstream + "): " + snippet,
+                "DOWNSTREAM_ERROR", req);
+    }
+
     // ---------- Catch-all ----------
 
     @ExceptionHandler(Exception.class)
