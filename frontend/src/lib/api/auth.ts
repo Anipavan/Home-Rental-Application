@@ -5,13 +5,14 @@ import type {
   LoginRequest,
   MessageResponse,
   RegisterRequest,
+  RegisterResponse,
 } from "@/types/api";
 
 export const authApi = {
   login: (body: LoginRequest) =>
     api.post<AuthResponse>("/auth/login", body).then((r) => r.data),
   register: (body: RegisterRequest) =>
-    api.post<MessageResponse>("/auth/register", body).then((r) => r.data),
+    api.post<RegisterResponse>("/auth/register", body).then((r) => r.data),
   forgotPassword: (email: string) =>
     api
       .post<MessageResponse>("/auth/forgot-password", { email })

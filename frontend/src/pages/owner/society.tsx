@@ -9,11 +9,14 @@ import {
   Plus,
   RefreshCw,
   Trash2,
+  UserPlus,
   Wallet,
   Wrench,
 } from "lucide-react";
 import { societyApi } from "@/lib/api/society";
 import { propertiesApi } from "@/lib/api/properties";
+import { authApi } from "@/lib/api/auth";
+import { useAuthStore } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -135,10 +138,15 @@ export function OwnerSocietyPage() {
         <SetupWizard buildingId={buildingId} />
       ) : (
         <>
-          {/* Shareable link strip */}
-          <Card className="mb-6">
-            <CardContent className="p-5 flex flex-col sm:flex-row gap-3 sm:items-center justify-between">
-              <div className="min-w-0">
+          {/* Maintainer + Public link side by side on desktop, stacked on mobile */}
+          <div className="grid gap-4 sm:grid-cols-2 mb-6">
+            <MaintainerCard
+              buildingId={buildingId}
+              currentMaintainerUserId={configQ.data!.maintainerUserId}
+              currentDefaultAmount={configQ.data!.defaultPerFlatAmount}
+            />
+            <Card>
+              <CardContent className="p-5 h-full flex flex-col">
                 <p className="text-xs uppercase tracking-wider text-muted-foreground font-mono">
                   Public read-only ledger
                 </p>
@@ -148,38 +156,38 @@ export function OwnerSocietyPage() {
                 >
                   {configQ.data!.publicViewUrl}
                 </p>
-              </div>
-              <div className="flex gap-2 shrink-0">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    navigator.clipboard.writeText(configQ.data!.publicViewUrl);
-                    toast({ title: "Link copied — share it in the residents' WhatsApp group." });
-                  }}
-                >
-                  <Copy className="size-4" /> Copy link
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={async () => {
-                    if (
-                      !confirm(
-                        "Rotate the link? The old URL will stop working immediately.",
+                <div className="flex gap-2 mt-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      navigator.clipboard.writeText(configQ.data!.publicViewUrl);
+                      toast({ title: "Link copied — share it in the residents' WhatsApp group." });
+                    }}
+                  >
+                    <Copy className="size-4" /> Copy link
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      if (
+                        !confirm(
+                          "Rotate the link? The old URL will stop working immediately.",
+                        )
                       )
-                    )
-                      return;
-                    await societyApi.regenerateToken(buildingId);
-                    qc.invalidateQueries({ queryKey: ["society", buildingId] });
-                    toast({ title: "Link rotated — share the new one." });
-                  }}
-                >
-                  <RefreshCw className="size-4" /> Rotate
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+                        return;
+                      await societyApi.regenerateToken(buildingId);
+                      qc.invalidateQueries({ queryKey: ["society", buildingId] });
+                      toast({ title: "Link rotated — share the new one." });
+                    }}
+                  >
+                    <RefreshCw className="size-4" /> Rotate
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
 
           {/* Month selector + KPIs */}
           <div className="flex items-center gap-3 mb-4">
@@ -448,6 +456,265 @@ function SetupWizard({ buildingId }: { buildingId: string }) {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Shows the currently-assigned maintainer's name + an "Assign / Replace"
+ * button that opens the {@link AssignMaintainerDialog}. The owner-as-
+ * maintainer (the common case) is rendered as "You're managing this".
+ * Other-user maintainers show their name + username so the owner can
+ * verify they assigned the right person.
+ */
+function MaintainerCard({
+  buildingId,
+  currentMaintainerUserId,
+  currentDefaultAmount,
+}: {
+  buildingId: string;
+  currentMaintainerUserId: string;
+  currentDefaultAmount: number;
+}) {
+  const { authUserId } = useAuthStore();
+  const isSelf = currentMaintainerUserId === authUserId;
+
+  const maintainerQ = useQuery({
+    queryKey: ["auth-user", currentMaintainerUserId],
+    queryFn: () => authApi.byId(currentMaintainerUserId),
+    enabled: !!currentMaintainerUserId && !isSelf,
+    // Maintainer details rarely change. Cache 5 minutes.
+    staleTime: 5 * 60_000,
+  });
+
+  return (
+    <Card>
+      <CardContent className="p-5 h-full flex flex-col">
+        <p className="text-xs uppercase tracking-wider text-muted-foreground font-mono">
+          Maintainer
+        </p>
+        <div className="mt-1 flex-1">
+          {isSelf ? (
+            <>
+              <p className="text-sm font-semibold">You're managing this</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Assign someone else to share the workload.
+              </p>
+            </>
+          ) : maintainerQ.isLoading ? (
+            <Skeleton className="h-6 w-40" />
+          ) : maintainerQ.data ? (
+            <>
+              <p className="text-sm font-semibold truncate">
+                {maintainerQ.data.userName ?? "—"}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                {maintainerQ.data.email ?? ""}
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              External user (id {currentMaintainerUserId.slice(0, 8)}…)
+            </p>
+          )}
+        </div>
+        <div className="mt-3">
+          <AssignMaintainerDialog
+            buildingId={buildingId}
+            currentDefaultAmount={currentDefaultAmount}
+          />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Owner-only flow that creates a MAINTAINER user with credentials the
+ * owner picks, then links them as the maintainer on the building. Two
+ * sequential API calls (auth-service /register + society/:id PUT)
+ * intentionally NOT atomic — if the second fails, the user account
+ * still exists (the owner can retry the link via the API or re-run
+ * the dialog with the same username, which surfaces a "duplicate"
+ * error that the owner can act on).
+ *
+ * <p>Owner shares the username + password with the maintainer manually
+ * (WhatsApp, in-person, email). This is by design — no auto-emailing
+ * credentials, which is a non-starter for password hygiene.
+ */
+function AssignMaintainerDialog({
+  buildingId,
+  currentDefaultAmount,
+}: {
+  buildingId: string;
+  currentDefaultAmount: number;
+}) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({
+    firstName: "",
+    lastName: "",
+    userName: "",
+    email: "",
+    phone: "",
+    userPassword: "",
+  });
+
+  const assignMut = useMutation({
+    mutationFn: async () => {
+      // 1. Create the user with MAINTAINER role. The owner is acting
+      //    on behalf of the maintainer — T&C acceptance is implicit
+      //    in that the owner is a signed-in user who already accepted
+      //    it themselves. The auth-service /register endpoint doesn't
+      //    require a separate consent flag at the wire level.
+      const created = await authApi.register({
+        userName: form.userName.trim(),
+        userPassword: form.userPassword,
+        userRole: "MAINTAINER",
+        email: form.email.trim(),
+        firstName: form.firstName.trim(),
+        lastName: form.lastName.trim(),
+        phone: form.phone.trim(),
+      });
+      // 2. Link the new authUserId as the maintainer on this building.
+      //    The backend SetupSocietyRequest DTO marks defaultPerFlatAmount
+      //    as @NotNull (it's shared with the setup endpoint), so we
+      //    echo the current value alongside the maintainer change. The
+      //    service treats absent monthlyDueDay / societyDisplayName as
+      //    "keep current".
+      await societyApi.update(buildingId, {
+        defaultPerFlatAmount: currentDefaultAmount,
+        maintainerUserId: created.authUserId,
+      });
+      return created;
+    },
+    onSuccess: (created) => {
+      qc.invalidateQueries({ queryKey: ["society", buildingId] });
+      qc.invalidateQueries({ queryKey: ["my-societies"] });
+      toast({
+        title: "Maintainer assigned",
+        description: `${created.userName} can now log in and start recording expenses. Share the username + password with them.`,
+      });
+      setOpen(false);
+      setForm({
+        firstName: "",
+        lastName: "",
+        userName: "",
+        email: "",
+        phone: "",
+        userPassword: "",
+      });
+    },
+    onError: (err) =>
+      toast({
+        title: "Couldn't assign maintainer",
+        description: extractErrorMessage(err),
+        variant: "destructive",
+      }),
+  });
+
+  const canSubmit =
+    form.firstName.trim() &&
+    form.lastName.trim() &&
+    form.userName.trim() &&
+    form.email.trim() &&
+    form.phone.trim() &&
+    form.userPassword.length >= 8;
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          <UserPlus className="size-4" /> Assign / replace
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Assign a maintainer</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          Create an account for the person who'll manage this building's
+          society ledger. Share the username + password with them — they
+          can change the password after logging in.
+        </p>
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>First name</Label>
+              <Input
+                value={form.firstName}
+                onChange={(e) =>
+                  setForm({ ...form, firstName: e.target.value })
+                }
+              />
+            </div>
+            <div>
+              <Label>Last name</Label>
+              <Input
+                value={form.lastName}
+                onChange={(e) =>
+                  setForm({ ...form, lastName: e.target.value })
+                }
+              />
+            </div>
+          </div>
+          <div>
+            <Label>Username</Label>
+            <Input
+              placeholder="e.g. ramesh.society"
+              value={form.userName}
+              onChange={(e) => setForm({ ...form, userName: e.target.value })}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              They'll log in with this. Letters, digits, dots — no spaces.
+            </p>
+          </div>
+          <div>
+            <Label>Email</Label>
+            <Input
+              type="email"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label>Phone</Label>
+            <Input
+              placeholder="+91-9876543210"
+              value={form.phone}
+              onChange={(e) => setForm({ ...form, phone: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label>Temporary password</Label>
+            <Input
+              type="text"
+              placeholder="At least 8 chars, 1 upper, 1 lower, 1 digit"
+              value={form.userPassword}
+              onChange={(e) =>
+                setForm({ ...form, userPassword: e.target.value })
+              }
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Visible so you can copy it. Ask them to change it on first
+              login.
+            </p>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant="gradient"
+            disabled={!canSubmit || assignMut.isPending}
+            onClick={() => assignMut.mutate()}
+          >
+            {assignMut.isPending ? "Creating…" : "Create + assign"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

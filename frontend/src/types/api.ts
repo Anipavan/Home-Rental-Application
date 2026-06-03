@@ -40,6 +40,19 @@ export interface MessageResponse {
   message: string;
 }
 
+/**
+ * Shape the auth-service actually returns from POST /auth/register.
+ * Java side serializes the auth-side user id as {@code authUserId} —
+ * we read it after an owner-creates-maintainer flow so the property-
+ * service society config can be linked in a follow-up call without a
+ * second user-lookup round trip.
+ */
+export interface RegisterResponse {
+  authUserId: string;
+  userName: string;
+  message?: string;
+}
+
 export interface AuthUserResponse {
   id: string;
   /**
