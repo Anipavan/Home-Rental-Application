@@ -32,13 +32,18 @@ spring:
     # property-service walk through its own migration timeline
     # independently of kyc-service / payment-service / etc.
     table: property_flyway_history
-    # On an existing prod where the underlying schema is ALREADY at
-    # the property-service V3 state (vacate_comments + society
-    # tables present), baseline at V3 so Flyway doesn't try to
-    # re-apply V1/V2/V3 over rows that are already there. Future
-    # migrations (V4+) run normally.
-    baseline-version: 3
-    baseline-description: "Pre-existing schema baseline (per-service table migration)"
+    # Baseline at V2 — V1 (no-op baseline) + V2 (vacate_comments,
+    # adds scheduled_vacate_comments to flats) are already reflected
+    # in the existing schema. V3 (society_tables) is NEW and must
+    # actually run to create the 4 building_society_config / etc.
+    # tables before Hibernate's ddl-auto=validate accepts the JPA
+    # entities at startup.
+    #
+    # V3 itself is idempotent (PL/SQL EXCEPTION blocks swallow
+    # ORA-00955 'object already exists'), so a future fresh deploy
+    # where V3 also runs is also safe.
+    baseline-version: 2
+    baseline-description: "Pre-existing schema baseline (vacate_comments already applied)"
 
   jpa:
     hibernate:
