@@ -1,0 +1,53 @@
+# ─────────────────────────────────────────────────────────────────
+#  Line-ending policy. Without this, Windows developers + Linux CI/
+#  server end up with files that differ only by CRLF vs LF — which
+#  is harmless for most source code but catastrophic for two things:
+#
+#    1. Flyway migration files. Flyway computes a CRC32 over the raw
+#       bytes of the .sql file when it applies a migration, and stores
+#       that checksum in flyway_schema_history. The next boot validates
+#       the current file's checksum against the stored one. Different
+#       line endings → different bytes → different checksum →
+#       "Migration checksum mismatch for migration version N" →
+#       Spring Boot refuses to start → entire service crash-loops →
+#       gateway returns 503 for all its endpoints (states list fails,
+#       building list fails, etc.). This was the exact symptom we were
+#       chasing "frequently" before this rule landed.
+#
+#    2. Shell scripts. Bash chokes on CRLF in shebang lines + heredocs.
+#
+#  Default policy: text files auto-detect EOL on commit but check out
+#  with LF. This means the working tree on Windows shows LF, the repo
+#  stores LF, and the Linux deploy gets LF. No surprises.
+# ─────────────────────────────────────────────────────────────────
+
+* text=auto eol=lf
+
+# ─── Lock specific files / extensions to LF unconditionally ───
+# Flyway migrations — checksum-sensitive (see header above).
+*.sql               text eol=lf
+# Shell scripts — bash chokes on CRLF.
+*.sh                text eol=lf
+# Java / Kotlin — keep LF for cross-platform git-diff sanity.
+*.java              text eol=lf
+*.kt                text eol=lf
+# YAML / properties — Spring Boot tolerates either, but LF keeps diffs clean.
+*.yaml              text eol=lf
+*.yml               text eol=lf
+*.properties        text eol=lf
+# Docker + nginx config
+Dockerfile          text eol=lf
+*.dockerfile        text eol=lf
+nginx.conf          text eol=lf
+docker-compose*.yml text eol=lf
+
+# ─── Genuine binary files — never touch ───
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.pdf   binary
+*.zip   binary
+*.jar   binary
+*.class binary
