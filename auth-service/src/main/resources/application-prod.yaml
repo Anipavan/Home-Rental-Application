@@ -18,6 +18,25 @@ spring:
     enabled: true
     baseline-on-migrate: true
     validate-on-migrate: true
+    # ─── Per-service Flyway history table ───
+    # auth-service, property-service, kyc-service all share the HRA_APP
+    # Oracle schema (one DB user, many app services). Without a per-
+    # service history table, ALL of them write to the default
+    # `flyway_schema_history` — and we'd trip "Migration checksum
+    # mismatch" the instant any two services define a V2 with
+    # different bodies.
+    #
+    # property-service moved to property_flyway_history earlier. This
+    # change does the same for auth-service. Pre-existing prod boxes
+    # will see a fresh `auth_flyway_history` on first boot;
+    # baseline-on-migrate=true + baseline-version=1 below stamps V1 as
+    # already-applied (the V1__baseline.sql is a no-op SELECT 1
+    # anyway), and V2__user_role_check_includes_maintainer.sql runs
+    # for real to drop the SYS_C check constraint that the
+    # Hibernate-managed table was created with.
+    table: auth_flyway_history
+    baseline-version: 1
+    baseline-description: "Pre-existing schema baseline (Hibernate-managed)"
 
   jpa:
     hibernate:
