@@ -220,20 +220,45 @@ public class AuthServiceImpl implements AuthService {
         }
 
         Authentication authenticated;
+        // Track whether the user authenticated via maintainer_password
+        // (the secondary credential set by the owner-driven promote
+        // flow) so we can stamp role=MAINTAINER on the issued JWT,
+        // overriding the user's stored user_role for this session
+        // only. A tenant who also manages a society effectively has
+        // two login modes — same account, two passwords.
+        boolean authenticatedAsMaintainer = false;
         try {
             authenticated = authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(req.userName(), req.password()));
         } catch (BadCredentialsException ex) {
-            if (lockoutEnabled) registerFailedLogin(prelocked);
-            // P1-12: failed-login audit. Actor unknown (no JWT yet);
-            // subject is whichever user record the username pointed at
-            // (may be blank if the username doesn't even exist — that's
-            // intentional, the audit row still tells us SOMEONE tried).
-            audit.publishFailure("auth.login.failed",
-                    null,
-                    prelocked == null ? null : String.valueOf(prelocked.getId()),
-                    "Bad credentials for username '" + req.userName() + "'");
-            throw ex;
+            // ── Dual-credential fallback ──
+            // Before declaring this a real failed login, try the same
+            // password against maintainer_password. If THAT matches,
+            // build a synthetic Authentication with ROLE_MAINTAINER
+            // and proceed with the rest of the login flow as if
+            // Spring's DaoAuthenticationProvider had handed us this
+            // result.
+            UserDetails altUser = userRepository.findByUserName(req.userName()).orElse(null);
+            if (altUser != null
+                    && altUser.getMaintainerPassword() != null
+                    && !altUser.getMaintainerPassword().isBlank()
+                    && passwordEncoder.matches(req.password(), altUser.getMaintainerPassword())) {
+                log.info("Login via maintainer_password authUserId={} primaryRole={} → MAINTAINER session",
+                        altUser.getId(), altUser.getUserRole());
+                authenticated = new UsernamePasswordAuthenticationToken(
+                        altUser,
+                        null,
+                        java.util.List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority(
+                                "ROLE_MAINTAINER")));
+                authenticatedAsMaintainer = true;
+            } else {
+                if (lockoutEnabled) registerFailedLogin(prelocked);
+                audit.publishFailure("auth.login.failed",
+                        null,
+                        prelocked == null ? null : String.valueOf(prelocked.getId()),
+                        "Bad credentials for username '" + req.userName() + "'");
+                throw ex;
+            }
         } catch (AuthenticationException ex) {
             if (lockoutEnabled) registerFailedLogin(prelocked);
             audit.publishFailure("auth.login.failed",
@@ -287,9 +312,17 @@ public class AuthServiceImpl implements AuthService {
                 .userAgent(userAgent)
                 .build());
 
+        // Role in the API response: MAINTAINER when the user came in
+        // through maintainer_password, otherwise their stored
+        // user_role. The frontend keys its post-login redirect on
+        // this value (login.tsx routes MAINTAINER → /maintainer,
+        // OWNER → /owner, TENANT → /app).
+        String responseRole = authenticatedAsMaintainer
+                ? Roles.MAINTAINER.name()
+                : user.getUserRole().name();
         return AuthResponse.bearer(accessToken, refresh.getToken(),
                 jwtProperties.getAccessTokenValiditySeconds(),
-                user.getUsername(), user.getId().toString(), user.getUserRole().name());
+                user.getUsername(), user.getId().toString(), responseRole);
     }
 
     /* ---------- Refresh (rotate) ---------- */
@@ -486,56 +519,54 @@ public class AuthServiceImpl implements AuthService {
                         "User not found with id: " + authUserId));
 
         Roles before = user.getUserRole();
-        // Defensive: never demote OWNER → MAINTAINER and never overwrite
-        // ADMIN. Property-service's eligible-maintainers filter only
-        // surfaces tenants of flats, so this branch is mostly safety
-        // net against a hand-crafted POST that targets an
-        // owner/admin user id by mistake.
-        if (before == Roles.ADMIN || before == Roles.OWNER) {
-            log.warn("promoteToMaintainer refused — refusing to demote {} authUserId={}",
-                    before, authUserId);
+        // Defensive: never demote ADMIN. OWNER is fine to mark as a
+        // maintainer (some owners run their own buildings — they just
+        // gain a second login mode). Property-service's
+        // eligible-maintainers filter only surfaces tenants of flats
+        // anyway, so practically the typical caller hits the TENANT
+        // branch.
+        if (before == Roles.ADMIN) {
+            log.warn("promoteToMaintainer refused — refusing to override ADMIN authUserId={}",
+                    authUserId);
             throw new IllegalStateException(
-                    "Cannot promote a " + before.name() + " user to MAINTAINER. "
-                            + "Pick a tenant of the building's flats instead.");
-        }
-        if (before != Roles.MAINTAINER) {
-            log.info("promoteToMaintainer authUserId={} role {} -> MAINTAINER",
-                    authUserId, before);
-            user.setUserRole(Roles.MAINTAINER);
+                    "Cannot grant maintainer access to an ADMIN user.");
         }
 
-        // BCrypt-hash the new password. Cost factor 12 — same as the
-        // PasswordEncoder bean's default; no per-call override.
-        user.setUserPassword(passwordEncoder.encode(newPassword));
+        // ── KEY CHANGE (V3): dual-credential model ──
+        // We DO NOT change user_role or user_password anymore.
+        // Doing so destroyed the user's tenant access — they'd lose
+        // /app entirely after being promoted, even though they were
+        // still the tenant of Flat 203. Instead we set a SECOND
+        // BCrypt-hashed credential (maintainer_password). The login
+        // flow tries the primary credential first; on miss, falls
+        // back to maintainer_password and stamps role=MAINTAINER on
+        // the issued JWT.
+        //
+        // We also do NOT bump tokensRevokedBefore — the user keeps
+        // their existing tenant session alive. They only need a
+        // second login attempt with the new credential when they
+        // want maintainer mode.
+        user.setMaintainerPassword(passwordEncoder.encode(newPassword));
 
-        // Bump the tokens-revoked-before watermark to now() so any
-        // access JWT the user might still be carrying (from when they
-        // were a TENANT) dies on the next gateway hop. Forces them to
-        // re-login with the temp credentials.
-        Instant now = Instant.now();
-        user.setTokensRevokedBefore(now);
-
-        // If the account happened to be locked, clear the lock — the
-        // owner just verbally reset the credentials, so the auto-
+        // If the account happened to be locked from failed-login
+        // tries on the primary password, clear the lock — the
+        // owner just verbally set new credentials so the auto-
         // lockout window is no longer informative.
         user.setAccountNonLocked(true);
         user.setFailedLoginAttempts(0);
         user.setLockedUntil(null);
 
+        Instant now = Instant.now();
         user.setRecodeUpdatedDate(now);
         UserDetails saved = userRepository.save(user);
 
-        // P1-12-style audit trail. Useful when investigating who got
-        // promoted-when-by-whom; we don't have caller-side identity
-        // here (the HMAC only confirms the call came through the
-        // gateway). Property-service logs the owner's authUserId
-        // separately on its own promote-tenant endpoint.
+        // P1-12-style audit trail.
         audit.publishSuccess("auth.promote-to-maintainer",
                 saved.getId().toString(),
                 saved.getId().toString(),
                 saved.getId().toString(),
                 java.util.Map.of("priorRole", before.name(),
-                        "newRole", Roles.MAINTAINER.name()));
+                        "newRole", "MAINTAINER (added; user_role preserved)"));
 
         return AuthUserMapper.toAuthUserResponse(saved);
     }

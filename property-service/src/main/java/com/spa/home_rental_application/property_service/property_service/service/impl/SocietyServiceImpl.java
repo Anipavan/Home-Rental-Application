@@ -20,6 +20,7 @@ import com.spa.home_rental_application.property_service.property_service.client.
 import com.spa.home_rental_application.property_service.property_service.client.UserClient;
 import com.spa.home_rental_application.property_service.property_service.enums.CollectionStatus;
 import com.spa.home_rental_application.property_service.property_service.enums.ExpenseCategory;
+import com.spa.home_rental_application.property_service.property_service.enums.MaintenanceCategory;
 import com.spa.home_rental_application.property_service.property_service.repository.BuildingRepo;
 import com.spa.home_rental_application.property_service.property_service.repository.FlatRepo;
 import com.spa.home_rental_application.property_service.property_service.repository.MaintenanceCollectionRepository;
@@ -570,6 +571,7 @@ public class SocietyServiceImpl implements SocietyService {
                     .paidOn(row.map(MaintenanceCollection::getPaidOn).orElse(null))
                     .paidVia(row.map(MaintenanceCollection::getPaidVia).orElse(null))
                     .amountPaid(row.map(MaintenanceCollection::getAmountPaid).orElse(null))
+                    .category(row.map(MaintenanceCollection::getCategory).orElse(null))
                     .build();
         }).toList();
     }
@@ -615,6 +617,15 @@ public class SocietyServiceImpl implements SocietyService {
         row.setAmountDue(req.amountDue());
         if (req.status() != null) {
             row.setStatus(req.status());
+        }
+        // category: write the supplied value, OR default to MAINTENANCE on
+        // first creation so the column never goes NULL on new rows
+        // (NULL-tolerated for legacy data, but new writes should always
+        // carry a real value so the tenant ledger renders correctly).
+        if (req.category() != null) {
+            row.setCategory(req.category());
+        } else if (row.getCategory() == null) {
+            row.setCategory(MaintenanceCategory.MAINTENANCE);
         }
         row.setNotes(req.notes());
         row.setMarkedByUserId(me);
@@ -665,6 +676,7 @@ public class SocietyServiceImpl implements SocietyService {
                 .paidOn(saved.getPaidOn())
                 .paidVia(saved.getPaidVia())
                 .amountPaid(saved.getAmountPaid())
+                .category(saved.getCategory())
                 .build();
     }
 

@@ -43,8 +43,18 @@ import { extractErrorMessage } from "@/lib/api/client";
 import type {
   CollectionStatus,
   FlatMaintenanceRow,
+  FlatChargeCategory,
   UpsertFlatCollectionRequest,
 } from "@/types/api";
+
+const CATEGORY_LABELS: Record<FlatChargeCategory, string> = {
+  WATER_BILL: "Water bill",
+  MAINTENANCE: "Maintenance",
+  GAS_BILL: "Gas bill",
+  ELECTRICITY: "Electricity",
+  COMMON_AREA_SHARE: "Common-area share",
+  OTHER: "Other",
+};
 
 const currentMonth = () => {
   const d = new Date();
@@ -338,6 +348,9 @@ function FlatRow({
   const status = STATUS_LABELS[row.status] ?? STATUS_LABELS.NEW_FLAT;
   const overridesDefault =
     row.status !== "NEW_FLAT" && row.monthAmount !== row.defaultAmount;
+  const categoryLabel = row.category
+    ? CATEGORY_LABELS[row.category]
+    : null;
 
   return (
     <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 rounded-xl border border-border/60 bg-secondary/30">
@@ -352,6 +365,11 @@ function FlatRow({
           >
             {status.label}
           </span>
+          {categoryLabel && (
+            <Badge variant="secondary" className="text-[10px]">
+              {categoryLabel}
+            </Badge>
+          )}
         </div>
         {row.notes && (
           <p className="text-xs text-muted-foreground mt-1 italic line-clamp-1">
@@ -394,6 +412,7 @@ function SetAmountDialog({
     amountDue:
       row.status === "NEW_FLAT" ? row.defaultAmount : row.monthAmount,
     status: (row.status === "NEW_FLAT" ? "DUE" : row.status) as CollectionStatus,
+    category: (row.category ?? "MAINTENANCE") as FlatChargeCategory,
     notes: row.notes ?? "",
     paidOn: row.paidOn ?? undefined,
     amountPaid: row.amountPaid ?? undefined,
@@ -439,6 +458,7 @@ function SetAmountDialog({
             status: (row.status === "NEW_FLAT"
               ? "DUE"
               : row.status) as CollectionStatus,
+            category: (row.category ?? "MAINTENANCE") as FlatChargeCategory,
             notes: row.notes ?? "",
             paidOn: row.paidOn ?? undefined,
             amountPaid: row.amountPaid ?? undefined,
@@ -474,6 +494,31 @@ function SetAmountDialog({
         </p>
 
         <div className="space-y-3">
+          <div>
+            <Label>Charge type</Label>
+            <Select
+              value={form.category ?? "MAINTENANCE"}
+              onValueChange={(v) =>
+                setForm({ ...form, category: v as FlatChargeCategory })
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(CATEGORY_LABELS).map(([k, label]) => (
+                  <SelectItem key={k} value={k}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              Tag this entry so tenants can see exactly what they're being
+              billed for.
+            </p>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Amount due (₹)</Label>

@@ -1,6 +1,7 @@
 package com.spa.home_rental_application.property_service.property_service.Entities;
 
 import com.spa.home_rental_application.property_service.property_service.enums.CollectionStatus;
+import com.spa.home_rental_application.property_service.property_service.enums.MaintenanceCategory;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -59,10 +60,10 @@ public class MaintenanceCollection {
     @Column(length = 36, updatable = false, nullable = false)
     private String id;
 
-    @Column(name = "building_id", length = 36, nullable = false)
+    @Column(name = "building_id", length = 64, nullable = false)
     private String buildingId;
 
-    @Column(name = "flat_id", length = 36, nullable = false)
+    @Column(name = "flat_id", length = 64, nullable = false)
     private String flatId;
 
     /** YYYY-MM. */
@@ -98,6 +99,16 @@ public class MaintenanceCollection {
     @Column(name = "status", length = 20, nullable = false)
     @Builder.Default
     private CollectionStatus status = CollectionStatus.DUE;
+
+    /**
+     * Per-flat charge category. Nullable for backward compat with rows
+     * created before V4 — the UI renders NULL as OTHER. New writes
+     * always carry a value (defaulted to MAINTENANCE in the
+     * SetAmountDialog).
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "category", length = 32)
+    private MaintenanceCategory category;
 
     /** authUserId of the person who last changed the status — the
      *  maintainer when they marked PAID, the owner when they marked

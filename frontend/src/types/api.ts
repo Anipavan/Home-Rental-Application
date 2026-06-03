@@ -964,6 +964,23 @@ export type ExpenseCategory =
 
 export type CollectionStatus = "DUE" | "PAID" | "WAIVED" | "OVERDUE";
 
+/**
+ * Per-flat charge category tagged by the maintainer in the society
+ * "Set amount" dialog. Distinct from {@link MaintenanceCategory}
+ * (which covers maintenance-TICKET subtypes like PLUMBING /
+ * ELECTRICAL — completely different value set). Backend stores
+ * VARCHAR2(32) — adding a new value is a one-line enum + type
+ * change, no migration. NULL on the wire (pre-V4 rows that didn't
+ * carry a category) renders as OTHER in the UI.
+ */
+export type FlatChargeCategory =
+  | "WATER_BILL"
+  | "MAINTENANCE"
+  | "GAS_BILL"
+  | "ELECTRICITY"
+  | "COMMON_AREA_SHARE"
+  | "OTHER";
+
 export interface SocietyConfig {
   id: string;
   buildingId: string;
@@ -1083,6 +1100,7 @@ export interface FlatMaintenanceRow {
   paidOn: string | null;
   paidVia: string | null;
   amountPaid: number | null;
+  category: FlatChargeCategory | null;
 }
 
 /** Body for {@code POST /society/{buildingId}/flats/{flatId}/collection}. */
@@ -1090,6 +1108,7 @@ export interface UpsertFlatCollectionRequest {
   forMonth: string;
   amountDue: number;
   status?: CollectionStatus;
+  category?: FlatChargeCategory;
   notes?: string;
   paidOn?: string;
   amountPaid?: number;

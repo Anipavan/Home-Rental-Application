@@ -1,5 +1,6 @@
 package com.spa.home_rental_application.property_service.property_service.DTO.Response;
 
+import com.spa.home_rental_application.property_service.property_service.enums.MaintenanceCategory;
 import lombok.Builder;
 
 import java.math.BigDecimal;
@@ -58,6 +59,10 @@ public record FlatMaintenanceRowResponse(
          *  (CASH / NEFT / UPI_MANUAL). Null otherwise. */
         String paidVia,
 
-        BigDecimal amountPaid
+        BigDecimal amountPaid,
+
+        /** Per-flat charge category. Null for pre-V4 rows; the UI
+         *  renders NULL as OTHER. */
+        MaintenanceCategory category
 ) {
 }

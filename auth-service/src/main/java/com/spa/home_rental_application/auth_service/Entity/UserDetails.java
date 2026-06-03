@@ -46,6 +46,23 @@ public class UserDetails implements org.springframework.security.core.userdetail
     @Column(name = "user_password", nullable = false)
     private String userPassword;
 
+    /**
+     * Separate BCrypt-hashed credential the user enters to log in as
+     * MAINTAINER instead of their primary role. Set by the owner-
+     * initiated {@code promote-to-maintainer} flow. Null for users
+     * who aren't a maintainer of any building.
+     *
+     * <p>Login flow: AuthService.login tries {@link #userPassword}
+     * first via standard Spring DaoAuthenticationProvider. On
+     * BadCredentialsException, it falls back to a manual BCrypt
+     * compare against this column. If THAT matches, the issued
+     * JWT carries {@code role=MAINTAINER} for that session — the
+     * stored {@link #userRole} is preserved (so the tenant /
+     * owner identity isn't lost).
+     */
+    @Column(name = "maintainer_password")
+    private String maintainerPassword;
+
     @Column(name = "email", unique = true, length = 200)
     private String email;
 

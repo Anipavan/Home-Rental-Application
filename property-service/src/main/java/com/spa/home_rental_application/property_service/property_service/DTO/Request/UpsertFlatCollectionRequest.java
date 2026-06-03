@@ -1,6 +1,7 @@
 package com.spa.home_rental_application.property_service.property_service.DTO.Request;
 
 import com.spa.home_rental_application.property_service.property_service.enums.CollectionStatus;
+import com.spa.home_rental_application.property_service.property_service.enums.MaintenanceCategory;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -40,6 +41,11 @@ public record UpsertFlatCollectionRequest(
         /** Optional override of the row's status — defaults to DUE on
          *  create, preserves existing value on update if null. */
         CollectionStatus status,
+
+        /** Per-flat charge category — Water bill / Maintenance /
+         *  Gas / Electricity / Common-area share / Other. Defaults
+         *  to MAINTENANCE on create when not supplied. */
+        MaintenanceCategory category,
 
         /** Optional — line-item description / WhatsApp-ready breakdown. */
         @Size(max = 500)
