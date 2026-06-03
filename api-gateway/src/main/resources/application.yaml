@@ -83,6 +83,21 @@ spring:
             - name: CircuitBreaker
               args: {name: propertyServiceCircuitBreaker, fallbackUri: forward:/__cb/fallback/property}
 
+        # Society / common-area maintenance ledger lives in property-service
+        # under the @RequestMapping("/society") controller. Same backend,
+        # different URL prefix because the feature is logically distinct from
+        # building/flat CRUD (it's about money tracking + ledger views, not
+        # property data). Without this route definition the gateway 404s
+        # every POST /rentals/v1/society/{id}/setup call.
+        - id: property-service-society-v1
+          uri: lb://HRA-property-service
+          predicates: [Path=/rentals/v1/society/**]
+          filters:
+            - RewritePath=/rentals/v1/(?<segment>.*), /$\{segment}
+            - AddResponseHeader=X-API-Version, v1
+            - name: CircuitBreaker
+              args: {name: propertyServiceCircuitBreaker, fallbackUri: forward:/__cb/fallback/property}
+
         - id: user-service-v1
           uri: lb://HRA-user-service
           predicates: [Path=/rentals/v1/users/**]
@@ -194,6 +209,18 @@ spring:
             - AddResponseHeader=X-API-Version, legacy
             - AddResponseHeader=X-Deprecation, "true"
             - AddResponseHeader=X-Deprecation-Hint, "Use /rentals/v1/properties/** instead"
+            - name: CircuitBreaker
+              args: {name: propertyServiceCircuitBreaker, fallbackUri: forward:/__cb/fallback/property}
+
+        # Legacy /api/* mirror of the society route — the frontend uses the
+        # `/api` prefix in production (nginx strips it before forwarding to
+        # the gateway), so /api/society/** has to land here too.
+        - id: property-service-society-legacy
+          uri: lb://HRA-property-service
+          predicates: [Path=/api/society/**]
+          filters:
+            - StripPrefix=1
+            - AddResponseHeader=X-API-Version, legacy
             - name: CircuitBreaker
               args: {name: propertyServiceCircuitBreaker, fallbackUri: forward:/__cb/fallback/property}
 
