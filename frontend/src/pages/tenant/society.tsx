@@ -187,14 +187,39 @@ export function TenantSocietyPage() {
                 description="The maintainer hasn't entered any charges against your flat for this month. Check back later or message them if you think this is wrong."
               />
             ) : (
-              <div className="space-y-2">
-                {myBillsQ.data.map((row) => (
-                  <ChargeRow
-                    key={row.collectionId ?? row.category ?? "row"}
-                    row={row}
-                    config={configQ.data!}
-                  />
-                ))}
+              <div className="overflow-x-auto rounded-lg border border-border/60">
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="bg-secondary/40 border-b border-border/60">
+                      <th className="text-left px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+                        Category
+                      </th>
+                      <th className="text-left px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground">
+                        Description
+                      </th>
+                      <th className="text-left px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+                        Status
+                      </th>
+                      <th className="text-right px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+                        Amount
+                      </th>
+                      <th className="text-right px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+                        {/* Action column header intentionally blank —
+                          * the column holds Pay buttons / "paid" check
+                          * marks, which speak for themselves. */}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {myBillsQ.data.map((row) => (
+                      <ChargeRow
+                        key={row.collectionId ?? row.category ?? "row"}
+                        row={row}
+                        config={configQ.data!}
+                      />
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </CollapsibleSection>
@@ -306,9 +331,17 @@ export function TenantSocietyPage() {
   );
 }
 
-/** One charge row in the "My charges" section. Renders the category +
- *  status pill + amount + Pay button (when status=DUE/OVERDUE and the
- *  society has a UPI ID configured). */
+/**
+ * One charge row in the "My charges" table. Renders as a {@code <tr>}
+ * with columns:
+ *   Category badge | Description (notes) | Status pill | Amount | Action
+ *
+ * <p>The Action column shows a Pay button on DUE / OVERDUE rows
+ * (regardless of whether the society has UPI configured — the
+ * destination /app/society/pay page handles the "no UPI yet" case
+ * with an empty state). PAID rows show a green checkmark and the
+ * paid-on date. WAIVED / other statuses render an empty action cell.
+ */
 function ChargeRow({
   row,
   config,
@@ -319,51 +352,60 @@ function ChargeRow({
   const label = row.category ? CHARGE_LABELS[row.category] : "Other";
   const tone = STATUS_TONES[row.status] ?? "bg-muted text-muted-foreground";
   const isPaid = row.status === "PAID";
+  const canPay =
+    (row.status === "DUE" || row.status === "OVERDUE") && row.collectionId;
 
   return (
-    <div className="flex items-center gap-3 p-3 rounded-xl border border-border/60 bg-secondary/30">
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <Badge variant="secondary" className="text-[10px]">
-            {label}
-          </Badge>
-          <span
-            className={`rounded-full text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 ${tone}`}
-          >
-            {row.status}
-          </span>
-          {isPaid && row.paidOn && (
-            <span className="text-[11px] text-muted-foreground">
-              on {row.paidOn}
-            </span>
-          )}
-        </div>
-        {row.notes && (
-          <p className="text-xs text-muted-foreground mt-1 italic">
+    <tr className="border-b border-border/60 last:border-b-0 hover:bg-secondary/20">
+      <td className="px-3 py-2 align-top whitespace-nowrap">
+        <Badge variant="secondary" className="text-[10px]">
+          {label}
+        </Badge>
+      </td>
+      <td className="px-3 py-2 align-top">
+        {row.notes ? (
+          <p className="text-xs text-muted-foreground italic line-clamp-2">
             {row.notes}
           </p>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
         )}
-      </div>
-      <p className="font-semibold font-display">{formatINR(row.monthAmount)}</p>
-      {/* Pay button shows on every DUE/OVERDUE row regardless of
-       *  whether the society has a UPI ID configured. If it's not set
-       *  yet, the destination /app/society/pay page renders a clear
-       *  "maintainer hasn't set up payment yet" empty state — better
-       *  than hiding the button entirely (the tenant otherwise has
-       *  no idea why there's no path to pay). */}
-      {(row.status === "DUE" || row.status === "OVERDUE") && row.collectionId && (
-        <Button asChild variant="gradient" size="sm">
-          <Link
-            to={`/app/society/pay/${config.buildingId}/${row.collectionId}`}
-          >
-            Pay {formatINR(row.monthAmount)}
-          </Link>
-        </Button>
-      )}
-      {isPaid && (
-        <CheckCircle2 className="size-5 text-success" aria-label="Paid" />
-      )}
-    </div>
+      </td>
+      <td className="px-3 py-2 align-top whitespace-nowrap">
+        <span
+          className={`rounded-full text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 ${tone}`}
+        >
+          {row.status}
+        </span>
+        {isPaid && row.paidOn && (
+          <span className="block text-[10px] text-muted-foreground mt-0.5">
+            on {row.paidOn}
+          </span>
+        )}
+      </td>
+      <td className="px-3 py-2 align-top text-right whitespace-nowrap">
+        <span className="font-semibold font-display">
+          {formatINR(row.monthAmount)}
+        </span>
+      </td>
+      <td className="px-3 py-2 align-top text-right whitespace-nowrap">
+        {canPay && (
+          <Button asChild variant="gradient" size="sm">
+            <Link
+              to={`/app/society/pay/${config.buildingId}/${row.collectionId}`}
+            >
+              Pay {formatINR(row.monthAmount)}
+            </Link>
+          </Button>
+        )}
+        {isPaid && (
+          <CheckCircle2
+            className="size-5 text-success inline-block"
+            aria-label="Paid"
+          />
+        )}
+      </td>
+    </tr>
   );
 }
 
