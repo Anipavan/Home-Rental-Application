@@ -70,6 +70,7 @@ import { ComparePage } from "@/pages/tenant/compare";
 import { OwnerSocietyPage } from "@/pages/owner/society";
 import { OwnerSocietiesOverviewPage } from "@/pages/owner/societies-overview";
 import { TenantSocietyPage } from "@/pages/tenant/society";
+import { SocietyPayPage } from "@/pages/tenant/society-pay";
 import { PublicSocietyLedgerPage } from "@/pages/public/society-ledger";
 import {
   MaintainerFlatsPage,
@@ -195,6 +196,13 @@ export const router = createBrowserRouter([
           { path: "reviews", element: <TenantReviewsPage /> },
           // Society read-only ledger for the tenant's building.
           { path: "society", element: <TenantSocietyPage /> },
+          // Dedicated UPI Pay page for one society charge — replaces
+          // the earlier in-page modal so the navigation pattern
+          // matches the rent-pay flow (/app/payments/:id/pay).
+          {
+            path: "society/pay/:buildingId/:collectionId",
+            element: <SocietyPayPage />,
+          },
         ],
       },
     ],

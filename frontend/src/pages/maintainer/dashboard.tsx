@@ -293,16 +293,11 @@ export function MaintainerFlatsPage() {
               description="The owner needs to add flats before any per-flat dues exist."
             />
           ) : (
-            <div className="space-y-3">
-              {groupRowsByFlat(flatsQ.data).map((group) => (
-                <FlatCard
-                  key={group.flatId}
-                  group={group}
-                  buildingId={buildingId}
-                  month={month}
-                />
-              ))}
-            </div>
+            <FlatsTable
+              groups={groupRowsByFlat(flatsQ.data)}
+              buildingId={buildingId}
+              month={month}
+            />
           )}
         </CardContent>
       </Card>
@@ -381,98 +376,11 @@ function groupRowsByFlat(rows: FlatMaintenanceRow[]): FlatGroup[] {
 }
 
 /**
- * One flat. Renders the flat header (flat number + tenant + summary),
- * a stack of charge lines (one per category the maintainer has
- * recorded), and an "Add charge" button that opens a SetAmountDialog
- * in create-mode pre-filtered to categories not already present.
+ * Synthesise a NEW_FLAT-equivalent row for the Add-charge dialog. Used
+ * by every Add-charge action in the table — picks the row that the
+ * SetAmountDialog opens in create-mode, with the dialog's category
+ * dropdown pre-filtered to skip categories the flat already has.
  */
-function FlatCard({
-  group,
-  buildingId,
-  month,
-}: {
-  group: FlatGroup;
-  buildingId: string;
-  month: string;
-}) {
-  const hasCharges =
-    group.rows.length > 0 && group.rows[0].status !== "NEW_FLAT";
-
-  const totalDue = group.rows
-    .filter((r) => r.status === "DUE" || r.status === "OVERDUE")
-    .reduce((s, r) => s + r.monthAmount, 0);
-  const totalPaid = group.rows
-    .filter((r) => r.status === "PAID")
-    .reduce((s, r) => s + (r.amountPaid ?? r.monthAmount), 0);
-
-  const usedCategories = new Set(
-    group.rows
-      .filter((r) => r.category != null)
-      .map((r) => r.category as FlatChargeCategory),
-  );
-
-  return (
-    <div className="rounded-xl border border-border/60 bg-secondary/30 overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-3 p-3 border-b border-border/60 bg-background/50">
-        <div className="flex items-center gap-2 min-w-0">
-          <Badge variant="outline" className="font-mono text-[11px]">
-            Flat {group.flatNumber}
-          </Badge>
-          <span className="font-medium text-sm truncate">
-            {group.tenantName}
-          </span>
-        </div>
-        <div className="flex items-center gap-3">
-          {hasCharges && (
-            <div className="text-right text-xs">
-              {totalDue > 0 && (
-                <p className="text-destructive font-semibold">
-                  {formatINR(totalDue)} due
-                </p>
-              )}
-              {totalPaid > 0 && (
-                <p className="text-success">
-                  {formatINR(totalPaid)} paid
-                </p>
-              )}
-            </div>
-          )}
-          <SetAmountDialog
-            // Add-mode: no existing row yet for the to-be-chosen category.
-            row={makePlaceholderRow(group)}
-            buildingId={buildingId}
-            month={month}
-            disabledCategories={usedCategories}
-            triggerLabel="Add charge"
-            triggerIcon={<Plus className="size-3.5" />}
-          />
-        </div>
-      </div>
-
-      {/* Charges */}
-      {hasCharges ? (
-        <div className="divide-y divide-border/60">
-          {group.rows.map((r) => (
-            <FlatChargeLine
-              key={r.collectionId ?? r.category ?? "row"}
-              row={r}
-              buildingId={buildingId}
-              month={month}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="p-4 text-sm text-muted-foreground italic">
-          No charges entered for this flat yet — click <strong>Add charge</strong>{" "}
-          to record water bill, maintenance, etc.
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** Synthesise a NEW_FLAT-equivalent row for the Add-charge dialog. */
 function makePlaceholderRow(group: FlatGroup): FlatMaintenanceRow {
   return {
     collectionId: null,
@@ -492,47 +400,209 @@ function makePlaceholderRow(group: FlatGroup): FlatMaintenanceRow {
   };
 }
 
-/** A single charge line within a FlatCard. */
-function FlatChargeLine({
-  row,
+/**
+ * The order of category columns in the table. Maintenance is shown
+ * first because it's the most common charge (the building default),
+ * then the meter-based ones, then the rarer cases.
+ */
+const CATEGORY_COLUMNS: FlatChargeCategory[] = [
+  "MAINTENANCE",
+  "WATER_BILL",
+  "GAS_BILL",
+  "ELECTRICITY",
+  "COMMON_AREA_SHARE",
+  "OTHER",
+];
+
+/**
+ * Matrix view of all flats × all charge categories. Rows = flats,
+ * columns = categories. Each cell either shows the recorded charge
+ * (amount + status pill + click-to-edit) or an empty "+" affordance
+ * that opens the Add-charge dialog scoped to that exact category.
+ *
+ * <p>The table overflows horizontally on small screens — wrapped in
+ * a div with overflow-x-auto so the layout stays readable on mobile
+ * without forcing a separate stacked view.
+ */
+function FlatsTable({
+  groups,
   buildingId,
   month,
 }: {
-  row: FlatMaintenanceRow;
+  groups: FlatGroup[];
   buildingId: string;
   month: string;
 }) {
-  const status = STATUS_LABELS[row.status] ?? STATUS_LABELS.NEW_FLAT;
-  const categoryLabel = row.category ? CATEGORY_LABELS[row.category] : "Other";
+  return (
+    <div className="rounded-xl border border-border/60 overflow-x-auto">
+      <table className="w-full text-sm border-collapse">
+        <thead>
+          <tr className="bg-secondary/40 border-b border-border/60">
+            <th className="text-left px-3 py-2 font-semibold text-xs uppercase tracking-wider text-muted-foreground">
+              Flat
+            </th>
+            <th className="text-left px-3 py-2 font-semibold text-xs uppercase tracking-wider text-muted-foreground">
+              Tenant
+            </th>
+            {CATEGORY_COLUMNS.map((c) => (
+              <th
+                key={c}
+                className="text-left px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground whitespace-nowrap"
+              >
+                {CATEGORY_LABELS[c]}
+              </th>
+            ))}
+            <th className="text-right px-3 py-2 font-semibold text-xs uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+              Outstanding
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {groups.map((group) => (
+            <FlatRow
+              key={group.flatId}
+              group={group}
+              buildingId={buildingId}
+              month={month}
+            />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** One row of the FlatsTable — a single flat with one cell per
+ *  category, plus the Outstanding total at the right. */
+function FlatRow({
+  group,
+  buildingId,
+  month,
+}: {
+  group: FlatGroup;
+  buildingId: string;
+  month: string;
+}) {
+  // Index the flat's charges by category for O(1) lookup per cell.
+  const byCategory = new Map<FlatChargeCategory, FlatMaintenanceRow>();
+  for (const r of group.rows) {
+    if (r.status !== "NEW_FLAT" && r.category) {
+      byCategory.set(r.category, r);
+    }
+  }
+  const outstanding = group.rows
+    .filter((r) => r.status === "DUE" || r.status === "OVERDUE")
+    .reduce((s, r) => s + r.monthAmount, 0);
 
   return (
-    <div className="flex items-center gap-3 px-3 py-2">
-      <Badge variant="secondary" className="text-[10px] shrink-0">
-        {categoryLabel}
-      </Badge>
-      <div className="flex-1 min-w-0">
-        {row.notes && (
-          <p className="text-xs text-muted-foreground italic line-clamp-1">
-            {row.notes}
-          </p>
+    <tr className="border-b border-border/60 last:border-b-0 hover:bg-secondary/20">
+      {/* Flat number */}
+      <td className="px-3 py-2 align-top">
+        <Badge variant="outline" className="font-mono text-[11px]">
+          {group.flatNumber}
+        </Badge>
+      </td>
+
+      {/* Tenant */}
+      <td className="px-3 py-2 align-top">
+        <span className="text-sm">{group.tenantName}</span>
+      </td>
+
+      {/* One cell per category */}
+      {CATEGORY_COLUMNS.map((c) => {
+        const row = byCategory.get(c);
+        return (
+          <td key={c} className="px-3 py-2 align-top">
+            <CategoryCell
+              row={row}
+              group={group}
+              category={c}
+              buildingId={buildingId}
+              month={month}
+            />
+          </td>
+        );
+      })}
+
+      {/* Outstanding total */}
+      <td className="px-3 py-2 align-top text-right">
+        {outstanding > 0 ? (
+          <span className="font-semibold text-destructive whitespace-nowrap">
+            {formatINR(outstanding)}
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
         )}
-      </div>
-      <span
-        className={`rounded-full text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 shrink-0 ${status.tone}`}
-      >
-        {status.label}
-      </span>
-      <p className="font-semibold font-display text-sm w-20 text-right shrink-0">
-        {formatINR(row.monthAmount)}
-      </p>
+      </td>
+    </tr>
+  );
+}
+
+/**
+ * One cell of the FlatsTable for a specific (flat, category). Either:
+ * — Empty (no row yet) → renders a subtle "+ Add" link that opens the
+ *   SetAmountDialog in create-mode, pre-selecting this category.
+ * — Populated → renders amount + status pill, click-to-edit.
+ */
+function CategoryCell({
+  row,
+  group,
+  category,
+  buildingId,
+  month,
+}: {
+  row: FlatMaintenanceRow | undefined;
+  group: FlatGroup;
+  category: FlatChargeCategory;
+  buildingId: string;
+  month: string;
+}) {
+  if (!row) {
+    // Add-mode: synthesize a placeholder row scoped to this exact
+    // category. The dialog opens with the category pre-selected (via
+    // initialCategory) AND with every OTHER category disabled in the
+    // dropdown — so the maintainer can only confirm/cancel for this
+    // specific cell.
+    const placeholder = { ...makePlaceholderRow(group), category };
+    return (
       <SetAmountDialog
-        row={row}
+        row={placeholder}
         buildingId={buildingId}
         month={month}
-        triggerLabel="Edit"
-        triggerIcon={<Pencil className="size-3.5" />}
+        disabledCategories={
+          new Set(
+            CATEGORY_COLUMNS.filter((c) => c !== category),
+          )
+        }
+        triggerLabel="Add"
+        triggerIcon={<Plus className="size-3 -mr-1" />}
       />
-    </div>
+    );
+  }
+
+  const status = STATUS_LABELS[row.status] ?? STATUS_LABELS.NEW_FLAT;
+  return (
+    <SetAmountDialog
+      row={row}
+      buildingId={buildingId}
+      month={month}
+      triggerNode={
+        <button
+          type="button"
+          className="text-left w-full hover:bg-secondary/60 rounded-md px-1 py-0.5 transition-colors"
+          title={row.notes ?? `${CATEGORY_LABELS[category]}: ${formatINR(row.monthAmount)}`}
+        >
+          <span className="font-semibold font-display text-sm">
+            {formatINR(row.monthAmount)}
+          </span>
+          <span
+            className={`block mt-0.5 rounded-full text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0 w-fit ${status.tone}`}
+          >
+            {status.label}
+          </span>
+        </button>
+      }
+    />
   );
 }
 
@@ -543,6 +613,7 @@ function SetAmountDialog({
   disabledCategories,
   triggerLabel,
   triggerIcon,
+  triggerNode,
 }: {
   row: FlatMaintenanceRow;
   buildingId: string;
@@ -555,6 +626,10 @@ function SetAmountDialog({
   disabledCategories?: Set<FlatChargeCategory>;
   triggerLabel?: string;
   triggerIcon?: React.ReactNode;
+  /** Bring-your-own trigger element. When provided, the default
+   *  Button trigger is replaced entirely — used by table cells so the
+   *  click target can be the whole cell, not a separate button. */
+  triggerNode?: React.ReactNode;
 }) {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -635,10 +710,12 @@ function SetAmountDialog({
       }}
     >
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
-          {triggerIcon ?? (isNew ? <Plus className="size-3.5" /> : <Pencil className="size-3.5" />)}
-          {triggerLabel ?? (isNew ? "Set amount" : "Edit")}
-        </Button>
+        {triggerNode ?? (
+          <Button variant="outline" size="sm">
+            {triggerIcon ?? (isNew ? <Plus className="size-3.5" /> : <Pencil className="size-3.5" />)}
+            {triggerLabel ?? (isNew ? "Set amount" : "Edit")}
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
