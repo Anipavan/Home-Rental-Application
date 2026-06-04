@@ -138,6 +138,31 @@ export function TenantSocietyPage() {
             />
           </div>
 
+          {/* Banner when society has no UPI configured. The Pay
+            *  button still routes to the dedicated Pay page (which
+            *  handles the empty-state itself), but a banner here
+            *  surfaces the "ask the maintainer to set it up" hint
+            *  before the tenant even clicks. */}
+          {!configQ.data.upiId && (
+            <Card className="mb-4 border-warning/40 bg-warning/5">
+              <CardContent className="p-4 flex items-start gap-3">
+                <Wallet className="size-5 text-warning shrink-0 mt-0.5" />
+                <div className="text-sm">
+                  <p className="font-semibold">
+                    Online payment not set up yet
+                  </p>
+                  <p className="text-muted-foreground mt-0.5">
+                    The maintainer hasn't added the society's UPI ID to
+                    the collection account. Once they do, your Pay
+                    button below will generate a UPI QR you can scan
+                    from any app. Until then, please pay them directly
+                    and ask them to mark the charge as paid.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* ── My charges (the new bit) ─────────────────────────── */}
           <Card className="mb-6">
             <CardContent className="p-6">
@@ -268,8 +293,6 @@ function ChargeRow({
 }) {
   const label = row.category ? CHARGE_LABELS[row.category] : "Other";
   const tone = STATUS_TONES[row.status] ?? "bg-muted text-muted-foreground";
-  const canPay =
-    (row.status === "DUE" || row.status === "OVERDUE") && !!config.upiId;
   const isPaid = row.status === "PAID";
 
   return (
@@ -297,7 +320,13 @@ function ChargeRow({
         )}
       </div>
       <p className="font-semibold font-display">{formatINR(row.monthAmount)}</p>
-      {canPay && row.collectionId && (
+      {/* Pay button shows on every DUE/OVERDUE row regardless of
+       *  whether the society has a UPI ID configured. If it's not set
+       *  yet, the destination /app/society/pay page renders a clear
+       *  "maintainer hasn't set up payment yet" empty state — better
+       *  than hiding the button entirely (the tenant otherwise has
+       *  no idea why there's no path to pay). */}
+      {(row.status === "DUE" || row.status === "OVERDUE") && row.collectionId && (
         <Button asChild variant="gradient" size="sm">
           <Link
             to={`/app/society/pay/${config.buildingId}/${row.collectionId}`}
