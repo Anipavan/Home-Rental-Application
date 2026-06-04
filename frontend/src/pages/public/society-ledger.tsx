@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Building2,
   Calendar,
+  ChevronDown,
   Droplets,
   Mail,
   Phone,
@@ -152,62 +153,46 @@ export function PublicSocietyLedgerPage() {
               />
             </div>
 
-            {/* Maintainer contact */}
-            <MaintainerContactCard ledger={ledgerQ.data!} />
+            {/* All three sections wrapped in CollapsibleSection so a
+              * resident can drill into just what they care about
+              * without scrolling past everything else. Each defaults
+              * to expanded so first-time visitors still see the
+              * data. */}
+            <CollapsibleSection
+              title="Society maintainer"
+              icon={User}
+              summary={
+                ledgerQ.data!.maintainerName
+                  ? ledgerQ.data!.maintainerName
+                  : "Contact info"
+              }
+            >
+              <MaintainerContactCardBody ledger={ledgerQ.data!} />
+            </CollapsibleSection>
 
-            {/* Per-flat bills table */}
-            <FlatBillsCard ledger={ledgerQ.data!} month={month} />
+            <CollapsibleSection
+              title={`Per-flat bills — ${month}`}
+              icon={Building2}
+              summary={
+                ledgerQ.data!.flatBills?.length
+                  ? `${ledgerQ.data!.flatBills.length} flat${ledgerQ.data!.flatBills.length === 1 ? "" : "s"}`
+                  : "No flats"
+              }
+            >
+              <FlatBillsCardBody ledger={ledgerQ.data!} />
+            </CollapsibleSection>
 
-            <Card>
-              <CardContent className="p-6">
-                <h3 className="font-display font-semibold text-lg mb-4">
-                  Where the money went — {month}
-                </h3>
-
-                {!ledgerQ.data!.expenses.length ? (
-                  <EmptyState
-                    variant="info"
-                    icon={Wrench}
-                    title="No expenses recorded for this month"
-                    description="The maintainer hasn't added any bills yet. Check back later."
-                  />
-                ) : (
-                  <div className="space-y-2">
-                    {ledgerQ.data!.expenses.map((e) => (
-                      <div
-                        key={e.id}
-                        className="flex items-start gap-3 p-3 rounded-xl border border-border/60 bg-secondary/30"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <Badge variant="secondary" className="text-[10px]">
-                              {CATEGORY_LABELS[e.category]}
-                            </Badge>
-                            <span className="font-medium text-sm">
-                              {e.subcategory ?? e.vendorName ?? "—"}
-                            </span>
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            {e.paidOnDate}
-                            {e.vendorName && e.subcategory
-                              ? ` · paid to ${e.vendorName}`
-                              : ""}
-                          </p>
-                          {e.notes && (
-                            <p className="text-xs text-muted-foreground mt-1 italic">
-                              {e.notes}
-                            </p>
-                          )}
-                        </div>
-                        <p className="font-semibold font-display">
-                          {formatINR(e.amount)}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            <CollapsibleSection
+              title={`Where the money went — ${month}`}
+              icon={Wrench}
+              summary={
+                ledgerQ.data!.expenses.length
+                  ? `${ledgerQ.data!.expenses.length} entr${ledgerQ.data!.expenses.length === 1 ? "y" : "ies"} · ${formatINR(ledgerQ.data!.expensesThisMonth)}`
+                  : "No entries"
+              }
+            >
+              <ExpenseLedgerBody ledger={ledgerQ.data!} />
+            </CollapsibleSection>
 
             <p className="text-xs text-muted-foreground mt-6 text-center">
               Powered by{" "}
@@ -222,151 +207,265 @@ export function PublicSocietyLedgerPage() {
 }
 
 /**
- * Maintainer contact card on the public ledger.
+ * Inline collapsible section used to wrap the three public-ledger
+ * cards (maintainer contact, per-flat bills, expense ledger). Keeps
+ * the page from becoming a tall single scroll — residents can drill
+ * into one section at a time.
  *
- * <p>Surfaces the person responsible for the books so residents can
- * reach out without needing an Anirudh Homes account. Renders an
- * empty state if user-service was unreachable when the backend built
- * the response (maintainerName=null) so the page never breaks.
- *
- * <p>Phone + email render as click-to-call / click-to-mail. We
- * intentionally don't render any other person's contact info here —
- * just the maintainer.
+ * <p>Implementation note: rolled inline rather than adding a new
+ * @radix-ui/react-collapsible dependency. The accessibility surface
+ * is small (a button + a controlled region), and we only need it on
+ * this one page.
  */
-function MaintainerContactCard({ ledger }: { ledger: SocietyLedger }) {
-  const hasAny =
-    ledger.maintainerName || ledger.maintainerPhone || ledger.maintainerEmail;
-
+function CollapsibleSection({
+  title,
+  icon: Icon,
+  summary,
+  defaultOpen = true,
+  children,
+}: {
+  title: string;
+  icon?: React.ComponentType<{ className?: string }>;
+  /** Short string shown on the right of the collapsed header so the
+   *  resident knows what's inside before clicking to expand. */
+  summary?: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
-    <Card className="mb-6">
-      <CardContent className="p-5">
-        <div className="flex items-start gap-3">
-          <div className="rounded-full bg-primary/10 p-2 shrink-0">
-            <User className="size-5 text-primary" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs uppercase tracking-wider text-muted-foreground font-mono">
-              Society maintainer
-            </p>
-            {hasAny ? (
-              <>
-                {ledger.maintainerName && (
-                  <p className="font-semibold text-base mt-0.5">
-                    {ledger.maintainerName}
-                  </p>
-                )}
-                <div className="mt-2 space-y-1 text-sm">
-                  {ledger.maintainerPhone && (
-                    <div className="flex items-center gap-2">
-                      <Phone className="size-3.5 text-muted-foreground" />
-                      <a
-                        href={`tel:${ledger.maintainerPhone}`}
-                        className="text-primary underline-offset-2 hover:underline"
-                      >
-                        {ledger.maintainerPhone}
-                      </a>
-                    </div>
-                  )}
-                  {ledger.maintainerEmail && (
-                    <div className="flex items-center gap-2">
-                      <Mail className="size-3.5 text-muted-foreground" />
-                      <a
-                        href={`mailto:${ledger.maintainerEmail}`}
-                        className="text-primary underline-offset-2 hover:underline break-all"
-                      >
-                        {ledger.maintainerEmail}
-                      </a>
-                    </div>
-                  )}
-                </div>
-                <p className="text-[11px] text-muted-foreground mt-2">
-                  Contact the maintainer for any clarification on a
-                  charge or the ledger entries below.
-                </p>
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground mt-0.5">
-                Contact information will appear here once available.
-              </p>
-            )}
-          </div>
-        </div>
-      </CardContent>
+    <Card className="mb-4">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-3 p-4 hover:bg-secondary/30 transition-colors text-left"
+      >
+        {Icon && (
+          <Icon className="size-5 text-primary shrink-0" aria-hidden />
+        )}
+        <h3 className="font-display font-semibold text-base flex-1 min-w-0 truncate">
+          {title}
+        </h3>
+        {summary && (
+          <span className="text-xs text-muted-foreground truncate max-w-[40%] hidden sm:inline">
+            {summary}
+          </span>
+        )}
+        <ChevronDown
+          className={`size-4 text-muted-foreground shrink-0 transition-transform ${
+            open ? "rotate-180" : ""
+          }`}
+        />
+      </button>
+      {open && (
+        <CardContent className="px-5 pb-5 pt-0">
+          {children}
+        </CardContent>
+      )}
     </Card>
   );
 }
 
 /**
- * Per-flat bills table on the public ledger.
+ * Maintainer contact body — name, phone (click-to-call), email
+ * (click-to-mail). Surfaces the person responsible for the books so
+ * residents can reach out without needing an Anirudh Homes account.
  *
- * <p>Rows = flats (by flat number — NO tenant name or any other
- * identifying field), columns = each FlatChargeCategory + a Total
- * Due + overall status. Same column set as the maintainer dashboard
- * minus Gas/Electricity. The "no individual data" promise is
- * preserved: a stranger with the link can see that Flat 002 still
- * owes ₹2,000 but can't see WHO lives in Flat 002.
+ * <p>Phone + email are intentionally the only contact fields. Other
+ * tenant identifying data stays off the public view.
  */
-function FlatBillsCard({
-  ledger,
-  month,
-}: {
-  ledger: SocietyLedger;
-  month: string;
-}) {
-  const bills = ledger.flatBills ?? [];
-  return (
-    <Card className="mb-6">
-      <CardContent className="p-6">
-        <h3 className="font-display font-semibold text-lg mb-4">
-          Per-flat bills — {month}
-        </h3>
+function MaintainerContactCardBody({ ledger }: { ledger: SocietyLedger }) {
+  const hasAny =
+    ledger.maintainerName || ledger.maintainerPhone || ledger.maintainerEmail;
 
-        {bills.length === 0 ? (
-          <EmptyState
-            variant="info"
-            icon={Building2}
-            title="No flats in this building yet"
-            description="Once the owner adds flats and the maintainer records charges, they'll appear here."
-          />
-        ) : (
-          <div className="overflow-x-auto rounded-lg border border-border/60">
-            <table className="w-full text-sm border-collapse">
-              <thead>
-                <tr className="bg-secondary/40 border-b border-border/60">
-                  <th className="text-left px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground">
-                    Flat
-                  </th>
-                  {FLAT_CHARGE_COLUMNS.map((c) => (
-                    <th
-                      key={c}
-                      className="text-left px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground whitespace-nowrap"
-                    >
-                      {FLAT_CHARGE_LABELS[c]}
-                    </th>
-                  ))}
-                  <th className="text-right px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground whitespace-nowrap">
-                    Total Due
-                  </th>
-                  <th className="text-right px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground whitespace-nowrap">
-                    Status
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {bills.map((bill) => (
-                  <FlatBillRow key={bill.flatNumber} bill={bill} />
-                ))}
-              </tbody>
-            </table>
+  if (!hasAny) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        Contact information will appear here once available.
+      </p>
+    );
+  }
+
+  return (
+    <div>
+      {ledger.maintainerName && (
+        <p className="font-semibold text-base">{ledger.maintainerName}</p>
+      )}
+      <div className="mt-2 space-y-1 text-sm">
+        {ledger.maintainerPhone && (
+          <div className="flex items-center gap-2">
+            <Phone className="size-3.5 text-muted-foreground" />
+            <a
+              href={`tel:${ledger.maintainerPhone}`}
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              {ledger.maintainerPhone}
+            </a>
           </div>
         )}
+        {ledger.maintainerEmail && (
+          <div className="flex items-center gap-2">
+            <Mail className="size-3.5 text-muted-foreground" />
+            <a
+              href={`mailto:${ledger.maintainerEmail}`}
+              className="text-primary underline-offset-2 hover:underline break-all"
+            >
+              {ledger.maintainerEmail}
+            </a>
+          </div>
+        )}
+      </div>
+      <p className="text-[11px] text-muted-foreground mt-2">
+        Contact the maintainer for any clarification on a charge or
+        the ledger entries below.
+      </p>
+    </div>
+  );
+}
 
-        <p className="text-[11px] text-muted-foreground mt-3">
-          Flat numbers only — no tenant identifying data shown on this
-          public view.
-        </p>
-      </CardContent>
-    </Card>
+/**
+ * Per-flat bills table body. Rows = flats (by flat number — NO
+ * tenant name or any other identifying field), columns = each
+ * FlatChargeCategory + a Total Due + overall status. Same column
+ * set as the maintainer dashboard minus Gas/Electricity.
+ *
+ * <p>The "no individual data" promise is preserved: a stranger with
+ * the link can see that Flat 002 still owes ₹2,000 but can't see
+ * WHO lives in Flat 002.
+ */
+function FlatBillsCardBody({ ledger }: { ledger: SocietyLedger }) {
+  const bills = ledger.flatBills ?? [];
+
+  if (bills.length === 0) {
+    return (
+      <EmptyState
+        variant="info"
+        icon={Building2}
+        title="No flats in this building yet"
+        description="Once the owner adds flats and the maintainer records charges, they'll appear here."
+      />
+    );
+  }
+
+  return (
+    <>
+      <div className="overflow-x-auto rounded-lg border border-border/60">
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="bg-secondary/40 border-b border-border/60">
+              <th className="text-left px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground">
+                Flat
+              </th>
+              {FLAT_CHARGE_COLUMNS.map((c) => (
+                <th
+                  key={c}
+                  className="text-left px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground whitespace-nowrap"
+                >
+                  {FLAT_CHARGE_LABELS[c]}
+                </th>
+              ))}
+              <th className="text-right px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+                Total Due
+              </th>
+              <th className="text-right px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+                Status
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {bills.map((bill) => (
+              <FlatBillRow key={bill.flatNumber} bill={bill} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-[11px] text-muted-foreground mt-3">
+        Flat numbers only — no tenant identifying data shown on this
+        public view.
+      </p>
+    </>
+  );
+}
+
+/**
+ * "Where the money went" body — common-area expense list rendered as
+ * a tabular ledger. Columns: Category badge, Description (subcategory
+ * preferred, vendor as fallback), Vendor, Paid on, Amount. Notes
+ * appear as a subtle second line under the description so a long
+ * expense story doesn't push the column widths around.
+ */
+function ExpenseLedgerBody({ ledger }: { ledger: SocietyLedger }) {
+  if (!ledger.expenses.length) {
+    return (
+      <EmptyState
+        variant="info"
+        icon={Wrench}
+        title="No expenses recorded for this month"
+        description="The maintainer hasn't added any bills yet. Check back later."
+      />
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto rounded-lg border border-border/60">
+      <table className="w-full text-sm border-collapse">
+        <thead>
+          <tr className="bg-secondary/40 border-b border-border/60">
+            <th className="text-left px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+              Category
+            </th>
+            <th className="text-left px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground">
+              Description
+            </th>
+            <th className="text-left px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+              Vendor
+            </th>
+            <th className="text-left px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+              Paid on
+            </th>
+            <th className="text-right px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+              Amount
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {ledger.expenses.map((e) => (
+            <tr
+              key={e.id}
+              className="border-b border-border/60 last:border-b-0 hover:bg-secondary/20"
+            >
+              <td className="px-3 py-2 align-top whitespace-nowrap">
+                <Badge variant="secondary" className="text-[10px]">
+                  {CATEGORY_LABELS[e.category]}
+                </Badge>
+              </td>
+              <td className="px-3 py-2 align-top">
+                <p className="font-medium text-sm">
+                  {e.subcategory ?? e.vendorName ?? "—"}
+                </p>
+                {e.notes && (
+                  <p className="text-[11px] text-muted-foreground italic mt-0.5 line-clamp-2">
+                    {e.notes}
+                  </p>
+                )}
+              </td>
+              <td className="px-3 py-2 align-top text-sm text-muted-foreground whitespace-nowrap">
+                {e.vendorName ?? "—"}
+              </td>
+              <td className="px-3 py-2 align-top text-sm text-muted-foreground whitespace-nowrap">
+                {e.paidOnDate}
+              </td>
+              <td className="px-3 py-2 align-top text-right">
+                <span className="font-semibold font-display whitespace-nowrap">
+                  {formatINR(e.amount)}
+                </span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
