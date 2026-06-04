@@ -189,13 +189,17 @@ export function MaintainerFlatsPage() {
 
   // "Paid flats" is a per-FLAT metric, not a per-row one. V5
   // restructured the backend to emit one row per (flat, category) —
-  // counting raw rows here inflates the denominator (3 rows for a
-  // 2-flat building where one flat has water + maintenance) and
-  // misleads the operator. Group by flatId first:
-  //   * denominator = flats with at least one real (non-placeholder)
-  //     charge for the month. Flats the maintainer hasn't billed yet
-  //     don't dilute the ratio.
-  //   * numerator = flats where every real charge is PAID.
+  // counting raw rows inflates the denominator (3 rows for a 2-flat
+  // building where one flat has water + maintenance) and misleads
+  // the operator. Group by flatId first:
+  //   * denominator = total flats in the building. We count EVERY
+  //     flat (incl. ones with no charges yet), because the operator
+  //     thinks of the ratio as "how many of my flats are settled
+  //     this month". A flat with no bills isn't settled — the
+  //     maintainer just hasn't billed it yet.
+  //   * numerator = flats that have at least one real charge AND
+  //     every real charge is PAID. A flat with zero bills is NOT
+  //     counted as paid (vacuously-true would be misleading).
   const summary = useMemo(() => {
     const rows = flatsQ.data ?? [];
     const byFlat = new Map<string, typeof rows>();
@@ -204,13 +208,13 @@ export function MaintainerFlatsPage() {
       arr.push(r);
       byFlat.set(r.flatId, arr);
     }
-    let totalCount = 0;
+    const totalCount = byFlat.size;
     let paidCount = 0;
     for (const [, charges] of byFlat) {
       const real = charges.filter((r) => r.status !== "NEW_FLAT");
-      if (real.length === 0) continue; // flat has no bills yet
-      totalCount++;
-      if (real.every((r) => r.status === "PAID")) paidCount++;
+      if (real.length > 0 && real.every((r) => r.status === "PAID")) {
+        paidCount++;
+      }
     }
     return { paidCount, totalCount };
   }, [flatsQ.data]);
@@ -422,15 +426,19 @@ function makePlaceholderRow(group: FlatGroup): FlatMaintenanceRow {
 }
 
 /**
- * The order of category columns in the table. Maintenance is shown
- * first because it's the most common charge (the building default),
- * then the meter-based ones, then the rarer cases.
+ * The order of category columns in the matrix view.
+ *
+ * <p>GAS_BILL and ELECTRICITY are intentionally excluded — those
+ * utilities are billed directly to each flat's individual meter by
+ * the utility provider in India, not collected by the society. Keep
+ * the values in the {@link FlatChargeCategory} type for backwards
+ * compat with any rows that already used them, but drop them from
+ * the operator-facing dashboard so the maintainer isn't tempted to
+ * double-bill a tenant.
  */
 const CATEGORY_COLUMNS: FlatChargeCategory[] = [
   "MAINTENANCE",
   "WATER_BILL",
-  "GAS_BILL",
-  "ELECTRICITY",
   "COMMON_AREA_SHARE",
   "OTHER",
 ];
@@ -474,7 +482,13 @@ function FlatsTable({
               </th>
             ))}
             <th className="text-right px-3 py-2 font-semibold text-xs uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+              Paid
+            </th>
+            <th className="text-right px-3 py-2 font-semibold text-xs uppercase tracking-wider text-muted-foreground whitespace-nowrap">
               Outstanding
+            </th>
+            <th className="text-right px-3 py-2 font-semibold text-xs uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+              Balance
             </th>
           </tr>
         </thead>
@@ -511,9 +525,27 @@ function FlatRow({
       byCategory.set(r.category, r);
     }
   }
+  // Money columns on the right edge:
+  //   * paid       = sum of recorded payments (amountPaid where the
+  //                  maintainer captured it, else fall back to the
+  //                  amount due on rows the maintainer marked PAID).
+  //   * outstanding = what's still owed (DUE + OVERDUE).
+  //   * balance    = total this month - what's been paid. Visually it
+  //                  matches `outstanding` once WAIVED rows aren't in
+  //                  play; we render both so the operator can quickly
+  //                  cross-check the math.
+  const paid = group.rows
+    .filter((r) => r.status === "PAID")
+    .reduce((s, r) => s + (r.amountPaid ?? r.monthAmount), 0);
   const outstanding = group.rows
     .filter((r) => r.status === "DUE" || r.status === "OVERDUE")
     .reduce((s, r) => s + r.monthAmount, 0);
+  // Total amount this month across DUE/OVERDUE/PAID (WAIVED rows
+  // are excluded since they were explicitly forgiven).
+  const totalBilled = group.rows
+    .filter((r) => r.status !== "NEW_FLAT" && r.status !== "WAIVED")
+    .reduce((s, r) => s + r.monthAmount, 0);
+  const balance = totalBilled - paid;
 
   return (
     <tr className="border-b border-border/60 last:border-b-0 hover:bg-secondary/20">
@@ -545,11 +577,37 @@ function FlatRow({
         );
       })}
 
-      {/* Outstanding total */}
+      {/* Paid */}
+      <td className="px-3 py-2 align-top text-right">
+        {paid > 0 ? (
+          <span className="font-semibold text-success whitespace-nowrap">
+            {formatINR(paid)}
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        )}
+      </td>
+
+      {/* Outstanding */}
       <td className="px-3 py-2 align-top text-right">
         {outstanding > 0 ? (
           <span className="font-semibold text-destructive whitespace-nowrap">
             {formatINR(outstanding)}
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        )}
+      </td>
+
+      {/* Balance (= billed - paid) */}
+      <td className="px-3 py-2 align-top text-right">
+        {totalBilled > 0 ? (
+          <span
+            className={`font-semibold whitespace-nowrap ${
+              balance <= 0 ? "text-success" : "text-foreground"
+            }`}
+          >
+            {formatINR(balance)}
           </span>
         ) : (
           <span className="text-xs text-muted-foreground">—</span>
@@ -763,15 +821,18 @@ function SetAmountDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {Object.entries(CATEGORY_LABELS).map(([k, label]) => {
+                {CATEGORY_COLUMNS.map((k) => {
                   // In add-mode, hide categories this flat already has
                   // a row for — the (flat, month, category) unique
                   // constraint would otherwise reject the upsert.
-                  const used = disabledCategories?.has(k as FlatChargeCategory);
+                  // CATEGORY_COLUMNS already excludes GAS_BILL +
+                  // ELECTRICITY (utility-meter charges that aren't
+                  // collected by the society).
+                  const used = disabledCategories?.has(k);
                   if (used) return null;
                   return (
                     <SelectItem key={k} value={k}>
-                      {label}
+                      {CATEGORY_LABELS[k]}
                     </SelectItem>
                   );
                 })}
