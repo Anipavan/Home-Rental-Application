@@ -32,6 +32,29 @@ public record SocietyLedgerResponse(
         BigDecimal expensesLifetime,
         BigDecimal collectedLifetime,
         Map<ExpenseCategory, BigDecimal> byCategory,
-        List<MaintenanceExpenseResponse> expenses
+        List<MaintenanceExpenseResponse> expenses,
+
+        /* ─── Per-flat bills (V5 enrichment) ───
+         * One entry per flat in the building for this month, with
+         * category breakdown + status + totals. Surfaced on the
+         * public read-only ledger so residents can see at a glance
+         * which flats have settled and which haven't.
+         *
+         * <p>NO tenant names or phone numbers — the public URL is
+         * link-credential, and we don't map flat numbers to people
+         * on it. Residents who need that mapping already know it.
+         */
+        List<PublicFlatBillResponse> flatBills,
+
+        /* ─── Maintainer contact ───
+         * Resolved from user-service at response time. Surfaced on
+         * the public ledger so a resident can call / message the
+         * person responsible for the books without needing a login.
+         * Nullable when user-service is unreachable (we render an
+         * empty card in that case rather than 500-ing).
+         */
+        String maintainerName,
+        String maintainerPhone,
+        String maintainerEmail
 ) {
 }

@@ -8,6 +8,7 @@ import com.spa.home_rental_application.property_service.property_service.DTO.Res
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.FlatMaintenanceRowResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.MaintenanceExpenseResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.PromoteTenantResponse;
+import com.spa.home_rental_application.property_service.property_service.DTO.Response.PublicFlatBillResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyConfigResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyLedgerResponse;
 import com.spa.home_rental_application.property_service.property_service.Entities.Building;
@@ -389,6 +390,29 @@ public class SocietyServiceImpl implements SocietyService {
             byCategory.merge(e.getCategory(), e.getAmount(), BigDecimal::add);
         }
 
+        // Per-flat bills summary — surfaced on the public ledger so
+        // residents can see which flats have settled. Pulls every
+        // (flat × charge) row for the month and groups by flat. Flats
+        // with no charges yet are still included so the public table
+        // shows the full roster (their entry just has empty charges
+        // + status NONE).
+        List<PublicFlatBillResponse> flatBills =
+                buildPublicFlatBills(buildingId, resolvedMonth);
+
+        // Maintainer contact — best-effort lookup via user-service.
+        // Failures fall through to null fields (UI renders the card
+        // empty rather than 500ing the whole ledger).
+        UserClient.UserSummary maintainer = null;
+        try {
+            maintainer = userClient.getUserByAuthId(cfg.getMaintainerUserId());
+        } catch (Exception ex) {
+            log.warn("buildLedger user-service blip maintainerUserId={}",
+                    cfg.getMaintainerUserId(), ex);
+        }
+        String maintainerName = maintainer == null ? null : maintainer.fullName();
+        String maintainerPhone = maintainer == null ? null : maintainer.phone();
+        String maintainerEmail = maintainer == null ? null : maintainer.email();
+
         return SocietyLedgerResponse.builder()
                 .buildingId(buildingId)
                 .societyDisplayName(cfg.getSocietyDisplayName())
@@ -402,7 +426,87 @@ public class SocietyServiceImpl implements SocietyService {
                 .collectedLifetime(collectedLifetime)
                 .byCategory(byCategory)
                 .expenses(rows.stream().map(mapper::toResponse).toList())
+                .flatBills(flatBills)
+                .maintainerName(maintainerName)
+                .maintainerPhone(maintainerPhone)
+                .maintainerEmail(maintainerEmail)
                 .build();
+    }
+
+    /**
+     * Build the per-flat bills array for the public ledger view.
+     * One entry per flat in the building, with category breakdown
+     * + totals + an overall status (SETTLED / PARTIAL / PENDING /
+     * NONE) the UI can colour-code.
+     */
+    private List<PublicFlatBillResponse> buildPublicFlatBills(
+            String buildingId, String month) {
+        List<Flat> flats = flatRepo.findByBuildingId(buildingId);
+        // Index this month's collection rows by flat for O(1) lookup
+        // per flat below.
+        Map<String, List<MaintenanceCollection>> chargesByFlat =
+                collectionRepo
+                        .findByBuildingIdAndForMonth(buildingId, month)
+                        .stream()
+                        .collect(java.util.stream.Collectors.groupingBy(
+                                MaintenanceCollection::getFlatId));
+
+        List<PublicFlatBillResponse> out = new java.util.ArrayList<>(flats.size());
+        // Stable order by flat number so the public table is
+        // deterministic across reloads.
+        flats.sort(java.util.Comparator.comparing(
+                f -> f.getFlatNumber() == null ? "" : f.getFlatNumber()));
+        for (Flat f : flats) {
+            List<MaintenanceCollection> rows = chargesByFlat.getOrDefault(
+                    f.getId(), java.util.List.of());
+            BigDecimal totalDue = BigDecimal.ZERO;
+            BigDecimal totalPaid = BigDecimal.ZERO;
+            List<PublicFlatBillResponse.PublicChargeLineResponse> lines =
+                    new java.util.ArrayList<>(rows.size());
+            for (MaintenanceCollection r : rows) {
+                lines.add(PublicFlatBillResponse.PublicChargeLineResponse.builder()
+                        .category(r.getCategory())
+                        .amount(r.getAmountDue())
+                        .status(r.getStatus())
+                        .build());
+                if (r.getStatus() == CollectionStatus.PAID) {
+                    totalPaid = totalPaid.add(
+                            r.getAmountPaid() == null
+                                    ? r.getAmountDue()
+                                    : r.getAmountPaid());
+                } else if (r.getStatus() == CollectionStatus.DUE
+                        || r.getStatus() == CollectionStatus.OVERDUE) {
+                    totalDue = totalDue.add(r.getAmountDue());
+                }
+            }
+
+            String overallStatus;
+            if (rows.isEmpty()) {
+                overallStatus = "NONE";
+            } else {
+                boolean anyDue = rows.stream().anyMatch(r ->
+                        r.getStatus() == CollectionStatus.DUE
+                                || r.getStatus() == CollectionStatus.OVERDUE);
+                boolean anyPaid = rows.stream()
+                        .anyMatch(r -> r.getStatus() == CollectionStatus.PAID);
+                if (!anyDue) {
+                    overallStatus = "SETTLED";
+                } else if (anyPaid) {
+                    overallStatus = "PARTIAL";
+                } else {
+                    overallStatus = "PENDING";
+                }
+            }
+
+            out.add(PublicFlatBillResponse.builder()
+                    .flatNumber(f.getFlatNumber())
+                    .charges(lines)
+                    .totalDue(totalDue)
+                    .totalPaid(totalPaid)
+                    .overallStatus(overallStatus)
+                    .build());
+        }
+        return out;
     }
 
     // ── Maintainer assignment (owner-driven) ──────────────────────

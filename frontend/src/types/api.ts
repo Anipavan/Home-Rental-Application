@@ -1040,6 +1040,26 @@ export interface AddExpenseRequest {
 }
 
 /**
+ * One charge line on the public ledger's per-flat bills table.
+ * Minimal projection — no tenant identifying data.
+ */
+export interface PublicChargeLine {
+  category: FlatChargeCategory;
+  amount: number;
+  status: CollectionStatus;
+}
+
+/** One flat's bills for the month on the public ledger view. */
+export interface PublicFlatBill {
+  flatNumber: string;
+  charges: PublicChargeLine[];
+  totalDue: number;
+  totalPaid: number;
+  /** SETTLED, PARTIAL, PENDING, or NONE (no charges yet). */
+  overallStatus: "SETTLED" | "PARTIAL" | "PENDING" | "NONE";
+}
+
+/**
  * Combined ledger payload — one-shot read for owner / tenant / public
  * society pages. {@code collectedThisMonth} / {@code collectedThisYear} /
  * {@code collectedLifetime} are sums over {@code maintenance_collection}
@@ -1059,6 +1079,13 @@ export interface SocietyLedger {
   collectedLifetime: number;
   byCategory: Partial<Record<ExpenseCategory, number>>;
   expenses: MaintenanceExpense[];
+  /** Per-flat bills with category breakdown — surfaced on public page. */
+  flatBills: PublicFlatBill[];
+  /** Maintainer contact, resolved from user-service at response time.
+   *  Nullable when user-service is unreachable. */
+  maintainerName: string | null;
+  maintainerPhone: string | null;
+  maintainerEmail: string | null;
 }
 
 /**
