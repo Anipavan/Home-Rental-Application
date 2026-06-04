@@ -331,7 +331,7 @@ function FlatBillsCardBody({ ledger }: { ledger: SocietyLedger }) {
 }
 
 /**
- * "Where the money went" body — common-area expense list rendered as
+ * "Expenses" body — common-area expense list rendered as
  * a tabular ledger. Columns: Category badge, Description (subcategory
  * preferred, vendor as fallback), Vendor, Paid on, Amount. Notes
  * appear as a subtle second line under the description so a long

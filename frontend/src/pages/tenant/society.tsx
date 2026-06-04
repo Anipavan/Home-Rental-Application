@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
+import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { PageHeader } from "@/components/layout/page-header";
 import { formatINR } from "@/lib/utils";
 import type {
@@ -163,45 +164,40 @@ export function TenantSocietyPage() {
             </Card>
           )}
 
-          {/* ── My charges (the new bit) ─────────────────────────── */}
-          <Card className="mb-6">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-display font-semibold text-lg">
-                  My charges — {month}
-                </h3>
-                {totalDue > 0 && (
-                  <span className="text-sm">
-                    <span className="text-muted-foreground">Outstanding: </span>
-                    <span className="font-semibold text-destructive">
-                      {formatINR(totalDue)}
-                    </span>
-                  </span>
-                )}
+          {/* ── My charges (collapsible) ─────────────────────────── */}
+          <CollapsibleSection
+            className="mb-4"
+            title={`My charges — ${month}`}
+            icon={Receipt}
+            summary={
+              myBillsQ.data?.length
+                ? totalDue > 0
+                  ? `Outstanding ${formatINR(totalDue)}`
+                  : `${myBillsQ.data.length} charge${myBillsQ.data.length === 1 ? "" : "s"}`
+                : "No bills"
+            }
+          >
+            {myBillsQ.isLoading ? (
+              <Skeleton className="h-24 rounded-xl" />
+            ) : !myBillsQ.data?.length ? (
+              <EmptyState
+                variant="info"
+                icon={Receipt}
+                title="No bills posted for you this month yet"
+                description="The maintainer hasn't entered any charges against your flat for this month. Check back later or message them if you think this is wrong."
+              />
+            ) : (
+              <div className="space-y-2">
+                {myBillsQ.data.map((row) => (
+                  <ChargeRow
+                    key={row.collectionId ?? row.category ?? "row"}
+                    row={row}
+                    config={configQ.data!}
+                  />
+                ))}
               </div>
-
-              {myBillsQ.isLoading ? (
-                <Skeleton className="h-24 rounded-xl" />
-              ) : !myBillsQ.data?.length ? (
-                <EmptyState
-                  variant="info"
-                  icon={Receipt}
-                  title="No bills posted for you this month yet"
-                  description="The maintainer hasn't entered any charges against your flat for this month. Check back later or message them if you think this is wrong."
-                />
-              ) : (
-                <div className="space-y-2">
-                  {myBillsQ.data.map((row) => (
-                    <ChargeRow
-                      key={row.collectionId ?? row.category ?? "row"}
-                      row={row}
-                      config={configQ.data!}
-                    />
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+            )}
+          </CollapsibleSection>
 
           {/* ── Common-area ledger (existing) ─────────────────────── */}
           <div className="grid gap-4 sm:grid-cols-2 mb-6">
@@ -223,58 +219,87 @@ export function TenantSocietyPage() {
             />
           </div>
 
-          <Card>
-            <CardContent className="p-6">
-              <h3 className="font-display font-semibold text-lg mb-4">
-                Expenses — {month}
-              </h3>
-
-              {ledgerQ.isLoading ? (
-                <Skeleton className="h-24 rounded-xl" />
-              ) : !ledgerQ.data?.expenses?.length ? (
-                <EmptyState
-                  variant="info"
-                  icon={Wrench}
-                  title="No expenses recorded for this month yet"
-                  description="The maintainer hasn't added any bills for this month. Check back later."
-                />
-              ) : (
-                <div className="space-y-2">
-                  {ledgerQ.data.expenses.map((e) => (
-                    <div
-                      key={e.id}
-                      className="flex items-start gap-3 p-3 rounded-xl border border-border/60 bg-secondary/30"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
+          {/* ── Common-area Expenses (collapsible + tabular) ──────── */}
+          <CollapsibleSection
+            className="mb-4"
+            title={`Expenses — ${month}`}
+            icon={Wrench}
+            summary={
+              ledgerQ.data?.expenses?.length
+                ? `${ledgerQ.data.expenses.length} entr${ledgerQ.data.expenses.length === 1 ? "y" : "ies"} · ${formatINR(ledgerQ.data.expensesThisMonth ?? 0)}`
+                : "No entries"
+            }
+          >
+            {ledgerQ.isLoading ? (
+              <Skeleton className="h-24 rounded-xl" />
+            ) : !ledgerQ.data?.expenses?.length ? (
+              <EmptyState
+                variant="info"
+                icon={Wrench}
+                title="No expenses recorded for this month yet"
+                description="The maintainer hasn't added any bills for this month. Check back later."
+              />
+            ) : (
+              <div className="overflow-x-auto rounded-lg border border-border/60">
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="bg-secondary/40 border-b border-border/60">
+                      <th className="text-left px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+                        Category
+                      </th>
+                      <th className="text-left px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground">
+                        Description
+                      </th>
+                      <th className="text-left px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+                        Vendor
+                      </th>
+                      <th className="text-left px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+                        Paid on
+                      </th>
+                      <th className="text-right px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+                        Amount
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ledgerQ.data.expenses.map((e) => (
+                      <tr
+                        key={e.id}
+                        className="border-b border-border/60 last:border-b-0 hover:bg-secondary/20"
+                      >
+                        <td className="px-3 py-2 align-top whitespace-nowrap">
                           <Badge variant="secondary" className="text-[10px]">
                             {EXPENSE_LABELS[e.category]}
                           </Badge>
-                          <span className="font-medium text-sm">
+                        </td>
+                        <td className="px-3 py-2 align-top">
+                          <p className="font-medium text-sm">
                             {e.subcategory ?? e.vendorName ?? "—"}
-                          </span>
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {e.paidOnDate}
-                          {e.vendorName && e.subcategory
-                            ? ` · paid to ${e.vendorName}`
-                            : ""}
-                        </p>
-                        {e.notes && (
-                          <p className="text-xs text-muted-foreground mt-1 italic">
-                            {e.notes}
                           </p>
-                        )}
-                      </div>
-                      <p className="font-semibold font-display">
-                        {formatINR(e.amount)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                          {e.notes && (
+                            <p className="text-[11px] text-muted-foreground italic mt-0.5 line-clamp-2">
+                              {e.notes}
+                            </p>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 align-top text-sm text-muted-foreground whitespace-nowrap">
+                          {e.vendorName ?? "—"}
+                        </td>
+                        <td className="px-3 py-2 align-top text-sm text-muted-foreground whitespace-nowrap">
+                          {e.paidOnDate}
+                        </td>
+                        <td className="px-3 py-2 align-top text-right">
+                          <span className="font-semibold font-display whitespace-nowrap">
+                            {formatINR(e.amount)}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CollapsibleSection>
         </>
       )}
     </div>
