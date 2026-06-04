@@ -64,8 +64,8 @@ const currentMonth = () => {
  *   <li><b>My charges</b> — per-line bills the maintainer has recorded
  *       against this tenant's flat for the selected month, with a
  *       Pay-Now button per row that opens a UPI QR modal.</li>
- *   <li><b>Where the money went</b> — read-only common-area expense
- *       ledger that every resident shares.</li>
+ *   <li><b>Expenses</b> — read-only common-area expense ledger that
+ *       every resident shares.</li>
  * </ol>
  *
  * <p>The Pay button stays hidden when the society hasn't configured
@@ -226,7 +226,7 @@ export function TenantSocietyPage() {
           <Card>
             <CardContent className="p-6">
               <h3 className="font-display font-semibold text-lg mb-4">
-                Where the money went — {month}
+                Expenses — {month}
               </h3>
 
               {ledgerQ.isLoading ? (

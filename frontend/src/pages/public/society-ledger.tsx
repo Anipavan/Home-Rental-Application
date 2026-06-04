@@ -186,7 +186,7 @@ export function PublicSocietyLedgerPage() {
 
             <CollapsibleSection
               className="mb-4"
-              title={`Where the money went — ${month}`}
+              title={`Expenses — ${month}`}
               icon={Wrench}
               summary={
                 ledgerQ.data!.expenses.length
