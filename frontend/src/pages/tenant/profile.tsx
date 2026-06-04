@@ -470,15 +470,17 @@ export function ProfilePage() {
           "where do I put my account details" without scrolling through
           the personal-info form. Self-contained: manages its own
           query / mutations / edit toggle.
-          <p>Hidden for ADMIN users: the bank-account row is used for
-          rent payouts (owners) and deposit / cancellation refunds
-          (tenants). Platform admins are neither party to any payment
-          and have no reason to be storing their own bank details on
-          a user-facing profile — surfacing the card would be confusing
-          at best and a needless surface for account-takeover risk at
-          worst. The component itself stays mounted at the route level
-          for tenant / owner. */}
-      {authUserId && role !== "ADMIN" && (
+          <p>Hidden for ADMIN AND MAINTAINER sessions. ADMINs don't
+          handle payments. MAINTAINERs collect into the SOCIETY's
+          common bank account (configured separately on the Society
+          page), not their personal one — surfacing the personal
+          bank-account section here when in maintainer mode would
+          confuse the operator into thinking the two are linked.
+          The component still mounts at the tenant/owner profile
+          routes for those roles, so a multi-role user (tenant +
+          maintainer) just needs to log in via tenant credentials
+          to see their bank details. */}
+      {authUserId && role !== "ADMIN" && role !== "MAINTAINER" && (
         <div className="mt-6">
           <BankAccountSection authUserId={authUserId} />
         </div>

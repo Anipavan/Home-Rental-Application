@@ -187,10 +187,31 @@ export function MaintainerFlatsPage() {
     staleTime: 30_000,
   });
 
+  // "Paid flats" is a per-FLAT metric, not a per-row one. V5
+  // restructured the backend to emit one row per (flat, category) —
+  // counting raw rows here inflates the denominator (3 rows for a
+  // 2-flat building where one flat has water + maintenance) and
+  // misleads the operator. Group by flatId first:
+  //   * denominator = flats with at least one real (non-placeholder)
+  //     charge for the month. Flats the maintainer hasn't billed yet
+  //     don't dilute the ratio.
+  //   * numerator = flats where every real charge is PAID.
   const summary = useMemo(() => {
     const rows = flatsQ.data ?? [];
-    const paidCount = rows.filter((r) => r.status === "PAID").length;
-    const totalCount = rows.length;
+    const byFlat = new Map<string, typeof rows>();
+    for (const r of rows) {
+      const arr = byFlat.get(r.flatId) ?? [];
+      arr.push(r);
+      byFlat.set(r.flatId, arr);
+    }
+    let totalCount = 0;
+    let paidCount = 0;
+    for (const [, charges] of byFlat) {
+      const real = charges.filter((r) => r.status !== "NEW_FLAT");
+      if (real.length === 0) continue; // flat has no bills yet
+      totalCount++;
+      if (real.every((r) => r.status === "PAID")) paidCount++;
+    }
     return { paidCount, totalCount };
   }, [flatsQ.data]);
 
