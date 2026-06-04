@@ -26,6 +26,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
+import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import {
   Dialog,
   DialogContent,
@@ -273,66 +274,93 @@ export function OwnerSocietyPage() {
             />
           </div>
 
-          {/* Expense list — read-only for owner */}
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-display font-semibold text-lg">
-                  Expenses — {month}
-                </h3>
-                <Badge variant="secondary" className="text-[10px]">
-                  Recorded by maintainer
-                </Badge>
-              </div>
-
-              {ledgerQ.isLoading ? (
-                <Skeleton className="h-32 rounded-xl" />
-              ) : !ledgerQ.data?.expenses?.length ? (
-                <EmptyState
-                  variant="info"
-                  icon={Wrench}
-                  title="No expenses recorded for this month"
-                  description="The maintainer hasn't logged any common-area expenses for this month yet. Once they do, the entries appear here."
-                />
-              ) : (
-                <div className="space-y-2">
-                  {ledgerQ.data.expenses.map((e) => (
-                    <div
-                      key={e.id}
-                      className="flex items-start gap-3 p-3 rounded-xl border border-border/60 bg-secondary/30"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
+          {/* Expense list — read-only for owner, collapsible + tabular
+              like the public ledger so the visual language stays
+              consistent across surfaces. */}
+          <CollapsibleSection
+            title={`Expenses — ${month}`}
+            icon={Wrench}
+            summary={
+              ledgerQ.data?.expenses?.length
+                ? `${ledgerQ.data.expenses.length} entr${ledgerQ.data.expenses.length === 1 ? "y" : "ies"} · ${formatINR(ledgerQ.data.expensesThisMonth ?? 0)}`
+                : "No entries"
+            }
+            actions={
+              <Badge variant="secondary" className="text-[10px]">
+                Recorded by maintainer
+              </Badge>
+            }
+          >
+            {ledgerQ.isLoading ? (
+              <Skeleton className="h-32 rounded-xl" />
+            ) : !ledgerQ.data?.expenses?.length ? (
+              <EmptyState
+                variant="info"
+                icon={Wrench}
+                title="No expenses recorded for this month"
+                description="The maintainer hasn't logged any common-area expenses for this month yet. Once they do, the entries appear here."
+              />
+            ) : (
+              <div className="overflow-x-auto rounded-lg border border-border/60">
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="bg-secondary/40 border-b border-border/60">
+                      <th className="text-left px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+                        Category
+                      </th>
+                      <th className="text-left px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground">
+                        Description
+                      </th>
+                      <th className="text-left px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+                        Vendor
+                      </th>
+                      <th className="text-left px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+                        Paid on
+                      </th>
+                      <th className="text-right px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+                        Amount
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ledgerQ.data.expenses.map((e) => (
+                      <tr
+                        key={e.id}
+                        className="border-b border-border/60 last:border-b-0 hover:bg-secondary/20"
+                      >
+                        <td className="px-3 py-2 align-top whitespace-nowrap">
                           <Badge variant="secondary" className="text-[10px]">
                             {CATEGORY_LABELS[e.category]}
                           </Badge>
-                          <span className="font-medium text-sm">
+                        </td>
+                        <td className="px-3 py-2 align-top">
+                          <p className="font-medium text-sm">
                             {e.subcategory ?? e.vendorName ?? "—"}
-                          </span>
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {e.paidOnDate}
-                          {e.vendorName && e.subcategory
-                            ? ` · paid to ${e.vendorName}`
-                            : ""}
-                        </p>
-                        {e.notes && (
-                          <p className="text-xs text-muted-foreground mt-1 italic">
-                            {e.notes}
                           </p>
-                        )}
-                      </div>
-                      <div className="text-right">
-                        <p className="font-semibold font-display">
-                          {formatINR(e.amount)}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                          {e.notes && (
+                            <p className="text-[11px] text-muted-foreground italic mt-0.5 line-clamp-2">
+                              {e.notes}
+                            </p>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 align-top text-sm text-muted-foreground whitespace-nowrap">
+                          {e.vendorName ?? "—"}
+                        </td>
+                        <td className="px-3 py-2 align-top text-sm text-muted-foreground whitespace-nowrap">
+                          {e.paidOnDate}
+                        </td>
+                        <td className="px-3 py-2 align-top text-right">
+                          <span className="font-semibold font-display whitespace-nowrap">
+                            {formatINR(e.amount)}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CollapsibleSection>
 
           <div className="mt-6 text-center">
             <Button asChild variant="ghost">

@@ -4,7 +4,6 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Building2,
   Calendar,
-  ChevronDown,
   Droplets,
   Mail,
   Phone,
@@ -18,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
+import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { Logo } from "@/components/layout/logo";
 import { formatINR } from "@/lib/utils";
 import type {
@@ -159,6 +159,7 @@ export function PublicSocietyLedgerPage() {
               * to expanded so first-time visitors still see the
               * data. */}
             <CollapsibleSection
+              className="mb-4"
               title="Society maintainer"
               icon={User}
               summary={
@@ -171,6 +172,7 @@ export function PublicSocietyLedgerPage() {
             </CollapsibleSection>
 
             <CollapsibleSection
+              className="mb-4"
               title={`Per-flat bills — ${month}`}
               icon={Building2}
               summary={
@@ -183,6 +185,7 @@ export function PublicSocietyLedgerPage() {
             </CollapsibleSection>
 
             <CollapsibleSection
+              className="mb-4"
               title={`Where the money went — ${month}`}
               icon={Wrench}
               summary={
@@ -203,67 +206,6 @@ export function PublicSocietyLedgerPage() {
         )}
       </main>
     </div>
-  );
-}
-
-/**
- * Inline collapsible section used to wrap the three public-ledger
- * cards (maintainer contact, per-flat bills, expense ledger). Keeps
- * the page from becoming a tall single scroll — residents can drill
- * into one section at a time.
- *
- * <p>Implementation note: rolled inline rather than adding a new
- * @radix-ui/react-collapsible dependency. The accessibility surface
- * is small (a button + a controlled region), and we only need it on
- * this one page.
- */
-function CollapsibleSection({
-  title,
-  icon: Icon,
-  summary,
-  defaultOpen = true,
-  children,
-}: {
-  title: string;
-  icon?: React.ComponentType<{ className?: string }>;
-  /** Short string shown on the right of the collapsed header so the
-   *  resident knows what's inside before clicking to expand. */
-  summary?: string;
-  defaultOpen?: boolean;
-  children: React.ReactNode;
-}) {
-  const [open, setOpen] = useState(defaultOpen);
-  return (
-    <Card className="mb-4">
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center gap-3 p-4 hover:bg-secondary/30 transition-colors text-left"
-      >
-        {Icon && (
-          <Icon className="size-5 text-primary shrink-0" aria-hidden />
-        )}
-        <h3 className="font-display font-semibold text-base flex-1 min-w-0 truncate">
-          {title}
-        </h3>
-        {summary && (
-          <span className="text-xs text-muted-foreground truncate max-w-[40%] hidden sm:inline">
-            {summary}
-          </span>
-        )}
-        <ChevronDown
-          className={`size-4 text-muted-foreground shrink-0 transition-transform ${
-            open ? "rotate-180" : ""
-          }`}
-        />
-      </button>
-      {open && (
-        <CardContent className="px-5 pb-5 pt-0">
-          {children}
-        </CardContent>
-      )}
-    </Card>
   );
 }
 
