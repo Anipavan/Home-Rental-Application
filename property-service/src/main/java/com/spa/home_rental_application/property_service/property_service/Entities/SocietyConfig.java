@@ -88,6 +88,39 @@ public class SocietyConfig {
     @Column(name = "society_display_name", length = 200)
     private String societyDisplayName;
 
+    /* ─── Collection bank / UPI fields (V5) ───
+     * All nullable. Society sets these once via the owner setup
+     * wizard or the maintainer's bank panel. The tenant Pay-Now
+     * button on /app/society renders a UPI QR code from
+     * {@code upi_id} + {@code payee_name} + the per-row amount.
+     * {@code account_number} and {@code ifsc_code} are pure
+     * informational — shown below the QR for tenants who prefer
+     * to add the account as a banking beneficiary instead of
+     * scanning.
+     */
+
+    /** UPI handle the QR resolves to (e.g. {@code anirudh@oksbi}).
+     *  Required for the Pay-Now button to appear on the tenant page;
+     *  societies that only collect via cash / NEFT leave this null. */
+    @Column(name = "upi_id", length = 64)
+    private String upiId;
+
+    /** Name shown by the tenant's UPI app on the payment confirm
+     *  screen. Typically the registered bank account holder name,
+     *  which may differ from {@link #societyDisplayName} (the
+     *  friendly label). */
+    @Column(name = "payee_name", length = 200)
+    private String payeeName;
+
+    /** Optional bank account number — informational. */
+    @Column(name = "account_number", length = 32)
+    private String accountNumber;
+
+    /** Optional IFSC code (11 chars per spec, column 16 for
+     *  headroom). Informational. */
+    @Column(name = "ifsc_code", length = 16)
+    private String ifscCode;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

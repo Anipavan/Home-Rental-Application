@@ -21,6 +21,18 @@ public record SocietyConfigResponse(
         String publicViewToken,
         String publicViewUrl,
         String societyDisplayName,
+
+        /* ─── Collection bank / UPI (nullable) ───
+         * Surfaced to authorised callers (owner / maintainer /
+         * tenant of the building) so the frontend can render the
+         * QR + bank-info panel on the Pay flow. NEVER returned in
+         * the public-ledger response.
+         */
+        String upiId,
+        String payeeName,
+        String accountNumber,
+        String ifscCode,
+
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {

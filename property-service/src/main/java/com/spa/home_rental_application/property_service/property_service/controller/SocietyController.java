@@ -187,15 +187,24 @@ public class SocietyController {
         return ResponseEntity.ok(service.listFlatsForMonth(buildingId, month));
     }
 
-    @Operation(summary = "Maintainer / owner: upsert the (flat, month) collection row (usage-based dues + notes + paid marker).")
+    @Operation(summary = "Maintainer / owner: upsert the (flat, month, category) collection row. Same (flat, month) with a different category creates a NEW row (multi-line charges).")
     @PostMapping(value = "/{buildingId}/flats/{flatId}/collection",
             consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<FlatMaintenanceRowResponse> upsertFlatCollection(
             @PathVariable String buildingId,
             @PathVariable String flatId,
             @Valid @RequestBody UpsertFlatCollectionRequest body) {
-        log.info("POST /society/{}/flats/{}/collection month={} amountDue={} status={}",
-                buildingId, flatId, body.forMonth(), body.amountDue(), body.status());
+        log.info("POST /society/{}/flats/{}/collection month={} category={} amountDue={} status={}",
+                buildingId, flatId, body.forMonth(), body.category(),
+                body.amountDue(), body.status());
         return ResponseEntity.ok(service.upsertFlatCollection(buildingId, flatId, body));
+    }
+
+    @Operation(summary = "Tenant: every charge against my own flat for the month. Drives the Pay-Now surface on /app/society.")
+    @GetMapping("/{buildingId}/my-bills")
+    public ResponseEntity<List<FlatMaintenanceRowResponse>> myBills(
+            @PathVariable String buildingId,
+            @RequestParam(name = "month", required = false) String month) {
+        return ResponseEntity.ok(service.listMyBillsForMonth(buildingId, month));
     }
 }

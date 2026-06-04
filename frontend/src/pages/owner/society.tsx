@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { societyApi } from "@/lib/api/society";
 import { propertiesApi } from "@/lib/api/properties";
+import { SocietyBankPanel } from "../maintainer/society-bank-panel";
 import { authApi } from "@/lib/api/auth";
 import { useAuthStore } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
@@ -200,6 +201,9 @@ export function OwnerSocietyPage() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Common bank account */}
+          <SocietyBankPanel buildingId={buildingId} config={configQ.data!} />
 
           {/* Month selector */}
           <div className="flex items-center gap-3 mb-4">

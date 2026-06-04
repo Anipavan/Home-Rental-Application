@@ -13,6 +13,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { societyApi } from "@/lib/api/society";
+import { SocietyBankPanel } from "./society-bank-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -234,6 +235,11 @@ export function MaintainerFlatsPage() {
         />
       </div>
 
+      {/* Common bank account — owner OR maintainer can edit */}
+      {configQ.data && (
+        <SocietyBankPanel buildingId={buildingId} config={configQ.data} />
+      )}
+
       {/* KPI strip */}
       <div className="grid gap-4 sm:grid-cols-4 mb-6">
         <Kpi
@@ -287,11 +293,11 @@ export function MaintainerFlatsPage() {
               description="The owner needs to add flats before any per-flat dues exist."
             />
           ) : (
-            <div className="space-y-2">
-              {flatsQ.data.map((row) => (
-                <FlatRow
-                  key={row.flatId}
-                  row={row}
+            <div className="space-y-3">
+              {groupRowsByFlat(flatsQ.data).map((group) => (
+                <FlatCard
+                  key={group.flatId}
+                  group={group}
                   buildingId={buildingId}
                   month={month}
                 />
@@ -336,7 +342,158 @@ function Kpi({
   );
 }
 
-function FlatRow({
+/**
+ * Group the flat-row list returned by the backend into one entry per
+ * flat with all its line items collected together. The backend already
+ * emits placeholder NEW_FLAT rows for flats with no charges yet, so
+ * those flats end up with a single-item group whose only row is the
+ * placeholder.
+ */
+type FlatGroup = {
+  flatId: string;
+  flatNumber: string;
+  tenantUserId: string | null;
+  tenantName: string;
+  defaultAmount: number;
+  /** All charges this flat carries for the month, or a single
+   *  placeholder row with status=NEW_FLAT when no charges exist. */
+  rows: FlatMaintenanceRow[];
+};
+
+function groupRowsByFlat(rows: FlatMaintenanceRow[]): FlatGroup[] {
+  const byFlat = new Map<string, FlatGroup>();
+  for (const r of rows) {
+    let g = byFlat.get(r.flatId);
+    if (!g) {
+      g = {
+        flatId: r.flatId,
+        flatNumber: r.flatNumber,
+        tenantUserId: r.tenantUserId,
+        tenantName: r.tenantName,
+        defaultAmount: r.defaultAmount,
+        rows: [],
+      };
+      byFlat.set(r.flatId, g);
+    }
+    g.rows.push(r);
+  }
+  return Array.from(byFlat.values());
+}
+
+/**
+ * One flat. Renders the flat header (flat number + tenant + summary),
+ * a stack of charge lines (one per category the maintainer has
+ * recorded), and an "Add charge" button that opens a SetAmountDialog
+ * in create-mode pre-filtered to categories not already present.
+ */
+function FlatCard({
+  group,
+  buildingId,
+  month,
+}: {
+  group: FlatGroup;
+  buildingId: string;
+  month: string;
+}) {
+  const hasCharges =
+    group.rows.length > 0 && group.rows[0].status !== "NEW_FLAT";
+
+  const totalDue = group.rows
+    .filter((r) => r.status === "DUE" || r.status === "OVERDUE")
+    .reduce((s, r) => s + r.monthAmount, 0);
+  const totalPaid = group.rows
+    .filter((r) => r.status === "PAID")
+    .reduce((s, r) => s + (r.amountPaid ?? r.monthAmount), 0);
+
+  const usedCategories = new Set(
+    group.rows
+      .filter((r) => r.category != null)
+      .map((r) => r.category as FlatChargeCategory),
+  );
+
+  return (
+    <div className="rounded-xl border border-border/60 bg-secondary/30 overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-3 p-3 border-b border-border/60 bg-background/50">
+        <div className="flex items-center gap-2 min-w-0">
+          <Badge variant="outline" className="font-mono text-[11px]">
+            Flat {group.flatNumber}
+          </Badge>
+          <span className="font-medium text-sm truncate">
+            {group.tenantName}
+          </span>
+        </div>
+        <div className="flex items-center gap-3">
+          {hasCharges && (
+            <div className="text-right text-xs">
+              {totalDue > 0 && (
+                <p className="text-destructive font-semibold">
+                  {formatINR(totalDue)} due
+                </p>
+              )}
+              {totalPaid > 0 && (
+                <p className="text-success">
+                  {formatINR(totalPaid)} paid
+                </p>
+              )}
+            </div>
+          )}
+          <SetAmountDialog
+            // Add-mode: no existing row yet for the to-be-chosen category.
+            row={makePlaceholderRow(group)}
+            buildingId={buildingId}
+            month={month}
+            disabledCategories={usedCategories}
+            triggerLabel="Add charge"
+            triggerIcon={<Plus className="size-3.5" />}
+          />
+        </div>
+      </div>
+
+      {/* Charges */}
+      {hasCharges ? (
+        <div className="divide-y divide-border/60">
+          {group.rows.map((r) => (
+            <FlatChargeLine
+              key={r.collectionId ?? r.category ?? "row"}
+              row={r}
+              buildingId={buildingId}
+              month={month}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="p-4 text-sm text-muted-foreground italic">
+          No charges entered for this flat yet — click <strong>Add charge</strong>{" "}
+          to record water bill, maintenance, etc.
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Synthesise a NEW_FLAT-equivalent row for the Add-charge dialog. */
+function makePlaceholderRow(group: FlatGroup): FlatMaintenanceRow {
+  return {
+    collectionId: null,
+    flatId: group.flatId,
+    flatNumber: group.flatNumber,
+    tenantUserId: group.tenantUserId,
+    tenantName: group.tenantName,
+    monthAmount: group.defaultAmount,
+    status: "NEW_FLAT",
+    defaultAmount: group.defaultAmount,
+    forMonth: "",
+    notes: null,
+    paidOn: null,
+    paidVia: null,
+    amountPaid: null,
+    category: null,
+  };
+}
+
+/** A single charge line within a FlatCard. */
+function FlatChargeLine({
   row,
   buildingId,
   month,
@@ -346,51 +503,35 @@ function FlatRow({
   month: string;
 }) {
   const status = STATUS_LABELS[row.status] ?? STATUS_LABELS.NEW_FLAT;
-  const overridesDefault =
-    row.status !== "NEW_FLAT" && row.monthAmount !== row.defaultAmount;
-  const categoryLabel = row.category
-    ? CATEGORY_LABELS[row.category]
-    : null;
+  const categoryLabel = row.category ? CATEGORY_LABELS[row.category] : "Other";
 
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 rounded-xl border border-border/60 bg-secondary/30">
+    <div className="flex items-center gap-3 px-3 py-2">
+      <Badge variant="secondary" className="text-[10px] shrink-0">
+        {categoryLabel}
+      </Badge>
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <Badge variant="outline" className="font-mono text-[11px]">
-            Flat {row.flatNumber}
-          </Badge>
-          <span className="font-medium text-sm truncate">{row.tenantName}</span>
-          <span
-            className={`rounded-full text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 ${status.tone}`}
-          >
-            {status.label}
-          </span>
-          {categoryLabel && (
-            <Badge variant="secondary" className="text-[10px]">
-              {categoryLabel}
-            </Badge>
-          )}
-        </div>
         {row.notes && (
-          <p className="text-xs text-muted-foreground mt-1 italic line-clamp-1">
+          <p className="text-xs text-muted-foreground italic line-clamp-1">
             {row.notes}
           </p>
         )}
       </div>
-
-      <div className="flex items-center gap-4">
-        <div className="text-right">
-          <p className="font-semibold font-display text-base">
-            {formatINR(row.monthAmount)}
-          </p>
-          {overridesDefault && (
-            <p className="text-[10px] text-muted-foreground">
-              default {formatINR(row.defaultAmount)}
-            </p>
-          )}
-        </div>
-        <SetAmountDialog row={row} buildingId={buildingId} month={month} />
-      </div>
+      <span
+        className={`rounded-full text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 shrink-0 ${status.tone}`}
+      >
+        {status.label}
+      </span>
+      <p className="font-semibold font-display text-sm w-20 text-right shrink-0">
+        {formatINR(row.monthAmount)}
+      </p>
+      <SetAmountDialog
+        row={row}
+        buildingId={buildingId}
+        month={month}
+        triggerLabel="Edit"
+        triggerIcon={<Pencil className="size-3.5" />}
+      />
     </div>
   );
 }
@@ -399,20 +540,45 @@ function SetAmountDialog({
   row,
   buildingId,
   month,
+  disabledCategories,
+  triggerLabel,
+  triggerIcon,
 }: {
   row: FlatMaintenanceRow;
   buildingId: string;
   month: string;
+  /** Categories already used by sibling rows on the same (flat, month).
+   *  In add-mode the dropdown disables these so the maintainer can't
+   *  trip the (flat, month, category) unique constraint by adding a
+   *  duplicate. Edit-mode passes undefined (the row's own category
+   *  is always selectable). */
+  disabledCategories?: Set<FlatChargeCategory>;
+  triggerLabel?: string;
+  triggerIcon?: React.ReactNode;
 }) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
+
+  // Initial category: on edit, the row's existing category; on add,
+  // the first category NOT already used (so the dropdown opens to a
+  // sensible default instead of one the user can't pick).
+  const initialCategory = (): FlatChargeCategory => {
+    if (row.category) return row.category;
+    if (disabledCategories) {
+      for (const c of Object.keys(CATEGORY_LABELS) as FlatChargeCategory[]) {
+        if (!disabledCategories.has(c)) return c;
+      }
+    }
+    return "MAINTENANCE";
+  };
+
   const [form, setForm] = useState<UpsertFlatCollectionRequest>({
     forMonth: month,
     amountDue:
       row.status === "NEW_FLAT" ? row.defaultAmount : row.monthAmount,
     status: (row.status === "NEW_FLAT" ? "DUE" : row.status) as CollectionStatus,
-    category: (row.category ?? "MAINTENANCE") as FlatChargeCategory,
+    category: initialCategory(),
     notes: row.notes ?? "",
     paidOn: row.paidOn ?? undefined,
     amountPaid: row.amountPaid ?? undefined,
@@ -458,7 +624,7 @@ function SetAmountDialog({
             status: (row.status === "NEW_FLAT"
               ? "DUE"
               : row.status) as CollectionStatus,
-            category: (row.category ?? "MAINTENANCE") as FlatChargeCategory,
+            category: initialCategory(),
             notes: row.notes ?? "",
             paidOn: row.paidOn ?? undefined,
             amountPaid: row.amountPaid ?? undefined,
@@ -470,15 +636,8 @@ function SetAmountDialog({
     >
       <DialogTrigger asChild>
         <Button variant="outline" size="sm">
-          {isNew ? (
-            <>
-              <Plus className="size-3.5" /> Set amount
-            </>
-          ) : (
-            <>
-              <Pencil className="size-3.5" /> Edit
-            </>
-          )}
+          {triggerIcon ?? (isNew ? <Plus className="size-3.5" /> : <Pencil className="size-3.5" />)}
+          {triggerLabel ?? (isNew ? "Set amount" : "Edit")}
         </Button>
       </DialogTrigger>
       <DialogContent>
@@ -506,11 +665,18 @@ function SetAmountDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {Object.entries(CATEGORY_LABELS).map(([k, label]) => (
-                  <SelectItem key={k} value={k}>
-                    {label}
-                  </SelectItem>
-                ))}
+                {Object.entries(CATEGORY_LABELS).map(([k, label]) => {
+                  // In add-mode, hide categories this flat already has
+                  // a row for — the (flat, month, category) unique
+                  // constraint would otherwise reject the upsert.
+                  const used = disabledCategories?.has(k as FlatChargeCategory);
+                  if (used) return null;
+                  return (
+                    <SelectItem key={k} value={k}>
+                      {label}
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
             <p className="text-[10px] text-muted-foreground mt-0.5">

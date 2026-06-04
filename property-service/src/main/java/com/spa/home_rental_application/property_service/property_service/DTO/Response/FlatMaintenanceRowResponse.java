@@ -29,6 +29,10 @@ import java.time.LocalDate;
  */
 @Builder
 public record FlatMaintenanceRowResponse(
+        /** ID of the underlying maintenance_collection row. Null when
+         *  status=NEW_FLAT (placeholder row, nothing in the DB yet). */
+        String collectionId,
+
         String flatId,
         String flatNumber,
 

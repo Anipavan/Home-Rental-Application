@@ -101,12 +101,24 @@ public interface SocietyService {
     List<FlatMaintenanceRowResponse> listFlatsForMonth(String buildingId, String month);
 
     /**
-     * Maintainer creates or updates the (flat, month) collection row.
-     * Inserts on first call for that pair, updates on subsequent calls
-     * (composite unique on {@code uq_collection_flat_month}). Owner is
-     * also allowed (so they can backfill while the maintainer is being
-     * onboarded).
+     * Maintainer creates or updates the (flat, month, category)
+     * collection row. Inserts on first call for that triple, updates
+     * on subsequent calls (composite unique
+     * {@code uq_collection_flat_month_category} after V5). Owner is
+     * allowed too so they can backfill while the maintainer is being
+     * onboarded.
      */
     FlatMaintenanceRowResponse upsertFlatCollection(
             String buildingId, String flatId, UpsertFlatCollectionRequest req);
+
+    /**
+     * Every charge against the caller's own flat for the given month.
+     * Caller must be a tenant of a flat in the building (the standard
+     * society-read check). Returns rows for every category the
+     * maintainer has recorded — water bill, maintenance, etc. — each
+     * with its own status and amount. Drives the Pay-Now flow on
+     * /app/society.
+     */
+    java.util.List<FlatMaintenanceRowResponse> listMyBillsForMonth(
+            String buildingId, String month);
 }

@@ -991,6 +991,13 @@ export interface SocietyConfig {
   /** Full shareable URL synthesised by the backend mapper. */
   publicViewUrl: string;
   societyDisplayName: string | null;
+  /* Collection bank / UPI — all nullable; only present when the
+   * society has filled them in. The Pay-Now button on /app/society
+   * stays hidden until upiId is set. */
+  upiId: string | null;
+  payeeName: string | null;
+  accountNumber: string | null;
+  ifscCode: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1000,6 +1007,10 @@ export interface SetupSocietyRequest {
   monthlyDueDay?: number;
   maintainerUserId?: string;
   societyDisplayName?: string;
+  upiId?: string;
+  payeeName?: string;
+  accountNumber?: string;
+  ifscCode?: string;
 }
 
 export interface MaintenanceExpense {
@@ -1088,6 +1099,10 @@ export interface PromoteTenantResponse {
  * this (flat, month)".
  */
 export interface FlatMaintenanceRow {
+  /** Backing maintenance_collection.id. Null when status=NEW_FLAT
+   *  (placeholder row, nothing in the DB yet — clicking "Add charge"
+   *  creates the row). */
+  collectionId: string | null;
   flatId: string;
   flatNumber: string;
   tenantUserId: string | null;

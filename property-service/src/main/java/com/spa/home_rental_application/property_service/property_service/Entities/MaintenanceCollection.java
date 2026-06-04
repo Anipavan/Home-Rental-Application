@@ -22,27 +22,24 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
- * The per-flat per-month collection record. Generated lazily when
- * the maintainer opens a month for the first time (in this MVP);
- * the future payment-integration milestone will pre-generate via a
- * monthly cron.
- *
- * <p>Unique on (flat_id, for_month) — exactly one row per flat per
- * month. Re-running the "generate this month's collections"
- * endpoint is idempotent because of this constraint.
+ * One row per per-flat charge line item per month. Post-V5 the
+ * unique constraint is (flat_id, for_month, category) so a flat
+ * can carry multiple charges in the same month — water bill +
+ * maintenance + electricity, each as a separate row with its
+ * own status and amount.
  *
  * <p>{@code amount_paid}, {@code paid_via}, {@code payment_id},
- * {@code paid_on} are all nullable today and only populated when
- * the maintainer marks the row PAID (manually for now). The future
- * payment-integration milestone populates them from the Razorpay
- * webhook / signed receipt payload without any schema change.
+ * {@code paid_on} are nullable; populated when the maintainer
+ * marks the row PAID (today) or when the future Razorpay webhook
+ * sets them automatically. {@code paymentId} is the link into
+ * payment-service when integration ships.
  */
 @Entity
 @Table(
         name = "maintenance_collection",
         uniqueConstraints = @UniqueConstraint(
-                name = "uq_collection_flat_month",
-                columnNames = {"flat_id", "for_month"}),
+                name = "uq_collection_flat_month_category",
+                columnNames = {"flat_id", "for_month", "category"}),
         indexes = {
                 @Index(name = "idx_collection_building_month",
                         columnList = "building_id, for_month DESC, status")

@@ -38,6 +38,10 @@ public class SocietyMapper {
                 .publicViewToken(e.getPublicViewToken())
                 .publicViewUrl(frontendBaseUrl + "/society/view/" + e.getPublicViewToken())
                 .societyDisplayName(e.getSocietyDisplayName())
+                .upiId(e.getUpiId())
+                .payeeName(e.getPayeeName())
+                .accountNumber(e.getAccountNumber())
+                .ifscCode(e.getIfscCode())
                 .createdAt(e.getCreatedAt())
                 .updatedAt(e.getUpdatedAt())
                 .build();

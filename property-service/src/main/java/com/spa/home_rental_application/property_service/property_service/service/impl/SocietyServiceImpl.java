@@ -128,13 +128,29 @@ public class SocietyServiceImpl implements SocietyService {
                 .maintainerUserId(maintainerUserId)
                 .publicViewToken(generateToken())
                 .societyDisplayName(displayName)
+                .upiId(blankToNull(req.upiId()))
+                .payeeName(blankToNull(req.payeeName()))
+                .accountNumber(blankToNull(req.accountNumber()))
+                .ifscCode(blankToNull(req.ifscCode() == null ? null
+                        : req.ifscCode().toUpperCase()))
                 .createdAt(now)
                 .updatedAt(now)
                 .build();
         cfg = configRepo.save(cfg);
-        log.info("Society setup buildingId={} maintainerUserId={} default={}",
-                buildingId, maintainerUserId, req.defaultPerFlatAmount());
+        log.info("Society setup buildingId={} maintainerUserId={} default={} upi={}",
+                buildingId, maintainerUserId, req.defaultPerFlatAmount(),
+                cfg.getUpiId() != null);
         return mapper.toResponse(cfg);
+    }
+
+    /** Helper: trim + treat empty / blank as null so we don't store
+     *  empty strings (which would otherwise hit Oracle as NULL anyway
+     *  but make the UI confusingly render "no value" instead of the
+     *  intended absent state). */
+    private static String blankToNull(String s) {
+        if (s == null) return null;
+        String trimmed = s.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     @Override
@@ -166,6 +182,16 @@ public class SocietyServiceImpl implements SocietyService {
         if (req.maintainerUserId() != null && !req.maintainerUserId().isBlank()) {
             CallerSecurity.requireOwnerOrAdmin(b.getOwnerId());
             cfg.setMaintainerUserId(req.maintainerUserId().trim());
+        }
+        // Bank / UPI — owner OR maintainer can update. Empty string
+        // → null (clear the field) so the maintainer can explicitly
+        // wipe a stale entry. ifsc_code normalised to upper-case to
+        // match the @Pattern validator on the request DTO.
+        if (req.upiId() != null) cfg.setUpiId(blankToNull(req.upiId()));
+        if (req.payeeName() != null) cfg.setPayeeName(blankToNull(req.payeeName()));
+        if (req.accountNumber() != null) cfg.setAccountNumber(blankToNull(req.accountNumber()));
+        if (req.ifscCode() != null) {
+            cfg.setIfscCode(blankToNull(req.ifscCode().toUpperCase()));
         }
         cfg.setUpdatedAt(LocalDateTime.now());
         cfg = configRepo.save(cfg);
@@ -531,10 +557,25 @@ public class SocietyServiceImpl implements SocietyService {
 
         BigDecimal defaultAmount = cfg.getDefaultPerFlatAmount();
         List<Flat> flats = flatRepo.findByBuildingId(buildingId);
-        return flats.stream().map(f -> {
-            // Resolve the tenant's display name. Stays best-effort —
-            // an empty UserSummary falls through to "—" rather than
-            // blocking the whole dashboard on a user-service blip.
+        // Pull every charge for every flat in the building for this
+        // month in a single query — N rows for N flats × M categories.
+        // We group them in-memory by flat_id so the per-flat loop below
+        // can emit either:
+        //   * one "NEW_FLAT" row when a flat has no charges at all
+        //     (placeholder + Add-charge CTA on the UI), OR
+        //   * one row per (flat, category) when charges exist
+        java.util.Map<String, List<MaintenanceCollection>> chargesByFlat =
+                collectionRepo
+                        .findByBuildingIdAndForMonth(buildingId, resolvedMonth)
+                        .stream()
+                        .collect(java.util.stream.Collectors.groupingBy(
+                                MaintenanceCollection::getFlatId));
+
+        List<FlatMaintenanceRowResponse> out = new java.util.ArrayList<>();
+        for (Flat f : flats) {
+            // Resolve the tenant's display name once per flat. Stays
+            // best-effort — a user-service blip falls through to a
+            // short-id placeholder rather than blocking the dashboard.
             String tenantName = "(vacant)";
             if (f.getTenantId() != null && !f.getTenantId().isBlank()) {
                 try {
@@ -549,31 +590,48 @@ public class SocietyServiceImpl implements SocietyService {
                 }
             }
 
-            // Look up the (flat, month) collection row. Missing row =
-            // "no entry yet for this month" — render the building
-            // default as the displayed amount and flag status NEW_FLAT.
-            Optional<MaintenanceCollection> row = collectionRepo
-                    .findByFlatIdAndForMonth(f.getId(), resolvedMonth);
-            BigDecimal monthAmount = row.map(MaintenanceCollection::getAmountDue)
-                    .orElse(defaultAmount);
-            String status = row.map(r -> r.getStatus().name()).orElse("NEW_FLAT");
-
-            return FlatMaintenanceRowResponse.builder()
-                    .flatId(f.getId())
-                    .flatNumber(f.getFlatNumber())
-                    .tenantUserId(f.getTenantId())
-                    .tenantName(tenantName)
-                    .monthAmount(monthAmount)
-                    .status(status)
-                    .defaultAmount(defaultAmount)
-                    .forMonth(resolvedMonth)
-                    .notes(row.map(MaintenanceCollection::getNotes).orElse(null))
-                    .paidOn(row.map(MaintenanceCollection::getPaidOn).orElse(null))
-                    .paidVia(row.map(MaintenanceCollection::getPaidVia).orElse(null))
-                    .amountPaid(row.map(MaintenanceCollection::getAmountPaid).orElse(null))
-                    .category(row.map(MaintenanceCollection::getCategory).orElse(null))
-                    .build();
-        }).toList();
+            List<MaintenanceCollection> rows = chargesByFlat.getOrDefault(
+                    f.getId(), java.util.List.of());
+            if (rows.isEmpty()) {
+                // No charges yet → emit a placeholder row so the UI can
+                // render the flat with an "Add charge" CTA. monthAmount
+                // = building default; status = NEW_FLAT; category=null.
+                out.add(FlatMaintenanceRowResponse.builder()
+                        .flatId(f.getId())
+                        .flatNumber(f.getFlatNumber())
+                        .tenantUserId(f.getTenantId())
+                        .tenantName(tenantName)
+                        .monthAmount(defaultAmount)
+                        .status("NEW_FLAT")
+                        .defaultAmount(defaultAmount)
+                        .forMonth(resolvedMonth)
+                        .build());
+            } else {
+                // One response row per charge. Sort alphabetically by
+                // category name so the UI is deterministic across reloads.
+                rows.sort(java.util.Comparator.comparing(
+                        r -> r.getCategory() == null ? "" : r.getCategory().name()));
+                for (MaintenanceCollection r : rows) {
+                    out.add(FlatMaintenanceRowResponse.builder()
+                            .flatId(f.getId())
+                            .flatNumber(f.getFlatNumber())
+                            .tenantUserId(f.getTenantId())
+                            .tenantName(tenantName)
+                            .monthAmount(r.getAmountDue())
+                            .status(r.getStatus().name())
+                            .defaultAmount(defaultAmount)
+                            .forMonth(resolvedMonth)
+                            .notes(r.getNotes())
+                            .paidOn(r.getPaidOn())
+                            .paidVia(r.getPaidVia())
+                            .amountPaid(r.getAmountPaid())
+                            .category(r.getCategory())
+                            .collectionId(r.getId())
+                            .build());
+                }
+            }
+        }
+        return out;
     }
 
     @Override
@@ -600,12 +658,20 @@ public class SocietyServiceImpl implements SocietyService {
         String me = CallerSecurity.getCurrentAuthUserId().orElse(cfg.getMaintainerUserId());
         LocalDateTime now = LocalDateTime.now();
 
+        // V5: the row key is (flat_id, for_month, category). Default
+        // missing category to MAINTENANCE so legacy callers that don't
+        // set it keep working — same single-row behaviour as before.
+        MaintenanceCategory category = req.category() == null
+                ? MaintenanceCategory.MAINTENANCE
+                : req.category();
+
         MaintenanceCollection row = collectionRepo
-                .findByFlatIdAndForMonth(flatId, req.forMonth())
+                .findByFlatIdAndForMonthAndCategory(flatId, req.forMonth(), category)
                 .orElseGet(() -> MaintenanceCollection.builder()
                         .buildingId(buildingId)
                         .flatId(flatId)
                         .forMonth(req.forMonth())
+                        .category(category)
                         .amountDue(req.amountDue())
                         .status(CollectionStatus.DUE)
                         .createdAt(now)
@@ -618,15 +684,11 @@ public class SocietyServiceImpl implements SocietyService {
         if (req.status() != null) {
             row.setStatus(req.status());
         }
-        // category: write the supplied value, OR default to MAINTENANCE on
-        // first creation so the column never goes NULL on new rows
-        // (NULL-tolerated for legacy data, but new writes should always
-        // carry a real value so the tenant ledger renders correctly).
-        if (req.category() != null) {
-            row.setCategory(req.category());
-        } else if (row.getCategory() == null) {
-            row.setCategory(MaintenanceCategory.MAINTENANCE);
-        }
+        // Category is part of the row key. On update we trust the
+        // caller is editing the row they just fetched (category in
+        // the request matches what's stored). On create we set it
+        // from the variable resolved above.
+        row.setCategory(category);
         row.setNotes(req.notes());
         row.setMarkedByUserId(me);
         if (req.paidOn() != null) row.setPaidOn(req.paidOn());
@@ -677,10 +739,100 @@ public class SocietyServiceImpl implements SocietyService {
                 .paidVia(saved.getPaidVia())
                 .amountPaid(saved.getAmountPaid())
                 .category(saved.getCategory())
+                .collectionId(saved.getId())
                 .build();
     }
 
+    // ── Tenant: my flat's bills (Pay-Now surface) ──────────────────
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<FlatMaintenanceRowResponse> listMyBillsForMonth(
+            String buildingId, String month) {
+        SocietyConfig cfg = requireConfig(buildingId);
+        // Standard society-read check: owner / maintainer / tenant of
+        // ANY flat in the building / admin. We further narrow to the
+        // caller's OWN flat below — even if an owner calls this for
+        // some reason, they only see their own flat's bills (probably
+        // none, since they don't typically rent their own flats).
+        requireOwnerOrMaintainerOrTenantOrAdmin(buildingId, cfg);
+
+        String me = CallerSecurity.getCurrentAuthUserId().orElseThrow(
+                () -> new ForbiddenException("Sign in required."));
+
+        // Find the caller's flat in this building. There should be
+        // exactly one — a tenant lives in one flat at a time — but
+        // we tolerate zero gracefully (returns empty list) and
+        // multiple defensively (rare data state, takes the first).
+        List<Flat> myFlatsHere = flatRepo.findByBuildingId(buildingId).stream()
+                .filter(f -> me.equals(f.getTenantId()))
+                .toList();
+        if (myFlatsHere.isEmpty()) {
+            log.info("listMyBillsForMonth no flat for tenant authUserId={} in building={}",
+                    me, buildingId);
+            return java.util.List.of();
+        }
+        Flat myFlat = myFlatsHere.get(0);
+
+        String resolvedMonth = (month == null || month.isBlank())
+                ? java.time.YearMonth.now().toString()
+                : month;
+
+        List<MaintenanceCollection> rows = collectionRepo
+                .findByFlatIdAndForMonthOrderByCategory(myFlat.getId(), resolvedMonth);
+
+        BigDecimal defaultAmount = cfg.getDefaultPerFlatAmount();
+        // Tenant-side display name — show the actual tenant (themselves)
+        // so the UI banner is consistent with the maintainer view.
+        // Resolved into a final local so the lambda below can capture it.
+        final String myName = resolveTenantName(me);
+
+        if (rows.isEmpty()) {
+            // No charges entered yet for this month — return an empty
+            // list. The UI's empty state explains that the maintainer
+            // hasn't posted anything yet for this month.
+            return java.util.List.of();
+        }
+
+        return rows.stream().map(r -> FlatMaintenanceRowResponse.builder()
+                .collectionId(r.getId())
+                .flatId(myFlat.getId())
+                .flatNumber(myFlat.getFlatNumber())
+                .tenantUserId(me)
+                .tenantName(myName)
+                .monthAmount(r.getAmountDue())
+                .status(r.getStatus().name())
+                .defaultAmount(defaultAmount)
+                .forMonth(resolvedMonth)
+                .notes(r.getNotes())
+                .paidOn(r.getPaidOn())
+                .paidVia(r.getPaidVia())
+                .amountPaid(r.getAmountPaid())
+                .category(r.getCategory())
+                .build()).toList();
+    }
+
     // ── Helpers ───────────────────────────────────────────────────
+
+    /**
+     * Resolve a user-service display name for an authUserId, falling
+     * back to a "Tenant abc12345…" placeholder when user-service is
+     * down or returns an empty profile. Used by every per-flat
+     * surface so the rendering stays consistent.
+     */
+    private String resolveTenantName(String authUserId) {
+        if (authUserId == null || authUserId.isBlank()) return "(vacant)";
+        try {
+            UserClient.UserSummary u = userClient.getUserByAuthId(authUserId);
+            String full = u == null ? null : u.fullName();
+            return (full == null || full.isBlank())
+                    ? ("Tenant " + safeShortId(authUserId))
+                    : full;
+        } catch (Exception ex) {
+            log.warn("resolveTenantName user-service blip authUserId={}", authUserId, ex);
+            return "Tenant " + safeShortId(authUserId);
+        }
+    }
 
     /** Short-id helper for placeholder tenant names — never NPEs on null. */
     private static String safeShortId(String id) {

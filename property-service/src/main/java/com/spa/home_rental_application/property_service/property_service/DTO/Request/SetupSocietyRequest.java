@@ -4,6 +4,7 @@ import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
@@ -33,6 +34,24 @@ public record SetupSocietyRequest(
         String maintainerUserId,
 
         @Size(max = 200)
-        String societyDisplayName
+        String societyDisplayName,
+
+        /* ─── Collection bank / UPI ───
+         * All optional. Setting upi_id makes the tenant Pay-Now
+         * button render a QR; null upi_id hides the button.
+         */
+        @Size(max = 64)
+        String upiId,
+
+        @Size(max = 200)
+        String payeeName,
+
+        @Size(max = 32)
+        String accountNumber,
+
+        @Size(max = 16)
+        @Pattern(regexp = "^$|^[A-Z]{4}0[A-Z0-9]{6}$",
+                message = "IFSC must be 4 letters, '0', then 6 alphanumerics")
+        String ifscCode
 ) {
 }

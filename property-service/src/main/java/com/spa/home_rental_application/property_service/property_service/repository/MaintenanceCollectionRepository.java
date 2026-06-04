@@ -17,9 +17,35 @@ public interface MaintenanceCollectionRepository extends JpaRepository<Maintenan
     List<MaintenanceCollection> findByBuildingIdAndForMonthOrderByFlatId(
             String buildingId, String forMonth);
 
-    Optional<MaintenanceCollection> findByFlatIdAndForMonth(String flatId, String forMonth);
+    /**
+     * All rows for one (flat, month) pair. Post-V5 there may be
+     * multiple categories (water bill + maintenance + electricity
+     * each as a separate row). Ordered alphabetically by category
+     * for deterministic UI rendering.
+     */
+    List<MaintenanceCollection> findByFlatIdAndForMonthOrderByCategory(
+            String flatId, String forMonth);
+
+    /**
+     * The single row for a specific (flat, month, category) tuple.
+     * Used by the upsert flow to decide insert-vs-update — the
+     * UNIQUE (flat_id, for_month, category) constraint guarantees
+     * at most one match.
+     */
+    Optional<MaintenanceCollection> findByFlatIdAndForMonthAndCategory(
+            String flatId, String forMonth,
+            com.spa.home_rental_application.property_service.property_service
+                    .enums.MaintenanceCategory category);
 
     List<MaintenanceCollection> findByFlatIdOrderByForMonthDesc(String flatId);
+
+    /**
+     * Every charge for every flat in a building, for a given month.
+     * Used by the maintainer's flat dashboard to render multi-line
+     * cards (one card per flat, one badge per category).
+     */
+    List<MaintenanceCollection> findByBuildingIdAndForMonth(
+            String buildingId, String forMonth);
 
     /** Total collected (PAID amount_paid) for a building in a month.
      *  Drives the "Collected this month" KPI on the ledger header.

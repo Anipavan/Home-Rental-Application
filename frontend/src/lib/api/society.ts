@@ -146,4 +146,16 @@ export const societyApi = {
         body,
       )
       .then((r) => r.data),
+
+  /**
+   * Tenant-side: every charge against the caller's own flat for the
+   * given month. Caller must be a tenant of a flat in the building.
+   * Drives the Pay-Now surface on /app/society.
+   */
+  myBills: (buildingId: string, month?: string) =>
+    api
+      .get<FlatMaintenanceRow[]>(`/society/${buildingId}/my-bills`, {
+        params: month ? { month } : undefined,
+      })
+      .then((r) => r.data),
 };
