@@ -223,7 +223,10 @@
     cursor: pointer;
     opacity: 0.6;
     padding: 4px;
-    margin-right: -2px;
+    /* No negative margin-right — the calendar glyph used to be clipped
+       by the input's right edge so only ~2px peeked out. Default 0
+       margin keeps the whole glyph inside the click target. */
+    margin-right: 0;
     border-radius: 6px;
     /* hue-rotate aimed at our emerald 158deg primary so the indicator
        picks up the brand colour. Saturate boosts the rendered glyph,

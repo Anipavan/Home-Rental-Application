@@ -213,7 +213,7 @@ export function OwnerSocietyPage() {
               type="month"
               value={month}
               onChange={(e) => setMonth(e.target.value || currentMonth())}
-              className="w-40"
+              className="w-48"
             />
           </div>
 
@@ -256,7 +256,7 @@ export function OwnerSocietyPage() {
             />
             <Kpi
               icon={Wallet}
-              label="Lifetime balance"
+              label="Net Fund Balance"
               value={formatINR(ledgerQ.data?.balanceLifetime ?? 0)}
               tone={
                 (ledgerQ.data?.balanceLifetime ?? 0) >= 0

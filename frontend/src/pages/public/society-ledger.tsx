@@ -120,8 +120,8 @@ export function PublicSocietyLedgerPage() {
               {ledgerQ.data!.societyDisplayName ?? "Society ledger"}
             </h1>
             <p className="text-muted-foreground mt-1 text-sm">
-              A transparent view of common-area expenses. Read-only — for
-              residents of this building.
+              View society expenses, maintenance spending, and fund
+              balances with complete transparency.
             </p>
 
             <div className="flex items-center gap-3 mt-6 mb-4">
@@ -130,7 +130,7 @@ export function PublicSocietyLedgerPage() {
                 type="month"
                 value={month}
                 onChange={(e) => setMonth(e.target.value || currentMonth())}
-                className="w-40"
+                className="w-48"
               />
             </div>
 
@@ -143,7 +143,7 @@ export function PublicSocietyLedgerPage() {
               />
               <Kpi
                 icon={Wallet}
-                label="Lifetime balance"
+                label="Net Fund Balance"
                 value={formatINR(ledgerQ.data!.balanceLifetime)}
                 tone={
                   ledgerQ.data!.balanceLifetime >= 0
@@ -199,8 +199,8 @@ export function PublicSocietyLedgerPage() {
 
             <p className="text-xs text-muted-foreground mt-6 text-center">
               Powered by{" "}
-              <span className="font-semibold">Anirudh Homes</span> · this is a
-              public read-only link. Rotate it from the dashboard if it leaks.
+              <span className="font-semibold">Anirudh Homes</span> · Public
+              view for residents and stakeholders.
             </p>
           </>
         )}
@@ -322,10 +322,6 @@ function FlatBillsCardBody({ ledger }: { ledger: SocietyLedger }) {
           </tbody>
         </table>
       </div>
-      <p className="text-[11px] text-muted-foreground mt-3">
-        Flat numbers only — no tenant identifying data shown on this
-        public view.
-      </p>
     </>
   );
 }

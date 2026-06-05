@@ -256,7 +256,7 @@ export function MaintainerFlatsPage() {
           type="month"
           value={month}
           onChange={(e) => setMonth(e.target.value || currentMonth())}
-          className="w-40"
+          className="w-48"
         />
       </div>
 
