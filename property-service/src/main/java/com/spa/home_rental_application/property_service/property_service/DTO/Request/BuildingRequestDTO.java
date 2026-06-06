@@ -1,6 +1,5 @@
 package com.spa.home_rental_application.property_service.property_service.DTO.Request;
 
-import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -12,7 +11,7 @@ import lombok.*;
  * Business rules enforced here (client gets a clean 400 with field-level
  * messages instead of a 500 from a downstream NPE):
  *   - Every building MUST be tied to an ownerId (no orphan listings)
- *   - Total flats must be 6 - 20 inclusive
+ *   - Total flats must be at least 1 (no upper bound — large complexes are valid)
  *   - Total floors must be at least 1
  */
 @Builder
@@ -37,8 +36,7 @@ public record BuildingRequestDTO(
         Integer buildingTotalFloors,
 
         @NotNull(message = "Total flats is required")
-        @Min(value = 6,  message = "A building must have at least 6 flats")
-        @Max(value = 20, message = "A building cannot have more than 20 flats")
+        @Min(value = 1, message = "A building must have at least 1 flat")
         Integer buildingTotalFlats,
 
         String amenities,

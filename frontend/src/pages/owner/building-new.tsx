@@ -217,11 +217,10 @@ export function BuildingNewPage() {
                 required
               />
               <Field
-                label="Total flats (6–20)"
+                label="Total flats"
                 name="buildingTotalFlats"
                 type="number"
-                min={6}
-                max={20}
+                min={1}
                 required
               />
             </div>

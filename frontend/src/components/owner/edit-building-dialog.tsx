@@ -224,12 +224,11 @@ export function EditBuildingDialog({
               />
             </div>
             <div>
-              <Label htmlFor="ed-flats">Total flats (6–20)</Label>
+              <Label htmlFor="ed-flats">Total flats</Label>
               <Input
                 id="ed-flats"
                 type="number"
-                min={6}
-                max={20}
+                min={1}
                 value={totalFlats}
                 onChange={(e) => setTotalFlats(e.target.value)}
                 className="mt-1.5"
