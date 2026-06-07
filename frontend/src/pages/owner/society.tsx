@@ -240,7 +240,7 @@ export function OwnerSocietyPage() {
             />
             <Kpi
               icon={Wrench}
-              label="Outstanding this month"
+              label="Total Dues this month"
               value={formatINR(ledgerQ.data?.outstandingThisMonth ?? 0)}
               tone="destructive"
             />

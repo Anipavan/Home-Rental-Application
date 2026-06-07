@@ -141,7 +141,7 @@ export function AdminPaymentsPage() {
 
       <div className="grid gap-4 sm:grid-cols-3 mb-6">
         <Stat label="Collected (lifetime)" value={formatINR(stats.collected)} tone="success" />
-        <Stat label="Outstanding" value={formatINR(stats.outstanding)} tone="warning" />
+        <Stat label="Total Dues" value={formatINR(stats.outstanding)} tone="warning" />
         <Stat label="Failed transactions" value={String(stats.failed)} tone="destructive" />
       </div>
 

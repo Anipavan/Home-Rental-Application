@@ -192,7 +192,7 @@ export function OwnerPaymentsPage() {
 
       <div className="grid gap-4 sm:grid-cols-3 mb-6">
         <Stat label="Collected" value={formatINR(totalCollected)} tone="success" />
-        <Stat label="Outstanding" value={formatINR(totalOutstanding)} tone="warning" />
+        <Stat label="Total Dues" value={formatINR(totalOutstanding)} tone="warning" />
         <Stat
           label="Overdue"
           value={formatINR(

@@ -326,7 +326,7 @@ function TenantCard({
             </p>
           </div>
           <div>
-            <p className="text-muted-foreground">Outstanding</p>
+            <p className="text-muted-foreground">Total Dues</p>
             <p
               className={
                 "font-semibold mt-0.5 " +

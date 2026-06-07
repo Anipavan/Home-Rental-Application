@@ -53,8 +53,21 @@ const CATEGORY_LABELS: Record<FlatChargeCategory, string> = {
   MAINTENANCE: "Maintenance",
   GAS_BILL: "Gas bill",
   ELECTRICITY: "Electricity",
-  COMMON_AREA_SHARE: "Common-area share",
-  OTHER: "Other",
+  // "Common-area share" was renamed to "Additional Expenses" — the
+  // underlying enum value stays COMMON_AREA_SHARE for backwards-compat
+  // with existing rows / backend validation. Only the operator-facing
+  // label changed.
+  COMMON_AREA_SHARE: "Additional Expenses",
+  OTHER: "Additional Expenses",
+};
+
+/** Pretty month label for table titles — "June 2026" instead of
+ *  "2026-06" so the maintainer's eye doesn't have to translate. */
+const formatMonthLabel = (yyyyMm: string): string => {
+  const [y, m] = yyyyMm.split("-").map(Number);
+  if (!y || !m) return yyyyMm;
+  const d = new Date(y, m - 1, 1);
+  return d.toLocaleString("en-IN", { month: "long", year: "numeric" });
 };
 
 const currentMonth = () => {
@@ -275,7 +288,7 @@ export function MaintainerFlatsPage() {
         />
         <Kpi
           icon={Wrench}
-          label="Outstanding"
+          label="Total Dues"
           value={formatINR(ledgerQ.data?.outstandingThisMonth ?? 0)}
           tone="destructive"
         />
@@ -301,7 +314,7 @@ export function MaintainerFlatsPage() {
       <Card>
         <CardContent className="p-6">
           <h3 className="font-display font-semibold text-lg mb-4">
-            Flats — {month}
+            Flat charges — {formatMonthLabel(month)}
           </h3>
 
           {flatsQ.isLoading ? (
@@ -435,12 +448,17 @@ function makePlaceholderRow(group: FlatGroup): FlatMaintenanceRow {
  * compat with any rows that already used them, but drop them from
  * the operator-facing dashboard so the maintainer isn't tempted to
  * double-bill a tenant.
+ *
+ * <p>OTHER was also dropped — the maintainer asked for a single
+ * "Additional Expenses" bucket and a computed "Total" column at the
+ * right edge. Existing OTHER rows still load into the COMMON_AREA_SHARE
+ * cell because both labels resolve to "Additional Expenses" in
+ * {@link CATEGORY_LABELS}, but new entries always use COMMON_AREA_SHARE.
  */
 const CATEGORY_COLUMNS: FlatChargeCategory[] = [
   "MAINTENANCE",
   "WATER_BILL",
   "COMMON_AREA_SHARE",
-  "OTHER",
 ];
 
 /**
@@ -471,7 +489,7 @@ function FlatsTable({
               Flat
             </th>
             <th className="text-left px-3 py-2 font-semibold text-xs uppercase tracking-wider text-muted-foreground">
-              Tenant
+              Name
             </th>
             {CATEGORY_COLUMNS.map((c) => (
               <th
@@ -482,13 +500,16 @@ function FlatsTable({
               </th>
             ))}
             <th className="text-right px-3 py-2 font-semibold text-xs uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+              Total
+            </th>
+            <th className="text-center px-3 py-2 font-semibold text-xs uppercase tracking-wider text-muted-foreground whitespace-nowrap">
               Paid
             </th>
             <th className="text-right px-3 py-2 font-semibold text-xs uppercase tracking-wider text-muted-foreground whitespace-nowrap">
-              Outstanding
+              Dues
             </th>
-            <th className="text-right px-3 py-2 font-semibold text-xs uppercase tracking-wider text-muted-foreground whitespace-nowrap">
-              Balance
+            <th className="text-left px-3 py-2 font-semibold text-xs uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+              Remarks
             </th>
           </tr>
         </thead>
@@ -508,7 +529,10 @@ function FlatsTable({
 }
 
 /** One row of the FlatsTable — a single flat with one cell per
- *  category, plus the Outstanding total at the right. */
+ *  category, plus the right-edge money summary. Layout: Flat, Name,
+ *  Maintenance, Water bill, Additional Expenses, Total (= sum of
+ *  category cells), Paid (Yes/No clickable toggle), Dues (Total - Paid),
+ *  Remarks (inline-editable note). */
 function FlatRow({
   group,
   buildingId,
@@ -519,33 +543,56 @@ function FlatRow({
   month: string;
 }) {
   // Index the flat's charges by category for O(1) lookup per cell.
+  // Legacy OTHER rows are surfaced in the COMMON_AREA_SHARE cell
+  // (both labels resolve to "Additional Expenses"). If a flat has
+  // BOTH OTHER and COMMON_AREA_SHARE rows, COMMON_AREA_SHARE wins —
+  // OTHER is the older, deprecated bucket.
   const byCategory = new Map<FlatChargeCategory, FlatMaintenanceRow>();
   for (const r of group.rows) {
-    if (r.status !== "NEW_FLAT" && r.category) {
-      byCategory.set(r.category, r);
+    if (r.status === "NEW_FLAT" || !r.category) continue;
+    const key: FlatChargeCategory =
+      r.category === "OTHER" ? "COMMON_AREA_SHARE" : r.category;
+    // First-write-wins is wrong (we'd lose a fresh COMMON_AREA_SHARE
+    // to an older OTHER). Resolve preference explicitly.
+    const existing = byCategory.get(key);
+    if (!existing) {
+      byCategory.set(key, r);
+    } else if (existing.category === "OTHER" && r.category === "COMMON_AREA_SHARE") {
+      byCategory.set(key, r);
     }
   }
   // Money columns on the right edge:
-  //   * paid       = sum of recorded payments (amountPaid where the
-  //                  maintainer captured it, else fall back to the
-  //                  amount due on rows the maintainer marked PAID).
-  //   * outstanding = what's still owed (DUE + OVERDUE).
-  //   * balance    = total this month - what's been paid. Visually it
-  //                  matches `outstanding` once WAIVED rows aren't in
-  //                  play; we render both so the operator can quickly
-  //                  cross-check the math.
+  //   * total      = sum of all non-NEW_FLAT non-WAIVED row amounts
+  //                  (this is what the new "Total" column shows).
+  //   * paid       = sum of recorded payments.
+  //   * dues       = total - paid (what was "Balance" before).
+  const realRows = group.rows.filter(
+    (r) => r.status !== "NEW_FLAT" && r.status !== "WAIVED",
+  );
+  const total = realRows.reduce((s, r) => s + r.monthAmount, 0);
   const paid = group.rows
     .filter((r) => r.status === "PAID")
     .reduce((s, r) => s + (r.amountPaid ?? r.monthAmount), 0);
-  const outstanding = group.rows
-    .filter((r) => r.status === "DUE" || r.status === "OVERDUE")
-    .reduce((s, r) => s + r.monthAmount, 0);
-  // Total amount this month across DUE/OVERDUE/PAID (WAIVED rows
-  // are excluded since they were explicitly forgiven).
-  const totalBilled = group.rows
-    .filter((r) => r.status !== "NEW_FLAT" && r.status !== "WAIVED")
-    .reduce((s, r) => s + r.monthAmount, 0);
-  const balance = totalBilled - paid;
+  const dues = total - paid;
+
+  // Paid-Yes/No semantics: a flat is "Yes" when every billed row this
+  // month is PAID (matches the per-flat-paid logic in the KPI strip
+  // above). "No" otherwise. NEW_FLAT placeholders mean nothing is
+  // billed — show "—".
+  const billedRows = group.rows.filter(
+    (r) => r.status !== "NEW_FLAT" && r.status !== "WAIVED",
+  );
+  const allPaid =
+    billedRows.length > 0 && billedRows.every((r) => r.status === "PAID");
+  const hasAny = billedRows.length > 0;
+
+  // Remarks: surface the first non-empty notes value across the flat's
+  // rows for read; the inline editor below saves back into the row's
+  // notes via upsertFlatCollection. The maintainer typically uses
+  // remarks as a single message about the whole month, so first-wins
+  // is fine; an explicit edit overwrites just that row's notes.
+  const remarkRow = group.rows.find((r) => r.notes) ?? group.rows[0];
+  const remarkText = remarkRow?.notes ?? "";
 
   return (
     <tr className="border-b border-border/60 last:border-b-0 hover:bg-secondary/20">
@@ -556,7 +603,7 @@ function FlatRow({
         </Badge>
       </td>
 
-      {/* Tenant */}
+      {/* Name (was 'Tenant') */}
       <td className="px-3 py-2 align-top">
         <span className="text-sm">{group.tenantName}</span>
       </td>
@@ -577,43 +624,256 @@ function FlatRow({
         );
       })}
 
-      {/* Paid */}
+      {/* Total (= sum across category cells, was 'Other' column) */}
       <td className="px-3 py-2 align-top text-right">
-        {paid > 0 ? (
-          <span className="font-semibold text-success whitespace-nowrap">
-            {formatINR(paid)}
+        {total > 0 ? (
+          <span className="font-semibold font-display whitespace-nowrap">
+            {formatINR(total)}
           </span>
         ) : (
           <span className="text-xs text-muted-foreground">—</span>
         )}
       </td>
 
-      {/* Outstanding */}
-      <td className="px-3 py-2 align-top text-right">
-        {outstanding > 0 ? (
-          <span className="font-semibold text-destructive whitespace-nowrap">
-            {formatINR(outstanding)}
-          </span>
+      {/* Paid — Yes/No clickable toggle */}
+      <td className="px-3 py-2 align-top text-center">
+        {hasAny ? (
+          <PaidToggle
+            buildingId={buildingId}
+            flatId={group.flatId}
+            month={month}
+            rows={billedRows}
+            allPaid={allPaid}
+          />
         ) : (
           <span className="text-xs text-muted-foreground">—</span>
         )}
       </td>
 
-      {/* Balance (= billed - paid) */}
+      {/* Dues (was 'Balance') */}
       <td className="px-3 py-2 align-top text-right">
-        {totalBilled > 0 ? (
+        {total > 0 ? (
           <span
             className={`font-semibold whitespace-nowrap ${
-              balance <= 0 ? "text-success" : "text-foreground"
+              dues <= 0 ? "text-success" : "text-destructive"
             }`}
           >
-            {formatINR(balance)}
+            {formatINR(dues)}
           </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        )}
+      </td>
+
+      {/* Remarks — inline editable */}
+      <td className="px-3 py-2 align-top">
+        {remarkRow ? (
+          <RemarksCell
+            buildingId={buildingId}
+            row={remarkRow}
+            month={month}
+            initial={remarkText}
+          />
         ) : (
           <span className="text-xs text-muted-foreground">—</span>
         )}
       </td>
     </tr>
+  );
+}
+
+/**
+ * Click-to-toggle Yes/No for the per-flat Paid column. Flipping
+ * Yes→No marks every billed row this month as DUE; flipping No→Yes
+ * marks every billed row as PAID. The fan-out runs sequentially via
+ * upsertFlatCollection — this is the same path the per-cell dialog
+ * uses, just batched. Reasonably cheap: each flat has 1-4 rows.
+ */
+function PaidToggle({
+  buildingId,
+  flatId,
+  month,
+  rows,
+  allPaid,
+}: {
+  buildingId: string;
+  flatId: string;
+  month: string;
+  rows: FlatMaintenanceRow[];
+  allPaid: boolean;
+}) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [busy, setBusy] = useState(false);
+
+  const onClick = async () => {
+    if (busy) return;
+    const target: CollectionStatus = allPaid ? "DUE" : "PAID";
+    setBusy(true);
+    try {
+      // One upsert per row. We don't have a bulk endpoint, but in
+      // practice a flat has 1-3 rows per month so the round-trip
+      // cost is small.
+      for (const r of rows) {
+        if (!r.category) continue; // can't upsert without a category
+        await societyApi.upsertFlatCollection(buildingId, flatId, {
+          forMonth: month,
+          amountDue: r.monthAmount,
+          status: target,
+          category: r.category,
+          notes: r.notes ?? "",
+          paidOn: target === "PAID" ? new Date().toISOString().slice(0, 10) : undefined,
+          amountPaid: target === "PAID" ? r.monthAmount : undefined,
+          paidVia: target === "PAID" ? r.paidVia ?? "CASH" : undefined,
+        });
+      }
+      qc.invalidateQueries({ queryKey: ["society-flats", buildingId] });
+      qc.invalidateQueries({ queryKey: ["society-ledger", buildingId] });
+      toast({
+        title: target === "PAID" ? "Marked as paid." : "Marked as due.",
+      });
+    } catch (err) {
+      toast({
+        title: "Couldn't update",
+        description: extractErrorMessage(err),
+        variant: "destructive",
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={onClick}
+      className={`inline-flex items-center justify-center rounded-full px-3 py-0.5 text-[11px] font-semibold uppercase tracking-wider transition-colors disabled:opacity-50 ${
+        allPaid
+          ? "bg-success/20 text-success hover:bg-success/30"
+          : "bg-destructive/20 text-destructive hover:bg-destructive/30"
+      }`}
+      title={allPaid ? "Click to mark as unpaid" : "Click to mark all paid"}
+    >
+      {busy ? "…" : allPaid ? "Yes" : "No"}
+    </button>
+  );
+}
+
+/**
+ * Inline Remarks cell. Click to expand into a textarea + Save/Cancel.
+ * Writes back into the row's notes via upsertFlatCollection — the
+ * same mutation the SetAmountDialog uses, just scoped to the notes
+ * field. We don't try to keep notes synchronised across sibling rows;
+ * the maintainer edits one row's note, that's what changes.
+ */
+function RemarksCell({
+  buildingId,
+  row,
+  month,
+  initial,
+}: {
+  buildingId: string;
+  row: FlatMaintenanceRow;
+  month: string;
+  initial: string;
+}) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(initial);
+  const [busy, setBusy] = useState(false);
+
+  // Re-sync local value when the prop changes (e.g. after a query
+  // refetch shows a fresh note that another tab wrote).
+  useEffect(() => {
+    if (!editing) setValue(initial);
+  }, [initial, editing]);
+
+  const save = async () => {
+    if (!row.category) {
+      // No category = NEW_FLAT placeholder; we can't upsert it
+      // without an amount + category. Tell the maintainer to add a
+      // charge first.
+      toast({
+        title: "Add a charge first",
+        description: "Remarks attach to an existing charge row.",
+      });
+      setEditing(false);
+      return;
+    }
+    setBusy(true);
+    try {
+      await societyApi.upsertFlatCollection(buildingId, row.flatId, {
+        forMonth: month,
+        amountDue: row.monthAmount,
+        status: (row.status === "NEW_FLAT" ? "DUE" : row.status) as CollectionStatus,
+        category: row.category,
+        notes: value,
+        paidOn: row.paidOn ?? undefined,
+        amountPaid: row.amountPaid ?? undefined,
+        paidVia: row.paidVia ?? undefined,
+      });
+      qc.invalidateQueries({ queryKey: ["society-flats", buildingId] });
+      toast({ title: "Remark saved." });
+      setEditing(false);
+    } catch (err) {
+      toast({
+        title: "Couldn't save",
+        description: extractErrorMessage(err),
+        variant: "destructive",
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <div className="flex flex-col gap-1 min-w-[180px]">
+        <Textarea
+          rows={2}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder="e.g. agreed cash on 5th"
+          className="text-xs"
+        />
+        <div className="flex gap-1">
+          <Button
+            size="sm"
+            variant="gradient"
+            disabled={busy}
+            onClick={save}
+            className="h-6 px-2 text-[10px]"
+          >
+            {busy ? "…" : "Save"}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={busy}
+            onClick={() => {
+              setValue(initial);
+              setEditing(false);
+            }}
+            className="h-6 px-2 text-[10px]"
+          >
+            Cancel
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className="text-left text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/60 rounded px-1.5 py-0.5 max-w-[200px] truncate w-full"
+      onClick={() => setEditing(true)}
+      title={initial || "Add a remark"}
+    >
+      {initial || <span className="italic opacity-60">+ Add note</span>}
+    </button>
   );
 }
 

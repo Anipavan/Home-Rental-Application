@@ -201,7 +201,7 @@ export function OwnerDashboard() {
             glance whether to chase now or just wait for the due date. */}
         <KpiCard
           icon={TrendingUp}
-          label="Outstanding rent"
+          label="Total Dues"
           value={formatINR(outstandingAmount)}
           tone={overdueAmount > 0 ? "destructive" : "warning"}
           hint={

@@ -172,7 +172,7 @@ export function TenantSocietyPage() {
             summary={
               myBillsQ.data?.length
                 ? totalDue > 0
-                  ? `Outstanding ${formatINR(totalDue)}`
+                  ? `Total Dues ${formatINR(totalDue)}`
                   : `${myBillsQ.data.length} charge${myBillsQ.data.length === 1 ? "" : "s"}`
                 : "No bills"
             }

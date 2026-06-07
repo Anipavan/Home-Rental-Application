@@ -41,6 +41,13 @@ export function SocietyBankPanel({
   config: SocietyConfig;
 }) {
   const hasUpi = !!config.upiId;
+  // Header dynamically composes the society's display name with
+  // "Bank Account" — e.g. "Sunshine Apartments Bank Account". When the
+  // society hasn't set a display name yet we fall back to the previous
+  // generic copy so the panel still reads sensibly.
+  const headerLabel = config.societyDisplayName
+    ? `${config.societyDisplayName} Bank Account`
+    : "Society Bank Account";
   return (
     <Card className="mb-6">
       <CardContent className="p-5">
@@ -48,7 +55,7 @@ export function SocietyBankPanel({
           <div className="flex items-center gap-2">
             <Banknote className="size-4 text-primary" />
             <h3 className="font-display font-semibold text-sm">
-              Common bank account
+              {headerLabel}
             </h3>
           </div>
           <EditBankDialog buildingId={buildingId} config={config} />
@@ -179,7 +186,11 @@ function EditBankDialog({
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Common bank account</DialogTitle>
+          <DialogTitle>
+            {config.societyDisplayName
+              ? `${config.societyDisplayName} Bank Account`
+              : "Society Bank Account"}
+          </DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
           Tenants pay into this account via UPI scan or bank transfer.
