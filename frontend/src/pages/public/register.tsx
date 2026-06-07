@@ -229,14 +229,28 @@ export function RegisterPage() {
       return;
     }
 
+    // Convert blank-strings to undefined so the backend treats them as
+    // "field omitted" rather than "field present and invalid". The
+    // RegisterRequest has @Pattern annotations on phone / gender /
+    // maritalStatus / tenantType that reject an empty string because
+    // it doesn't match the pattern. lastName has no @NotBlank so an
+    // empty string is technically fine for it, but undefined keeps the
+    // payload shape consistent and avoids a Jackson "" -> null surprise
+    // on the server side.
+    const blank = (v: string | undefined | null): string | undefined => {
+      if (v == null) return undefined;
+      const t = String(v).trim();
+      return t === "" ? undefined : t;
+    };
+
     mutation.mutate({
       userName: String(fd.get("userName") ?? ""),
       userPassword: password,
       userRole: authRole,
       email: String(fd.get("email") ?? ""),
       firstName: String(fd.get("firstName") ?? ""),
-      lastName: String(fd.get("lastName") ?? ""),
-      phone,
+      lastName: blank(String(fd.get("lastName") ?? "")),
+      phone: blank(phone),
       // Strip the UNSELECTED sentinel + blank address so the request
       // body matches the backend's "optional → omit" expectation.
       gender: gender === UNSELECTED ? undefined : gender,
@@ -301,16 +315,32 @@ export function RegisterPage() {
           </div>
 
           {choice === "SOCIETY" && (
-            <SocietyClaimPanel
-              role={societyRole}
-              onRoleChange={setSocietyRole}
-              picked={pickedBuilding}
-              onPick={setPickedBuilding}
-              flatNumber={societyFlatNumber}
-              onFlatNumberChange={setSocietyFlatNumber}
-              note={societyNote}
-              onNoteChange={setSocietyNote}
-            />
+            <>
+              <SocietyClaimPanel
+                role={societyRole}
+                onRoleChange={setSocietyRole}
+                picked={pickedBuilding}
+                onPick={setPickedBuilding}
+                flatNumber={societyFlatNumber}
+                onFlatNumberChange={setSocietyFlatNumber}
+                note={societyNote}
+                onNoteChange={setSocietyNote}
+              />
+              {/* Existing-account escape hatch. Society members who
+                  already have a tenant/owner account on the platform
+                  shouldn't have to re-enter their email + first name —
+                  they can sign in and submit the claim from inside
+                  the app instead. */}
+              <p className="text-xs text-muted-foreground mt-3 text-center">
+                Already have an account?{" "}
+                <Link
+                  to="/login?next=/app/pending-claim"
+                  className="text-primary font-medium hover:underline"
+                >
+                  Sign in to submit your claim
+                </Link>
+              </p>
+            </>
           )}
 
           <form onSubmit={onSubmit} className="mt-6 space-y-4">

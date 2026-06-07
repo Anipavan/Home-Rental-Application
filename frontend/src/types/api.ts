@@ -21,7 +21,10 @@ export interface RegisterRequest {
   userRole: Role;
   email: string;
   firstName: string;
-  lastName: string;
+  /** Optional on the backend (no @NotBlank), but TS treated it as
+   *  required. SOCIETY-member signups omit it entirely; tenant /
+   *  owner signups still collect it. */
+  lastName?: string;
   /** MALE | FEMALE | OTHER | PREFER_NOT_TO_SAY (backend regex accepts these). */
   gender?: string;
   phone?: string;
