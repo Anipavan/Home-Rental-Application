@@ -314,21 +314,50 @@ export function RegisterPage() {
           )}
 
           <form onSubmit={onSubmit} className="mt-6 space-y-4">
-            <div className="grid sm:grid-cols-2 gap-4">
-              <Field label="First name" name="firstName" required />
-              <Field label="Last name" name="lastName" required />
-            </div>
-            <div className="grid sm:grid-cols-2 gap-4">
-              <Field label="Username" name="userName" required />
-              <Field
-                label="Phone"
-                name="phone"
-                type="tel"
-                placeholder="+91-9876543210"
-                hint="Optional. Used for SMS/WhatsApp alerts."
-              />
-            </div>
-            <Field label="Email" name="email" type="email" required />
+            {/* SOCIETY path renders the minimum the backend needs
+                (userName + password + email + firstName) plus the
+                claim fields above. Profile bits like phone, gender,
+                marital status, tenant type, address can be completed
+                later from /app/profile — most society members don't
+                need them at signup, and dragging through the full
+                tenant form feels heavy for a "just let me join the
+                society" intent.
+
+                TENANT / OWNER paths still see the full form because
+                they're filling profile data the rest of the app uses
+                (search-by-tenant-type, agreement PDF address). */}
+            {choice === "SOCIETY" ? (
+              <>
+                <p className="text-xs text-muted-foreground bg-secondary/40 border border-border rounded-md px-3 py-2">
+                  Quick signup for society members. You can complete
+                  the rest of your profile (phone, address, etc.) any
+                  time after sign-in.
+                </p>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <Field label="Username" name="userName" required />
+                  <Field label="First name" name="firstName" required />
+                </div>
+                <Field label="Email" name="email" type="email" required />
+              </>
+            ) : (
+              <>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <Field label="First name" name="firstName" required />
+                  <Field label="Last name" name="lastName" required />
+                </div>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <Field label="Username" name="userName" required />
+                  <Field
+                    label="Phone"
+                    name="phone"
+                    type="tel"
+                    placeholder="+91-9876543210"
+                    hint="Optional. Used for SMS/WhatsApp alerts."
+                  />
+                </div>
+                <Field label="Email" name="email" type="email" required />
+              </>
+            )}
 
             {/* ── Optional profile fields ───────────────────────────
                 Both selects + the address textarea are optional.
@@ -337,87 +366,95 @@ export function RegisterPage() {
                 We still gather them here because (a) most users fill
                 them in, and (b) tenant-search filtering by tenantType
                 / maritalStatus needs them populated to be useful. */}
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="gender">Gender</Label>
-                <Select value={gender} onValueChange={setGender}>
-                  <SelectTrigger id="gender" className="mt-1.5">
-                    <SelectValue placeholder="Select" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={UNSELECTED}>Prefer not to say</SelectItem>
-                    <SelectItem value="MALE">Male</SelectItem>
-                    <SelectItem value="FEMALE">Female</SelectItem>
-                    <SelectItem value="OTHER">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-[11px] text-muted-foreground mt-1">
-                  Optional.
-                </p>
-              </div>
-              <div>
-                <Label htmlFor="maritalStatus">Marital status</Label>
-                <Select value={maritalStatus} onValueChange={setMaritalStatus}>
-                  <SelectTrigger id="maritalStatus" className="mt-1.5">
-                    <SelectValue placeholder="Select" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={UNSELECTED}>Prefer not to say</SelectItem>
-                    <SelectItem value="SINGLE">Single</SelectItem>
-                    <SelectItem value="MARRIED">Married</SelectItem>
-                    <SelectItem value="DIVORCED">Divorced</SelectItem>
-                    <SelectItem value="WIDOWED">Widowed</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-[11px] text-muted-foreground mt-1">
-                  Optional.
-                </p>
-              </div>
-            </div>
+            {/* Gender / marital / tenant type / address — collected
+                for TENANT and OWNER signups because the rest of the
+                app uses them (tenant-search filters, KYC + lease PDF
+                addresses, etc.). Skipped for SOCIETY because society
+                members typically don't need these at signup; they
+                can complete the profile post-approval from
+                /app/profile if they want. */}
+            {choice !== "SOCIETY" && (
+              <>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="gender">Gender</Label>
+                    <Select value={gender} onValueChange={setGender}>
+                      <SelectTrigger id="gender" className="mt-1.5">
+                        <SelectValue placeholder="Select" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={UNSELECTED}>Prefer not to say</SelectItem>
+                        <SelectItem value="MALE">Male</SelectItem>
+                        <SelectItem value="FEMALE">Female</SelectItem>
+                        <SelectItem value="OTHER">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      Optional.
+                    </p>
+                  </div>
+                  <div>
+                    <Label htmlFor="maritalStatus">Marital status</Label>
+                    <Select value={maritalStatus} onValueChange={setMaritalStatus}>
+                      <SelectTrigger id="maritalStatus" className="mt-1.5">
+                        <SelectValue placeholder="Select" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={UNSELECTED}>Prefer not to say</SelectItem>
+                        <SelectItem value="SINGLE">Single</SelectItem>
+                        <SelectItem value="MARRIED">Married</SelectItem>
+                        <SelectItem value="DIVORCED">Divorced</SelectItem>
+                        <SelectItem value="WIDOWED">Widowed</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      Optional.
+                    </p>
+                  </div>
+                </div>
 
-            {/* Tenant-type is only relevant for TENANT users — owners
-                don't categorise themselves as bachelor/family. Hiding
-                it for owners keeps the form short and the data clean
-                (no spurious tenantType=BACHELOR rows for owners).
-                SOCIETY claimants register as TENANT under the hood so
-                they too see this field. */}
-            {choice !== "OWNER" && (
-              <div>
-                <Label htmlFor="tenantType">Tenant type</Label>
-                <Select value={tenantType} onValueChange={setTenantType}>
-                  <SelectTrigger id="tenantType" className="mt-1.5">
-                    <SelectValue placeholder="Select" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={UNSELECTED}>Prefer not to say</SelectItem>
-                    <SelectItem value="BACHELOR">
-                      Bachelor (looking for PG / shared accommodation)
-                    </SelectItem>
-                    <SelectItem value="FAMILY">
-                      Family (looking for whole-flat tenancy)
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-[11px] text-muted-foreground mt-1">
-                  Optional. Some listings filter by this in India.
-                </p>
-              </div>
+                {/* Tenant-type is only relevant for TENANT users —
+                    owners don't categorise themselves as bachelor/
+                    family. */}
+                {choice === "TENANT" && (
+                  <div>
+                    <Label htmlFor="tenantType">Tenant type</Label>
+                    <Select value={tenantType} onValueChange={setTenantType}>
+                      <SelectTrigger id="tenantType" className="mt-1.5">
+                        <SelectValue placeholder="Select" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={UNSELECTED}>Prefer not to say</SelectItem>
+                        <SelectItem value="BACHELOR">
+                          Bachelor (looking for PG / shared accommodation)
+                        </SelectItem>
+                        <SelectItem value="FAMILY">
+                          Family (looking for whole-flat tenancy)
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      Optional. Some listings filter by this in India.
+                    </p>
+                  </div>
+                )}
+
+                <div>
+                  <Label htmlFor="address">Address</Label>
+                  <Textarea
+                    id="address"
+                    name="address"
+                    className="mt-1.5"
+                    placeholder="Current address — street, city, state, PIN"
+                    rows={3}
+                    maxLength={4000}
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Optional. Required later for KYC and rental agreements.
+                  </p>
+                </div>
+              </>
             )}
-
-            <div>
-              <Label htmlFor="address">Address</Label>
-              <Textarea
-                id="address"
-                name="address"
-                className="mt-1.5"
-                placeholder="Current address — street, city, state, PIN"
-                rows={3}
-                maxLength={4000}
-              />
-              <p className="text-[11px] text-muted-foreground mt-1">
-                Optional. Required later for KYC and rental agreements.
-              </p>
-            </div>
 
             {/* ── Passwords with show/hide toggles (mirrors the
                 login page UX). Each field has its own toggle so the
