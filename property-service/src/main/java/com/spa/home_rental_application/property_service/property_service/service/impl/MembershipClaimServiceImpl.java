@@ -10,6 +10,7 @@ import com.spa.home_rental_application.property_service.property_service.Entitie
 import com.spa.home_rental_application.property_service.property_service.Entities.MembershipClaim.Status;
 import com.spa.home_rental_application.property_service.property_service.Entities.SocietyConfig;
 import com.spa.home_rental_application.property_service.property_service.client.AuthClient;
+import com.spa.home_rental_application.property_service.property_service.client.NotificationClient;
 import com.spa.home_rental_application.property_service.property_service.client.UserClient;
 import com.spa.home_rental_application.property_service.property_service.repository.BuildingRepo;
 import com.spa.home_rental_application.property_service.property_service.repository.FlatRepo;
@@ -70,19 +71,22 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
     private final SocietyConfigRepository configRepo;
     private final UserClient userClient;
     private final AuthClient authClient;
+    private final NotificationClient notificationClient;
 
     public MembershipClaimServiceImpl(MembershipClaimRepository claimRepo,
                                       BuildingRepo buildingRepo,
                                       FlatRepo flatRepo,
                                       SocietyConfigRepository configRepo,
                                       UserClient userClient,
-                                      AuthClient authClient) {
+                                      AuthClient authClient,
+                                      NotificationClient notificationClient) {
         this.claimRepo = claimRepo;
         this.buildingRepo = buildingRepo;
         this.flatRepo = flatRepo;
         this.configRepo = configRepo;
         this.userClient = userClient;
         this.authClient = authClient;
+        this.notificationClient = notificationClient;
     }
 
     // ── Create ─────────────────────────────────────────────────────
@@ -141,9 +145,75 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
             saved.setDecidedByUserId(userId);
             saved.setDecisionNote("Auto-approved (owner self-claim)");
             saved = claimRepo.save(saved);
+        } else {
+            // Ping the building owner so they don't have to discover
+            // the request from the dashboard polling. Best-effort —
+            // notification failure must NEVER fail claim creation
+            // (worst case the owner just sees the chip on next
+            // dashboard refresh).
+            notifyOwnerOfNewClaim(saved, building);
         }
 
         return enrichResponse(saved);
+    }
+
+    /**
+     * Fire-and-forget INAPP + EMAIL ping to the building owner that a
+     * new membership claim has landed. Looks up the applicant's name
+     * for a friendlier subject line, falls back to "Someone" if user-
+     * service is unreachable. Wraps the notification-service call in
+     * try/catch so a notifier outage doesn't propagate.
+     */
+    private void notifyOwnerOfNewClaim(MembershipClaim claim, Building building) {
+        try {
+            UserClient.UserSummary applicant = safeLookup(claim.getUserId());
+            String who = applicant != null && applicant.fullName() != null
+                    ? applicant.fullName()
+                    : "Someone";
+            String roleLabel = claim.getRequestedRole() == RequestedRole.MAINTAINER
+                    ? "as the society maintainer"
+                    : ("as a resident of flat " + claim.getClaimedFlatNumber());
+            String subject = "New society request for " + building.getBuildingName();
+            String message = String.format(
+                    "%s wants to join %s %s. Open your dashboard to approve or reject the request.",
+                    who, building.getBuildingName(), roleLabel);
+            notificationClient.notifyUser(new NotificationClient.NotifyUserBody(
+                    building.getOwnerId(), subject, message));
+            log.info("Notified owner {} of new claim {} on building {}",
+                    building.getOwnerId(), claim.getId(), building.getBuildingId());
+        } catch (Exception e) {
+            // Swallow — the owner will still see the claim on their
+            // dashboard widget. The notification is a nice-to-have.
+            log.warn("Notify owner failed for claim {} on building {}: {}",
+                    claim.getId(), building.getBuildingId(), e.getMessage());
+        }
+    }
+
+    /**
+     * Best-effort notification to the claimant when the owner makes a
+     * decision. Mirrors {@link #notifyOwnerOfNewClaim} for the
+     * outbound direction (we already let the polling page show it,
+     * but a bell-entry + email is the right UX).
+     */
+    private void notifyClaimantOfDecision(MembershipClaim claim, Building building, boolean approved) {
+        try {
+            String subject = approved
+                    ? "Your request for " + building.getBuildingName() + " was approved"
+                    : "Your request for " + building.getBuildingName() + " was rejected";
+            String message = approved
+                    ? (claim.getRequestedRole() == RequestedRole.MAINTAINER
+                        ? "You can now manage the society. Sign out and back in to pick up your maintainer dashboard."
+                        : "You're attached to your flat. Open the app to see the society books.")
+                    : ("Note from the owner: "
+                        + (claim.getDecisionNote() == null || claim.getDecisionNote().isBlank()
+                            ? "no reason given."
+                            : claim.getDecisionNote()));
+            notificationClient.notifyUser(new NotificationClient.NotifyUserBody(
+                    claim.getUserId(), subject, message));
+        } catch (Exception e) {
+            log.warn("Notify claimant failed for claim {} on building {}: {}",
+                    claim.getId(), building.getBuildingId(), e.getMessage());
+        }
     }
 
     // ── Read ───────────────────────────────────────────────────────
@@ -228,7 +298,9 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
         claim.setDecidedAt(LocalDateTime.now());
         claim.setDecidedByUserId(CallerSecurity.getCurrentAuthUserId().orElse(null));
         claim.setDecisionNote(blankToNull(req == null ? null : req.decisionNote()));
-        return enrichResponse(claimRepo.save(claim));
+        MembershipClaim saved = claimRepo.save(claim);
+        notifyClaimantOfDecision(saved, building, true);
+        return enrichResponse(saved);
     }
 
     @Override
@@ -247,7 +319,9 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
         claim.setDecidedAt(LocalDateTime.now());
         claim.setDecidedByUserId(CallerSecurity.getCurrentAuthUserId().orElse(null));
         claim.setDecisionNote(blankToNull(req == null ? null : req.decisionNote()));
-        return enrichResponse(claimRepo.save(claim));
+        MembershipClaim saved = claimRepo.save(claim);
+        notifyClaimantOfDecision(saved, building, false);
+        return enrichResponse(saved);
     }
 
     @Override

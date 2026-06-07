@@ -102,6 +102,39 @@ public class NotificationController {
                 .body(service.broadcast(body.userIds(), body.subject(), body.message()));
     }
 
+    /**
+     * Internal service-to-service ping for a single user. Used by
+     * property-service (membership-claim create / approve / reject)
+     * to push INAPP + EMAIL to the building owner or claimant. Unlike
+     * the admin endpoints, this is gated only by the gateway HMAC —
+     * same model as auth-service's /auth/internal/** routes — so a
+     * direct hit without the X-Internal-Auth-Sig header is dropped
+     * by {@code GatewayAuthFilter} before reaching this method.
+     *
+     * <p>Reuses {@link NotificationService#broadcast} with a single-
+     * element user list because broadcast already does the right thing
+     * (INAPP for the bell, EMAIL via Resend, skip when channel
+     * disabled in preferences). Returns the same per-channel counters.
+     */
+    @Operation(summary = "Internal: push INAPP + EMAIL to one user (gateway-HMAC only)")
+    @PostMapping(value = "/internal/notify", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<java.util.Map<String, Integer>> internalNotify(
+            @Valid @RequestBody InternalNotifyRequest body) {
+        log.info("internal/notify userId={} subject='{}'", body.userId(), body.subject());
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(service.broadcast(
+                        java.util.List.of(body.userId()),
+                        body.subject(),
+                        body.message()));
+    }
+
+    /** Minimal record body for {@link #internalNotify}. */
+    public record InternalNotifyRequest(
+            @jakarta.validation.constraints.NotBlank String userId,
+            @jakarta.validation.constraints.NotBlank String subject,
+            @jakarta.validation.constraints.NotBlank String message
+    ) {}
+
     @Operation(summary = "All notifications, every user (ADMIN only)")
     @GetMapping
     // requireAdmin guard runs at the top of each method instead of @PreAuthorize

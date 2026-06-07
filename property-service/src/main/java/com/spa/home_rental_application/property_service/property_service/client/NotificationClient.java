@@ -27,6 +27,22 @@ public interface NotificationClient {
     void sendEmail(@RequestBody SendBody body);
 
     /**
+     * Notification-service exposes {@code POST /notifications/internal/notify}.
+     * Pushes BOTH a bell entry (INAPP) AND an email in one call —
+     * the right surface for cross-service pings like "owner, someone
+     * just applied to be your maintainer". The endpoint is gateway-
+     * HMAC-only on the notification-service side, so this Feign call
+     * (which adds the X-Internal-Auth-Sig header via the shared
+     * signing interceptor) is the only way to reach it.
+     */
+    @PostMapping(value = "/notifications/internal/notify",
+            consumes = MediaType.APPLICATION_JSON_VALUE)
+    void notifyUser(@RequestBody NotifyUserBody body);
+
+    /** Matches notification-service's {@code InternalNotifyRequest}. */
+    record NotifyUserBody(String userId, String subject, String message) {}
+
+    /**
      * Inbound payload for /notifications/send/email. Field names + JSON
      * shape match notification-service's SendNotificationRequest exactly
      * so Jackson binds 1:1 on the other side.

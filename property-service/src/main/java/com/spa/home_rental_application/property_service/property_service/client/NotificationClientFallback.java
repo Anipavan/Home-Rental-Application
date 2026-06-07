@@ -19,4 +19,14 @@ public class NotificationClientFallback implements NotificationClient {
                 body == null ? null : body.userId(),
                 body == null ? null : body.subject());
     }
+
+    @Override
+    public void notifyUser(NotifyUserBody body) {
+        // Same swallow-and-log policy as sendEmail. Membership-claim
+        // notifications are nice-to-have; the owner can still see the
+        // pending claim on their dashboard.
+        log.warn("notification-service unreachable — skipping notifyUser userId={} subject={}",
+                body == null ? null : body.userId(),
+                body == null ? null : body.subject());
+    }
 }
