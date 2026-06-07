@@ -20,6 +20,7 @@ import { ResetPasswordPage } from "@/pages/public/reset-password";
 import { NotFoundPage } from "@/pages/public/not-found";
 import { TenantDashboard } from "@/pages/tenant/dashboard";
 import { MyFlatPage } from "@/pages/tenant/my-flat";
+import { PendingClaimPage } from "@/pages/tenant/pending-claim";
 import { PaymentsListPage } from "@/pages/tenant/payments";
 import { PayPage } from "@/pages/tenant/pay";
 import { PaymentReturnPage } from "@/pages/tenant/payment-return";
@@ -111,6 +112,10 @@ export const router = createBrowserRouter([
       // state with "browse listings" CTA) / Profile.
       { index: true, element: <TenantDashboard /> },
       { path: "my-flat", element: <MyFlatPage /> },
+      // Status page for users who registered as a society
+      // maintainer/maintainee — shows their claim's status and
+      // an explicit "sign in again" CTA once approved.
+      { path: "pending-claim", element: <PendingClaimPage /> },
       { path: "profile", element: <ProfilePage /> },
       // Saved + notifications stay outside FlatRequiredOutlet so a
       // tenant browsing for their NEXT home (no flat assigned yet)

@@ -1,7 +1,16 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
-import { Eye, EyeOff, Loader2, Home, Building2 } from "lucide-react";
+import {
+  Building2,
+  Check,
+  Eye,
+  EyeOff,
+  Home,
+  Loader2,
+  Search,
+  Users,
+} from "lucide-react";
 import { Logo } from "@/components/layout/logo";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -26,10 +35,17 @@ import {
 } from "@/components/ui/dialog";
 import { TermsAndConditionsContent } from "@/components/auth/terms-content";
 import { authApi } from "@/lib/api/auth";
+import { claimsApi } from "@/lib/api/claims";
+import { propertiesApi } from "@/lib/api/properties";
 import { extractErrorMessage } from "@/lib/api/client";
 import { toast } from "@/hooks/use-toast";
+import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/lib/utils";
-import type { Role } from "@/types/api";
+import type {
+  BuildingResponseDTO,
+  MembershipClaimRole,
+  Role,
+} from "@/types/api";
 
 /**
  * Audit H19: India-tolerant phone regex. Accepts:
@@ -61,9 +77,29 @@ const PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*[a-z])(?=.*\d).{8,}$/;
  */
 const UNSELECTED = "__none__";
 
+/**
+ * Top-level choice on the signup form. SOCIETY is a virtual bucket
+ * that resolves to either a MAINTAINER or RESIDENT claim once the
+ * user picks the sub-flavour. The account itself is always created
+ * as a TENANT (role = TENANT in auth-service); the claim approval
+ * later swaps role to MAINTAINER for the maintainer path, or binds
+ * the user as a flat tenant for the resident path.
+ */
+type SignupChoice = "TENANT" | "OWNER" | "SOCIETY";
+
 export function RegisterPage() {
   const navigate = useNavigate();
-  const [role, setRole] = useState<Role>("TENANT");
+  const setSession = useAuthStore((s) => s.setSession);
+  const [choice, setChoice] = useState<SignupChoice>("TENANT");
+  /** Sub-choice for SOCIETY: maintainer vs maintainee (read-only). */
+  const [societyRole, setSocietyRole] =
+    useState<MembershipClaimRole>("MAINTAINER");
+  /** Building the SOCIETY claim targets. Picked via search. */
+  const [pickedBuilding, setPickedBuilding] =
+    useState<BuildingResponseDTO | null>(null);
+  const [societyFlatNumber, setSocietyFlatNumber] = useState("");
+  const [societyNote, setSocietyNote] = useState("");
+
   const [clientError, setClientError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -77,14 +113,60 @@ export function RegisterPage() {
   const [maritalStatus, setMaritalStatus] = useState<string>(UNSELECTED);
   const [tenantType, setTenantType] = useState<string>(UNSELECTED);
 
+  // Map the UI choice to the auth-service role that goes into the
+  // /auth/register body. SOCIETY users register as TENANT — their
+  // promotion to MAINTAINER (when applicable) happens via the claim
+  // approval path, not at signup time.
+  const authRole: Role = choice === "OWNER" ? "OWNER" : "TENANT";
+
+  /**
+   * Signup is a two-step transaction for the SOCIETY path:
+   *  1. Create the auth account (POST /auth/register)
+   *  2. Log in with the new credentials so we have a JWT
+   *  3. POST the membership claim
+   *  4. Redirect to the pending-claim screen
+   *
+   * For TENANT / OWNER paths it's the existing single-step flow.
+   *
+   * We do not catch step 1 failure separately; if register fails the
+   * user sees the error and stays on the form. If steps 2 or 3 fail
+   * after a successful register, we still send them to /login with a
+   * toast — they can submit the claim from inside the app later.
+   */
   const mutation = useMutation({
-    mutationFn: authApi.register,
-    onSuccess: () => {
-      toast({
-        title: "Account created",
-        description: "Sign in with your new credentials.",
+    mutationFn: async (req: Parameters<typeof authApi.register>[0]) => {
+      await authApi.register(req);
+      if (choice !== "SOCIETY") return { kind: "plain" as const };
+      // Society path — auto-login, then submit the claim.
+      const auth = await authApi.login({
+        userName: req.userName,
+        password: req.userPassword,
       });
-      navigate("/login");
+      setSession(auth);
+      await claimsApi.create({
+        buildingId: pickedBuilding!.buildingId,
+        requestedRole: societyRole,
+        claimedFlatNumber:
+          societyRole === "RESIDENT" ? societyFlatNumber.trim() : undefined,
+        applicantNote: societyNote.trim() || undefined,
+      });
+      return { kind: "claim" as const };
+    },
+    onSuccess: (result) => {
+      if (result.kind === "claim") {
+        toast({
+          title: "Claim submitted",
+          description:
+            "We've notified the building owner. You'll get access as soon as they approve.",
+        });
+        navigate("/app/pending-claim");
+      } else {
+        toast({
+          title: "Account created",
+          description: "Sign in with your new credentials.",
+        });
+        navigate("/login");
+      }
     },
     onError: (e) => {
       toast({
@@ -122,6 +204,21 @@ export function RegisterPage() {
       );
       return;
     }
+    // SOCIETY path — the claim payload has to be complete before we
+    // burn the register call. Catching missing fields here means a
+    // failed claim doesn't leave an orphaned account.
+    if (choice === "SOCIETY") {
+      if (!pickedBuilding) {
+        setClientError("Pick the building from the search results first.");
+        return;
+      }
+      if (societyRole === "RESIDENT" && !societyFlatNumber.trim()) {
+        setClientError(
+          "Flat number is required for residents — we use it to bind you to the right flat once your owner approves.",
+        );
+        return;
+      }
+    }
     // Defence-in-depth: the Create-Account button is disabled when
     // !acceptedTerms, but a determined user could re-enable it in
     // devtools. Block on submit too.
@@ -135,7 +232,7 @@ export function RegisterPage() {
     mutation.mutate({
       userName: String(fd.get("userName") ?? ""),
       userPassword: password,
-      userRole: role,
+      userRole: authRole,
       email: String(fd.get("email") ?? ""),
       firstName: String(fd.get("firstName") ?? ""),
       lastName: String(fd.get("lastName") ?? ""),
@@ -172,28 +269,49 @@ export function RegisterPage() {
           </p>
 
           {/*
-            Two-tile role picker. Maintainers are NOT self-registered —
-            owners create them from /owner/buildings/:id/society via the
-            "Assign maintainer" dialog and share the credentials. Keeps
-            the register page focused on the two paths the average
-            visitor actually needs (rent or list a property).
+            Three-tile role picker. SOCIETY is the new self-service path
+            for maintainers and maintainees (residents): the account is
+            created as TENANT, plus a membership claim is filed against
+            a specific building. The building owner approves from their
+            dashboard — only after approval does the user gain
+            maintainer powers or get bound to a specific flat.
           */}
-          <div className="grid grid-cols-2 gap-3 mt-6">
+          <div className="grid sm:grid-cols-3 gap-3 mt-6">
             <RoleCard
               label="I'm renting"
               desc="Find a home and pay rent online"
               icon={Home}
-              active={role === "TENANT"}
-              onClick={() => setRole("TENANT")}
+              active={choice === "TENANT"}
+              onClick={() => setChoice("TENANT")}
             />
             <RoleCard
               label="I'm an owner"
               desc="List my property and manage tenants"
               icon={Building2}
-              active={role === "OWNER"}
-              onClick={() => setRole("OWNER")}
+              active={choice === "OWNER"}
+              onClick={() => setChoice("OWNER")}
+            />
+            <RoleCard
+              label="Society member"
+              desc="Manage a society or see your building's books"
+              icon={Users}
+              active={choice === "SOCIETY"}
+              onClick={() => setChoice("SOCIETY")}
             />
           </div>
+
+          {choice === "SOCIETY" && (
+            <SocietyClaimPanel
+              role={societyRole}
+              onRoleChange={setSocietyRole}
+              picked={pickedBuilding}
+              onPick={setPickedBuilding}
+              flatNumber={societyFlatNumber}
+              onFlatNumberChange={setSocietyFlatNumber}
+              note={societyNote}
+              onNoteChange={setSocietyNote}
+            />
+          )}
 
           <form onSubmit={onSubmit} className="mt-6 space-y-4">
             <div className="grid sm:grid-cols-2 gap-4">
@@ -260,8 +378,10 @@ export function RegisterPage() {
             {/* Tenant-type is only relevant for TENANT users — owners
                 don't categorise themselves as bachelor/family. Hiding
                 it for owners keeps the form short and the data clean
-                (no spurious tenantType=BACHELOR rows for owners). */}
-            {role === "TENANT" && (
+                (no spurious tenantType=BACHELOR rows for owners).
+                SOCIETY claimants register as TENANT under the hood so
+                they too see this field. */}
+            {choice !== "OWNER" && (
               <div>
                 <Label htmlFor="tenantType">Tenant type</Label>
                 <Select value={tenantType} onValueChange={setTenantType}>
@@ -407,6 +527,264 @@ export function RegisterPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+/**
+ * Sub-form shown when the user picks "Society member". Collects the
+ * three pieces of info we need to assemble the claim payload:
+ *
+ *   1. Maintainer vs Maintainee — drives requestedRole on the claim.
+ *      Maintainer = full read/write; Maintainee = read-only ledger.
+ *   2. Building — searched via the unauth /properties/buildings/search
+ *      endpoint. The user types, picks a result, and we lock in the
+ *      buildingId. Free-text is intentionally not allowed — building
+ *      names are not unique across cities, and an owner has to have
+ *      already added the building.
+ *   3. Flat number — required for residents (used at approval time to
+ *      bind the user to a specific flat), optional for maintainers
+ *      (recorded for context).
+ *
+ * Plus an optional applicant note ("I'm in flat 201 since Jun 2024 —
+ * here's my UPI handle for cross-check") that the owner sees in their
+ * pending-requests widget.
+ */
+function SocietyClaimPanel({
+  role,
+  onRoleChange,
+  picked,
+  onPick,
+  flatNumber,
+  onFlatNumberChange,
+  note,
+  onNoteChange,
+}: {
+  role: MembershipClaimRole;
+  onRoleChange: (r: MembershipClaimRole) => void;
+  picked: BuildingResponseDTO | null;
+  onPick: (b: BuildingResponseDTO | null) => void;
+  flatNumber: string;
+  onFlatNumberChange: (v: string) => void;
+  note: string;
+  onNoteChange: (v: string) => void;
+}) {
+  return (
+    <div className="mt-4 rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-4">
+      {/* Maintainer vs Maintainee radio */}
+      <div>
+        <Label className="text-sm font-medium">I'm joining as</Label>
+        <div className="grid grid-cols-2 gap-2 mt-1.5">
+          <SubRoleCard
+            label="Maintainer"
+            desc="Run the society — track dues, expenses, payments"
+            active={role === "MAINTAINER"}
+            onClick={() => onRoleChange("MAINTAINER")}
+          />
+          <SubRoleCard
+            label="Maintainee"
+            desc="Resident of a flat — see the books, pay your dues"
+            active={role === "RESIDENT"}
+            onClick={() => onRoleChange("RESIDENT")}
+          />
+        </div>
+      </div>
+
+      {/* Building picker */}
+      <BuildingPicker picked={picked} onPick={onPick} />
+
+      {/* Flat number — required for maintainee, optional for maintainer */}
+      <div>
+        <Label htmlFor="society-flat">
+          Flat number{" "}
+          {role === "RESIDENT" ? (
+            <span className="text-destructive">*</span>
+          ) : (
+            <span className="text-muted-foreground text-xs">
+              (optional for maintainers)
+            </span>
+          )}
+        </Label>
+        <Input
+          id="society-flat"
+          name="claimedFlatNumber"
+          value={flatNumber}
+          onChange={(e) => onFlatNumberChange(e.target.value)}
+          placeholder="e.g. 201"
+          className="mt-1.5"
+          maxLength={32}
+        />
+        {role === "RESIDENT" && (
+          <p className="text-[11px] text-muted-foreground mt-1">
+            We use this to bind you to the right flat once your owner
+            approves the request.
+          </p>
+        )}
+      </div>
+
+      {/* Optional applicant note */}
+      <div>
+        <Label htmlFor="society-note">Note to the owner (optional)</Label>
+        <Textarea
+          id="society-note"
+          value={note}
+          onChange={(e) => onNoteChange(e.target.value)}
+          placeholder="Anything that helps them recognise you — when you moved in, who referred you, etc."
+          rows={2}
+          maxLength={500}
+          className="mt-1.5"
+        />
+      </div>
+
+      <p className="text-[11px] text-muted-foreground border-t border-primary/20 pt-2">
+        The building owner will see your request in their dashboard. You
+        get full access once they approve.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Searchable building picker. Debounces the query so we don't hammer
+ * /properties/buildings/search on every keystroke; shows up to 8
+ * matches in a dropdown list. Picking a row locks the buildingId and
+ * collapses the dropdown.
+ */
+function BuildingPicker({
+  picked,
+  onPick,
+}: {
+  picked: BuildingResponseDTO | null;
+  onPick: (b: BuildingResponseDTO | null) => void;
+}) {
+  const [q, setQ] = useState("");
+  const [results, setResults] = useState<BuildingResponseDTO[]>([]);
+  const [searching, setSearching] = useState(false);
+
+  // Debounce: 300ms after the user stops typing.
+  useEffect(() => {
+    if (!q.trim() || picked) {
+      setResults([]);
+      return;
+    }
+    const handle = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const r = await propertiesApi.buildings.search(q.trim(), undefined, 8);
+        setResults(r);
+      } catch {
+        // Silent — building search not finding hits is the same UX as
+        // an error here. The user can keep typing or refresh.
+        setResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [q, picked]);
+
+  if (picked) {
+    return (
+      <div>
+        <Label>Building</Label>
+        <div className="mt-1.5 flex items-center justify-between gap-2 rounded-md border border-primary/40 bg-primary/10 px-3 py-2">
+          <div className="min-w-0">
+            <p className="font-semibold text-sm truncate">
+              <Check className="size-3.5 inline-block text-success mr-1" />
+              {picked.buildingName}
+            </p>
+            <p className="text-[11px] text-muted-foreground truncate">
+              {picked.buildingCity}
+              {picked.buildingState ? `, ${picked.buildingState}` : ""}
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => onPick(null)}
+          >
+            Change
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <Label htmlFor="society-building">Building</Label>
+      <div className="relative mt-1.5">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+        <Input
+          id="society-building"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search by building name, city, area…"
+          className="pl-9"
+          autoComplete="off"
+        />
+      </div>
+      {q && (
+        <div className="mt-2 rounded-md border border-border bg-card max-h-56 overflow-y-auto">
+          {searching ? (
+            <p className="text-xs text-muted-foreground px-3 py-2">
+              <Loader2 className="size-3 inline-block animate-spin mr-1" />
+              Searching…
+            </p>
+          ) : results.length === 0 ? (
+            <p className="text-xs text-muted-foreground px-3 py-2">
+              No matches. Ask your owner to add the building first.
+            </p>
+          ) : (
+            results.map((b) => (
+              <button
+                key={b.buildingId}
+                type="button"
+                onClick={() => {
+                  onPick(b);
+                  setQ("");
+                }}
+                className="w-full text-left px-3 py-2 hover:bg-secondary/60 text-sm border-b border-border/40 last:border-b-0"
+              >
+                <p className="font-medium truncate">{b.buildingName}</p>
+                <p className="text-[11px] text-muted-foreground truncate">
+                  {b.buildingCity}
+                  {b.buildingState ? `, ${b.buildingState}` : ""}
+                </p>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SubRoleCard({
+  label,
+  desc,
+  active,
+  onClick,
+}: {
+  label: string;
+  desc: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "text-left p-3 rounded-lg border-2 transition-all",
+        active
+          ? "border-primary bg-primary/10"
+          : "border-border bg-card hover:border-primary/40",
+      )}
+    >
+      <div className="font-semibold text-sm">{label}</div>
+      <div className="text-[11px] text-muted-foreground mt-0.5">{desc}</div>
+    </button>
   );
 }
 

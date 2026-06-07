@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
+import { extractErrorMessage } from "@/lib/api/client";
 import {
   Building2,
   Home,
@@ -29,6 +31,7 @@ import { propertiesApi } from "@/lib/api/properties";
 import { paymentsApi } from "@/lib/api/payments";
 import { maintenanceApi } from "@/lib/api/maintenance";
 import { authApi } from "@/lib/api/auth";
+import { claimsApi } from "@/lib/api/claims";
 import { useFlatLookup } from "@/hooks/use-flat-lookup";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -246,6 +249,14 @@ export function OwnerDashboard() {
           tone="warning"
         />
       </div>
+
+      {/* Self-service membership claims awaiting this owner's decision.
+          The widget hides itself when there's nothing to show, so it
+          doesn't take up real estate on a clean day. Inserted between
+          KPIs and the charts because owners typically scan the KPIs
+          first, then act on alerts; the claims card sits in their
+          natural eye-path. */}
+      <PendingClaimsWidget />
 
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
@@ -791,4 +802,178 @@ function buildTopTenants(
     }))
     .sort((a, b) => b.total - a.total)
     .slice(0, 5);
+}
+
+/**
+ * Self-service membership claims widget. Polls every 30s while the
+ * dashboard is open so a freshly-submitted claim shows up without a
+ * manual refresh. Renders nothing when there are no pending claims —
+ * the owner's dashboard stays clean on quiet days.
+ *
+ * <p>Each row offers Approve / Reject. Approve flips the row's status
+ * server-side and (for MAINTAINER claims) triggers an auth-service
+ * role bump + a society-config swap; the owner sees a toast confirming
+ * the change. The widget refetches after the mutation so the row drops
+ * out of the pending list immediately.
+ */
+function PendingClaimsWidget() {
+  const qc = useQueryClient();
+  const { toast: tst } = useToast();
+  const pendingQ = useQuery({
+    queryKey: ["my-pending-claims"],
+    queryFn: () => claimsApi.pendingForOwner(),
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
+
+  const approveMut = useMutation({
+    mutationFn: (claimId: string) => claimsApi.approve(claimId),
+    onSuccess: (claim) => {
+      qc.invalidateQueries({ queryKey: ["my-pending-claims"] });
+      tst({
+        title:
+          claim.requestedRole === "MAINTAINER"
+            ? "Maintainer approved."
+            : "Resident approved.",
+        description:
+          claim.requestedRole === "MAINTAINER"
+            ? `${claim.applicantName ?? "The applicant"} can now manage the society. They'll need to sign out and back in to see the maintainer dashboard.`
+            : `${claim.applicantName ?? "The applicant"} is now attached to flat ${claim.claimedFlatNumber ?? "their flat"}.`,
+      });
+    },
+    onError: (e) => {
+      tst({
+        title: "Couldn't approve",
+        description: extractErrorMessage(e),
+        variant: "destructive",
+      });
+    },
+  });
+
+  const rejectMut = useMutation({
+    mutationFn: (claimId: string) => claimsApi.reject(claimId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["my-pending-claims"] });
+      tst({ title: "Request rejected." });
+    },
+    onError: (e) => {
+      tst({
+        title: "Couldn't reject",
+        description: extractErrorMessage(e),
+        variant: "destructive",
+      });
+    },
+  });
+
+  const pending = pendingQ.data ?? [];
+  if (!pendingQ.isLoading && pending.length === 0) return null;
+
+  return (
+    <Card className="mb-6 border-warning/40">
+      <CardContent className="p-5">
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div>
+            <h3 className="font-display font-semibold text-base">
+              Pending requests
+            </h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              People who registered themselves as residents or maintainers
+              for your buildings — approve to grant access.
+            </p>
+          </div>
+          {pending.length > 0 && (
+            <Badge variant="secondary">{pending.length}</Badge>
+          )}
+        </div>
+
+        {pendingQ.isLoading ? (
+          <Skeleton className="h-20 rounded-md" />
+        ) : (
+          <div className="space-y-2">
+            {pending.map((c) => (
+              <div
+                key={c.id}
+                className="flex flex-wrap items-start gap-3 p-3 rounded-lg border border-border/60 bg-secondary/30"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge
+                      variant={
+                        c.requestedRole === "MAINTAINER"
+                          ? "default"
+                          : "secondary"
+                      }
+                      className="text-[10px]"
+                    >
+                      {c.requestedRole === "MAINTAINER"
+                        ? "Maintainer"
+                        : "Resident"}
+                    </Badge>
+                    <span className="font-semibold text-sm truncate">
+                      {c.applicantName ?? c.applicantEmail ?? "Applicant"}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    <span className="font-medium">
+                      {c.buildingName ?? "Building"}
+                    </span>
+                    {c.claimedFlatNumber && ` · flat ${c.claimedFlatNumber}`}
+                    {c.applicantEmail && (
+                      <>
+                        {" · "}
+                        <span className="font-mono">{c.applicantEmail}</span>
+                      </>
+                    )}
+                  </p>
+                  {c.applicantNote && (
+                    <p className="text-xs italic text-muted-foreground mt-1.5">
+                      &ldquo;{c.applicantNote}&rdquo;
+                    </p>
+                  )}
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={
+                      rejectMut.isPending && rejectMut.variables === c.id
+                    }
+                    onClick={() => {
+                      if (
+                        confirm(
+                          `Reject ${c.applicantName ?? "this request"}? They can submit again later.`,
+                        )
+                      ) {
+                        rejectMut.mutate(c.id);
+                      }
+                    }}
+                  >
+                    Reject
+                  </Button>
+                  <Button
+                    variant="gradient"
+                    size="sm"
+                    disabled={
+                      approveMut.isPending && approveMut.variables === c.id
+                    }
+                    onClick={() => {
+                      const msg =
+                        c.requestedRole === "MAINTAINER"
+                          ? `Approve ${c.applicantName ?? "this person"} as maintainer of ${c.buildingName ?? "the building"}?\n\nThis will REPLACE any existing maintainer for this building.`
+                          : `Approve ${c.applicantName ?? "this person"} as the resident of flat ${c.claimedFlatNumber ?? "?"} in ${c.buildingName ?? "the building"}?`;
+                      if (confirm(msg)) {
+                        approveMut.mutate(c.id);
+                      }
+                    }}
+                  >
+                    Approve
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }

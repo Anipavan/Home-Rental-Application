@@ -1088,6 +1088,51 @@ export interface SocietyLedger {
   maintainerEmail: string | null;
 }
 
+/* ── Self-service membership claims ─────────────────────────────── */
+
+export type MembershipClaimRole = "MAINTAINER" | "RESIDENT";
+export type MembershipClaimStatus =
+  | "PENDING"
+  | "APPROVED"
+  | "REJECTED"
+  | "WITHDRAWN";
+
+/**
+ * A user's application to become either the maintainer of a building
+ * or a resident of a specific flat in it. Submitted from the signup
+ * page (or from a post-signup gate); approved/rejected by the building
+ * owner from their dashboard.
+ */
+export interface MembershipClaim {
+  id: string;
+  buildingId: string;
+  buildingName: string | null;
+  buildingCity: string | null;
+  userId: string;
+  applicantName: string | null;
+  applicantEmail: string | null;
+  requestedRole: MembershipClaimRole;
+  claimedFlatNumber: string | null;
+  status: MembershipClaimStatus;
+  applicantNote: string | null;
+  decisionNote: string | null;
+  decidedByUserId: string | null;
+  createdAt: string;
+  decidedAt: string | null;
+}
+
+export interface CreateMembershipClaimRequest {
+  buildingId: string;
+  requestedRole: MembershipClaimRole;
+  /** Required when requestedRole=RESIDENT; optional for MAINTAINER. */
+  claimedFlatNumber?: string;
+  applicantNote?: string;
+}
+
+export interface DecideMembershipClaimRequest {
+  decisionNote?: string;
+}
+
 /**
  * One row in the "pick a tenant to promote to maintainer" dropdown.
  * Owners see this list when assigning a maintainer; backend filters
