@@ -243,11 +243,23 @@ export function RegisterPage() {
       return t === "" ? undefined : t;
     };
 
+    const submittedUserName = String(fd.get("userName") ?? "");
+    // SOCIETY signups don't ask for email (the user is typically a
+    // pre-existing resident who'll fill profile bits later). Backend
+    // RegisterRequest has @NotBlank @Email on the field though, so we
+    // synthesize a placeholder `<userName>@society.anirudhhomes.in`
+    // that satisfies the format check. The user can replace it from
+    // /app/profile any time after sign-in.
+    const submittedEmail =
+      choice === "SOCIETY"
+        ? `${submittedUserName.trim()}@society.anirudhhomes.in`
+        : String(fd.get("email") ?? "");
+
     mutation.mutate({
-      userName: String(fd.get("userName") ?? ""),
+      userName: submittedUserName,
       userPassword: password,
       userRole: authRole,
-      email: String(fd.get("email") ?? ""),
+      email: submittedEmail,
       firstName: String(fd.get("firstName") ?? ""),
       lastName: blank(String(fd.get("lastName") ?? "")),
       phone: blank(phone),
@@ -315,32 +327,16 @@ export function RegisterPage() {
           </div>
 
           {choice === "SOCIETY" && (
-            <>
-              <SocietyClaimPanel
-                role={societyRole}
-                onRoleChange={setSocietyRole}
-                picked={pickedBuilding}
-                onPick={setPickedBuilding}
-                flatNumber={societyFlatNumber}
-                onFlatNumberChange={setSocietyFlatNumber}
-                note={societyNote}
-                onNoteChange={setSocietyNote}
-              />
-              {/* Existing-account escape hatch. Society members who
-                  already have a tenant/owner account on the platform
-                  shouldn't have to re-enter their email + first name —
-                  they can sign in and submit the claim from inside
-                  the app instead. */}
-              <p className="text-xs text-muted-foreground mt-3 text-center">
-                Already have an account?{" "}
-                <Link
-                  to="/login?next=/app/pending-claim"
-                  className="text-primary font-medium hover:underline"
-                >
-                  Sign in to submit your claim
-                </Link>
-              </p>
-            </>
+            <SocietyClaimPanel
+              role={societyRole}
+              onRoleChange={setSocietyRole}
+              picked={pickedBuilding}
+              onPick={setPickedBuilding}
+              flatNumber={societyFlatNumber}
+              onFlatNumberChange={setSocietyFlatNumber}
+              note={societyNote}
+              onNoteChange={setSocietyNote}
+            />
           )}
 
           <form onSubmit={onSubmit} className="mt-6 space-y-4">
@@ -360,14 +356,13 @@ export function RegisterPage() {
               <>
                 <p className="text-xs text-muted-foreground bg-secondary/40 border border-border rounded-md px-3 py-2">
                   Quick signup for society members. You can complete
-                  the rest of your profile (phone, address, etc.) any
-                  time after sign-in.
+                  the rest of your profile (email, phone, address, etc.)
+                  any time after sign-in.
                 </p>
                 <div className="grid sm:grid-cols-2 gap-4">
                   <Field label="Username" name="userName" required />
                   <Field label="First name" name="firstName" required />
                 </div>
-                <Field label="Email" name="email" type="email" required />
               </>
             ) : (
               <>
