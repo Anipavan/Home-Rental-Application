@@ -59,6 +59,22 @@ public interface FlatRepo extends JpaRepository<Flat,String> {
            "WHERE f.tenantId = :tenantId " +
            "AND (f.isDeleted = false OR f.isDeleted IS NULL)")
     List<Flat> findActiveByTenantId(@Param("tenantId") String tenantId);
+
+    /**
+     * Look up a flat by (building, flat-number) — used by the
+     * membership-claim approval path to bind a self-registered
+     * resident to the flat they claimed. Returns the first match;
+     * the (building_id, flat_number) pair is logically unique inside
+     * a building but we don't enforce it at the DB level today, so
+     * "first match" is what we can promise.
+     */
+    @Query("SELECT f FROM Flat f " +
+           "WHERE f.buildingId = :buildingId " +
+           "AND f.flatNumber = :flatNumber " +
+           "AND (f.isDeleted = false OR f.isDeleted IS NULL)")
+    List<Flat> findByBuildingIdAndFlatNumber(
+            @Param("buildingId") String buildingId,
+            @Param("flatNumber") String flatNumber);
     @Modifying
     @Transactional
     @Query("UPDATE Flat f SET f.isOccupied = false, f.tenantId = null, " +

@@ -35,6 +35,23 @@ public interface AuthClient {
     AuthUserSummary promoteToMaintainer(@PathVariable("authUserId") Long authUserId,
                                         @RequestBody PromoteBody body);
 
+    /**
+     * Mirrors auth-service {@code POST /auth/internal/users/{authUserId}/grant-maintainer-role}.
+     *
+     * <p>Used by the self-service membership-claim approval flow. Unlike
+     * {@link #promoteToMaintainer}, this does NOT set a maintainer
+     * password — the user already chose their own password at signup
+     * and we don't want to invalidate it. The endpoint simply bumps
+     * {@code user_role} to MAINTAINER so role-gated routes pass.
+     *
+     * <p>The dual-credential mode ({@code maintainer_password} column)
+     * exists for the older owner-promote-existing-tenant flow where the
+     * caller didn't know the tenant's password. Self-registered
+     * maintainers don't need it.
+     */
+    @PostMapping(value = "/auth/internal/users/{authUserId}/grant-maintainer-role")
+    AuthUserSummary grantMaintainerRole(@PathVariable("authUserId") Long authUserId);
+
     /** Inbound body for the promote call. Mirrors auth-service's
      *  {@code PromoteToMaintainerRequest}. */
     record PromoteBody(String newPassword) {}

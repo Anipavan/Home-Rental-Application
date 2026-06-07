@@ -584,6 +584,53 @@ public class AuthServiceImpl implements AuthService {
         return AuthUserMapper.toAuthUserResponse(saved);
     }
 
+    @Override
+    @Transactional
+    public AuthUserResponse grantMaintainerRole(Long authUserId) {
+        UserDetails user = userRepository.findById(authUserId)
+                .orElseThrow(() -> new AuthRecordNotFoundException(
+                        "User not found with id: " + authUserId));
+
+        Roles before = user.getUserRole();
+
+        // Same ADMIN guard as the password-changing variant.
+        if (before == Roles.ADMIN) {
+            log.warn("grantMaintainerRole refused — refusing to override ADMIN authUserId={}",
+                    authUserId);
+            throw new IllegalStateException(
+                    "Cannot grant maintainer role to an ADMIN user.");
+        }
+
+        // OWNER already implies the same capabilities as MAINTAINER in
+        // this codebase's permission model — keep the OWNER role to
+        // avoid demoting them.
+        if (before == Roles.OWNER) {
+            log.info("grantMaintainerRole no-op for authUserId={} — already OWNER, keeping role",
+                    authUserId);
+            return AuthUserMapper.toAuthUserResponse(user);
+        }
+
+        // Already MAINTAINER → idempotent no-op (don't dirty the row).
+        if (before == Roles.MAINTAINER) {
+            log.info("grantMaintainerRole no-op for authUserId={} — already MAINTAINER",
+                    authUserId);
+            return AuthUserMapper.toAuthUserResponse(user);
+        }
+
+        user.setUserRole(Roles.MAINTAINER);
+        user.setRecodeUpdatedDate(Instant.now());
+        UserDetails saved = userRepository.save(user);
+
+        audit.publishSuccess("auth.grant-maintainer-role",
+                saved.getId().toString(),
+                saved.getId().toString(),
+                saved.getId().toString(),
+                java.util.Map.of("priorRole", before.name(),
+                        "newRole", "MAINTAINER (self-service claim approved)"));
+
+        return AuthUserMapper.toAuthUserResponse(saved);
+    }
+
     /* ---------- Helpers ---------- */
 
     /**

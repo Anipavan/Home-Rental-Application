@@ -59,4 +59,19 @@ public interface AuthService {
      * permission shift; no downstream consumer cares.
      */
     AuthUserResponse promoteToMaintainer(Long authUserId, String newPassword);
+
+    /**
+     * Self-service variant of {@link #promoteToMaintainer} used when an
+     * owner approves a self-registered membership claim. The user
+     * already picked their own password at signup, so we DO NOT
+     * touch the password column or invalidate their existing sessions
+     * — we simply bump {@code userRole} to MAINTAINER.
+     *
+     * <p>Refuses to change ADMIN users (same as the password-changing
+     * sibling). OWNER users keep their OWNER role (idempotent no-op)
+     * because OWNER already implies the same capabilities as
+     * MAINTAINER in this codebase's permission model; demoting them
+     * would be a regression.
+     */
+    AuthUserResponse grantMaintainerRole(Long authUserId);
 }

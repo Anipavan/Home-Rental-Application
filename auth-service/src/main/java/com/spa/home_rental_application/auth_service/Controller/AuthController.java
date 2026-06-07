@@ -168,6 +168,24 @@ public class AuthController {
         return ResponseEntity.ok(authService.promoteToMaintainer(authUserId, req.newPassword()));
     }
 
+    /**
+     * Bump an existing user's role to MAINTAINER without touching the
+     * password. Used by property-service when an owner approves a
+     * self-service membership claim — the claimant chose their own
+     * password at signup, so the dual-credential dance from
+     * {@link #promoteToMaintainer} would invalidate it for no benefit.
+     *
+     * <p>Same gateway-HMAC gating as the sibling internal endpoint.
+     * Direct hits without the X-Internal-Auth-Sig header are blocked
+     * by GatewayAuthFilter.
+     */
+    @Operation(summary = "Grant MAINTAINER role to an existing user (internal, no password change)")
+    @PostMapping("/internal/users/{authUserId}/grant-maintainer-role")
+    public ResponseEntity<AuthUserResponse> grantMaintainerRole(@PathVariable Long authUserId) {
+        log.info("POST /auth/internal/users/{}/grant-maintainer-role", authUserId);
+        return ResponseEntity.ok(authService.grantMaintainerRole(authUserId));
+    }
+
 
     private static Roles parseRole(String input) {
         try {
