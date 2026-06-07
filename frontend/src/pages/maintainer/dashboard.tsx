@@ -1111,7 +1111,10 @@ function SetAmountDialog({
                 type="number"
                 min={0}
                 step={1}
-                value={form.amountDue}
+                placeholder="0"
+                // Empty display when 0 so the maintainer can just type
+                // the new amount without having to delete the leading 0.
+                value={form.amountDue || ""}
                 onChange={(e) =>
                   setForm({
                     ...form,
@@ -1183,7 +1186,12 @@ function SetAmountDialog({
                     type="number"
                     min={0}
                     step={1}
-                    value={form.amountPaid ?? form.amountDue}
+                    placeholder="0"
+                    // Same "empty when 0" treatment as Amount due —
+                    // also pre-fills with amountDue when paidAmount
+                    // isn't set yet (the common case: "they paid the
+                    // full amount").
+                    value={form.amountPaid ?? form.amountDue ?? ""}
                     onChange={(e) =>
                       setForm({
                         ...form,

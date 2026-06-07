@@ -455,7 +455,13 @@ function AddExpenseDialog({
                 type="number"
                 min={0}
                 step={1}
-                value={form.amount}
+                placeholder="0"
+                // value={amount || ""} so the field is visually empty
+                // when amount is 0 — otherwise the literal "0" sits in
+                // the input and the maintainer has to manually delete
+                // it before typing the real number. With this, they
+                // just click and type.
+                value={form.amount || ""}
                 onChange={(e) =>
                   setForm({ ...form, amount: Number(e.target.value) || 0 })
                 }

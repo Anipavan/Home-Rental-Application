@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Banknote, Pencil, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { societyApi } from "@/lib/api/society";
+import { propertiesApi } from "@/lib/api/properties";
 import { extractErrorMessage } from "@/lib/api/client";
 import type { SocietyConfig } from "@/types/api";
 
@@ -41,13 +42,21 @@ export function SocietyBankPanel({
   config: SocietyConfig;
 }) {
   const hasUpi = !!config.upiId;
-  // Header dynamically composes the society's display name with
-  // "Bank Account" — e.g. "Sunshine Apartments Bank Account". When the
-  // society hasn't set a display name yet we fall back to the previous
-  // generic copy so the panel still reads sensibly.
-  const headerLabel = config.societyDisplayName
-    ? `${config.societyDisplayName} Bank Account`
-    : "Society Bank Account";
+  // Header composes the BUILDING/apartment name with "Bank Account"
+  // — e.g. "Sunshine Apartments Bank Account". The society display
+  // name is sometimes the welfare-fund name (e.g. "social society")
+  // which isn't what residents recognise the building by; we prefer
+  // the building name and fall back to the society name only when
+  // the building lookup hasn't loaded yet.
+  const buildingQ = useQuery({
+    queryKey: ["building", buildingId],
+    queryFn: () => propertiesApi.buildings.get(buildingId),
+    enabled: !!buildingId,
+    staleTime: 5 * 60_000,
+  });
+  const apartmentName =
+    buildingQ.data?.buildingName ?? config.societyDisplayName ?? "Society";
+  const headerLabel = `${apartmentName} Bank Account`;
   return (
     <Card className="mb-6">
       <CardContent className="p-5">
@@ -58,7 +67,11 @@ export function SocietyBankPanel({
               {headerLabel}
             </h3>
           </div>
-          <EditBankDialog buildingId={buildingId} config={config} />
+          <EditBankDialog
+            buildingId={buildingId}
+            config={config}
+            headerLabel={headerLabel}
+          />
         </div>
 
         {hasUpi ? (
@@ -116,9 +129,11 @@ function BankField({
 function EditBankDialog({
   buildingId,
   config,
+  headerLabel,
 }: {
   buildingId: string;
   config: SocietyConfig;
+  headerLabel: string;
 }) {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -186,11 +201,7 @@ function EditBankDialog({
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>
-            {config.societyDisplayName
-              ? `${config.societyDisplayName} Bank Account`
-              : "Society Bank Account"}
-          </DialogTitle>
+          <DialogTitle>{headerLabel}</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
           Tenants pay into this account via UPI scan or bank transfer.
