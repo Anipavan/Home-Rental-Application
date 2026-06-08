@@ -91,9 +91,16 @@ export function RegisterPage() {
   const navigate = useNavigate();
   const setSession = useAuthStore((s) => s.setSession);
   const [choice, setChoice] = useState<SignupChoice>("TENANT");
-  /** Sub-choice for SOCIETY: maintainer vs maintainee (read-only). */
-  const [societyRole, setSocietyRole] =
-    useState<MembershipClaimRole>("MAINTAINER");
+  /**
+   * SOCIETY only supports MAINTAINER claims now. The earlier RESIDENT
+   * ("maintainee") path was redundant — the public ledger URL
+   * (/society/view/<token>) already gives residents a read-only view
+   * of expenses, fund balance, and the maintainer's contact info
+   * without requiring an account. Keeping the variable as a const so
+   * the rest of the claim-submission code stays role-aware in case we
+   * want to bring residents back later.
+   */
+  const societyRole: MembershipClaimRole = "MAINTAINER";
   /** Building the SOCIETY claim targets. Picked via search. */
   const [pickedBuilding, setPickedBuilding] =
     useState<BuildingResponseDTO | null>(null);
@@ -146,8 +153,9 @@ export function RegisterPage() {
       await claimsApi.create({
         buildingId: pickedBuilding!.buildingId,
         requestedRole: societyRole,
-        claimedFlatNumber:
-          societyRole === "RESIDENT" ? societyFlatNumber.trim() : undefined,
+        // Optional metadata for maintainers — helps the owner
+        // recognise the applicant. Sent only when filled in.
+        claimedFlatNumber: societyFlatNumber.trim() || undefined,
         applicantNote: societyNote.trim() || undefined,
       });
       return { kind: "claim" as const };
@@ -212,12 +220,8 @@ export function RegisterPage() {
         setClientError("Pick the building from the search results first.");
         return;
       }
-      if (societyRole === "RESIDENT" && !societyFlatNumber.trim()) {
-        setClientError(
-          "Flat number is required for residents — we use it to bind you to the right flat once your owner approves.",
-        );
-        return;
-      }
+      // Flat number is optional for maintainers — only purpose is to
+      // help the owner recognise the applicant in their pending list.
     }
     // Defence-in-depth: the Create-Account button is disabled when
     // !acceptedTerms, but a determined user could re-enable it in
@@ -295,12 +299,14 @@ export function RegisterPage() {
           </p>
 
           {/*
-            Three-tile role picker. SOCIETY is the new self-service path
-            for maintainers and maintainees (residents): the account is
-            created as TENANT, plus a membership claim is filed against
-            a specific building. The building owner approves from their
-            dashboard — only after approval does the user gain
-            maintainer powers or get bound to a specific flat.
+            Three-tile role picker. The SOCIETY tile is for users who
+            want to manage a building's society books as the maintainer
+            — the account is created as TENANT and a MAINTAINER claim
+            is filed against a specific building. The building owner
+            approves from their dashboard. Residents who just want to
+            see the books use the owner-shared public ledger URL
+            (/society/view/<token>) — no account needed for that
+            read-only view.
           */}
           <div className="grid sm:grid-cols-3 gap-3 mt-6">
             <RoleCard
@@ -318,8 +324,8 @@ export function RegisterPage() {
               onClick={() => setChoice("OWNER")}
             />
             <RoleCard
-              label="Society member"
-              desc="Manage a society or see your building's books"
+              label="I'm a maintainer"
+              desc="Manage a society's books, dues, and expenses"
               icon={Users}
               active={choice === "SOCIETY"}
               onClick={() => setChoice("SOCIETY")}
@@ -328,8 +334,6 @@ export function RegisterPage() {
 
           {choice === "SOCIETY" && (
             <SocietyClaimPanel
-              role={societyRole}
-              onRoleChange={setSocietyRole}
               picked={pickedBuilding}
               onPick={setPickedBuilding}
               flatNumber={societyFlatNumber}
@@ -593,27 +597,23 @@ export function RegisterPage() {
 }
 
 /**
- * Sub-form shown when the user picks "Society member". Collects the
- * three pieces of info we need to assemble the claim payload:
+ * Sub-form shown when the user picks "I'm a maintainer". Collects:
  *
- *   1. Maintainer vs Maintainee — drives requestedRole on the claim.
- *      Maintainer = full read/write; Maintainee = read-only ledger.
- *   2. Building — searched via the unauth /properties/buildings/search
- *      endpoint. The user types, picks a result, and we lock in the
+ *   1. Building — searched via the unauth /properties/buildings/search
+ *      endpoint. The user types, picks a result, we lock in the
  *      buildingId. Free-text is intentionally not allowed — building
- *      names are not unique across cities, and an owner has to have
+ *      names aren't unique across cities, and an owner has to have
  *      already added the building.
- *   3. Flat number — required for residents (used at approval time to
- *      bind the user to a specific flat), optional for maintainers
- *      (recorded for context).
+ *   2. Flat number — optional metadata for the owner ("I'm in flat
+ *      201" gives them a recognisable cross-reference). Not required;
+ *      maintainers don't have to live in the building.
+ *   3. Note to owner — free-text context.
  *
- * Plus an optional applicant note ("I'm in flat 201 since Jun 2024 —
- * here's my UPI handle for cross-check") that the owner sees in their
- * pending-requests widget.
+ * The resident / "maintainee" path was removed: residents see society
+ * data via the owner-shared public ledger URL (no account needed for
+ * that read-only view), so requiring registration was just friction.
  */
 function SocietyClaimPanel({
-  role,
-  onRoleChange,
   picked,
   onPick,
   flatNumber,
@@ -621,8 +621,6 @@ function SocietyClaimPanel({
   note,
   onNoteChange,
 }: {
-  role: MembershipClaimRole;
-  onRoleChange: (r: MembershipClaimRole) => void;
   picked: BuildingResponseDTO | null;
   onPick: (b: BuildingResponseDTO | null) => void;
   flatNumber: string;
@@ -632,39 +630,23 @@ function SocietyClaimPanel({
 }) {
   return (
     <div className="mt-4 rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-4">
-      {/* Maintainer vs Maintainee radio */}
       <div>
-        <Label className="text-sm font-medium">I'm joining as</Label>
-        <div className="grid grid-cols-2 gap-2 mt-1.5">
-          <SubRoleCard
-            label="Maintainer"
-            desc="Run the society — track dues, expenses, payments"
-            active={role === "MAINTAINER"}
-            onClick={() => onRoleChange("MAINTAINER")}
-          />
-          <SubRoleCard
-            label="Maintainee"
-            desc="Resident of a flat — see the books, pay your dues"
-            active={role === "RESIDENT"}
-            onClick={() => onRoleChange("RESIDENT")}
-          />
-        </div>
+        <p className="text-sm font-medium">Apply to maintain a society</p>
+        <p className="text-[11px] text-muted-foreground mt-0.5">
+          Pick the building you want to manage. The building owner
+          approves your request — you'll get the maintainer dashboard
+          once they do.
+        </p>
       </div>
 
       {/* Building picker */}
       <BuildingPicker picked={picked} onPick={onPick} />
 
-      {/* Flat number — required for maintainee, optional for maintainer */}
+      {/* Flat number — optional metadata, helps the owner recognise the applicant */}
       <div>
         <Label htmlFor="society-flat">
           Flat number{" "}
-          {role === "RESIDENT" ? (
-            <span className="text-destructive">*</span>
-          ) : (
-            <span className="text-muted-foreground text-xs">
-              (optional for maintainers)
-            </span>
-          )}
+          <span className="text-muted-foreground text-xs">(optional)</span>
         </Label>
         <Input
           id="society-flat"
@@ -675,12 +657,10 @@ function SocietyClaimPanel({
           className="mt-1.5"
           maxLength={32}
         />
-        {role === "RESIDENT" && (
-          <p className="text-[11px] text-muted-foreground mt-1">
-            We use this to bind you to the right flat once your owner
-            approves the request.
-          </p>
-        )}
+        <p className="text-[11px] text-muted-foreground mt-1">
+          If you live in the building, your flat number helps the
+          owner recognise you in the request list.
+        </p>
       </div>
 
       {/* Optional applicant note */}
@@ -819,34 +799,6 @@ function BuildingPicker({
         </div>
       )}
     </div>
-  );
-}
-
-function SubRoleCard({
-  label,
-  desc,
-  active,
-  onClick,
-}: {
-  label: string;
-  desc: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "text-left p-3 rounded-lg border-2 transition-all",
-        active
-          ? "border-primary bg-primary/10"
-          : "border-border bg-card hover:border-primary/40",
-      )}
-    >
-      <div className="font-semibold text-sm">{label}</div>
-      <div className="text-[11px] text-muted-foreground mt-0.5">{desc}</div>
-    </button>
   );
 }
 
