@@ -61,6 +61,17 @@ public interface FlatRepo extends JpaRepository<Flat,String> {
     List<Flat> findActiveByTenantId(@Param("tenantId") String tenantId);
 
     /**
+     * All non-deleted flats this user owns. Driver query for the
+     * "my flats" panel on the owner dashboard now that per-flat
+     * ownership (V8) means an OWNER user might hold only specific
+     * units in a building they didn't construct.
+     */
+    @Query("SELECT f FROM Flat f " +
+           "WHERE f.flatOwnerId = :flatOwnerId " +
+           "AND (f.isDeleted = false OR f.isDeleted IS NULL)")
+    List<Flat> findByFlatOwnerId(@Param("flatOwnerId") String flatOwnerId);
+
+    /**
      * Look up a flat by (building, flat-number) — used by the
      * membership-claim approval path to bind a self-registered
      * resident to the flat they claimed. Returns the first match;

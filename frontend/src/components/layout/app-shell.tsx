@@ -208,13 +208,13 @@ export function AppShell() {
     (c) => c.status === "PENDING",
   );
 
-  // While pending, force every /app/* request back to /app/pending-claim.
-  // The redirect runs inside an effect so we don't fight React's
-  // strict-mode double-render — the navigate call is idempotent once
-  // we're on the pending-claim route.
+  // While pending, force every /app/* request back to the role-agnostic
+  // /pending-claim page. The redirect runs inside an effect so we don't
+  // fight React's strict-mode double-render — the navigate call is
+  // idempotent once we're on the pending-claim route.
   useEffect(() => {
-    if (hasPendingClaim && location.pathname !== "/app/pending-claim") {
-      navigate("/app/pending-claim", { replace: true });
+    if (hasPendingClaim && location.pathname !== "/pending-claim") {
+      navigate("/pending-claim", { replace: true });
     }
   }, [hasPendingClaim, location.pathname, navigate]);
 
@@ -222,7 +222,7 @@ export function AppShell() {
   // while pending so the user can't try to click into things they
   // can't reach yet.
   const items: NavItem[] = hasPendingClaim
-    ? [{ to: "/app/pending-claim", label: "Your application", icon: Hourglass }]
+    ? [{ to: "/pending-claim", label: "Your application", icon: Hourglass }]
     : navFor(role);
 
   // Fetch the signed-in user's profile so the header avatar can render

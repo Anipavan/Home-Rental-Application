@@ -56,7 +56,16 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class MembershipClaim {
 
-    public enum RequestedRole { MAINTAINER, RESIDENT }
+    /**
+     * MAINTAINER  — applicant wants to manage the society's books.
+     * RESIDENT    — applicant is the tenant of a specific flat.
+     * FLAT_OWNER  — applicant owns a specific flat (V8). On approval
+     *               we set {@code flat.flatOwnerId = userId} and, if
+     *               the flat is currently vacant, also set
+     *               {@code tenantId = userId} so the new owner is
+     *               their own occupant by default (owner-occupier).
+     */
+    public enum RequestedRole { MAINTAINER, RESIDENT, FLAT_OWNER }
     public enum Status { PENDING, APPROVED, REJECTED, WITHDRAWN }
 
     @Id

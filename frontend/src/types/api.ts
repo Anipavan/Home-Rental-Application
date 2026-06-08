@@ -1093,7 +1093,7 @@ export interface SocietyLedger {
 
 /* ── Self-service membership claims ─────────────────────────────── */
 
-export type MembershipClaimRole = "MAINTAINER" | "RESIDENT";
+export type MembershipClaimRole = "MAINTAINER" | "RESIDENT" | "FLAT_OWNER";
 export type MembershipClaimStatus =
   | "PENDING"
   | "APPROVED"

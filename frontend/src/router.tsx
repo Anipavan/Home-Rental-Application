@@ -99,6 +99,21 @@ export const router = createBrowserRouter([
   // credential — gateway whitelisted under
   // GET /rentals/v1/society/public/**. Anyone with the link can view.
   { path: "/society/view/:token", element: <PublicSocietyLedgerPage /> },
+  // ─── Membership-claim status (role-agnostic) ───
+  // Surfaced for self-registered MAINTAINER, RESIDENT, AND FLAT_OWNER
+  // claimants while they wait for approval. Lives outside any role
+  // shell so an OWNER-role flat-owner-claimant can land here without
+  // tripping the role-gated /app or /owner trees. Page is the same
+  // PendingClaimPage that was previously at /app/pending-claim — the
+  // /app alias stays for backward compat with bookmarks.
+  {
+    path: "/pending-claim",
+    element: (
+      <ProtectedRoute>
+        <PendingClaimPage />
+      </ProtectedRoute>
+    ),
+  },
   {
     path: "/app",
     element: (

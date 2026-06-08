@@ -102,10 +102,11 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Building not found — ask the owner to add it first."));
 
-        if (req.requestedRole() == RequestedRole.RESIDENT
+        if ((req.requestedRole() == RequestedRole.RESIDENT
+                || req.requestedRole() == RequestedRole.FLAT_OWNER)
                 && (req.claimedFlatNumber() == null || req.claimedFlatNumber().isBlank())) {
             throw new IllegalArgumentException(
-                    "Flat number is required when applying as a resident.");
+                    "Flat number is required when applying as a resident or flat owner.");
         }
 
         // Dedup — refuse a second PENDING claim from the same user on
@@ -398,10 +399,10 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
         // Single-party flow (owner-only).
         CallerSecurity.requireOwnerOrAdmin(building.getOwnerId());
 
-        if (claim.getRequestedRole() == RequestedRole.MAINTAINER) {
-            applyMaintainerApproval(claim, building);
-        } else {
-            applyResidentApproval(claim, building);
+        switch (claim.getRequestedRole()) {
+            case MAINTAINER -> applyMaintainerApproval(claim, building);
+            case RESIDENT -> applyResidentApproval(claim, building);
+            case FLAT_OWNER -> applyFlatOwnerApproval(claim, building);
         }
 
         claim.setStatus(Status.APPROVED);
@@ -619,6 +620,61 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
         flat.setIsOccupied(true);
         flatRepo.save(flat);
         log.info("Resident claim approved: user {} bound to flat {} of building {}",
+                claim.getUserId(), flat.getFlatNumber(), building.getBuildingId());
+    }
+
+    /**
+     * FLAT_OWNER claim approved (V8) → set flat.flatOwnerId to the
+     * claimant. If the flat is currently vacant we also bind them as
+     * the tenant (owner-occupier — the most common case for a buyer
+     * moving in). If someone else is already living there as a renter,
+     * we leave tenantId alone so we don't accidentally evict a tenant
+     * the previous owner had on a valid lease.
+     *
+     * <p>Refuses if the flat already has a non-default owner — the
+     * existing flat-owner has to be reassigned first. Going FROM the
+     * building-owner's default IS allowed (this is exactly the "I
+     * just sold flat 203" path the user described).
+     */
+    private void applyFlatOwnerApproval(MembershipClaim claim, Building building) {
+        if (claim.getClaimedFlatNumber() == null || claim.getClaimedFlatNumber().isBlank()) {
+            throw new IllegalArgumentException(
+                    "Flat-owner claim is missing a flat number — reject and "
+                            + "ask the applicant to resubmit with a flat number.");
+        }
+        List<Flat> matches = flatRepo.findByBuildingIdAndFlatNumber(
+                building.getBuildingId(), claim.getClaimedFlatNumber());
+        if (matches.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "No flat numbered '" + claim.getClaimedFlatNumber()
+                            + "' exists in this building.");
+        }
+        Flat flat = matches.get(0);
+
+        String currentOwner = flat.getFlatOwnerId();
+        boolean ownedByBuildingOwner = currentOwner == null
+                || currentOwner.equals(building.getOwnerId());
+        boolean alreadySameOwner = claim.getUserId().equals(currentOwner);
+
+        if (!ownedByBuildingOwner && !alreadySameOwner) {
+            throw new IllegalStateException(
+                    "Flat " + flat.getFlatNumber()
+                            + " is already owned by another user. The current flat-owner "
+                            + "needs to reassign it first.");
+        }
+
+        flat.setFlatOwnerId(claim.getUserId());
+        // Owner-occupier default: if no tenant is currently in the flat,
+        // bind the new owner as the tenant too so dashboards show them
+        // as the occupant. We DO NOT overwrite an existing tenantId —
+        // the previous owner may have a legitimate renter who keeps
+        // their tenancy through the ownership change.
+        if (flat.getTenantId() == null || flat.getTenantId().isBlank()) {
+            flat.setTenantId(claim.getUserId());
+            flat.setIsOccupied(true);
+        }
+        flatRepo.save(flat);
+        log.info("Flat-owner claim approved: user {} now owns flat {} of building {}",
                 claim.getUserId(), flat.getFlatNumber(), building.getBuildingId());
     }
 

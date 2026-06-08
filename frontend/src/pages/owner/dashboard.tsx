@@ -830,15 +830,19 @@ function PendingClaimsWidget() {
     mutationFn: (claimId: string) => claimsApi.approve(claimId),
     onSuccess: (claim) => {
       qc.invalidateQueries({ queryKey: ["my-pending-claims"] });
+      const titleByRole = {
+        MAINTAINER: "Maintainer approved.",
+        RESIDENT: "Resident approved.",
+        FLAT_OWNER: "Flat owner approved.",
+      } as const;
+      const descByRole = {
+        MAINTAINER: `${claim.applicantName ?? "The applicant"} can now manage the society. They'll need to sign out and back in to see the maintainer dashboard.`,
+        RESIDENT: `${claim.applicantName ?? "The applicant"} is now attached to flat ${claim.claimedFlatNumber ?? "their flat"}.`,
+        FLAT_OWNER: `${claim.applicantName ?? "The applicant"} is now the owner of flat ${claim.claimedFlatNumber ?? "their flat"}. Rent for that flat now goes to them.`,
+      } as const;
       tst({
-        title:
-          claim.requestedRole === "MAINTAINER"
-            ? "Maintainer approved."
-            : "Resident approved.",
-        description:
-          claim.requestedRole === "MAINTAINER"
-            ? `${claim.applicantName ?? "The applicant"} can now manage the society. They'll need to sign out and back in to see the maintainer dashboard.`
-            : `${claim.applicantName ?? "The applicant"} is now attached to flat ${claim.claimedFlatNumber ?? "their flat"}.`,
+        title: titleByRole[claim.requestedRole] ?? "Approved.",
+        description: descByRole[claim.requestedRole] ?? "",
       });
     },
     onError: (e) => {
@@ -907,7 +911,9 @@ function PendingClaimsWidget() {
                     >
                       {c.requestedRole === "MAINTAINER"
                         ? "Maintainer"
-                        : "Resident"}
+                        : c.requestedRole === "FLAT_OWNER"
+                          ? "Flat owner"
+                          : "Resident"}
                     </Badge>
                     <span className="font-semibold text-sm truncate">
                       {c.applicantName ?? c.applicantEmail ?? "Applicant"}
@@ -957,10 +963,17 @@ function PendingClaimsWidget() {
                       approveMut.isPending && approveMut.variables === c.id
                     }
                     onClick={() => {
+                      const who = c.applicantName ?? "this person";
+                      const building = c.buildingName ?? "the building";
+                      const flat = c.claimedFlatNumber ?? "?";
+                      const msgByRole = {
+                        MAINTAINER: `Approve ${who} as maintainer of ${building}?\n\nThis will REPLACE any existing maintainer for this building.`,
+                        RESIDENT: `Approve ${who} as the resident of flat ${flat} in ${building}?`,
+                        FLAT_OWNER: `Mark ${who} as the OWNER of flat ${flat} in ${building}?\n\nRent for this flat will route to them from now on, and they'll be on the lease (Party A) instead of you.`,
+                      } as const;
                       const msg =
-                        c.requestedRole === "MAINTAINER"
-                          ? `Approve ${c.applicantName ?? "this person"} as maintainer of ${c.buildingName ?? "the building"}?\n\nThis will REPLACE any existing maintainer for this building.`
-                          : `Approve ${c.applicantName ?? "this person"} as the resident of flat ${c.claimedFlatNumber ?? "?"} in ${c.buildingName ?? "the building"}?`;
+                        msgByRole[c.requestedRole] ??
+                        `Approve ${who}'s request?`;
                       if (confirm(msg)) {
                         approveMut.mutate(c.id);
                       }

@@ -29,6 +29,9 @@ public record FlatResponseDTO(
         BigDecimal rentAmount,
         Boolean isOccupied,
         String tenantId,
+        /** V8: authUserId of whoever owns this specific flat.
+         *  Defaults to the building owner for legacy data. */
+        String flatOwnerId,
         LocalDate leaseStartDate,
         LocalDate leaseEndDate,
         /* Listing attributes (NoBroker / 99acres filter parity) */

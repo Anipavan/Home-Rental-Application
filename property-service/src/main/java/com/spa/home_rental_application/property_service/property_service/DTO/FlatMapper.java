@@ -89,6 +89,7 @@ public class FlatMapper {
                 flat.getRentAmount(),
                 flat.getIsOccupied(),
                 flat.getTenantId(),
+                flat.getFlatOwnerId(),
                 flat.getLeaseStartDate(),
                 flat.getLeaseEndDate(),
                 flat.getFurnishingStatus(),

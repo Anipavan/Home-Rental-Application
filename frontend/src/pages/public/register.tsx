@@ -101,11 +101,26 @@ export function RegisterPage() {
    * want to bring residents back later.
    */
   const societyRole: MembershipClaimRole = "MAINTAINER";
-  /** Building the SOCIETY claim targets. Picked via search. */
+  /** Building the SOCIETY or OWNER-of-existing-flat claim targets.
+   *  Picked via search. */
   const [pickedBuilding, setPickedBuilding] =
     useState<BuildingResponseDTO | null>(null);
   const [societyFlatNumber, setSocietyFlatNumber] = useState("");
   const [societyNote, setSocietyNote] = useState("");
+
+  /**
+   * OWNER signup sub-mode (V8 — per-flat ownership):
+   *   NEW_BUILDING — the user is registering a new building from
+   *                  scratch (the legacy "I'm an owner" flow).
+   *   EXISTING_FLAT — the user already has a flat in a building
+   *                  someone else added to the platform; they want
+   *                  to be marked as the owner of that specific flat.
+   *                  Submits a FLAT_OWNER claim against (buildingId,
+   *                  flatNumber) — the building owner approves and
+   *                  the swap happens server-side.
+   */
+  const [ownerMode, setOwnerMode] =
+    useState<"NEW_BUILDING" | "EXISTING_FLAT">("NEW_BUILDING");
 
   const [clientError, setClientError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
@@ -140,11 +155,26 @@ export function RegisterPage() {
    * after a successful register, we still send them to /login with a
    * toast — they can submit the claim from inside the app later.
    */
+  // Three submission shapes:
+  //   - plain: TENANT or new-building OWNER → register and stop here
+  //   - claim: SOCIETY (maintainer) OR EXISTING_FLAT OWNER → register
+  //            + auto-login + post the appropriate claim
+  // The auth-side register call is identical for both claim shapes;
+  // only the claim payload's requestedRole and the success copy differ.
+  const submitsClaim =
+    choice === "SOCIETY" || (choice === "OWNER" && ownerMode === "EXISTING_FLAT");
+  const claimRole: MembershipClaimRole | null =
+    choice === "SOCIETY"
+      ? "MAINTAINER"
+      : choice === "OWNER" && ownerMode === "EXISTING_FLAT"
+        ? "FLAT_OWNER"
+        : null;
+
   const mutation = useMutation({
     mutationFn: async (req: Parameters<typeof authApi.register>[0]) => {
       await authApi.register(req);
-      if (choice !== "SOCIETY") return { kind: "plain" as const };
-      // Society path — auto-login, then submit the claim.
+      if (!submitsClaim || !claimRole) return { kind: "plain" as const };
+      // Claim path — auto-login, then submit the appropriate claim.
       const auth = await authApi.login({
         userName: req.userName,
         password: req.userPassword,
@@ -152,13 +182,13 @@ export function RegisterPage() {
       setSession(auth);
       await claimsApi.create({
         buildingId: pickedBuilding!.buildingId,
-        requestedRole: societyRole,
-        // Optional metadata for maintainers — helps the owner
-        // recognise the applicant. Sent only when filled in.
+        requestedRole: claimRole,
+        // SOCIETY maintainer: flat number is optional metadata.
+        // FLAT_OWNER: flat number is required (backend enforces too).
         claimedFlatNumber: societyFlatNumber.trim() || undefined,
         applicantNote: societyNote.trim() || undefined,
       });
-      return { kind: "claim" as const };
+      return { kind: "claim" as const, claimRole };
     },
     onSuccess: (result) => {
       if (result.kind === "claim") {
@@ -167,7 +197,9 @@ export function RegisterPage() {
           description:
             "We've notified the building owner. You'll get access as soon as they approve.",
         });
-        navigate("/app/pending-claim");
+        // /pending-claim is role-agnostic — works for both SOCIETY
+        // (TENANT-role) and EXISTING_FLAT (OWNER-role) claimants.
+        navigate("/pending-claim");
       } else {
         toast({
           title: "Account created",
@@ -215,13 +247,24 @@ export function RegisterPage() {
     // SOCIETY path — the claim payload has to be complete before we
     // burn the register call. Catching missing fields here means a
     // failed claim doesn't leave an orphaned account.
-    if (choice === "SOCIETY") {
+    if (submitsClaim) {
       if (!pickedBuilding) {
         setClientError("Pick the building from the search results first.");
         return;
       }
-      // Flat number is optional for maintainers — only purpose is to
-      // help the owner recognise the applicant in their pending list.
+      // FLAT_OWNER claims REQUIRE a flat number (backend uses it to
+      // find the specific flat to reassign). SOCIETY maintainer flat
+      // number stays optional.
+      if (
+        choice === "OWNER" &&
+        ownerMode === "EXISTING_FLAT" &&
+        !societyFlatNumber.trim()
+      ) {
+        setClientError(
+          "Flat number is required so we know which flat you're claiming as the owner.",
+        );
+        return;
+      }
     }
     // Defence-in-depth: the Create-Account button is disabled when
     // !acceptedTerms, but a determined user could re-enable it in
@@ -254,10 +297,12 @@ export function RegisterPage() {
     // synthesize a placeholder `<userName>@society.anirudhhomes.in`
     // that satisfies the format check. The user can replace it from
     // /app/profile any time after sign-in.
-    const submittedEmail =
-      choice === "SOCIETY"
-        ? `${submittedUserName.trim()}@society.anirudhhomes.in`
-        : String(fd.get("email") ?? "");
+    // Both claim flows (SOCIETY + OWNER-EXISTING_FLAT) hide the email
+    // field; synthesise a placeholder that satisfies the backend's
+    // @Email validator. Users can replace it later from /profile.
+    const submittedEmail = submitsClaim
+      ? `${submittedUserName.trim()}@society.anirudhhomes.in`
+      : String(fd.get("email") ?? "");
 
     mutation.mutate({
       userName: submittedUserName,
@@ -343,6 +388,27 @@ export function RegisterPage() {
             />
           )}
 
+          {/* OWNER sub-mode toggle. The two paths look identical to the
+              backend at this point (auth-side role=OWNER); they only
+              diverge at submit time:
+                * NEW_BUILDING — straight register, owner lands on /owner
+                  and clicks Add building.
+                * EXISTING_FLAT — register + FLAT_OWNER claim against
+                  (buildingId, flatNumber). Building owner approves and
+                  flat.flatOwnerId swaps to this new user. */}
+          {choice === "OWNER" && (
+            <OwnerModePanel
+              mode={ownerMode}
+              onModeChange={setOwnerMode}
+              picked={pickedBuilding}
+              onPick={setPickedBuilding}
+              flatNumber={societyFlatNumber}
+              onFlatNumberChange={setSocietyFlatNumber}
+              note={societyNote}
+              onNoteChange={setSocietyNote}
+            />
+          )}
+
           <form onSubmit={onSubmit} className="mt-6 space-y-4">
             {/* SOCIETY path renders the minimum the backend needs
                 (userName + password + email + firstName) plus the
@@ -356,12 +422,17 @@ export function RegisterPage() {
                 TENANT / OWNER paths still see the full form because
                 they're filling profile data the rest of the app uses
                 (search-by-tenant-type, agreement PDF address). */}
-            {choice === "SOCIETY" ? (
+            {submitsClaim ? (
+              // SOCIETY and OWNER+EXISTING_FLAT both submit a claim and
+              // both get the same slim form. Profile data isn't needed
+              // up-front for a "just attach me to this flat / society"
+              // workflow — they can fill the rest in later from
+              // /app/profile (or /owner/profile for flat-owners).
               <>
                 <p className="text-xs text-muted-foreground bg-secondary/40 border border-border rounded-md px-3 py-2">
-                  Quick signup for society members. You can complete
-                  the rest of your profile (email, phone, address, etc.)
-                  any time after sign-in.
+                  Quick signup. You can complete the rest of your
+                  profile (email, phone, address, etc.) any time after
+                  sign-in.
                 </p>
                 <div className="grid sm:grid-cols-2 gap-4">
                   <Field label="Username" name="userName" required />
@@ -402,7 +473,7 @@ export function RegisterPage() {
                 members typically don't need these at signup; they
                 can complete the profile post-approval from
                 /app/profile if they want. */}
-            {choice !== "SOCIETY" && (
+            {!submitsClaim && (
               <>
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div>
@@ -613,6 +684,131 @@ export function RegisterPage() {
  * data via the owner-shared public ledger URL (no account needed for
  * that read-only view), so requiring registration was just friction.
  */
+/**
+ * Sub-form shown when the user picks "I'm an owner". Carries the
+ * Yes/No "do you own a flat in an existing building" toggle plus,
+ * when Yes, the BuildingPicker + flat-number + note for the
+ * FLAT_OWNER claim. When No, nothing extra renders here — the user
+ * goes through the standard new-building owner registration and
+ * adds buildings post-signup from their dashboard.
+ *
+ * <p>V8 semantics: each flat carries its own flat_owner_id. The
+ * EXISTING_FLAT path submits a FLAT_OWNER claim that, on approval
+ * by the building owner, sets flat.flat_owner_id to this user's
+ * authUserId AND (when the flat is currently vacant) binds them as
+ * tenant too — owner-occupier default.
+ */
+function OwnerModePanel({
+  mode,
+  onModeChange,
+  picked,
+  onPick,
+  flatNumber,
+  onFlatNumberChange,
+  note,
+  onNoteChange,
+}: {
+  mode: "NEW_BUILDING" | "EXISTING_FLAT";
+  onModeChange: (m: "NEW_BUILDING" | "EXISTING_FLAT") => void;
+  picked: BuildingResponseDTO | null;
+  onPick: (b: BuildingResponseDTO | null) => void;
+  flatNumber: string;
+  onFlatNumberChange: (v: string) => void;
+  note: string;
+  onNoteChange: (v: string) => void;
+}) {
+  return (
+    <div className="mt-4 rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-4">
+      <div>
+        <p className="text-sm font-medium">
+          Are you the owner of a flat in an existing building?
+        </p>
+        <div className="grid grid-cols-2 gap-2 mt-2">
+          <button
+            type="button"
+            onClick={() => onModeChange("EXISTING_FLAT")}
+            className={cn(
+              "text-left p-3 rounded-lg border-2 transition-all",
+              mode === "EXISTING_FLAT"
+                ? "border-primary bg-primary/10"
+                : "border-border bg-card hover:border-primary/40",
+            )}
+          >
+            <div className="font-semibold text-sm">Yes</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">
+              I own a specific flat in a building someone else added
+            </div>
+          </button>
+          <button
+            type="button"
+            onClick={() => onModeChange("NEW_BUILDING")}
+            className={cn(
+              "text-left p-3 rounded-lg border-2 transition-all",
+              mode === "NEW_BUILDING"
+                ? "border-primary bg-primary/10"
+                : "border-border bg-card hover:border-primary/40",
+            )}
+          >
+            <div className="font-semibold text-sm">No</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">
+              I'm registering a new building / property from scratch
+            </div>
+          </button>
+        </div>
+      </div>
+
+      {mode === "EXISTING_FLAT" && (
+        <>
+          {/* Building picker */}
+          <BuildingPicker picked={picked} onPick={onPick} />
+
+          {/* Flat number — REQUIRED for FLAT_OWNER claim */}
+          <div>
+            <Label htmlFor="owner-flat">
+              Flat number <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              id="owner-flat"
+              name="claimedFlatNumber"
+              value={flatNumber}
+              onChange={(e) => onFlatNumberChange(e.target.value)}
+              placeholder="e.g. 203"
+              className="mt-1.5"
+              maxLength={32}
+              required
+            />
+            <p className="text-[11px] text-muted-foreground mt-1">
+              The flat you own. The building owner will approve and
+              you'll be marked as the owner from then on.
+            </p>
+          </div>
+
+          {/* Optional note to the building owner */}
+          <div>
+            <Label htmlFor="owner-note">
+              Note to the building owner (optional)
+            </Label>
+            <Textarea
+              id="owner-note"
+              value={note}
+              onChange={(e) => onNoteChange(e.target.value)}
+              placeholder="When you bought the flat, sale-deed reference, anything that helps them recognise the transfer."
+              rows={2}
+              maxLength={500}
+              className="mt-1.5"
+            />
+          </div>
+
+          <p className="text-[11px] text-muted-foreground border-t border-primary/20 pt-2">
+            The building owner sees your request in their dashboard.
+            You're marked as the flat owner once they approve.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
 function SocietyClaimPanel({
   picked,
   onPick,

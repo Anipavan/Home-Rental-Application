@@ -53,6 +53,28 @@ public class Flat {
     @Column(name = "tenant_id")
     private String tenantId;
 
+    /**
+     * authUserId of whoever owns this specific flat (V8). Default for
+     * legacy data is the building owner — see V8 migration backfill.
+     * Once a flat is "sold" via the FLAT_OWNER membership-claim flow,
+     * this swaps to the new owner's id.
+     *
+     * <p>Semantics:
+     * <ul>
+     *   <li>{@code flatOwnerId == building.ownerId} — the building
+     *       owner still owns this unit. Rent flows to them, lease
+     *       lists them as Party A. Same behaviour as pre-V8.</li>
+     *   <li>{@code flatOwnerId != building.ownerId} — split
+     *       ownership. Rent goes to flatOwnerId, lease lists THEM as
+     *       Party A, society dues are billed to THEM.</li>
+     *   <li>{@code flatOwnerId == tenantId} — owner-occupier. No
+     *       landlord-tenant relationship; the flat-owner lives in
+     *       their own flat. Dashboard hides lease + rent surfaces.</li>
+     * </ul>
+     */
+    @Column(name = "flat_owner_id", length = 64)
+    private String flatOwnerId;
+
     @Column(name = "lease_start_date")
     private LocalDate leaseStartDate;
 
