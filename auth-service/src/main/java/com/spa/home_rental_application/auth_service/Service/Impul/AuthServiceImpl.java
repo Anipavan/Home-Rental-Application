@@ -678,12 +678,22 @@ public class AuthServiceImpl implements AuthService {
     }
 
     /**
-     * H4: account-lockout helpers. Configurable via env:
-     *   {@code app.auth.lockout.max-attempts}  default 5
-     *   {@code app.auth.lockout.window-minutes} default 15
+     * H4: account-lockout configuration. Externalised via Spring
+     * {@code @Value} so operators can tune (or effectively disable)
+     * the lockout without a code change.
+     *
+     * <p>Defaults: 100 attempts, 1-minute window. The intent is to
+     * still block a brute-force script (hundreds of attempts/sec)
+     * while never tripping on a confused human retrying a few times
+     * during a debug session — the lockout used to be set at 5/15min
+     * and was hitting test users constantly. Set to a very large
+     * number (e.g. {@code MAX_VALUE}) via env to effectively disable.
      */
-    private static final int MAX_FAILED_ATTEMPTS = 5;
-    private static final int LOCKOUT_MINUTES = 15;
+    @org.springframework.beans.factory.annotation.Value("${app.auth.lockout.max-attempts:100}")
+    private int maxFailedAttempts;
+
+    @org.springframework.beans.factory.annotation.Value("${app.auth.lockout.window-minutes:1}")
+    private int lockoutMinutes;
 
     /** Returns true and clears state when the lock has expired. */
     private boolean clearLockIfExpired(UserDetails user) {
@@ -711,11 +721,11 @@ public class AuthServiceImpl implements AuthService {
             int n = user.getFailedLoginAttempts() == null ? 0 : user.getFailedLoginAttempts();
             n++;
             user.setFailedLoginAttempts(n);
-            if (n >= MAX_FAILED_ATTEMPTS) {
-                user.setLockedUntil(Instant.now().plus(LOCKOUT_MINUTES, ChronoUnit.MINUTES));
+            if (n >= maxFailedAttempts) {
+                user.setLockedUntil(Instant.now().plus(lockoutMinutes, ChronoUnit.MINUTES));
                 user.setAccountNonLocked(false);
                 log.warn("Account {} locked for {} minutes after {} failed attempts",
-                        user.getUsername(), LOCKOUT_MINUTES, n);
+                        user.getUsername(), lockoutMinutes, n);
             }
             userRepository.save(user);
         } catch (Exception ex) {

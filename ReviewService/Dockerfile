@@ -26,5 +26,5 @@ COPY --from=build /workspace/ReviewService/target/*.jar app.jar
 
 USER app
 EXPOSE 8094
-HEALTHCHECK --interval=30s --timeout=5s --start-period=40s CMD wget -qO- http://localhost:8094/actuator/health/liveness || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=150s CMD wget -qO- http://localhost:8094/actuator/health/liveness || exit 1
 ENTRYPOINT ["java","-XX:+UseContainerSupport","-XX:MaxRAMPercentage=75.0","-jar","/app/app.jar"]

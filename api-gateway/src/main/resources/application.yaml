@@ -596,6 +596,13 @@ eureka:
   client:
     register-with-eureka: true
     fetch-registry: true
+    # Pull the service registry every 5s instead of the Spring
+    # default 30s. When a backend service restarts and re-registers
+    # with Eureka, the gateway needs to notice fast — otherwise it
+    # keeps trying to route to the dead instance and surfaces "404
+    # GATEWAY_ERROR" to the browser for up to 30s after every
+    # restart. 5s is plenty over the network round-trip cost.
+    registry-fetch-interval-seconds: 5
     service-url:
       defaultZone: ${EUREKA_URL:http://${EUREKA_USERNAME:eureka}:${EUREKA_PASSWORD:CHANGE_ME_LOCAL_DEV_EUREKA_PLACEHOLDER}@localhost:8761/eureka}
 

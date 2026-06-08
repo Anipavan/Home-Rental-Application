@@ -183,6 +183,19 @@ management:
       show-details: when-authorized
       probes:
         enabled: true
+  # Disable Kafka in the aggregated /actuator/health response. The
+  # Spring KafkaAdmin starts a metadata-fetch task at boot that
+  # marks the indicator DOWN whenever Kafka is unreachable — but
+  # auth-service's actual logic only needs to PUBLISH events (now
+  # fire-and-forget via AuthEventImpl), not maintain admin client
+  # health. Without this exclusion a transient Kafka outage flagged
+  # auth-service as unhealthy in Docker, even though logins were
+  # working fine.
+  health:
+    kafka:
+      enabled: false
+    defaults:
+      enabled: true
   metrics:
     tags:
       application: ${spring.application.name}
