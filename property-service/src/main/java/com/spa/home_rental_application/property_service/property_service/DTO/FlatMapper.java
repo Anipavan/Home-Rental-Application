@@ -62,6 +62,10 @@ public class FlatMapper {
                 // applies, but explicit here makes the contract clear.
                 .acceptsBachelor(dto.acceptsBachelor() == null ? Boolean.TRUE : dto.acceptsBachelor())
                 .acceptsFamily(dto.acceptsFamily() == null ? Boolean.TRUE : dto.acceptsFamily())
+                // V10: explicit listed-for-rent toggle. Omit on
+                // create → FALSE (flat is invisible to public browse
+                // until the owner explicitly switches it on).
+                .availableForRent(dto.availableForRent() == null ? Boolean.FALSE : dto.availableForRent())
                 .build();
     }
 
@@ -107,7 +111,12 @@ public class FlatMapper {
                 // the row post-insert. Coerce to TRUE here so the FE
                 // filter doesn't accidentally exclude old listings.
                 flat.getAcceptsBachelor() == null ? Boolean.TRUE : flat.getAcceptsBachelor(),
-                flat.getAcceptsFamily() == null ? Boolean.TRUE : flat.getAcceptsFamily()
+                flat.getAcceptsFamily() == null ? Boolean.TRUE : flat.getAcceptsFamily(),
+                // V10: legacy rows pre-migration return null; coerce
+                // to FALSE here so the public browse defaults to
+                // "not listed" rather than accidentally surfacing
+                // every legacy flat until the owner intervenes.
+                flat.getAvailableForRent() == null ? Boolean.FALSE : flat.getAvailableForRent()
         );
     }
 

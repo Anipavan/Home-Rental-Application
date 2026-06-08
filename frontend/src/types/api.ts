@@ -284,6 +284,10 @@ export interface FlatResponseDTO {
    */
   acceptsBachelor?: boolean | null;
   acceptsFamily?: boolean | null;
+  /** V10: owner explicitly listed this flat for rent. Public browse
+   *  surfaces only flats where this is true. Default false on new
+   *  flats — owner has to opt in. */
+  availableForRent?: boolean | null;
 }
 
 export interface FlatRequestDTO {
@@ -309,6 +313,10 @@ export interface FlatRequestDTO {
   /** Owner-declared "I'm OK to rent to families" toggle. Defaults
    *  to true server-side when the request omits it. */
   acceptsFamily?: boolean;
+  /** V10: explicit "listed for rent" toggle. true → flat shows on
+   *  public browse; false → hidden until owner opts in. Omit to
+   *  leave the current value unchanged on update. */
+  availableForRent?: boolean;
 }
 
 export interface AssignFlatRequest {

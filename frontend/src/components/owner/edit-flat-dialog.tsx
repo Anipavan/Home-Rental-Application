@@ -58,6 +58,12 @@ export function EditFlatDialog({
   const [acceptsFamily, setAcceptsFamily] = useState<boolean>(
     flat.acceptsFamily !== false,
   );
+  // V10: "listed for rent" toggle. Default FALSE on legacy rows
+  // (server-side default for backfilled flats) — the owner has to
+  // explicitly opt in for the flat to appear on the public browse.
+  const [availableForRent, setAvailableForRent] = useState<boolean>(
+    flat.availableForRent === true,
+  );
 
   useEffect(() => {
     if (open) {
@@ -69,6 +75,7 @@ export function EditFlatDialog({
       setRentAmount(String(flat.rentAmount ?? ""));
       setAcceptsBachelor(flat.acceptsBachelor !== false);
       setAcceptsFamily(flat.acceptsFamily !== false);
+      setAvailableForRent(flat.availableForRent === true);
     }
   }, [open, flat]);
 
@@ -84,6 +91,7 @@ export function EditFlatDialog({
         rentAmount: Number(rentAmount) || 0,
         acceptsBachelor,
         acceptsFamily,
+        availableForRent,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["owner-all-flats"] });
@@ -113,7 +121,8 @@ export function EditFlatDialog({
     Number(areaSqft) !== (flat.areaSqft ?? 0) ||
     Number(rentAmount) !== (flat.rentAmount ?? 0) ||
     acceptsBachelor !== (flat.acceptsBachelor !== false) ||
-    acceptsFamily !== (flat.acceptsFamily !== false);
+    acceptsFamily !== (flat.acceptsFamily !== false) ||
+    availableForRent !== (flat.availableForRent === true);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -260,6 +269,32 @@ export function EditFlatDialog({
                 tenant filter.
               </p>
             )}
+          </div>
+
+          {/* V10: Listed-for-rent toggle. When this is OFF, the flat
+              is hidden from the public Browse Homes page entirely —
+              even if it's vacant. Use OFF for owner-occupied flats,
+              flats under renovation, or units you don't want
+              advertised yet. */}
+          <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
+            <label className="flex items-start gap-3 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                className="mt-0.5 size-4 rounded border-border accent-primary"
+                checked={availableForRent}
+                onChange={(e) => setAvailableForRent(e.target.checked)}
+              />
+              <div className="flex-1">
+                <span className="font-semibold text-sm">
+                  Listed for rent
+                </span>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  {availableForRent
+                    ? "This flat appears on the public Browse Homes page. Tenants can apply to rent it."
+                    : "Hidden from the public Browse Homes page. Switch on when you're ready to accept rental applications."}
+                </p>
+              </div>
+            </label>
           </div>
 
           <DialogFooter className="pt-2">

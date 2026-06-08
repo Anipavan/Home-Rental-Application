@@ -203,9 +203,31 @@ function FlatTable({
                 {f.tenantId ?? "—"}
               </span>
               <span className="font-medium">{formatINR(f.rentAmount)}</span>
-              <Badge variant={f.isOccupied ? "secondary" : "success"}>
-                {f.isOccupied ? "Occupied" : "Vacant"}
-              </Badge>
+              <div className="flex flex-wrap items-center gap-1">
+                <Badge variant={f.isOccupied ? "secondary" : "success"}>
+                  {f.isOccupied ? "Occupied" : "Vacant"}
+                </Badge>
+                {/* V10: surface the listed-for-rent state so the owner
+                    can see at a glance which vacant flats are visible
+                    on the public browse page. Listed shows on every
+                    flat (it's the explicit rental-listing toggle);
+                    Unlisted only flashes when the flat is vacant but
+                    NOT listed (to draw attention to flats they may
+                    have forgotten to publish). */}
+                {f.availableForRent === true && (
+                  <Badge variant="outline" className="text-[10px]">
+                    Listed
+                  </Badge>
+                )}
+                {!f.isOccupied && f.availableForRent !== true && (
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] border-warning/40 text-warning"
+                  >
+                    Unlisted
+                  </Badge>
+                )}
+              </div>
               <div className="sm:text-right col-span-2 sm:col-span-1 flex items-center justify-end gap-1">
                 {f.isOccupied ? (
                   <Button

@@ -58,5 +58,9 @@ public record FlatResponseDTO(
          * browse filter excludes a flat only when the owner has
          * explicitly turned the preference off. */
         Boolean acceptsBachelor,
-        Boolean acceptsFamily
+        Boolean acceptsFamily,
+        /** V10: true when the owner has listed this flat on the
+         *  public browse. Defaults to false on newly-created flats.
+         *  Owners see and toggle it from the EditFlatDialog. */
+        Boolean availableForRent
 ) {}

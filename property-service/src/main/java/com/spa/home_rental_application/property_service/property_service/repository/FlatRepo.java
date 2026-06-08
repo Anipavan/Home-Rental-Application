@@ -29,15 +29,27 @@ public interface FlatRepo extends JpaRepository<Flat,String> {
     List<Flat> findByBuildingId(@Param("buildingId") String buildingId);
 
     /**
-     * Vacant flats (across the entire catalog) — used by the public
-     * "Browse vacant" endpoint. Soft-deleted rows are excluded; the
-     * old derived query {@code findByIsOccupiedFalse} was returning
-     * deleted flats and they were re-assignable through {@code POST
-     * /flats/{id}/assign} because the assign call didn't re-check
-     * isDeleted either.
+     * Publicly-listed vacant flats — used by the "Browse Homes" page.
+     *
+     * <p>V10 added the {@code availableForRent} gate so owners control
+     * which of their flats appear publicly: a vacant flat sitting in
+     * an owner's portfolio (owner-occupied, under renovation, sale-
+     * only, etc.) stays invisible until they explicitly toggle
+     * "Listed for rent" on. Default for new flats is FALSE — the
+     * owner has to opt in.
+     *
+     * <p>The other two filters retained:
+     * <ul>
+     *   <li>{@code isOccupied = false} — can't rent a flat that's
+     *       already got someone in it.</li>
+     *   <li>{@code isDeleted = false OR NULL} — soft-deleted rows
+     *       stay out of every listing surface (their re-assignment
+     *       was a security issue in pre-V3 days).</li>
+     * </ul>
      */
     @Query("SELECT f FROM Flat f " +
            "WHERE f.isOccupied = false " +
+           "AND f.availableForRent = true " +
            "AND (f.isDeleted = false OR f.isDeleted IS NULL)")
     List<Flat> findVacant();
 
@@ -50,6 +62,7 @@ public interface FlatRepo extends JpaRepository<Flat,String> {
     @Query("SELECT f FROM Flat f " +
            "WHERE (f.isDeleted = false OR f.isDeleted IS NULL) " +
            "AND f.isOccupied = false " +
+           "AND f.availableForRent = true " +
            "AND f.createdAt IS NOT NULL " +
            "AND f.createdAt > :since")
     List<Flat> findVacantCreatedAfter(@Param("since") LocalDateTime since);

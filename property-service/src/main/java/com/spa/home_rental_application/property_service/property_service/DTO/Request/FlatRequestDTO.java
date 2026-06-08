@@ -78,5 +78,15 @@ public record FlatRequestDTO (
 
         /** True/null = family tenants accepted. False = families hidden
          *  from the listing when the filter is active. */
-        Boolean acceptsFamily
+        Boolean acceptsFamily,
+
+        /** V10: explicit "listed for rent" toggle.
+         *  - null on create → service defaults to FALSE (flat is NOT
+         *    publicly listed until the owner switches it on).
+         *  - true → flat appears on the public browse page.
+         *  - false → flat is hidden from the public browse, even if
+         *    the unit has no tenant. Used for owner-occupied flats,
+         *    flats under renovation, sale-only flats, etc.
+         */
+        Boolean availableForRent
 ) {}

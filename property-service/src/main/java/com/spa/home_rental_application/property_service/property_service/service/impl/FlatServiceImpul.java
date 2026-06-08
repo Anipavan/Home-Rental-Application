@@ -95,6 +95,18 @@ public class FlatServiceImpul implements FlatService {
             CallerSecurity.requireOwnerOrAdmin(parent.getOwnerId());
         }
 
+        // V10: default flat_owner_id to the building owner when the
+        // request doesn't specify one. The FLAT_OWNER membership-
+        // claim flow later transfers ownership to a different user
+        // (someone who bought the flat); until then, the building
+        // owner is the de-facto flat owner for rent routing, lease
+        // PDFs, etc. The V8 backfill caught EXISTING flats; this
+        // catches NEW flats created post-V8.
+        if (parent != null
+                && (flat.getFlatOwnerId() == null || flat.getFlatOwnerId().isBlank())) {
+            flat.setFlatOwnerId(parent.getOwnerId());
+        }
+
         LocalDateTime now = LocalDateTime.now();
         if (flat.getCreatedAt() == null) flat.setCreatedAt(now);
         flat.setUpdatedAt(now);
@@ -452,6 +464,13 @@ public class FlatServiceImpul implements FlatService {
         // null as TRUE rather than persisting a null.
         existing.setAcceptsBachelor(dto.getAcceptsBachelor() == null ? Boolean.TRUE : dto.getAcceptsBachelor());
         existing.setAcceptsFamily(dto.getAcceptsFamily() == null ? Boolean.TRUE : dto.getAcceptsFamily());
+        // V10: listed-for-rent. Different default from the tenant-
+        // preference flags above — we treat null as "leave the current
+        // value" (rather than coerce to FALSE) so legacy clients
+        // editing other fields don't accidentally un-list a flat.
+        if (dto.getAvailableForRent() != null) {
+            existing.setAvailableForRent(dto.getAvailableForRent());
+        }
         existing.setUpdatedAt(LocalDateTime.now());
         Flat saved = flatRepo.save(existing);
 
