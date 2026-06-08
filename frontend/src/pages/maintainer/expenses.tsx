@@ -266,11 +266,14 @@ function AddExpenseDialog({
   });
 
   // Unique flats (the backend emits one row per (flat, category); we
-  // only need each flat once for the split list).
+  // only need each flat once for the split list). Vacant flats are
+  // filtered out — they have no tenant to bill, and splitting an
+  // expense across them just creates orphan DUE rows nobody will pay.
   const flats = useMemo<FlatMaintenanceRow[]>(() => {
     if (!flatsQ.data) return [];
     const seen = new Map<string, FlatMaintenanceRow>();
     for (const r of flatsQ.data) {
+      if (!r.tenantUserId || r.tenantName === "(vacant)") continue;
       if (!seen.has(r.flatId)) seen.set(r.flatId, r);
     }
     return Array.from(seen.values()).sort((a, b) =>

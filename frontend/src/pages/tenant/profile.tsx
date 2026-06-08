@@ -414,8 +414,13 @@ export function ProfilePage() {
       {/*
         ID verification only makes sense once we have a user-service record —
         Document Service uploads need a real userId to attach to.
+
+        Hidden for MAINTAINER and ADMIN roles. Maintainers are typically
+        already-known society staff (verified out-of-band by the owner
+        before being granted maintainer powers); admins are platform
+        operators who don't go through the Aadhaar/PAN onboarding flow.
       */}
-      {q.data && (
+      {q.data && role !== "MAINTAINER" && role !== "ADMIN" && (
       <Card>
         <CardContent className="p-6 sm:p-8">
           <h3 className="font-display font-semibold text-lg flex items-center gap-2">

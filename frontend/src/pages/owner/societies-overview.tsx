@@ -99,7 +99,7 @@ export function OwnerSocietiesOverviewPage() {
                       <Link to={`/owner/buildings/${b.buildingId}/society`}>
                         {society ? (
                           <>
-                            Open ledger <ChevronRight className="size-4" />
+                            View Records <ChevronRight className="size-4" />
                           </>
                         ) : (
                           <>

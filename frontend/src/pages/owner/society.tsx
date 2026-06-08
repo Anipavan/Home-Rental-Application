@@ -162,7 +162,7 @@ export function OwnerSocietyPage() {
             <Card>
               <CardContent className="p-5 h-full flex flex-col">
                 <p className="text-xs uppercase tracking-wider text-muted-foreground font-mono">
-                  Public read-only ledger
+                  Building Expense Viewer
                 </p>
                 <p
                   className="text-sm font-mono mt-1 truncate"
