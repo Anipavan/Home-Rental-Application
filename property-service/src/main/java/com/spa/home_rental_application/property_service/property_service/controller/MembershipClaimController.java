@@ -58,6 +58,12 @@ public class MembershipClaimController {
         return ResponseEntity.ok(service.listPendingForOwner());
     }
 
+    @Operation(summary = "Current maintainer: list dual-approval claims awaiting my decision.")
+    @GetMapping("/pending/maintainer")
+    public ResponseEntity<List<MembershipClaimResponse>> pendingForMaintainer() {
+        return ResponseEntity.ok(service.listPendingForCurrentMaintainer());
+    }
+
     @Operation(summary = "Caller: list my own claims (any status).")
     @GetMapping("/mine")
     public ResponseEntity<List<MembershipClaimResponse>> mine() {

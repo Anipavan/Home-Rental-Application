@@ -97,13 +97,45 @@ public class MembershipClaim {
     @Column(name = "decision_note", length = 500)
     private String decisionNote;
 
-    /** authUserId of the owner who approved/rejected. Null on PENDING. */
+    /** authUserId of whoever closed the loop (final approver / rejecter).
+     *  Null on PENDING and AWAITING_BOTH. */
     @Column(name = "decided_by_user_id", length = 64)
     private String decidedByUserId;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    /** Final-decision timestamp. Null while still PENDING or
+     *  AWAITING_BOTH. Equals owner_decided_at OR maintainer_decided_at
+     *  depending on which side closed the loop. */
     @Column(name = "decided_at")
     private LocalDateTime decidedAt;
+
+    /* ─── Dual-approval (V7) ───
+     * When a MAINTAINER claim targets a building that already has an
+     * active maintainer, both the OWNER and the CURRENT MAINTAINER
+     * must approve. We track each side's decision separately so the
+     * UI can show "1 of 2 approvals" status mid-flight.
+     */
+
+    /** True when the claim requires both owner and current-maintainer
+     *  approval. Set at create time by the service layer based on
+     *  whether a current maintainer exists. Stored as a column (not
+     *  derived) so the dual-approval requirement stays stable even if
+     *  the maintainer changes mid-flight. */
+    @Column(name = "requires_dual_approval", nullable = false)
+    @Builder.Default
+    private Boolean requiresDualApproval = false;
+
+    @Column(name = "owner_decided_at")
+    private LocalDateTime ownerDecidedAt;
+
+    @Column(name = "owner_decided_by_user_id", length = 64)
+    private String ownerDecidedByUserId;
+
+    @Column(name = "maintainer_decided_at")
+    private LocalDateTime maintainerDecidedAt;
+
+    @Column(name = "maintainer_decided_by_user_id", length = 64)
+    private String maintainerDecidedByUserId;
 }

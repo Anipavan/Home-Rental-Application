@@ -1122,6 +1122,12 @@ export interface MembershipClaim {
   decidedByUserId: string | null;
   createdAt: string;
   decidedAt: string | null;
+  /** Dual-approval state — V7. Only meaningful for MAINTAINER claims
+   *  targeting buildings with an existing maintainer. UI renders
+   *  "1 of 2 approved" when only one side has acted. */
+  requiresDualApproval: boolean;
+  ownerApproved: boolean;
+  maintainerApproved: boolean;
 }
 
 export interface CreateMembershipClaimRequest {

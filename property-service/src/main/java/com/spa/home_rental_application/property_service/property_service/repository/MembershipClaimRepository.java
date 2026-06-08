@@ -36,4 +36,14 @@ public interface MembershipClaimRepository extends JpaRepository<MembershipClaim
 
     Optional<MembershipClaim> findFirstByBuildingIdAndUserIdAndStatus(
             String buildingId, String userId, Status status);
+
+    /**
+     * Claims of a given status against any building in the given
+     * list, AND with dual-approval enabled. Used by the maintainer-
+     * dashboard "pending requests for your society" widget — caller
+     * supplies the buildings they're the current maintainer of, we
+     * return the claims awaiting their decision.
+     */
+    List<MembershipClaim> findByBuildingIdInAndStatusAndRequiresDualApproval(
+            List<String> buildingIds, Status status, Boolean requiresDualApproval);
 }

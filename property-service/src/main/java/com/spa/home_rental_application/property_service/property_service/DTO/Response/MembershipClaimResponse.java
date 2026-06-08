@@ -38,7 +38,13 @@ public record MembershipClaimResponse(
         String decisionNote,
         String decidedByUserId,
         LocalDateTime createdAt,
-        LocalDateTime decidedAt
+        LocalDateTime decidedAt,
+        /** Dual-approval state (V7) — only meaningful for MAINTAINER
+         *  reassign claims (where the building already has an active
+         *  maintainer). UI uses these to render "1 of 2 approvals". */
+        boolean requiresDualApproval,
+        boolean ownerApproved,
+        boolean maintainerApproved
 ) {
     /**
      * Build a response from the row + the pre-fetched display fields.
@@ -66,7 +72,10 @@ public record MembershipClaimResponse(
                 c.getDecisionNote(),
                 c.getDecidedByUserId(),
                 c.getCreatedAt(),
-                c.getDecidedAt()
+                c.getDecidedAt(),
+                Boolean.TRUE.equals(c.getRequiresDualApproval()),
+                c.getOwnerDecidedAt() != null,
+                c.getMaintainerDecidedAt() != null
         );
     }
 }

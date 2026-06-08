@@ -27,6 +27,13 @@ export const claimsApi = {
       .get<MembershipClaim[]>("/society/claims/pending/owner")
       .then((r) => r.data),
 
+  /** Dual-approval claims awaiting the calling user's decision as the
+   *  current maintainer of the affected building(s). */
+  pendingForMaintainer: () =>
+    api
+      .get<MembershipClaim[]>("/society/claims/pending/maintainer")
+      .then((r) => r.data),
+
   mine: () =>
     api.get<MembershipClaim[]>("/society/claims/mine").then((r) => r.data),
 

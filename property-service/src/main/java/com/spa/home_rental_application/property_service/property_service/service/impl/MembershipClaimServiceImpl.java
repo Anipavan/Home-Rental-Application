@@ -125,6 +125,19 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
         boolean autoApprove = req.requestedRole() == RequestedRole.MAINTAINER
                 && userId.equals(building.getOwnerId());
 
+        // Dual-approval flag: the claim needs BOTH owner + current
+        // maintainer to approve before the swap fires when this is a
+        // MAINTAINER claim targeting a building that already has an
+        // active maintainer (and the claim isn't the owner self-
+        // approving). Persisted at create-time so the requirement is
+        // stable even if the current maintainer changes mid-flight.
+        boolean requiresDual = !autoApprove
+                && req.requestedRole() == RequestedRole.MAINTAINER
+                && configRepo.findByBuildingId(building.getBuildingId())
+                        .map(cfg -> cfg.getMaintainerUserId() != null
+                                && !cfg.getMaintainerUserId().equals(building.getOwnerId()))
+                        .orElse(false);
+
         MembershipClaim claim = MembershipClaim.builder()
                 .buildingId(req.buildingId())
                 .userId(userId)
@@ -132,6 +145,7 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
                 .claimedFlatNumber(blankToNull(req.claimedFlatNumber()))
                 .applicantNote(blankToNull(req.applicantNote()))
                 .status(Status.PENDING)
+                .requiresDualApproval(requiresDual)
                 .createdAt(LocalDateTime.now())
                 .build();
         MembershipClaim saved = claimRepo.save(claim);
@@ -152,6 +166,12 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
             // (worst case the owner just sees the chip on next
             // dashboard refresh).
             notifyOwnerOfNewClaim(saved, building);
+            // Dual-approval claims ALSO ping the current maintainer
+            // so they know there's a competing claim they need to
+            // weigh in on.
+            if (requiresDual) {
+                notifyCurrentMaintainerOfNewClaim(saved, building);
+            }
         }
 
         return enrichResponse(saved);
@@ -185,6 +205,41 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
             // Swallow — the owner will still see the claim on their
             // dashboard widget. The notification is a nice-to-have.
             log.warn("Notify owner failed for claim {} on building {}: {}",
+                    claim.getId(), building.getBuildingId(), e.getMessage());
+        }
+    }
+
+    /**
+     * Best-effort INAPP + EMAIL ping to the CURRENT maintainer that a
+     * competing claim has been submitted. Fires only on dual-approval
+     * claims (i.e. the building already has a maintainer). The
+     * current maintainer's decision is part of the two-party gate
+     * that protects against owner-account-compromise fraud.
+     */
+    private void notifyCurrentMaintainerOfNewClaim(MembershipClaim claim, Building building) {
+        try {
+            String currentMaintainerId = configRepo
+                    .findByBuildingId(building.getBuildingId())
+                    .map(SocietyConfig::getMaintainerUserId)
+                    .orElse(null);
+            if (currentMaintainerId == null) return;
+
+            UserClient.UserSummary applicant = safeLookup(claim.getUserId());
+            String who = applicant != null && applicant.fullName() != null
+                    ? applicant.fullName()
+                    : "Someone";
+            String subject = "Someone wants to take over as maintainer of " + building.getBuildingName();
+            String message = String.format(
+                    "%s has applied to replace you as the maintainer of %s. "
+                    + "Both you and the building owner need to approve before the change takes effect. "
+                    + "Open your dashboard to review.",
+                    who, building.getBuildingName());
+            notificationClient.notifyUser(new NotificationClient.NotifyUserBody(
+                    currentMaintainerId, subject, message));
+            log.info("Notified current maintainer {} of dual-approval claim {} on building {}",
+                    currentMaintainerId, claim.getId(), building.getBuildingId());
+        } catch (Exception e) {
+            log.warn("Notify current maintainer failed for claim {} on building {}: {}",
                     claim.getId(), building.getBuildingId(), e.getMessage());
         }
     }
@@ -252,6 +307,38 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
 
     @Override
     @Transactional(readOnly = true)
+    public List<MembershipClaimResponse> listPendingForCurrentMaintainer() {
+        String userId = CallerSecurity.getCurrentAuthUserId()
+                .orElseThrow(() -> new ForbiddenException(
+                        "You must be logged in to view pending requests."));
+
+        // Find every building this user currently maintains.
+        List<SocietyConfig> mySocieties = configRepo.findByMaintainerUserId(userId);
+        if (mySocieties.isEmpty()) return List.of();
+
+        List<String> buildingIds = mySocieties.stream()
+                .map(SocietyConfig::getBuildingId)
+                .toList();
+        // Only dual-approval claims need the current maintainer's
+        // attention — single-party claims (no current maintainer at
+        // create time) go straight to the owner.
+        List<MembershipClaim> pending =
+                claimRepo.findByBuildingIdInAndStatusAndRequiresDualApproval(
+                        buildingIds, Status.PENDING, true);
+        if (pending.isEmpty()) return List.of();
+
+        Map<String, Building> bMap = buildingRepo.findAllById(buildingIds).stream()
+                .collect(Collectors.toMap(Building::getBuildingId, b -> b));
+        Map<String, UserClient.UserSummary> uMap = batchLookupUsers(
+                pending.stream().map(MembershipClaim::getUserId).collect(Collectors.toSet()));
+
+        return pending.stream()
+                .map(c -> toResponse(c, bMap.get(c.getBuildingId()), uMap.get(c.getUserId())))
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<MembershipClaimResponse> listMine() {
         String userId = CallerSecurity.getCurrentAuthUserId()
                 .orElseThrow(() -> new ForbiddenException(
@@ -281,12 +368,35 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
     public MembershipClaimResponse approveClaim(String claimId, DecideMembershipClaimRequest req) {
         MembershipClaim claim = requireClaim(claimId);
         Building building = requireBuilding(claim.getBuildingId());
-        CallerSecurity.requireOwnerOrAdmin(building.getOwnerId());
 
         if (claim.getStatus() != Status.PENDING) {
             throw new IllegalStateException(
                     "Claim is already " + claim.getStatus().name().toLowerCase() + ".");
         }
+
+        String callerId = CallerSecurity.getCurrentAuthUserId().orElse(null);
+        boolean callerIsOwner = callerId != null
+                && callerId.equals(building.getOwnerId());
+        // Dual-approval claims can be approved by EITHER the owner or
+        // the current maintainer. Single-party claims (resident, or
+        // maintainer-when-no-current-maintainer) require the owner.
+        String currentMaintainerId = configRepo
+                .findByBuildingId(building.getBuildingId())
+                .map(SocietyConfig::getMaintainerUserId)
+                .orElse(null);
+        boolean callerIsCurrentMaintainer = callerId != null
+                && callerId.equals(currentMaintainerId);
+
+        if (Boolean.TRUE.equals(claim.getRequiresDualApproval())) {
+            if (!callerIsOwner && !callerIsCurrentMaintainer && !CallerSecurity.isAdmin()) {
+                throw new ForbiddenException(
+                        "Only the building owner or the current maintainer can approve this claim.");
+            }
+            return decideDual(claim, building, req, callerId, callerIsOwner, true);
+        }
+
+        // Single-party flow (owner-only).
+        CallerSecurity.requireOwnerOrAdmin(building.getOwnerId());
 
         if (claim.getRequestedRole() == RequestedRole.MAINTAINER) {
             applyMaintainerApproval(claim, building);
@@ -296,7 +406,9 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
 
         claim.setStatus(Status.APPROVED);
         claim.setDecidedAt(LocalDateTime.now());
-        claim.setDecidedByUserId(CallerSecurity.getCurrentAuthUserId().orElse(null));
+        claim.setDecidedByUserId(callerId);
+        claim.setOwnerDecidedAt(LocalDateTime.now());
+        claim.setOwnerDecidedByUserId(callerId);
         claim.setDecisionNote(blankToNull(req == null ? null : req.decisionNote()));
         MembershipClaim saved = claimRepo.save(claim);
         notifyClaimantOfDecision(saved, building, true);
@@ -308,19 +420,111 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
     public MembershipClaimResponse rejectClaim(String claimId, DecideMembershipClaimRequest req) {
         MembershipClaim claim = requireClaim(claimId);
         Building building = requireBuilding(claim.getBuildingId());
-        CallerSecurity.requireOwnerOrAdmin(building.getOwnerId());
 
         if (claim.getStatus() != Status.PENDING) {
             throw new IllegalStateException(
                     "Claim is already " + claim.getStatus().name().toLowerCase() + ".");
         }
 
+        String callerId = CallerSecurity.getCurrentAuthUserId().orElse(null);
+        boolean callerIsOwner = callerId != null
+                && callerId.equals(building.getOwnerId());
+        String currentMaintainerId = configRepo
+                .findByBuildingId(building.getBuildingId())
+                .map(SocietyConfig::getMaintainerUserId)
+                .orElse(null);
+        boolean callerIsCurrentMaintainer = callerId != null
+                && callerId.equals(currentMaintainerId);
+
+        // Either party can reject a dual-approval claim — first to
+        // reject kills it (no point requiring the second party to
+        // also weigh in when one has already said no).
+        if (Boolean.TRUE.equals(claim.getRequiresDualApproval())) {
+            if (!callerIsOwner && !callerIsCurrentMaintainer && !CallerSecurity.isAdmin()) {
+                throw new ForbiddenException(
+                        "Only the building owner or the current maintainer can reject this claim.");
+            }
+        } else {
+            CallerSecurity.requireOwnerOrAdmin(building.getOwnerId());
+        }
+
         claim.setStatus(Status.REJECTED);
         claim.setDecidedAt(LocalDateTime.now());
-        claim.setDecidedByUserId(CallerSecurity.getCurrentAuthUserId().orElse(null));
+        claim.setDecidedByUserId(callerId);
+        if (callerIsOwner) {
+            claim.setOwnerDecidedAt(LocalDateTime.now());
+            claim.setOwnerDecidedByUserId(callerId);
+        } else if (callerIsCurrentMaintainer) {
+            claim.setMaintainerDecidedAt(LocalDateTime.now());
+            claim.setMaintainerDecidedByUserId(callerId);
+        }
         claim.setDecisionNote(blankToNull(req == null ? null : req.decisionNote()));
         MembershipClaim saved = claimRepo.save(claim);
         notifyClaimantOfDecision(saved, building, false);
+        return enrichResponse(saved);
+    }
+
+    /**
+     * Dual-approval state machine for MAINTAINER reassign claims.
+     * Records the calling party's decision; if the OTHER party hasn't
+     * decided yet, the claim stays PENDING with the appropriate
+     * *_decided_at column stamped. Once BOTH sides approve, the swap
+     * fires and the claim transitions to APPROVED.
+     */
+    private MembershipClaimResponse decideDual(MembershipClaim claim,
+                                                Building building,
+                                                DecideMembershipClaimRequest req,
+                                                String callerId,
+                                                boolean isOwnerCaller,
+                                                boolean isApproval) {
+        LocalDateTime now = LocalDateTime.now();
+        if (isOwnerCaller) {
+            if (claim.getOwnerDecidedAt() != null) {
+                throw new IllegalStateException(
+                        "You've already decided on this claim. Wait for the current maintainer.");
+            }
+            claim.setOwnerDecidedAt(now);
+            claim.setOwnerDecidedByUserId(callerId);
+        } else {
+            if (claim.getMaintainerDecidedAt() != null) {
+                throw new IllegalStateException(
+                        "You've already decided on this claim. Wait for the owner.");
+            }
+            claim.setMaintainerDecidedAt(now);
+            claim.setMaintainerDecidedByUserId(callerId);
+        }
+
+        if (!isApproval) {
+            claim.setStatus(Status.REJECTED);
+            claim.setDecidedAt(now);
+            claim.setDecidedByUserId(callerId);
+            claim.setDecisionNote(blankToNull(req == null ? null : req.decisionNote()));
+            MembershipClaim saved = claimRepo.save(claim);
+            notifyClaimantOfDecision(saved, building, false);
+            return enrichResponse(saved);
+        }
+
+        // Approval — but check the OTHER side's state. Stay PENDING
+        // until they've also approved.
+        if (claim.getOwnerDecidedAt() == null || claim.getMaintainerDecidedAt() == null) {
+            log.info("Dual-approval partial for claim {}: owner={} maintainer={}",
+                    claim.getId(),
+                    claim.getOwnerDecidedAt() != null ? "approved" : "pending",
+                    claim.getMaintainerDecidedAt() != null ? "approved" : "pending");
+            MembershipClaim saved = claimRepo.save(claim);
+            // Don't notify the claimant on a half-approval; they only
+            // want to hear when the decision is final.
+            return enrichResponse(saved);
+        }
+
+        // Both sides in — apply the swap.
+        applyMaintainerApproval(claim, building);
+        claim.setStatus(Status.APPROVED);
+        claim.setDecidedAt(now);
+        claim.setDecidedByUserId(callerId);
+        claim.setDecisionNote(blankToNull(req == null ? null : req.decisionNote()));
+        MembershipClaim saved = claimRepo.save(claim);
+        notifyClaimantOfDecision(saved, building, true);
         return enrichResponse(saved);
     }
 

@@ -32,15 +32,33 @@ public interface MembershipClaimService {
     List<MembershipClaimResponse> listMine();
 
     /**
-     * Approve a pending claim. MAINTAINER claims update the building's
-     * {@code society_config.maintainer_user_id} (replacing any existing
-     * maintainer) and bump the claimant's role to MAINTAINER via
-     * auth-service. RESIDENT claims bind the claimant to the flat they
-     * named via property-service's existing flat-assignment write path.
+     * Dual-approval claims awaiting the calling user's decision as the
+     * <em>current maintainer</em> of the affected building. Empty list
+     * if the caller maintains no buildings or has no pending dual-
+     * approval requests against any of them.
+     */
+    List<MembershipClaimResponse> listPendingForCurrentMaintainer();
+
+    /**
+     * Approve a pending claim. Behaviour:
+     *
+     * <ul>
+     *   <li><b>Single-party</b> (the building has no current maintainer
+     *       OR the claim is RESIDENT): caller must be the building owner.
+     *       MAINTAINER claims swap {@code society_config.maintainer_user_id}
+     *       and bump the claimant's role; RESIDENT claims bind the
+     *       claimant to the flat they named.</li>
+     *   <li><b>Dual-party</b> (MAINTAINER claim against a building with
+     *       an active maintainer): caller can be either the owner or
+     *       the current maintainer. The matching {@code *_decided_at}
+     *       column is stamped. The swap only fires once BOTH sides
+     *       have approved.</li>
+     * </ul>
      */
     MembershipClaimResponse approveClaim(String claimId, DecideMembershipClaimRequest req);
 
-    /** Reject a pending claim. No side-effects beyond the row update. */
+    /** Reject a pending claim. Either party (owner or current maintainer)
+     *  can reject a dual-approval claim — first to reject kills it. */
     MembershipClaimResponse rejectClaim(String claimId, DecideMembershipClaimRequest req);
 
     /**
