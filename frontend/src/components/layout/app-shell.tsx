@@ -1,5 +1,14 @@
-import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useEffect } from "react";
+import {
+  Link,
+  NavLink,
+  Outlet,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { claimsApi } from "@/lib/api/claims";
+import { Hourglass } from "lucide-react";
 import {
   Home,
   Building2,
@@ -172,7 +181,49 @@ function navFor(role: Role | null): NavItem[] {
 export function AppShell() {
   const { role, userName, authUserId, refreshToken, clear } = useAuthStore();
   const navigate = useNavigate();
-  const items = navFor(role);
+  const location = useLocation();
+
+  // Pending-claim gate. Users who registered via the SOCIETY path
+  // sit at role=TENANT with a PENDING MAINTAINER claim until the
+  // building owner approves. While they're in that limbo state we
+  // hide the full tenant navigation (Saved, Browse, Lease, etc.)
+  // and pin them to /app/pending-claim — they shouldn't be able to
+  // wander into tenant features they don't actually have access to.
+  //
+  // Once the owner approves and they sign back in with role=MAINTAINER,
+  // the ProtectedRoute guard on /app already kicks them out (MAINTAINER
+  // is not in the route's allowed roles), so the post-approval routing
+  // is handled higher up.
+  const myClaimsQ = useQuery({
+    queryKey: ["my-claims"],
+    queryFn: () => claimsApi.mine(),
+    enabled: !!authUserId,
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+    // 404 means the endpoint isn't there or the user has zero claims —
+    // either way, no gating to apply.
+    retry: false,
+  });
+  const hasPendingClaim = (myClaimsQ.data ?? []).some(
+    (c) => c.status === "PENDING",
+  );
+
+  // While pending, force every /app/* request back to /app/pending-claim.
+  // The redirect runs inside an effect so we don't fight React's
+  // strict-mode double-render — the navigate call is idempotent once
+  // we're on the pending-claim route.
+  useEffect(() => {
+    if (hasPendingClaim && location.pathname !== "/app/pending-claim") {
+      navigate("/app/pending-claim", { replace: true });
+    }
+  }, [hasPendingClaim, location.pathname, navigate]);
+
+  // Sidebar items: full tenant nav normally, single "Application" entry
+  // while pending so the user can't try to click into things they
+  // can't reach yet.
+  const items: NavItem[] = hasPendingClaim
+    ? [{ to: "/app/pending-claim", label: "Your application", icon: Hourglass }]
+    : navFor(role);
 
   // Fetch the signed-in user's profile so the header avatar can render
   // their uploaded photo (Instagram / WhatsApp style — name next to a
