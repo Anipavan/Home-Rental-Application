@@ -186,11 +186,12 @@ public class Flat {
     private Boolean acceptsFamily = true;
 
     /**
-     * V10: explicit "listed for rent" toggle. Default FALSE — newly-
-     * created flats DON'T appear on the public browse until the
-     * owner explicitly switches this on. Lets owner-occupied flats,
-     * flats under renovation, sale-only flats, etc. stay invisible
-     * without us having to infer intent from {@link #tenantId}.
+     * V10: explicit "listed for rent" toggle. V11 flipped the default
+     * to TRUE — newly-created flats appear on the public browse
+     * automatically (the common case: an owner adding a flat almost
+     * always wants it discoverable). Owners hide owner-occupied,
+     * under-renovation, or sale-only units by un-checking the toggle
+     * in the EditFlatDialog.
      *
      * <p>Public browse query filters on this flag AND
      * {@code isOccupied == false}. The owner edits it from the
@@ -198,7 +199,7 @@ public class Flat {
      */
     @Column(name = "available_for_rent", nullable = false)
     @Builder.Default
-    private Boolean availableForRent = false;
+    private Boolean availableForRent = true;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;

@@ -62,10 +62,13 @@ public class FlatMapper {
                 // applies, but explicit here makes the contract clear.
                 .acceptsBachelor(dto.acceptsBachelor() == null ? Boolean.TRUE : dto.acceptsBachelor())
                 .acceptsFamily(dto.acceptsFamily() == null ? Boolean.TRUE : dto.acceptsFamily())
-                // V10: explicit listed-for-rent toggle. Omit on
-                // create → FALSE (flat is invisible to public browse
-                // until the owner explicitly switches it on).
-                .availableForRent(dto.availableForRent() == null ? Boolean.FALSE : dto.availableForRent())
+                // V11: explicit listed-for-rent toggle. Default flipped
+                // to TRUE — when the client omits the field (legacy
+                // flat-new form, minimal API caller), the flat is
+                // listed publicly automatically. Owners who don't want
+                // a flat surfaced switch the toggle OFF in the
+                // EditFlatDialog after creation.
+                .availableForRent(dto.availableForRent() == null ? Boolean.TRUE : dto.availableForRent())
                 .build();
     }
 
@@ -112,11 +115,12 @@ public class FlatMapper {
                 // filter doesn't accidentally exclude old listings.
                 flat.getAcceptsBachelor() == null ? Boolean.TRUE : flat.getAcceptsBachelor(),
                 flat.getAcceptsFamily() == null ? Boolean.TRUE : flat.getAcceptsFamily(),
-                // V10: legacy rows pre-migration return null; coerce
-                // to FALSE here so the public browse defaults to
-                // "not listed" rather than accidentally surfacing
-                // every legacy flat until the owner intervenes.
-                flat.getAvailableForRent() == null ? Boolean.FALSE : flat.getAvailableForRent()
+                // V11: legacy rows pre-migration return null; coerce
+                // to TRUE here to match the new "listed by default"
+                // behaviour. V11's backfill catches existing FALSE
+                // rows so this only matters for entities that the
+                // service mutated post-V10 without flushing.
+                flat.getAvailableForRent() == null ? Boolean.TRUE : flat.getAvailableForRent()
         );
     }
 

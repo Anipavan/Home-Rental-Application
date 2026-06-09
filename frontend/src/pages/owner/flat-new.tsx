@@ -76,6 +76,13 @@ export function FlatNewPage() {
       rentAmount: Number(fd.get("rentAmount") ?? 0),
       acceptsBachelor,
       acceptsFamily,
+      // V11: explicit listed-for-rent on create. Server default is
+      // also TRUE so omitting would work, but being explicit makes
+      // the intent obvious to anyone reading the payload in a
+      // network tab — and shields us from any future server-side
+      // default flip. Owners hide the flat post-create via the
+      // EditFlatDialog toggle.
+      availableForRent: true,
     });
   }
 

@@ -58,11 +58,13 @@ export function EditFlatDialog({
   const [acceptsFamily, setAcceptsFamily] = useState<boolean>(
     flat.acceptsFamily !== false,
   );
-  // V10: "listed for rent" toggle. Default FALSE on legacy rows
-  // (server-side default for backfilled flats) — the owner has to
-  // explicitly opt in for the flat to appear on the public browse.
+  // V10 toggle, V11 default-flip: "Listed for rent" is now ON by
+  // default. Coerce null/undefined → TRUE (matches the server-side
+  // default after V11) so an owner editing a flat that hasn't been
+  // re-fetched since the migration sees the correct checked state.
+  // Only a literal FALSE means the owner explicitly hid the flat.
   const [availableForRent, setAvailableForRent] = useState<boolean>(
-    flat.availableForRent === true,
+    flat.availableForRent !== false,
   );
 
   useEffect(() => {
@@ -75,7 +77,7 @@ export function EditFlatDialog({
       setRentAmount(String(flat.rentAmount ?? ""));
       setAcceptsBachelor(flat.acceptsBachelor !== false);
       setAcceptsFamily(flat.acceptsFamily !== false);
-      setAvailableForRent(flat.availableForRent === true);
+      setAvailableForRent(flat.availableForRent !== false);
     }
   }, [open, flat]);
 
@@ -122,7 +124,7 @@ export function EditFlatDialog({
     Number(rentAmount) !== (flat.rentAmount ?? 0) ||
     acceptsBachelor !== (flat.acceptsBachelor !== false) ||
     acceptsFamily !== (flat.acceptsFamily !== false) ||
-    availableForRent !== (flat.availableForRent === true);
+    availableForRent !== (flat.availableForRent !== false);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
