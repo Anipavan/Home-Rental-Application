@@ -6,6 +6,7 @@ import com.spa.home_rental_application.KafkaEvents.Producers.Events.PropertyServ
 import com.spa.home_rental_application.property_service.property_service.DTO.FlatMapper;
 import com.spa.home_rental_application.property_service.property_service.DTO.Request.AssignFlatRequest;
 import com.spa.home_rental_application.property_service.property_service.DTO.Request.FlatRequestDTO;
+import com.spa.home_rental_application.property_service.property_service.DTO.Response.FlatPreviewResponseDTO;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.FlatResponseDTO;
 import com.spa.home_rental_application.property_service.property_service.Entities.Building;
 import com.spa.home_rental_application.property_service.property_service.Entities.Flat;
@@ -190,6 +191,35 @@ public class FlatServiceImpul implements FlatService {
             if (d <= radiusKm) matches.add(f);
         }
         return flatMapper.toResponseList(matches);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public FlatPreviewResponseDTO previewFlat(String buildingId, String flatNumber) {
+        // Defensive null/blank handling — the endpoint is public and
+        // unauthenticated, so anyone can ping it with anything. Treat
+        // missing inputs as "not found" rather than throwing, so the
+        // signup form can show a clean inline error without dealing
+        // with HTTP 400s for empty form fields.
+        if (buildingId == null || buildingId.isBlank()
+                || flatNumber == null || flatNumber.isBlank()) {
+            return FlatPreviewResponseDTO.notFound();
+        }
+        // findByBuildingIdAndFlatNumber already excludes soft-deleted
+        // rows. Returns 0 or 1 matches in practice (the pair is logically
+        // unique inside a building though we don't enforce it at the
+        // DB layer). We pick the first match deterministically — same
+        // as MembershipClaimServiceImpl.applyResidentApproval does.
+        List<Flat> matches = flatRepo.findByBuildingIdAndFlatNumber(
+                buildingId.trim(), flatNumber.trim());
+        if (matches.isEmpty()) {
+            return FlatPreviewResponseDTO.notFound();
+        }
+        Flat flat = matches.get(0);
+        boolean occupied = Boolean.TRUE.equals(flat.getIsOccupied())
+                && flat.getTenantId() != null
+                && !flat.getTenantId().isBlank();
+        return FlatPreviewResponseDTO.of(occupied);
     }
 
     /** Great-circle distance in km between two lat/lng pairs. */

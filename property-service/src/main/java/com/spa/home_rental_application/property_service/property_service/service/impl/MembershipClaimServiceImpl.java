@@ -109,6 +109,50 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
                     "Flat number is required when applying as a resident or flat owner.");
         }
 
+        // Maintainer claims now ALSO require a flat number — the
+        // person managing the society's books has to actually live in
+        // the building (be a tenant in one of its flats). Owner
+        // self-claims are exempt: an owner already has total control
+        // over the building they registered, so making them prove
+        // residency would just be theatre.
+        boolean isOwnerSelfClaim = req.requestedRole() == RequestedRole.MAINTAINER
+                && userId.equals(building.getOwnerId());
+        if (req.requestedRole() == RequestedRole.MAINTAINER
+                && !isOwnerSelfClaim) {
+            if (req.claimedFlatNumber() == null || req.claimedFlatNumber().isBlank()) {
+                throw new IllegalArgumentException(
+                        "Flat number is required — the maintainer must live in "
+                                + "the building. Enter the flat you live in.");
+            }
+            // Look up the flat — refuse if it doesn't exist OR isn't
+            // currently occupied. An "occupied" flat means someone is
+            // a tenant there; the implicit assumption is that this
+            // someone IS the applicant. The building owner verifies
+            // identity at the approval step (they see the applicant's
+            // name + email + the claimed flat number). The signup-side
+            // gate stops obvious abuse: random users picking arbitrary
+            // buildings, applicants picking empty flats they've never
+            // lived in, etc.
+            List<Flat> matches = flatRepo.findByBuildingIdAndFlatNumber(
+                    building.getBuildingId(), req.claimedFlatNumber().trim());
+            if (matches.isEmpty()) {
+                throw new IllegalArgumentException(
+                        "No flat numbered '" + req.claimedFlatNumber()
+                                + "' exists in " + building.getBuildingName()
+                                + ". Double-check the flat number with the owner.");
+            }
+            Flat targetFlat = matches.get(0);
+            boolean occupied = Boolean.TRUE.equals(targetFlat.getIsOccupied())
+                    && targetFlat.getTenantId() != null
+                    && !targetFlat.getTenantId().isBlank();
+            if (!occupied) {
+                throw new IllegalArgumentException(
+                        "Flat " + req.claimedFlatNumber() + " in "
+                                + building.getBuildingName() + " is currently vacant. "
+                                + "Only a current resident can apply to maintain the society.");
+            }
+        }
+
         // Dedup — refuse a second PENDING claim from the same user on
         // the same building. They can withdraw the existing one and
         // resubmit if they got the role wrong.
@@ -122,9 +166,10 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
         // The owner self-claiming as maintainer of their own building
         // is a fast path: they already have the powers, no claim
         // needed. We still record it for audit, but auto-approve so
-        // they don't sit in PENDING waiting for themselves.
-        boolean autoApprove = req.requestedRole() == RequestedRole.MAINTAINER
-                && userId.equals(building.getOwnerId());
+        // they don't sit in PENDING waiting for themselves. Reuses the
+        // `isOwnerSelfClaim` flag computed above (same condition);
+        // kept as a named local for readability at the use sites below.
+        boolean autoApprove = isOwnerSelfClaim;
 
         // Dual-approval flag: the claim needs BOTH owner + current
         // maintainer to approve before the swap fires when this is a

@@ -135,11 +135,90 @@ export function RegisterPage() {
   const [maritalStatus, setMaritalStatus] = useState<string>(UNSELECTED);
   const [tenantType, setTenantType] = useState<string>(UNSELECTED);
 
+  /**
+   * Maintainer-claim residency gate (added Jun 2026).
+   *
+   * The product rule: a maintainer must be an existing resident of
+   * the building they want to manage. We can't verify the NEW user
+   * actually IS the existing tenant — that's the owner's job at the
+   * approval step — but we CAN refuse the obvious cases before
+   * burning a /auth/register call:
+   *   1. Flat number is mandatory (no more optional metadata).
+   *   2. The flat must exist in the picked building.
+   *   3. The flat must be currently occupied (have a tenant_id).
+   *
+   * State machine on the form:
+   *   idle       — fields blank or building not picked yet
+   *   checking   — fetch in flight to /properties/flats/preview
+   *   valid      — flat exists + is occupied; submit is unblocked
+   *   missing    — no flat by that number in this building
+   *   vacant     — flat exists but has no tenant (applicant clearly
+   *                isn't a current resident)
+   *   error      — preview call failed (network / 5xx); allow submit
+   *                anyway and let the backend's authoritative check
+   *                in MembershipClaimServiceImpl.createClaim catch it
+   *
+   * Backend re-validates with identical rules so a determined client
+   * tweaking the form state can't bypass — the gate is defence-in-
+   * depth, not the security boundary.
+   */
+  const [residencyState, setResidencyState] = useState<
+    "idle" | "checking" | "valid" | "missing" | "vacant" | "error"
+  >("idle");
+
   // Map the UI choice to the auth-service role that goes into the
   // /auth/register body. SOCIETY users register as TENANT — their
   // promotion to MAINTAINER (when applicable) happens via the claim
   // approval path, not at signup time.
   const authRole: Role = choice === "OWNER" ? "OWNER" : "TENANT";
+
+  /**
+   * Debounced preview check — only runs for SOCIETY signups where a
+   * building IS picked and a flat number HAS been typed. Resets to
+   * "idle" any time either input changes so the user always sees a
+   * fresh result; transitions to "checking" while the fetch is in
+   * flight; lands on one of the terminal states once the response
+   * comes back.
+   *
+   * Uses propertiesApi.flats.preview which is anonymous-safe — the
+   * gateway exposes GET /properties/flats/preview without JWT, and
+   * the response is just {exists, occupied} so we leak no PII.
+   */
+  useEffect(() => {
+    // The residency gate only applies to SOCIETY (maintainer) signups.
+    // EXISTING_FLAT owner claims and TENANT signups don't need it.
+    if (choice !== "SOCIETY") {
+      setResidencyState("idle");
+      return;
+    }
+    const trimmed = societyFlatNumber.trim();
+    if (!pickedBuilding || !trimmed) {
+      setResidencyState("idle");
+      return;
+    }
+    setResidencyState("checking");
+    const handle = setTimeout(async () => {
+      try {
+        const r = await propertiesApi.flats.preview(
+          pickedBuilding.buildingId,
+          trimmed,
+        );
+        if (!r.exists) {
+          setResidencyState("missing");
+        } else if (!r.occupied) {
+          setResidencyState("vacant");
+        } else {
+          setResidencyState("valid");
+        }
+      } catch {
+        // Network / 5xx — fail open so a flaky backend doesn't lock
+        // legitimate maintainers out of signup. Backend re-validates
+        // server-side in MembershipClaimServiceImpl.createClaim.
+        setResidencyState("error");
+      }
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [choice, pickedBuilding, societyFlatNumber]);
 
   /**
    * Signup is a two-step transaction for the SOCIETY path:
@@ -244,17 +323,17 @@ export function RegisterPage() {
       );
       return;
     }
-    // SOCIETY path — the claim payload has to be complete before we
-    // burn the register call. Catching missing fields here means a
-    // failed claim doesn't leave an orphaned account.
+    // SOCIETY / EXISTING_FLAT path — the claim payload has to be
+    // complete before we burn the register call. Catching missing
+    // fields here means a failed claim doesn't leave an orphaned
+    // account.
     if (submitsClaim) {
       if (!pickedBuilding) {
         setClientError("Pick the building from the search results first.");
         return;
       }
       // FLAT_OWNER claims REQUIRE a flat number (backend uses it to
-      // find the specific flat to reassign). SOCIETY maintainer flat
-      // number stays optional.
+      // find the specific flat to reassign).
       if (
         choice === "OWNER" &&
         ownerMode === "EXISTING_FLAT" &&
@@ -264,6 +343,38 @@ export function RegisterPage() {
           "Flat number is required so we know which flat you're claiming as the owner.",
         );
         return;
+      }
+      // SOCIETY maintainer — flat number is NOW mandatory + the
+      // applicant must be a current resident (flat exists in this
+      // building AND has a tenant). Backend re-checks both, but
+      // catching them here means a fraudulent or mistaken applicant
+      // doesn't leave an orphan auth account behind.
+      if (choice === "SOCIETY") {
+        if (!societyFlatNumber.trim()) {
+          setClientError(
+            "Flat number is required — the maintainer must live in the building.",
+          );
+          return;
+        }
+        if (residencyState === "checking") {
+          setClientError("Hold on — we're verifying your flat details.");
+          return;
+        }
+        if (residencyState === "missing") {
+          setClientError(
+            `No flat numbered "${societyFlatNumber.trim()}" exists in ${pickedBuilding.buildingName}. Double-check the flat number with the owner.`,
+          );
+          return;
+        }
+        if (residencyState === "vacant") {
+          setClientError(
+            `Flat ${societyFlatNumber.trim()} in ${pickedBuilding.buildingName} is currently vacant. Only a current resident can apply to maintain the society.`,
+          );
+          return;
+        }
+        // residencyState === "error" → backend was unreachable; let
+        // submit fall through and let the server-side validation
+        // surface the real error message.
       }
     }
     // Defence-in-depth: the Create-Account button is disabled when
@@ -385,6 +496,7 @@ export function RegisterPage() {
               onFlatNumberChange={setSocietyFlatNumber}
               note={societyNote}
               onNoteChange={setSocietyNote}
+              residencyState={residencyState}
             />
           )}
 
@@ -614,7 +726,21 @@ export function RegisterPage() {
               size="lg"
               variant="gradient"
               className="w-full mt-2"
-              disabled={mutation.isPending || !acceptedTerms}
+              disabled={
+                mutation.isPending ||
+                !acceptedTerms ||
+                // SOCIETY signups gate the Create-Account button on
+                // the residency check: until the picked flat is
+                // confirmed as occupied (or the backend errors and we
+                // fall back to letting the server decide), refuse to
+                // submit. Idle = no flat entered yet, checking = wait
+                // for the debounced fetch, missing/vacant = bad input.
+                (choice === "SOCIETY" &&
+                  (residencyState === "checking" ||
+                    residencyState === "missing" ||
+                    residencyState === "vacant" ||
+                    residencyState === "idle"))
+              }
             >
               {mutation.isPending ? <Loader2 className="animate-spin" /> : null}
               Create account
@@ -816,6 +942,7 @@ function SocietyClaimPanel({
   onFlatNumberChange,
   note,
   onNoteChange,
+  residencyState,
 }: {
   picked: BuildingResponseDTO | null;
   onPick: (b: BuildingResponseDTO | null) => void;
@@ -823,40 +950,55 @@ function SocietyClaimPanel({
   onFlatNumberChange: (v: string) => void;
   note: string;
   onNoteChange: (v: string) => void;
+  residencyState:
+    | "idle"
+    | "checking"
+    | "valid"
+    | "missing"
+    | "vacant"
+    | "error";
 }) {
   return (
     <div className="mt-4 rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-4">
       <div>
         <p className="text-sm font-medium">Apply to maintain a society</p>
         <p className="text-[11px] text-muted-foreground mt-0.5">
-          Pick the building you want to manage. The building owner
-          approves your request — you'll get the maintainer dashboard
-          once they do.
+          Pick the building you want to manage and the flat you live
+          in. The maintainer has to be a current resident. The
+          building owner approves your request from their dashboard.
         </p>
       </div>
 
       {/* Building picker */}
       <BuildingPicker picked={picked} onPick={onPick} />
 
-      {/* Flat number — optional metadata, helps the owner recognise the applicant */}
+      {/* Flat number — REQUIRED. The maintainer must live in the
+          building (be the current tenant of one of its flats). The
+          form gates the Create-Account button on the live preview
+          check confirming the flat exists + is occupied. */}
       <div>
         <Label htmlFor="society-flat">
-          Flat number{" "}
-          <span className="text-muted-foreground text-xs">(optional)</span>
+          Flat number you live in{" "}
+          <span className="text-destructive">*</span>
         </Label>
         <Input
           id="society-flat"
           name="claimedFlatNumber"
           value={flatNumber}
           onChange={(e) => onFlatNumberChange(e.target.value)}
-          placeholder="e.g. 201"
+          placeholder="e.g. 203"
           className="mt-1.5"
           maxLength={32}
+          required
+          // Style the input based on the residency check result —
+          // a green border once verified, red on missing/vacant.
+          aria-invalid={
+            residencyState === "missing" || residencyState === "vacant"
+          }
         />
-        <p className="text-[11px] text-muted-foreground mt-1">
-          If you live in the building, your flat number helps the
-          owner recognise you in the request list.
-        </p>
+        {/* Inline residency-check status. Hidden when idle (no input
+            yet) or for SOCIETY-irrelevant choices. */}
+        <ResidencyHint state={residencyState} flatNumber={flatNumber.trim()} />
       </div>
 
       {/* Optional applicant note */}
@@ -874,10 +1016,76 @@ function SocietyClaimPanel({
       </div>
 
       <p className="text-[11px] text-muted-foreground border-t border-primary/20 pt-2">
-        The building owner will see your request in their dashboard. You
-        get full access once they approve.
+        The building owner will see your request in their dashboard.
+        You get full access once they approve.
       </p>
     </div>
+  );
+}
+
+/**
+ * Inline status hint for the maintainer-signup flat-number field.
+ * Renders nothing for {@code idle} so the form starts quiet; flips to
+ * a spinner during {@code checking}, a green check on {@code valid},
+ * and a red error message on {@code missing} / {@code vacant}.
+ * {@code error} (preview endpoint unreachable) is shown as a soft
+ * warning — submit is still allowed, the backend will catch real
+ * problems server-side.
+ */
+function ResidencyHint({
+  state,
+  flatNumber,
+}: {
+  state: "idle" | "checking" | "valid" | "missing" | "vacant" | "error";
+  flatNumber: string;
+}) {
+  if (state === "idle") {
+    return (
+      <p className="text-[11px] text-muted-foreground mt-1">
+        Enter the flat you currently live in. We'll verify it before
+        creating your account.
+      </p>
+    );
+  }
+  if (state === "checking") {
+    return (
+      <p className="text-[11px] text-muted-foreground mt-1 inline-flex items-center gap-1.5">
+        <Loader2 className="size-3 animate-spin" />
+        Verifying flat {flatNumber}…
+      </p>
+    );
+  }
+  if (state === "valid") {
+    return (
+      <p className="text-[11px] text-success mt-1 inline-flex items-center gap-1.5">
+        <Check className="size-3" />
+        Flat {flatNumber} verified — you're a current resident.
+      </p>
+    );
+  }
+  if (state === "missing") {
+    return (
+      <p className="text-[11px] text-destructive mt-1">
+        No flat numbered "{flatNumber}" in this building. Double-check
+        the number with the owner.
+      </p>
+    );
+  }
+  if (state === "vacant") {
+    return (
+      <p className="text-[11px] text-destructive mt-1">
+        Flat {flatNumber} is currently vacant. Only a current resident
+        can apply to maintain the society.
+      </p>
+    );
+  }
+  // state === "error" — preview endpoint unreachable; let the backend
+  // be the authoritative check. We don't block submission here.
+  return (
+    <p className="text-[11px] text-warning mt-1">
+      Couldn't verify the flat right now. You can submit — we'll
+      double-check it when your account is created.
+    </p>
   );
 }
 

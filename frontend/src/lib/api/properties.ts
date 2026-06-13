@@ -150,6 +150,22 @@ export const propertiesApi = {
     vacant: () =>
       api.get<FlatResponseDTO[]>("/properties/flats/vacant").then((r) => r.data),
     /**
+     * Public preview of a flat by (buildingId, flatNumber). Returns
+     * only `{exists, occupied}` — no flatId, no tenantId, no PII —
+     * so it's safe to call without a JWT. Used by the maintainer-
+     * signup form to verify, BEFORE /auth/register fires, that the
+     * applicant actually lives in the building they're applying to
+     * manage. Backend re-validates the same check in
+     * MembershipClaimServiceImpl.createClaim as defence-in-depth.
+     */
+    preview: (buildingId: string, flatNumber: string) =>
+      api
+        .get<{ exists: boolean; occupied: boolean }>(
+          "/properties/flats/preview",
+          { params: { buildingId, flatNumber } },
+        )
+        .then((r) => r.data),
+    /**
      * Haversine geosearch — vacant flats whose parent building's
      * geo-pin is within {@code radiusKm} of (lat, lng). Pin-less
      * buildings are excluded by the backend. Public GET, callable

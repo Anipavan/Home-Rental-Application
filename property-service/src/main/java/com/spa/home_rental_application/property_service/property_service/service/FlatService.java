@@ -2,6 +2,7 @@ package com.spa.home_rental_application.property_service.property_service.servic
 
 import com.spa.home_rental_application.property_service.property_service.DTO.Request.AssignFlatRequest;
 import com.spa.home_rental_application.property_service.property_service.DTO.Request.FlatRequestDTO;
+import com.spa.home_rental_application.property_service.property_service.DTO.Response.FlatPreviewResponseDTO;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.FlatResponseDTO;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -54,4 +55,23 @@ public interface FlatService {
      * the given coordinates. Pin-less buildings are excluded.
      */
     List<FlatResponseDTO> findFlatsNear(double lat, double lng, double radiusKm);
+
+    /**
+     * Public, anonymous-safe preview of a flat by
+     * (buildingId, flatNumber). Used by the maintainer-signup form
+     * to verify, before {@code /auth/register} fires, that the
+     * applicant actually lives in the building they're applying to
+     * manage. The form blocks submission unless the flat exists AND
+     * is currently occupied — keeps fraudulent maintainer claims
+     * out of the owner's pending queue, and avoids creating orphan
+     * accounts whose only claim is going to be rejected.
+     *
+     * <p>Returns only {@code {exists, occupied}} — no flatId,
+     * tenantId, ownerId, rent, or any other field that could be used
+     * to enumerate residents. The endpoint is reachable without a
+     * JWT (already covered by the gateway's public
+     * {@code GET /properties/flats/**} pattern), so the response
+     * shape IS the privacy boundary.
+     */
+    FlatPreviewResponseDTO previewFlat(String buildingId, String flatNumber);
 }

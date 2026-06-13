@@ -101,6 +101,41 @@ public class FlatController {
     }
 
     /**
+     * Public, anonymous-safe flat preview by (buildingId, flatNumber).
+     * Used by the maintainer-signup form on /register to verify, BEFORE
+     * the {@code /auth/register} call fires, that the applicant
+     * actually lives in the building they're applying to manage. The
+     * form blocks submission unless the response reports
+     * {@code exists=true, occupied=true}.
+     *
+     * <p>Path falls under the gateway's
+     * {@code GET /properties/flats/**} public pattern, so no JWT is
+     * required — which is what we want for a pre-account check.
+     *
+     * <p>Response is deliberately tiny —
+     * {@link com.spa.home_rental_application.property_service.property_service.DTO.Response.FlatPreviewResponseDTO}
+     * exposes only {@code {exists, occupied}}. No flatId, no tenantId,
+     * no rent, no area. The endpoint is open to anonymous callers, so
+     * the response shape IS the privacy boundary — leaks nothing the
+     * building's address sign wouldn't also reveal to a passer-by.
+     *
+     * @param buildingId UUID of the building (from
+     *                   {@code /properties/buildings/search} on the
+     *                   signup form)
+     * @param flatNumber free-text flat label the applicant typed
+     *                   (e.g. "203", "G-2"). Trimmed server-side;
+     *                   empty/blank returns {@code exists=false}.
+     */
+    @Operation(summary = "Preview a flat by (buildingId, flatNumber) — exists + occupied, no PII")
+    @GetMapping("/flats/preview")
+    public ResponseEntity<com.spa.home_rental_application.property_service.property_service.DTO.Response.FlatPreviewResponseDTO>
+            previewFlat(@RequestParam String buildingId,
+                        @RequestParam String flatNumber) {
+        log.info("GET /properties/flats/preview buildingId={} flatNumber={}", buildingId, flatNumber);
+        return ResponseEntity.ok(flatService.previewFlat(buildingId, flatNumber));
+    }
+
+    /**
      * "Near me" geosearch: flats whose parent building has a geo-pin
      * within {@code radiusKm} of (lat, lng). Computed via the
      * Haversine great-circle formula — accurate enough for rental
