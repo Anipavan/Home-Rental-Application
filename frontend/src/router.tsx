@@ -72,6 +72,7 @@ import { OwnerSocietyPage } from "@/pages/owner/society";
 import { OwnerSocietiesOverviewPage } from "@/pages/owner/societies-overview";
 import { TenantSocietyPage } from "@/pages/tenant/society";
 import { SocietyPayPage } from "@/pages/tenant/society-pay";
+import { SocietyPayAllPage } from "@/pages/tenant/society-pay-all";
 import { PublicSocietyLedgerPage } from "@/pages/public/society-ledger";
 import {
   MaintainerFlatsPage,
@@ -222,6 +223,16 @@ export const router = createBrowserRouter([
           {
             path: "society/pay/:buildingId/:collectionId",
             element: <SocietyPayPage />,
+          },
+          // Bulk-pay landing — lists every DUE charge for a month
+          // and (once the Razorpay bridge for society charges ships)
+          // launches a single Razorpay order covering all of them.
+          // Today the page lists rows with individual Pay buttons +
+          // a disabled "Pay all via Razorpay" CTA so users see what's
+          // coming without being misled into clicking a no-op.
+          {
+            path: "society/pay-all/:buildingId/:month",
+            element: <SocietyPayAllPage />,
           },
         ],
       },

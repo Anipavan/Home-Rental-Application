@@ -5,7 +5,6 @@ import {
   Building2,
   Calendar,
   CheckCircle2,
-  Droplets,
   Receipt,
   Wallet,
   Wrench,
@@ -219,30 +218,46 @@ export function TenantSocietyPage() {
                       />
                     ))}
                   </tbody>
+                  {/* Total Due footer — only shown when there's
+                    * actually something due (skipping it on a fully-
+                    * paid month keeps the table from looking like a
+                    * "you owe ₹0" nag). The Pay all button routes
+                    * to a bulk pay flow that opens Razorpay for the
+                    * combined total — see /app/society/pay-all/...
+                    * The link reuses the building + month from the
+                    * page query state, so the destination page can
+                    * re-fetch DUE rows and fan out one Razorpay order
+                    * covering all of them. */}
+                  {totalDue > 0 && (
+                    <tfoot>
+                      <tr className="bg-primary/5 border-t-2 border-border/60 font-semibold">
+                        <td
+                          colSpan={3}
+                          className="px-3 py-3 text-right text-sm uppercase tracking-wider text-muted-foreground"
+                        >
+                          Total Due
+                        </td>
+                        <td className="px-3 py-3 text-right whitespace-nowrap">
+                          <span className="font-display text-base">
+                            {formatINR(totalDue)}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3 text-right whitespace-nowrap">
+                          <Button asChild variant="gradient" size="sm">
+                            <Link
+                              to={`/app/society/pay-all/${configQ.data!.buildingId}/${month}`}
+                            >
+                              Pay all · {formatINR(totalDue)}
+                            </Link>
+                          </Button>
+                        </td>
+                      </tr>
+                    </tfoot>
+                  )}
                 </table>
               </div>
             )}
           </CollapsibleSection>
-
-          {/* ── Common-area ledger (existing) ─────────────────────── */}
-          <div className="grid gap-4 sm:grid-cols-2 mb-6">
-            <Kpi
-              icon={Droplets}
-              label="Expenses this month"
-              value={formatINR(ledgerQ.data?.expensesThisMonth ?? 0)}
-              tone="destructive"
-            />
-            <Kpi
-              icon={Wallet}
-              label="Net Fund Balance"
-              value={formatINR(ledgerQ.data?.balanceLifetime ?? 0)}
-              tone={
-                (ledgerQ.data?.balanceLifetime ?? 0) >= 0
-                  ? "success"
-                  : "destructive"
-              }
-            />
-          </div>
 
           {/* ── Common-area Expenses (collapsible + tabular) ──────── */}
           <CollapsibleSection
@@ -409,34 +424,3 @@ function ChargeRow({
   );
 }
 
-function Kpi({
-  icon: Icon,
-  label,
-  value,
-  tone,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: string;
-  tone: "success" | "destructive" | "muted";
-}) {
-  const toneClass =
-    tone === "success"
-      ? "text-success"
-      : tone === "destructive"
-        ? "text-destructive"
-        : "text-foreground";
-  return (
-    <Card>
-      <CardContent className="p-5">
-        <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground">
-          <Icon className="size-4" />
-          {label}
-        </div>
-        <p className={`font-display font-bold text-2xl mt-2 ${toneClass}`}>
-          {value}
-        </p>
-      </CardContent>
-    </Card>
-  );
-}
