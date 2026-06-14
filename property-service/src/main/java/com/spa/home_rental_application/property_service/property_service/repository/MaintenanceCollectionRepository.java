@@ -103,4 +103,12 @@ public interface MaintenanceCollectionRepository extends JpaRepository<Maintenan
 
     long countByBuildingIdAndForMonthAndStatus(
             String buildingId, String forMonth, CollectionStatus status);
+
+    /**
+     * Look up every collection row stamped with a given payment_id.
+     * Drives the PaymentCompletedEvent consumer — when Razorpay
+     * confirms a society-charge payment, all rows wearing this id
+     * flip PAID together.
+     */
+    List<MaintenanceCollection> findByPaymentId(String paymentId);
 }

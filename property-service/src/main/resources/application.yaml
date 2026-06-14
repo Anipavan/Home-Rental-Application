@@ -24,6 +24,25 @@ spring:
         spring.json.add.type.headers: false
       acks: all
       retries: 3
+    consumer:
+      # Consumer side wired up so property-service can listen for
+      # PaymentCompletedEvent (society-charge → Razorpay bridge — when
+      # the gateway confirms PAID, the listener flips the linked
+      # maintenance_collection rows). Without this block the
+      # @KafkaListener bean spins up with default config that can't
+      # deserialise our event DTOs.
+      group-id: hra-property-service
+      auto-offset-reset: earliest
+      # ErrorHandlingDeserializer wrappers stop a poison-pill record
+      # (malformed JSON, unknown type) from killing the listener
+      # container — Spring logs + skips the bad record instead.
+      key-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      properties:
+        spring.deserializer.key.delegate.class: org.apache.kafka.common.serialization.StringDeserializer
+        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
+        spring.json.trusted.packages: "com.spa.home_rental_application.KafkaEvents.*"
+        spring.json.use.type.headers: false
 
   datasource:
     url: ${DB_URL:jdbc:oracle:thin:@//localhost:1521/orcl}

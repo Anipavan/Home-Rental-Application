@@ -1,6 +1,7 @@
 package com.spa.home_rental_application.property_service.property_service.service.impl;
 
 import com.spa.home_rental_application.property_service.property_service.DTO.Request.AddExpenseRequest;
+import com.spa.home_rental_application.property_service.property_service.DTO.Request.InitiateSocietyChargePaymentRequest;
 import com.spa.home_rental_application.property_service.property_service.DTO.Request.PromoteTenantToMaintainerRequest;
 import com.spa.home_rental_application.property_service.property_service.DTO.Request.SetupSocietyRequest;
 import com.spa.home_rental_application.property_service.property_service.DTO.Request.UpsertFlatCollectionRequest;
@@ -9,6 +10,7 @@ import com.spa.home_rental_application.property_service.property_service.DTO.Res
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.MaintenanceExpenseResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.PromoteTenantResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.PublicFlatBillResponse;
+import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyChargePaymentInitiatedResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyConfigResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyLedgerResponse;
 import com.spa.home_rental_application.property_service.property_service.Entities.Building;
@@ -18,6 +20,7 @@ import com.spa.home_rental_application.property_service.property_service.Entitie
 import com.spa.home_rental_application.property_service.property_service.Entities.SocietyConfig;
 import com.spa.home_rental_application.property_service.property_service.Mapper.SocietyMapper;
 import com.spa.home_rental_application.property_service.property_service.client.AuthClient;
+import com.spa.home_rental_application.property_service.property_service.client.PaymentClient;
 import com.spa.home_rental_application.property_service.property_service.client.UserClient;
 import com.spa.home_rental_application.property_service.property_service.enums.CollectionStatus;
 import com.spa.home_rental_application.property_service.property_service.enums.ExpenseCategory;
@@ -36,13 +39,16 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.security.SecureRandom;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.EnumMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Implementation of the society / common-area maintenance ledger.
@@ -76,6 +82,7 @@ public class SocietyServiceImpl implements SocietyService {
     private final SocietyMapper mapper;
     private final UserClient userClient;
     private final AuthClient authClient;
+    private final PaymentClient paymentClient;
 
     public SocietyServiceImpl(SocietyConfigRepository configRepo,
                               MaintenanceExpenseRepository expenseRepo,
@@ -84,7 +91,8 @@ public class SocietyServiceImpl implements SocietyService {
                               FlatRepo flatRepo,
                               SocietyMapper mapper,
                               UserClient userClient,
-                              AuthClient authClient) {
+                              AuthClient authClient,
+                              PaymentClient paymentClient) {
         this.configRepo = configRepo;
         this.expenseRepo = expenseRepo;
         this.collectionRepo = collectionRepo;
@@ -93,6 +101,7 @@ public class SocietyServiceImpl implements SocietyService {
         this.mapper = mapper;
         this.userClient = userClient;
         this.authClient = authClient;
+        this.paymentClient = paymentClient;
     }
 
     // ── Config ────────────────────────────────────────────────────
@@ -987,5 +996,131 @@ public class SocietyServiceImpl implements SocietyService {
         byte[] bytes = new byte[24];
         RANDOM.nextBytes(bytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    // ── Society-charge → Razorpay bridge ─────────────────────────────
+
+    @Override
+    @Transactional
+    public SocietyChargePaymentInitiatedResponse initiateSocietyChargePayment(
+            String buildingId,
+            InitiateSocietyChargePaymentRequest req,
+            String idempotencyKey) {
+
+        Building b = requireBuilding(buildingId);
+        String me = CallerSecurity.getCurrentAuthUserId().orElseThrow(
+                () -> new ForbiddenException("Sign in to pay society charges."));
+
+        List<MaintenanceCollection> rows = collectionRepo.findAllById(req.collectionIds());
+        if (rows.size() != req.collectionIds().size()) {
+            // findAllById silently drops missing ids — surface the discrepancy
+            // instead of charging the tenant for fewer rows than they asked.
+            Set<String> found = new HashSet<>();
+            rows.forEach(r -> found.add(r.getId()));
+            String missing = req.collectionIds().stream()
+                    .filter(id -> !found.contains(id))
+                    .findFirst().orElse("?");
+            throw new IllegalArgumentException(
+                    "Charge row not found: " + missing + " — refresh the page and retry.");
+        }
+
+        // Every row must be in this building, currently DUE / OVERDUE,
+        // and live on a flat the caller actually occupies. Same flat
+        // for every row (you can't pay your neighbour's water bill in
+        // the same Razorpay order).
+        String flatId = null;
+        BigDecimal total = BigDecimal.ZERO;
+        for (MaintenanceCollection row : rows) {
+            if (!buildingId.equals(row.getBuildingId())) {
+                throw new IllegalArgumentException(
+                        "Row " + row.getId() + " doesn't belong to this building.");
+            }
+            if (row.getStatus() != CollectionStatus.DUE
+                    && row.getStatus() != CollectionStatus.OVERDUE) {
+                throw new IllegalArgumentException(
+                        "Row " + row.getId() + " is " + row.getStatus()
+                                + " — only DUE / OVERDUE charges can be paid.");
+            }
+            if (flatId == null) {
+                flatId = row.getFlatId();
+            } else if (!flatId.equals(row.getFlatId())) {
+                throw new IllegalArgumentException(
+                        "Pay-all must cover charges on a single flat per Razorpay order.");
+            }
+            total = total.add(row.getAmountDue());
+        }
+
+        Flat flat = flatRepo.findById(flatId).orElseThrow(
+                () -> new IllegalArgumentException("Flat not found: " + flatId));
+        if (!CallerSecurity.isAdmin() && !me.equals(flat.getTenantId())) {
+            throw new ForbiddenException(
+                    "Only the resident of this flat can pay its society charges.");
+        }
+
+        // Mint the Payment row via payment-service. Idempotency-Key is
+        // forwarded so a fast double-click on "Pay all" collides on
+        // the same key and returns the existing paymentId instead of
+        // creating two Razorpay orders.
+        PaymentClient.CreatePaymentRequest body = new PaymentClient.CreatePaymentRequest(
+                flat.getTenantId(),
+                flat.getFlatId(),
+                b.getOwnerId(),
+                total,
+                LocalDate.now()  // due "now" — the tenant is paying right now
+        );
+        PaymentClient.SocietyChargePaymentResponse pay =
+                paymentClient.createSocietyChargePayment(body, idempotencyKey);
+        if (pay == null || pay.id() == null) {
+            throw new IllegalStateException(
+                    "Payment service returned an empty response. Please retry.");
+        }
+
+        // Stamp the paymentId on every collection row — that's how the
+        // PaymentCompletedEvent consumer later finds them to flip PAID.
+        // Status stays DUE here; the webhook does the flip atomically
+        // for ALL rows at once.
+        LocalDateTime now = LocalDateTime.now();
+        for (MaintenanceCollection row : rows) {
+            row.setPaymentId(pay.id());
+            row.setUpdatedAt(now);
+        }
+        collectionRepo.saveAll(rows);
+
+        log.info("Society-charge Razorpay flow: buildingId={} flatId={} tenantId={} amount={} paymentId={} rows={}",
+                buildingId, flatId, flat.getTenantId(), total, pay.id(), rows.size());
+
+        return new SocietyChargePaymentInitiatedResponse(pay.id(), total, rows.size());
+    }
+
+    @Override
+    @Transactional
+    public void onSocietyChargePaymentCompleted(String paymentId, LocalDate paidOn) {
+        if (paymentId == null || paymentId.isBlank()) {
+            return;
+        }
+        List<MaintenanceCollection> rows = collectionRepo.findByPaymentId(paymentId);
+        if (rows.isEmpty()) {
+            // The PaymentCompletedEvent topic carries every payment in
+            // the system — rent + society alike — so a "no match" here
+            // just means this paymentId was rent, not a society charge.
+            // Don't log noisily.
+            return;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        int flipped = 0;
+        for (MaintenanceCollection row : rows) {
+            if (row.getStatus() == CollectionStatus.PAID) {
+                continue;  // idempotent re-delivery
+            }
+            row.setStatus(CollectionStatus.PAID);
+            row.setAmountPaid(row.getAmountDue());
+            row.setPaidVia("RAZORPAY");
+            row.setPaidOn(paidOn != null ? paidOn : LocalDate.now());
+            row.setUpdatedAt(now);
+            flipped++;
+        }
+        collectionRepo.saveAll(rows);
+        log.info("Marked {} society-charge rows PAID for paymentId={}",
+                flipped, paymentId);
     }
 }

@@ -79,6 +79,41 @@ public class PaymentController {
                 .body(paymentService.createPayment(body, idempotencyKey));
     }
 
+    /**
+     * Tenant-accessible Payment-row creator scoped to society maintenance
+     * charges. Property-service calls this via Feign when a resident clicks
+     * "Pay all" on /app/society/pay-all — the body describes the total
+     * outstanding for the flat that month, and the returned paymentId
+     * funnels through the SAME Razorpay flow as rent
+     * (/app/payments/{id}/pay → /payments/initiate → 303 to gateway).
+     *
+     * <p>Authz: caller MUST be the tenant on the body (or admin). The
+     * standard {@code create} endpoint above is admin-only because a
+     * tenant minting their own Payment for rent could forge a PAID
+     * record; here that risk doesn't apply — the row starts PENDING and
+     * only flips PAID via the gateway-signed webhook, exactly like rent.
+     *
+     * <p>The Idempotency-Key header guards against fast double-clicks
+     * on the "Pay all" button creating two Razorpay orders.
+     */
+    @Operation(summary = "Create a payment record for a society maintenance charge — tenant-accessible.")
+    @PostMapping(value = "/society-charge", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<PaymentResponse> createForSocietyCharge(
+            @Valid @RequestBody CreatePaymentRequest body,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
+        // The caller must be the tenant on the body (or admin). Without
+        // this an arbitrary signed-in user could mint a Payment against
+        // someone else's flat — they couldn't make it PAY without going
+        // through the gateway, but they could clutter the target
+        // tenant's payment list. Tight authz keeps the surface clean.
+        CallerSecurity.requireTenantOwnerOrAdmin(body.tenantId(), body.ownerId());
+        log.info("POST /payments/society-charge tenant={} flat={} amount={} idempotencyKey={}",
+                body.tenantId(), body.flatId(), body.amount(),
+                idempotencyKey == null ? "-" : "set");
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(paymentService.createPayment(body, idempotencyKey));
+    }
+
     @Operation(summary = "List all payments (ADMIN only, paginated)")
     @GetMapping
     public ResponseEntity<Page<PaymentResponse>> list(

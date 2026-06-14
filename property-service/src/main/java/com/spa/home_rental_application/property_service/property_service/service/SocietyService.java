@@ -1,6 +1,7 @@
 package com.spa.home_rental_application.property_service.property_service.service;
 
 import com.spa.home_rental_application.property_service.property_service.DTO.Request.AddExpenseRequest;
+import com.spa.home_rental_application.property_service.property_service.DTO.Request.InitiateSocietyChargePaymentRequest;
 import com.spa.home_rental_application.property_service.property_service.DTO.Request.PromoteTenantToMaintainerRequest;
 import com.spa.home_rental_application.property_service.property_service.DTO.Request.SetupSocietyRequest;
 import com.spa.home_rental_application.property_service.property_service.DTO.Request.UpsertFlatCollectionRequest;
@@ -8,6 +9,7 @@ import com.spa.home_rental_application.property_service.property_service.DTO.Res
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.FlatMaintenanceRowResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.MaintenanceExpenseResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.PromoteTenantResponse;
+import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyChargePaymentInitiatedResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyConfigResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyLedgerResponse;
 
@@ -121,4 +123,43 @@ public interface SocietyService {
      */
     java.util.List<FlatMaintenanceRowResponse> listMyBillsForMonth(
             String buildingId, String month);
+
+    /**
+     * Bridges a set of DUE / OVERDUE society charge rows to the existing
+     * Razorpay-backed rent-pay flow. Called by the tenant when they hit
+     * "Pay all via Razorpay" on /app/society/pay-all.
+     *
+     * <p>Mechanics:
+     * <ol>
+     *   <li>Validates every collectionId belongs to a flat occupied by
+     *       the caller and is currently DUE / OVERDUE.</li>
+     *   <li>Sums their amountDue into one total.</li>
+     *   <li>Calls payment-service via Feign to mint a new Payment row
+     *       (status=PENDING) for the total against the caller's flat.</li>
+     *   <li>Stamps the new paymentId on every collection row so the
+     *       {@code PaymentCompletedEvent} consumer can later flip the
+     *       linked rows PAID atomically.</li>
+     *   <li>Returns the new paymentId so the FE can navigate to the
+     *       existing /app/payments/{id}/pay flow — same UPI / Card /
+     *       Net-Banking picker as rent.</li>
+     * </ol>
+     *
+     * <p>{@code idempotencyKey} is forwarded as the Idempotency-Key
+     * header to payment-service so a fast double-click on "Pay all"
+     * creates ONE Razorpay order, not two.
+     */
+    SocietyChargePaymentInitiatedResponse initiateSocietyChargePayment(
+            String buildingId,
+            InitiateSocietyChargePaymentRequest req,
+            String idempotencyKey);
+
+    /**
+     * Kafka-consumer hook for {@code PaymentCompletedEvent}. Marks every
+     * {@code maintenance_collection} row whose {@code payment_id}
+     * equals the event's paymentId as PAID, with {@code paid_on=event date}
+     * and {@code paid_via="RAZORPAY"}. Idempotent — re-delivery hits
+     * already-PAID rows and short-circuits without throwing, so the
+     * consumer's commit can ack safely on retries.
+     */
+    void onSocietyChargePaymentCompleted(String paymentId, java.time.LocalDate paidOn);
 }

@@ -1,7 +1,7 @@
-import { useMemo } from "react";
-import { Link, useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Info, Receipt } from "lucide-react";
+import { useMemo, useRef } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { ArrowLeft, Loader2, Receipt } from "lucide-react";
 import { societyApi } from "@/lib/api/society";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -10,6 +10,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/layout/page-header";
 import { formatINR } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
+import { extractErrorMessage } from "@/lib/api/client";
 import type { FlatChargeCategory, FlatMaintenanceRow } from "@/types/api";
 
 const CATEGORY_LABELS: Record<FlatChargeCategory, string> = {
@@ -27,25 +29,46 @@ const CATEGORY_LABELS: Record<FlatChargeCategory, string> = {
  * <p>Reached from the "Pay all" button on the tenant's society page
  * footer when the Total Due row is rendered. The destination route
  * is intentionally separate from the per-charge {@link SocietyPayPage}
- * because a Razorpay order is currency-amount + descriptor scoped to
- * a single payable — bulk pay needs its own gateway-order creation
- * (one Razorpay charge that, on success, marks ALL these collection
- * rows PAID atomically).
+ * because a Razorpay order covers a single tenant-side payable — bulk
+ * pay needs its own gateway-order creation (one Razorpay charge that,
+ * on success, marks ALL the linked collection rows PAID atomically).
  *
- * <p><b>Current state (placeholder):</b> the Razorpay bridge for
- * society charges isn't wired yet (tracked separately). For now this
- * page lists every DUE charge for the month with individual Pay
- * buttons so the tenant can settle them one-by-one via the existing
- * UPI-QR flow. The "Pay all via Razorpay" CTA is disabled with an
- * inline note so the tenant knows it's coming. When the backend
- * bridge ships, this page becomes the launchpad for the multi-method
- * picker (same UI as /app/payments/:id/pay).
+ * <p>Click flow:
+ * <ol>
+ *   <li>Tenant lands here with a list of DUE / OVERDUE charges for
+ *       the month and a total at the top.</li>
+ *   <li>"Pay all via Razorpay" calls the property-service bridge
+ *       endpoint, which mints a Payment row (status=PENDING) in
+ *       payment-service for the sum and stamps its id on every
+ *       collection row.</li>
+ *   <li>FE forwards to {@code /app/payments/{paymentId}/pay} —
+ *       same UPI / Card / Net-Banking picker as rent.</li>
+ *   <li>When Razorpay confirms (webhook), payment-service publishes
+ *       PaymentCompletedEvent; property-service's listener flips all
+ *       linked maintenance_collection rows PAID atomically.</li>
+ * </ol>
+ *
+ * <p>The individual per-row Pay buttons still link to the legacy QR
+ * page for tenants who want to pay just one charge at a time.
  */
 export function SocietyPayAllPage() {
   const { buildingId, month } = useParams<{
     buildingId: string;
     month: string;
   }>();
+  const navigate = useNavigate();
+  const { toast } = useToast();
+
+  // Stable idempotency key for this page-render. Two clicks of the
+  // Pay-all button send the SAME key, so payment-service collides
+  // on the (idempotency-key, tenant) tuple and returns the existing
+  // paymentId instead of minting a second Razorpay order. Generated
+  // once via useRef so re-renders during the mutation don't churn it.
+  const idempotencyKeyRef = useRef<string>(
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
 
   const configQ = useQuery({
     queryKey: ["tenant-society"],
@@ -74,6 +97,35 @@ export function SocietyPayAllPage() {
     () => dueRows.reduce((s, r) => s + r.monthAmount, 0),
     [dueRows],
   );
+
+  // Bridge to the Razorpay flow. Calls the backend to mint a Payment
+  // row covering the DUE rows, then navigates to the existing rent
+  // pay page — same UPI / Card / Net-Banking picker user already
+  // knows from rent. On success, the PaymentCompleted Kafka event
+  // flips every linked collection row PAID atomically (handled in
+  // property-service's SocietyChargePaymentListener).
+  const payAllMut = useMutation({
+    mutationFn: () =>
+      societyApi.initiateSocietyChargePayment(
+        buildingId!,
+        dueRows
+          .map((r) => r.collectionId)
+          .filter((id): id is string => !!id),
+        idempotencyKeyRef.current,
+      ),
+    onSuccess: (res) => {
+      // Use replace:true so the back button on the pay page doesn't
+      // bounce the user back to this loading state — it'd re-create
+      // another Razorpay order. Forward to the existing rent pay UI.
+      navigate(`/app/payments/${res.paymentId}/pay`, { replace: true });
+    },
+    onError: (err) =>
+      toast({
+        variant: "destructive",
+        title: "Couldn't start the bulk payment",
+        description: extractErrorMessage(err),
+      }),
+  });
 
   if (!buildingId || !month) {
     return (
@@ -109,27 +161,6 @@ export function SocietyPayAllPage() {
         }
       />
 
-      {/* Heads-up about the bulk-pay button until the Razorpay bridge
-        * ships. The individual Pay buttons below still work via the
-        * existing UPI-QR flow, so the tenant isn't blocked from
-        * actually clearing their dues — they just can't yet do it in
-        * one click. */}
-      <Card className="mb-4 border-primary/30 bg-primary/5">
-        <CardContent className="p-4 flex items-start gap-3">
-          <Info className="size-5 text-primary shrink-0 mt-0.5" />
-          <div className="text-sm">
-            <p className="font-semibold">One-click bulk pay coming soon</p>
-            <p className="text-muted-foreground mt-0.5">
-              We're wiring up Razorpay to let you settle every charge in
-              one transaction with UPI, Card, or Net Banking — the same
-              picker you see on the rent-pay page. Until then, use the
-              individual Pay buttons below; each opens the society's
-              UPI QR for that charge.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
       {!dueRows.length ? (
         <EmptyState
           variant="info"
@@ -162,17 +193,25 @@ export function SocietyPayAllPage() {
                     · {month}
                   </p>
                 </div>
-                {/* Disabled placeholder — flip to a real Razorpay launch
-                  * button once the backend bridge endpoint exists. The
-                  * disabled state + helper text make the upcoming
-                  * behaviour discoverable without misleading the user. */}
+                {/* Bulk-pay launcher. Disabled state is gated on the
+                  * mutation phase + having at least one DUE row + a
+                  * known buildingId. On click → backend mints a
+                  * Payment + we forward to the existing
+                  * /app/payments/{id}/pay page (UPI / Card / Net
+                  * Banking method picker, same as rent). */}
                 <Button
                   variant="gradient"
                   size="lg"
-                  disabled
-                  title="Razorpay bulk pay launching shortly — pay each charge below for now."
+                  onClick={() => payAllMut.mutate()}
+                  disabled={payAllMut.isPending || !dueRows.length}
                 >
-                  Pay all via Razorpay
+                  {payAllMut.isPending ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" /> Starting…
+                    </>
+                  ) : (
+                    `Pay all via Razorpay · ${formatINR(total)}`
+                  )}
                 </Button>
               </div>
             </CardContent>

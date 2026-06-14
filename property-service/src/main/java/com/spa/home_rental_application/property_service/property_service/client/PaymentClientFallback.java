@@ -19,4 +19,19 @@ public class PaymentClientFallback implements PaymentClient {
         log.warn("payment-service unavailable — failing closed on dues check for flatId={}", flatId);
         return UnpaidSummary.unreachable(flatId);
     }
+
+    @Override
+    public SocietyChargePaymentResponse createSocietyChargePayment(
+            CreatePaymentRequest body, String idempotencyKey) {
+        // Fail loud here. Returning a sentinel would let the FE
+        // navigate to a non-existent paymentId and surface a
+        // confusing 404 on the rent-pay page. An IllegalStateException
+        // is mapped by property-service's ExceptionClass.handleIllegalState
+        // to a 502 Bad Gateway carrying a clear "Couldn't reach payment
+        // service" message — exactly what the user needs to see.
+        log.warn("payment-service unavailable — couldn't create society-charge Payment for tenant={} flat={} amount={}",
+                body.tenantId(), body.flatId(), body.amount());
+        throw new IllegalStateException(
+                "Couldn't reach payment service to set up the Razorpay flow. Please retry in a moment.");
+    }
 }

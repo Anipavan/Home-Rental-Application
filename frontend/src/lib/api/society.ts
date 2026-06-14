@@ -158,4 +158,35 @@ export const societyApi = {
         params: month ? { month } : undefined,
       })
       .then((r) => r.data),
+
+  /**
+   * Tenant-side bulk-pay bridge. Hands the backend a set of DUE /
+   * OVERDUE collectionIds; the backend creates a single Razorpay-
+   * backed Payment row covering the sum and returns its paymentId.
+   * The FE then navigates to {@code /app/payments/{paymentId}/pay}
+   * — the exact same Razorpay flow as rent (UPI / Card / Net Banking
+   * method picker).
+   *
+   * <p>The optional {@code idempotencyKey} guards against fast double-
+   * clicks creating two Razorpay orders. Stripe convention; the
+   * backend forwards it to payment-service as Idempotency-Key.
+   */
+  initiateSocietyChargePayment: (
+    buildingId: string,
+    collectionIds: string[],
+    idempotencyKey?: string,
+  ) =>
+    api
+      .post<{
+        paymentId: string;
+        totalAmount: number;
+        collectionCount: number;
+      }>(
+        `/society/${buildingId}/charges/initiate-payment`,
+        { collectionIds },
+        idempotencyKey
+          ? { headers: { "Idempotency-Key": idempotencyKey } }
+          : undefined,
+      )
+      .then((r) => r.data),
 };

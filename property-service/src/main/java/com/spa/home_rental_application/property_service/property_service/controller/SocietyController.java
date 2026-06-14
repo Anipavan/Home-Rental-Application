@@ -1,6 +1,7 @@
 package com.spa.home_rental_application.property_service.property_service.controller;
 
 import com.spa.home_rental_application.property_service.property_service.DTO.Request.AddExpenseRequest;
+import com.spa.home_rental_application.property_service.property_service.DTO.Request.InitiateSocietyChargePaymentRequest;
 import com.spa.home_rental_application.property_service.property_service.DTO.Request.PromoteTenantToMaintainerRequest;
 import com.spa.home_rental_application.property_service.property_service.DTO.Request.SetupSocietyRequest;
 import com.spa.home_rental_application.property_service.property_service.DTO.Request.UpsertFlatCollectionRequest;
@@ -8,6 +9,7 @@ import com.spa.home_rental_application.property_service.property_service.DTO.Res
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.FlatMaintenanceRowResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.MaintenanceExpenseResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.PromoteTenantResponse;
+import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyChargePaymentInitiatedResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyConfigResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyLedgerResponse;
 import com.spa.home_rental_application.property_service.property_service.service.SocietyService;
@@ -23,6 +25,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -206,5 +209,19 @@ public class SocietyController {
             @PathVariable String buildingId,
             @RequestParam(name = "month", required = false) String month) {
         return ResponseEntity.ok(service.listMyBillsForMonth(buildingId, month));
+    }
+
+    @Operation(summary = "Tenant: bridge a set of DUE / OVERDUE charges to the Razorpay rent-pay flow. Returns the new Payment row's id so the FE can navigate to /app/payments/{id}/pay.")
+    @PostMapping(value = "/{buildingId}/charges/initiate-payment",
+            consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<SocietyChargePaymentInitiatedResponse> initiateSocietyChargePayment(
+            @PathVariable String buildingId,
+            @Valid @RequestBody InitiateSocietyChargePaymentRequest body,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
+        log.info("POST /society/{}/charges/initiate-payment count={} idempotencyKey={}",
+                buildingId, body.collectionIds().size(),
+                idempotencyKey == null ? "-" : "set");
+        return ResponseEntity.ok(
+                service.initiateSocietyChargePayment(buildingId, body, idempotencyKey));
     }
 }

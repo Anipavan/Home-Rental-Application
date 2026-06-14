@@ -3,8 +3,12 @@ package com.spa.home_rental_application.property_service.property_service.client
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -28,6 +32,47 @@ public interface PaymentClient {
      */
     @GetMapping("/payments/flat/{flatId}/unpaid")
     UnpaidSummary getUnpaidByFlat(@PathVariable("flatId") String flatId);
+
+    /**
+     * Create a Payment row backing a society maintenance charge — the
+     * resident clicks "Pay all" on /app/society/pay-all and we need a
+     * paymentId they can funnel through the existing Razorpay flow
+     * (/app/payments/{id}/pay). Calls the tenant-accessible
+     * {@code POST /payments/society-charge} endpoint, which is the
+     * sibling of the admin-only {@code POST /payments} and shares the
+     * same {@code CreatePaymentRequest} body shape.
+     *
+     * <p>The optional {@code Idempotency-Key} header guards against
+     * fast double-clicks creating duplicate Razorpay orders.
+     */
+    @PostMapping("/payments/society-charge")
+    SocietyChargePaymentResponse createSocietyChargePayment(
+            @RequestBody CreatePaymentRequest body,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey);
+
+    /**
+     * Body mirror of payment-service's {@code CreatePaymentRequest}.
+     * Inlined as a nested record so this client module stays
+     * dependency-free of payment-service's DTOs.
+     */
+    record CreatePaymentRequest(
+            String tenantId,
+            String flatId,
+            String ownerId,
+            BigDecimal amount,
+            LocalDate dueDate
+    ) {}
+
+    /**
+     * Subset of payment-service's {@code PaymentResponse} — we only need
+     * the new paymentId so we can hand it back to the FE for redirect.
+     * Extra fields are ignored at deserialisation.
+     */
+    record SocietyChargePaymentResponse(
+            String id,
+            String status,
+            BigDecimal totalAmount
+    ) {}
 
     /**
      * Local subset of payment-service's {@code UnpaidSummaryDTO} —
