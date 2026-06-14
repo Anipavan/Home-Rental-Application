@@ -5,7 +5,6 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
   Legend,
   ResponsiveContainer,
   Tooltip,
@@ -981,19 +980,20 @@ function CategoryBarChart({
             formatter={(name) => chartLabelFor(name as string)}
           />
           {/* Common-expense stack — same in either filter mode. Society-
-              wide spending doesn't depend on which flats you picked. */}
+              wide spending doesn't depend on which flats you picked.
+              `fill` is set on the <Bar> directly (not on <Cell> rows)
+              so Recharts uses the same colour for the legend swatch.
+              Per-Cell fills were unnecessary here — every data point
+              of a given category uses the same colour anyway. */}
           {liveCommon.map((cat) => (
             <Bar
               key={cat}
               dataKey={cat}
               name={cat}
+              fill={CATEGORY_COLOR[cat]}
               stackId="common"
               radius={[6, 6, 0, 0]}
-            >
-              {data.map((_, idx) => (
-                <Cell key={`${cat}-${idx}`} fill={CATEGORY_COLOR[cat]} />
-              ))}
-            </Bar>
+            />
           ))}
           {/* Per-flat stacks. Two rendering paths:
               * No filter → one aggregated stack ("flat") summed across
@@ -1007,16 +1007,10 @@ function CategoryBarChart({
                   key={`FLAT_${cat}`}
                   dataKey={`FLAT_${cat}`}
                   name={`FLAT_${cat}`}
+                  fill={FLAT_CATEGORY_COLOR[cat]}
                   stackId="flat"
                   radius={[6, 6, 0, 0]}
-                >
-                  {data.map((_, idx) => (
-                    <Cell
-                      key={`FLAT_${cat}-${idx}`}
-                      fill={FLAT_CATEGORY_COLOR[cat]}
-                    />
-                  ))}
-                </Bar>
+                />
               ))
             : selectedFlats.flatMap((flatNum) =>
                 (liveByFlat[flatNum] ?? []).map((cat) => (
@@ -1024,16 +1018,10 @@ function CategoryBarChart({
                     key={`FLAT_${flatNum}__${cat}`}
                     dataKey={`FLAT_${flatNum}__${cat}`}
                     name={`FLAT_${flatNum}__${cat}`}
+                    fill={FLAT_CATEGORY_COLOR[cat]}
                     stackId={`flat-${flatNum}`}
                     radius={[6, 6, 0, 0]}
-                  >
-                    {data.map((_, idx) => (
-                      <Cell
-                        key={`FLAT_${flatNum}__${cat}-${idx}`}
-                        fill={FLAT_CATEGORY_COLOR[cat]}
-                      />
-                    ))}
-                  </Bar>
+                  />
                 )),
               )}
         </BarChart>
