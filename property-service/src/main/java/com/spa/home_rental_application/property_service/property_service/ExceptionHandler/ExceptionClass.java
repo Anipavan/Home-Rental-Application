@@ -5,6 +5,7 @@ import com.spa.home_rental_application.property_service.property_service.Excepti
 import com.spa.home_rental_application.property_service.property_service.ExceptionClass.FlatOccupiedException;
 import com.spa.home_rental_application.property_service.property_service.ExceptionClass.InvalidLeasePeriodException;
 import com.spa.home_rental_application.property_service.property_service.ExceptionClass.RecordNotFoundException;
+import com.spa.home_rental_application.property_service.property_service.security.ForbiddenException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
@@ -75,6 +76,21 @@ public class ExceptionClass {
     @ExceptionHandler(InvalidLeasePeriodException.class)
     public ResponseEntity<APIErrorResponse> handleInvalidLeasePeriod(InvalidLeasePeriodException ex, HttpServletRequest req) {
         return build(HttpStatus.BAD_REQUEST, ex.getMessage(), ex.getErrorCode(), req);
+    }
+
+    /**
+     * Authorisation failure — the caller is signed in but isn't the
+     * owner / maintainer / resident the endpoint requires. Without this
+     * dedicated handler the catch-all below catches it and surfaces a
+     * 500 with the generic "An unexpected error occurred" toast, which
+     * is misleading (the user sees a "server crashed" message when they
+     * actually just lack permission). 403 + the original message lets
+     * the FE render a "you don't have permission" hint instead.
+     */
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<APIErrorResponse> handleForbidden(ForbiddenException ex, HttpServletRequest req) {
+        log.warn("Forbidden at {}: {}", req.getRequestURI(), ex.getMessage());
+        return build(HttpStatus.FORBIDDEN, ex.getMessage(), "FORBIDDEN", req);
     }
 
     @ExceptionHandler(com.spa.home_rental_application.property_service.property_service.ExceptionClass.OutstandingDuesException.class)
