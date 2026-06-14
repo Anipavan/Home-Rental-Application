@@ -32,6 +32,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
+import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -168,9 +169,19 @@ function fmtMonth(ym: string): string {
  *       selected, so a resident can see their own flat's trend.</li>
  * </ol>
  *
- * <p>Maintainer contact moves to a left-side sidebar (sticky on
- * desktop). Pattern mirrors the in-app Contact Support widget —
- * "who to call" stays one glance away without crowding the data.
+ * <p>Maintainer contact lives as a floating, fixed-position
+ * bottom-left widget (see {@link MaintainerWidget}) — same affordance
+ * as the in-app Contact Support widget. Defaults to collapsed so it
+ * never crowds the data; one click expands phone + email. The earlier
+ * v1 sidebar approach was scrapped in v2 (this file) because the
+ * sidebar pushed the data to the right and left a big empty column
+ * on tall pages with little maintainer info.
+ *
+ * <p>The three data sections (Spend by category / Expense entries /
+ * Per-flat bills) are wrapped in {@link CollapsibleSection} so a
+ * resident can collapse what they're not interested in and focus on
+ * the one block they care about. All three default OPEN so the
+ * first-paint experience still shows everything.
  */
 export function PublicSocietyLedgerPage() {
   const { token } = useParams<{ token: string }>();
@@ -284,20 +295,17 @@ export function PublicSocietyLedgerPage() {
             description="The link may have been rotated by the owner or has never existed. Ask the maintainer for a fresh shareable link."
           />
         ) : !firstData ? null : (
-          <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
-            {/* ── LEFT SIDEBAR ───────────────────────────────────
-              * Maintainer contact card. Sticky on desktop so it
-              * stays visible while the resident scrolls the
-              * tables. Stacks above the data block on mobile so
-              * the contact info is the first thing visible after
-              * the heading.
-              */}
-            <aside className="lg:sticky lg:top-6 self-start">
-              <MaintainerSidebar ledger={firstData} />
-            </aside>
-
-            {/* ── MAIN CONTENT ───────────────────────────────── */}
-            <section>
+          <>
+            {/* Single-column main flow. Maintainer info no longer
+                sits in a left sidebar — it now lives as a floating
+                widget anchored to the bottom-left of the viewport
+                (rendered AFTER the main flow, see <MaintainerWidget>
+                below). That mirrors the in-app "Contact support"
+                widget pattern the user wanted to match: always
+                reachable, never crowds the data. Padding-bottom on
+                the wrapper gives the floating widget breathing room
+                on mobile so the last data card isn't hidden under it. */}
+            <section className="pb-40 sm:pb-32">
               <h1 className="font-display font-bold text-2xl sm:text-3xl">
                 {firstData.societyDisplayName ?? "Society ledger"}
               </h1>
@@ -356,7 +364,9 @@ export function PublicSocietyLedgerPage() {
               {/* 3. Common-expenses summary block — single high-
                   contrast line answering "what did the society
                   spend in total on common stuff this period". Bar
-                  chart breaks it down by category right after. */}
+                  chart breaks it down by category right after.
+                  Intentionally NOT collapsible — it's the one-line
+                  headline for everything below. */}
               <Card className="mt-4 bg-gradient-to-br from-primary/5 to-transparent border-primary/20">
                 <CardContent className="p-5 flex items-center justify-between gap-4 flex-wrap">
                   <div>
@@ -382,83 +392,81 @@ export function PublicSocietyLedgerPage() {
                 </CardContent>
               </Card>
 
-              {/* 4. Bar chart */}
-              <Card className="mt-4">
-                <CardContent className="p-5">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Wrench className="size-4 text-primary" />
-                    <h2 className="font-display font-semibold">
-                      Spend by category
-                    </h2>
-                  </div>
-                  {aggregate.expensesTotal === 0 ? (
-                    <p className="text-sm text-muted-foreground py-10 text-center">
-                      No expenses recorded for the selected month(s).
-                    </p>
-                  ) : (
-                    <CategoryBarChart data={aggregate.chart} />
-                  )}
-                </CardContent>
-              </Card>
+              {/* 4. Bar chart — collapsible. Default OPEN so a first-
+                  time visitor sees the visualisation immediately;
+                  power users collapsing to focus on the table find a
+                  one-click affordance. */}
+              <CollapsibleSection
+                className="mt-4"
+                title="Spend by category"
+                icon={Wrench}
+                summary={
+                  aggregate.expensesTotal > 0
+                    ? formatINR(aggregate.expensesTotal)
+                    : "No data"
+                }
+              >
+                {aggregate.expensesTotal === 0 ? (
+                  <p className="text-sm text-muted-foreground py-10 text-center">
+                    No expenses recorded for the selected month(s).
+                  </p>
+                ) : (
+                  <CategoryBarChart data={aggregate.chart} />
+                )}
+              </CollapsibleSection>
 
-              {/* 5. Common-expenses ledger table */}
-              <Card className="mt-4">
-                <CardContent className="p-5">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Wrench className="size-4 text-primary" />
-                    <h2 className="font-display font-semibold">
-                      Expense entries
-                    </h2>
-                    <Badge variant="secondary" className="ml-auto text-[10px]">
-                      {aggregate.expenses.length} entr
-                      {aggregate.expenses.length === 1 ? "y" : "ies"}
-                    </Badge>
-                  </div>
-                  {aggregate.expenses.length === 0 ? (
-                    <EmptyState
-                      variant="info"
-                      icon={Wrench}
-                      title="No expenses recorded"
-                      description="The maintainer hasn't added any bills for the selected months yet."
-                    />
-                  ) : (
-                    <ExpenseLedgerTable rows={aggregate.expenses} />
-                  )}
-                </CardContent>
-              </Card>
+              {/* 5. Common-expenses ledger table — collapsible. */}
+              <CollapsibleSection
+                className="mt-4"
+                title="Expense entries"
+                icon={Wrench}
+                summary={
+                  aggregate.expenses.length
+                    ? `${aggregate.expenses.length} entr${aggregate.expenses.length === 1 ? "y" : "ies"} · ${formatINR(aggregate.expensesTotal)}`
+                    : "No entries"
+                }
+              >
+                {aggregate.expenses.length === 0 ? (
+                  <EmptyState
+                    variant="info"
+                    icon={Wrench}
+                    title="No expenses recorded"
+                    description="The maintainer hasn't added any bills for the selected months yet."
+                  />
+                ) : (
+                  <ExpenseLedgerTable rows={aggregate.expenses} />
+                )}
+              </CollapsibleSection>
 
-              {/* 6. Per-flat bills table */}
-              <Card className="mt-4">
-                <CardContent className="p-5">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Building2 className="size-4 text-primary" />
-                    <h2 className="font-display font-semibold">
-                      Per-flat bills
-                    </h2>
-                    <Badge variant="secondary" className="ml-auto text-[10px]">
-                      {visiblePerFlatRows.length} row
-                      {visiblePerFlatRows.length === 1 ? "" : "s"}
-                    </Badge>
-                  </div>
-                  {visiblePerFlatRows.length === 0 ? (
-                    <EmptyState
-                      variant="info"
-                      icon={Building2}
-                      title="No bills to show"
-                      description={
-                        selectedFlats.length > 0
-                          ? "The selected flat(s) have no bills in the picked month(s)."
-                          : "Once flats are billed, they'll appear here."
-                      }
-                    />
-                  ) : (
-                    <FlatBillsTable
-                      rows={visiblePerFlatRows}
-                      showMonth={selectedMonths.length > 1}
-                    />
-                  )}
-                </CardContent>
-              </Card>
+              {/* 6. Per-flat bills table — collapsible. */}
+              <CollapsibleSection
+                className="mt-4"
+                title="Per-flat bills"
+                icon={Building2}
+                summary={
+                  visiblePerFlatRows.length
+                    ? `${visiblePerFlatRows.length} row${visiblePerFlatRows.length === 1 ? "" : "s"}`
+                    : "No bills"
+                }
+              >
+                {visiblePerFlatRows.length === 0 ? (
+                  <EmptyState
+                    variant="info"
+                    icon={Building2}
+                    title="No bills to show"
+                    description={
+                      selectedFlats.length > 0
+                        ? "The selected flat(s) have no bills in the picked month(s)."
+                        : "Once flats are billed, they'll appear here."
+                    }
+                  />
+                ) : (
+                  <FlatBillsTable
+                    rows={visiblePerFlatRows}
+                    showMonth={selectedMonths.length > 1}
+                  />
+                )}
+              </CollapsibleSection>
 
               <p className="text-xs text-muted-foreground mt-6 text-center">
                 Powered by{" "}
@@ -466,7 +474,15 @@ export function PublicSocietyLedgerPage() {
                 view for residents and stakeholders.
               </p>
             </section>
-          </div>
+
+            {/* Floating bottom-left maintainer widget. `fixed` so it
+                stays in view as the resident scrolls the long ledger
+                tables — same affordance as the in-app Contact Support
+                widget. The expand toggle keeps it tiny by default
+                (just the avatar + role label) so it never crowds the
+                main content; click the chevron to see phone/email. */}
+            <MaintainerWidget ledger={firstData} />
+          </>
         )}
       </main>
     </div>
@@ -624,33 +640,56 @@ function FlatFilter({
 }
 
 /* ────────────────────────────────────────────────────────────────
- *  Sidebar — maintainer contact
+ *  Floating bottom-left widget — maintainer contact
  * ──────────────────────────────────────────────────────────────── */
 
-function MaintainerSidebar({ ledger }: { ledger: SocietyLedger }) {
+/**
+ * Fixed-position bottom-left widget that mirrors the in-app
+ * "Contact Support" affordance shown on the maintainer's
+ * authenticated dashboard. Stays visible as the resident scrolls
+ * the long ledger tables; one click toggles expanded vs collapsed.
+ *
+ * <p>Defaults to collapsed — just the icon and "Society maintainer"
+ * label — so the widget never crowds the data on first paint. The
+ * expanded panel reveals the maintainer's name + clickable phone
+ * and email links, identical content to the old sidebar.
+ *
+ * <p>z-index of 40 sits below modal overlays (typically 50) but
+ * above the page content. Visually anchored 16px from both edges
+ * on every breakpoint so it doesn't collide with the browser's
+ * scroll bar or any OS chrome.
+ */
+function MaintainerWidget({ ledger }: { ledger: SocietyLedger }) {
+  const [open, setOpen] = useState(false);
   const hasAny =
     ledger.maintainerName || ledger.maintainerPhone || ledger.maintainerEmail;
+
   return (
-    <Card>
-      <CardContent className="p-5">
-        <div className="size-10 rounded-xl bg-primary/10 text-primary grid place-items-center mb-3">
-          <User className="size-5" />
-        </div>
-        <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
-          Society maintainer
-        </p>
-        {!hasAny ? (
-          <p className="text-sm text-muted-foreground mt-2">
-            Contact info will appear here once available.
-          </p>
-        ) : (
-          <>
-            {ledger.maintainerName && (
-              <p className="font-display font-semibold text-base mt-1">
-                {ledger.maintainerName}
-              </p>
-            )}
-            <div className="mt-3 space-y-2 text-sm">
+    <div className="fixed bottom-4 left-4 z-40 max-w-[calc(100vw-2rem)] w-72">
+      {open && hasAny && (
+        <Card className="shadow-lift border-primary/20 mb-2 animate-fade-in">
+          <CardContent className="p-4">
+            <div className="flex items-start justify-between gap-3 mb-2">
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                  Society maintainer
+                </p>
+                {ledger.maintainerName && (
+                  <p className="font-display font-semibold text-sm mt-0.5">
+                    {ledger.maintainerName}
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                aria-label="Close maintainer panel"
+                className="text-muted-foreground hover:text-foreground -mt-1 -mr-1 p-1"
+              >
+                <X className="size-3.5" />
+              </button>
+            </div>
+            <div className="space-y-2 text-sm">
               {ledger.maintainerPhone && (
                 <a
                   href={`tel:${ledger.maintainerPhone}`}
@@ -672,14 +711,46 @@ function MaintainerSidebar({ ledger }: { ledger: SocietyLedger }) {
                 </a>
               )}
             </div>
-            <p className="text-[11px] text-muted-foreground mt-3 pt-3 border-t border-border/40">
+            <p className="text-[10px] text-muted-foreground mt-3 pt-2 border-t border-border/40 leading-snug">
               Got a question about a charge? Reach out before raising
               a complaint — most things are quick clarifications.
             </p>
-          </>
+          </CardContent>
+        </Card>
+      )}
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-label="Contact society maintainer"
+        className={cn(
+          "w-full flex items-center gap-2 px-3 py-2.5 rounded-xl border bg-card shadow-lift hover:bg-secondary/40 transition-colors text-left",
+          !hasAny && "opacity-60 cursor-default pointer-events-none",
         )}
-      </CardContent>
-    </Card>
+      >
+        <div className="size-8 rounded-lg bg-primary/10 text-primary grid place-items-center shrink-0">
+          <User className="size-4" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+            Society maintainer
+          </p>
+          <p className="text-xs truncate">
+            {hasAny
+              ? ledger.maintainerName ?? "Tap to contact"
+              : "Not assigned yet"}
+          </p>
+        </div>
+        {hasAny && (
+          <ChevronDown
+            className={cn(
+              "size-4 text-muted-foreground shrink-0 transition-transform",
+              open && "rotate-180",
+            )}
+          />
+        )}
+      </button>
+    </div>
   );
 }
 
