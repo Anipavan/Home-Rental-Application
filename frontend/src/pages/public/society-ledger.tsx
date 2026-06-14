@@ -383,7 +383,6 @@ export function PublicSocietyLedgerPage() {
       <header className="border-b border-border/60 bg-background/85 backdrop-blur-xl">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
           <Logo />
-          <Badge variant="secondary">Public ledger</Badge>
         </div>
       </header>
 
