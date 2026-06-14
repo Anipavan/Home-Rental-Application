@@ -422,6 +422,15 @@ app:
     allowed-clock-skew-seconds: 60
   gateway:
     cors:
+      # CORS_ALLOWED_ORIGINS only needs to list YOUR domains here
+      # (e.g. https://anirudhhomes.in,https://www.anirudhhomes.in).
+      #
+      # Razorpay's origins (api.razorpay.com, checkout.razorpay.com,
+      # lumberjack.razorpay.com) are ALWAYS appended at runtime by
+      # CorsConfig#corsWebFilter — they're hardcoded there because
+      # they're vendor-controlled, stable, and absolutely required
+      # for the hosted-checkout redirect bridge to work. See the
+      # javadoc on CorsConfig.RAZORPAY_ORIGINS for the full reasoning.
       allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200}
       allowed-methods: GET,POST,PUT,PATCH,DELETE,OPTIONS
       allowed-headers: Authorization,Content-Type,Accept,X-Requested-With
@@ -479,15 +488,23 @@ app:
       # (only the synchronous /verify on browser return worked).
       - POST /rentals/v1/payments/webhook
       - POST /api/payments/webhook
-      # Razorpay hosted-checkout POST redirect bridge. Razorpay's
+      # Razorpay hosted-checkout return bridge. Razorpay's
       # `redirect=1` mode does a form-encoded POST to the callback_url
       # which carries no JWT (Razorpay can't supply one). The bridge
       # endpoint accepts the POST, lifts the verify params off the form
       # body, and 302s to the SPA's static /app/payments/:id/return
       # route. Without this whitelist the gateway returns 401 and the
       # user lands on "401 Unauthorized" after their card payment.
+      #
+      # GET is whitelisted too because the test-mode mocksharp bank
+      # (api.razorpay.com/v1/gateway/mocksharp) does a GET 302 instead
+      # of a POST form-submit on the "Success" click — the @RequestParam
+      # binding in the controller reads either query-string or form-body
+      # so the same handler covers both.
       - POST /rentals/v1/payments/razorpay-return/**
       - POST /api/payments/razorpay-return/**
+      - GET  /rentals/v1/payments/razorpay-return/**
+      - GET  /api/payments/razorpay-return/**
       # ─── Society public ledger view ───
       # The shareable read-only ledger URL (e.g.
       # https://anirudhhomes.in/society/view/<token>) loads its data
