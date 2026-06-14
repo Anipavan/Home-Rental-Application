@@ -226,8 +226,20 @@ public class PaymentGatewayController {
      * the HMAC check + status flip). Whitelisted in the gateway under
      * {@code app.gateway.public-paths}.
      */
-    @Operation(summary = "Razorpay POST-redirect bridge — converts the form POST into a SPA-friendly GET redirect.")
-    @PostMapping(value = "/razorpay-return/{paymentId}", consumes = MediaType.APPLICATION_FORM_URLENCODED_VALUE)
+    @Operation(summary = "Razorpay return bridge — converts the gateway POST/GET callback into a SPA-friendly GET redirect.")
+    // Accept BOTH GET and POST. Razorpay's standard hosted-checkout
+    // `redirect=1` mode does a form-encoded POST, but the test-mode
+    // mocksharp bank (api.razorpay.com/v1/gateway/mocksharp) does a
+    // GET 302 with the payment params in the query string on Success.
+    // We have to handle both because the gateway you can integrate
+    // against in dev differs from the production one.
+    //
+    // Note: no `consumes = ...` constraint. GET requests have no body
+    // and would otherwise 415 here. @RequestParam reads from query
+    // string and form body interchangeably, so the handler body
+    // doesn't need to branch on method.
+    @RequestMapping(value = "/razorpay-return/{paymentId}",
+            method = { RequestMethod.GET, RequestMethod.POST })
     public ResponseEntity<Void> razorpayReturn(
             @PathVariable("paymentId") String paymentId,
             @RequestParam(name = "razorpay_payment_id", required = false) String razorpayPaymentId,
@@ -236,12 +248,14 @@ public class PaymentGatewayController {
             // Failure-path params (user closed the iframe, card declined, etc.)
             @RequestParam(name = "error[code]",          required = false) String errorCode,
             @RequestParam(name = "error[description]",   required = false) String errorDescription,
-            @RequestParam(name = "error[reason]",        required = false) String errorReason) {
+            @RequestParam(name = "error[reason]",        required = false) String errorReason,
+            org.springframework.http.HttpMethod method) {
 
         // PII hygiene: don't log full Razorpay payment_id which can be
         // used in their dashboard searches. First-6 / last-4 mask
         // matches the same pattern we use for VPA + PAN.
-        log.info("Razorpay POST callback → paymentId={} txn={} hasSig={} errorCode={}",
+        log.info("Razorpay {} callback → paymentId={} txn={} hasSig={} errorCode={}",
+                method,
                 paymentId,
                 mask(razorpayPaymentId),
                 razorpaySignature != null && !razorpaySignature.isBlank(),
