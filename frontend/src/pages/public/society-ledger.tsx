@@ -74,6 +74,38 @@ const CATEGORY_COLOR: Record<ExpenseCategory, string> = {
   OTHER: "#94a3b8", // slate — other
 };
 
+/**
+ * Bar-chart colour assignment for per-flat charge categories. Tones
+ * sit in the warm-greens range so they read as a distinct group from
+ * the cool-blues used for common expenses on the same chart — a
+ * resident can tell at a glance which slice of the bar is "what the
+ * society spent" vs "what the flats were charged".
+ */
+const FLAT_CATEGORY_COLOR: Record<FlatChargeCategory, string> = {
+  MAINTENANCE: "#10b981", // emerald — society's flagship recurring charge
+  WATER_BILL: "#0891b2", // sky-cyan — water
+  GAS_BILL: "#facc15", // yellow — gas (rare on public ledger)
+  ELECTRICITY: "#f97316", // orange — electricity (rare on public ledger)
+  COMMON_AREA_SHARE: "#84cc16", // lime — shared overheads
+  OTHER: "#a3a3a3", // grey — other
+};
+
+/**
+ * Display labels for the per-flat charge categories when they appear
+ * inline on the chart's legend. Kept under {@link FLAT_CHARGE_LABELS}
+ * so the two sets of category labels stay in sync; this map is only
+ * here because the chart uses a "Per-flat: " prefix to disambiguate
+ * from common-expense categories that may share a colour family.
+ */
+const FLAT_CATEGORY_LEGEND_LABEL: Record<FlatChargeCategory, string> = {
+  MAINTENANCE: "Per-flat: Maintenance",
+  WATER_BILL: "Per-flat: Water bill",
+  GAS_BILL: "Per-flat: Gas bill",
+  ELECTRICITY: "Per-flat: Electricity",
+  COMMON_AREA_SHARE: "Per-flat: Common-area share",
+  OTHER: "Per-flat: Other",
+};
+
 /** Per-flat charge categories shown on the public table. Same set
  *  as the maintainer dashboard — Gas/Electricity excluded because
  *  they aren't society-collected. */
@@ -236,12 +268,32 @@ export function PublicSocietyLedgerPage() {
     const expenses = rows.flatMap((r) =>
       (r.data?.expenses ?? []).map((e) => ({ ...e, _month: r.month })),
     );
-    // Build chart data: one entry per month, one numeric column per
-    // category. Recharts BarChart wants this "wide" shape.
+    // Build chart data: one entry per month. Recharts BarChart wants
+    // this "wide" shape — one numeric column per category. We mix
+    // common-expense categories AND per-flat charge categories on the
+    // same bar so a resident sees inflows + outflows at a glance.
+    // Per-flat keys are prefixed `FLAT_` in the row object so they
+    // can't collide with common-expense category keys (and the chart's
+    // Bar dataKey lookup stays unambiguous).
     const chart = rows.map((r) => {
       const row: Record<string, number | string> = { month: fmtMonth(r.month) };
+      // Common-expense slices — already pre-aggregated by the backend
+      // as `byCategory`. Direct copy.
       for (const cat of Object.keys(CATEGORY_LABELS) as ExpenseCategory[]) {
         row[cat] = r.data?.byCategory[cat] ?? 0;
+      }
+      // Per-flat charge slices — sum each `PublicChargeLine` across
+      // every flat for this month. This is "what residents paid (or
+      // owe) per category", complementing the "what the society spent
+      // per category" slices above.
+      for (const cat of Object.keys(FLAT_CATEGORY_COLOR) as FlatChargeCategory[]) {
+        let total = 0;
+        for (const bill of r.data?.flatBills ?? []) {
+          for (const charge of bill.charges) {
+            if (charge.category === cat) total += charge.amount;
+          }
+        }
+        row[`FLAT_${cat}`] = total;
       }
       return row;
     });
@@ -257,13 +309,28 @@ export function PublicSocietyLedgerPage() {
     const perFlatRows = rows.flatMap((r) =>
       (r.data?.flatBills ?? []).map((b) => ({ ...b, _month: r.month })),
     );
+    // Sum of every per-flat charge across every flat across every
+    // selected month. Used by the chart's empty-state check so a
+    // building with only per-flat charges (no common expenses) still
+    // renders a populated chart instead of the "No expenses" message.
+    const flatChargesTotal = perFlatRows.reduce(
+      (acc, b) => acc + b.charges.reduce((s, c) => s + c.amount, 0),
+      0,
+    );
     // Distinct flat numbers across all selected months — feeds the
     // flat multi-select options. Sorted lexicographically so flat
     // "001" appears before "201".
     const flatOptions = Array.from(
       new Set(perFlatRows.map((b) => b.flatNumber)),
     ).sort();
-    return { expenses, chart, expensesTotal, perFlatRows, flatOptions };
+    return {
+      expenses,
+      chart,
+      expensesTotal,
+      flatChargesTotal,
+      perFlatRows,
+      flatOptions,
+    };
   }, [monthlyQueries, selectedMonths]);
 
   // Effective flat filter: if nothing selected, treat as "show all".
@@ -406,9 +473,11 @@ export function PublicSocietyLedgerPage() {
                     : "No data"
                 }
               >
-                {aggregate.expensesTotal === 0 ? (
+                {aggregate.expensesTotal === 0 &&
+                aggregate.flatChargesTotal === 0 ? (
                   <p className="text-sm text-muted-foreground py-10 text-center">
-                    No expenses recorded for the selected month(s).
+                    No expenses or per-flat charges for the selected
+                    month(s).
                   </p>
                 ) : (
                   <CategoryBarChart data={aggregate.chart} />
@@ -758,6 +827,22 @@ function MaintainerWidget({ ledger }: { ledger: SocietyLedger }) {
  *  Bar chart — spend by category
  * ──────────────────────────────────────────────────────────────── */
 
+/**
+ * Translate any chart dataKey back to a human-readable legend/tooltip
+ * label. Common-expense keys are bare {@link ExpenseCategory} values
+ * (e.g. "SALARY"); per-flat keys are prefixed `FLAT_` (e.g.
+ * `FLAT_WATER_BILL`) so they can't collide. Falls back to the raw key
+ * if it doesn't match either set — defensive against future categories
+ * sneaking in via a backend change without the FE being updated.
+ */
+function chartLabelFor(name: string): string {
+  if (name.startsWith("FLAT_")) {
+    const raw = name.slice(5) as FlatChargeCategory;
+    return FLAT_CATEGORY_LEGEND_LABEL[raw] ?? name;
+  }
+  return CATEGORY_LABELS[name as ExpenseCategory] ?? name;
+}
+
 function CategoryBarChart({
   data,
 }: {
@@ -765,12 +850,17 @@ function CategoryBarChart({
 }) {
   // Discover which categories actually have nonzero data anywhere in
   // the dataset — keeps the legend tight by hiding always-zero
-  // categories.
-  const liveCategories = (Object.keys(CATEGORY_LABELS) as ExpenseCategory[])
+  // categories. Same logic for the common-expense and per-flat sets;
+  // we render them in two separate stacks below so the chart visually
+  // reads as "left stack = what the society spent, right context =
+  // what the flats were charged".
+  const liveCommon = (Object.keys(CATEGORY_LABELS) as ExpenseCategory[])
     .filter((cat) => data.some((d) => Number(d[cat] ?? 0) > 0));
+  const liveFlat = (Object.keys(FLAT_CATEGORY_COLOR) as FlatChargeCategory[])
+    .filter((cat) => data.some((d) => Number(d[`FLAT_${cat}`] ?? 0) > 0));
 
   return (
-    <div className="h-72 w-full">
+    <div className="h-80 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
@@ -793,7 +883,7 @@ function CategoryBarChart({
           <Tooltip
             formatter={(v: number, name: string) => [
               formatINR(v),
-              CATEGORY_LABELS[name as ExpenseCategory] ?? name,
+              chartLabelFor(name),
             ]}
             contentStyle={{
               borderRadius: 10,
@@ -803,22 +893,42 @@ function CategoryBarChart({
           />
           <Legend
             verticalAlign="bottom"
-            height={36}
-            wrapperStyle={{ fontSize: 12 }}
-            formatter={(name) =>
-              CATEGORY_LABELS[name as ExpenseCategory] ?? name
-            }
+            height={48}
+            wrapperStyle={{ fontSize: 11 }}
+            formatter={(name) => chartLabelFor(name as string)}
           />
-          {liveCategories.map((cat) => (
+          {/* Stack A — common expenses (society outflows). */}
+          {liveCommon.map((cat) => (
             <Bar
               key={cat}
               dataKey={cat}
               name={cat}
-              stackId="a"
+              stackId="common"
               radius={[6, 6, 0, 0]}
             >
               {data.map((_, idx) => (
                 <Cell key={`${cat}-${idx}`} fill={CATEGORY_COLOR[cat]} />
+              ))}
+            </Bar>
+          ))}
+          {/* Stack B — per-flat charges (society inflows). Drawn as a
+              separate stackId so the two groups visually pair up
+              side-by-side per month rather than stacking on top of each
+              other (which would mislead — they're conceptually
+              different sources of money). */}
+          {liveFlat.map((cat) => (
+            <Bar
+              key={`FLAT_${cat}`}
+              dataKey={`FLAT_${cat}`}
+              name={`FLAT_${cat}`}
+              stackId="flat"
+              radius={[6, 6, 0, 0]}
+            >
+              {data.map((_, idx) => (
+                <Cell
+                  key={`FLAT_${cat}-${idx}`}
+                  fill={FLAT_CATEGORY_COLOR[cat]}
+                />
               ))}
             </Bar>
           ))}

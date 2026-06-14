@@ -138,63 +138,101 @@ export function MaintainerExpensesPage() {
               description="Click 'Add expense' to record the first one (water bill, security salary, etc.)."
             />
           ) : (
-            <div className="space-y-2">
-              {ledgerQ.data.expenses.map((e) => (
-                <div
-                  key={e.id}
-                  className="flex items-start gap-3 p-3 rounded-xl border border-border/60 bg-secondary/30"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Badge variant="secondary" className="text-[10px]">
-                        {CATEGORY_LABELS[e.category]}
-                      </Badge>
-                      <span className="font-medium text-sm">
-                        {e.subcategory ?? e.vendorName ?? "—"}
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {e.paidOnDate}
-                      {e.vendorName && e.subcategory
-                        ? ` · paid to ${e.vendorName}`
-                        : ""}
-                    </p>
-                    {e.notes && (
-                      <p className="text-xs text-muted-foreground mt-1 italic">
-                        {e.notes}
-                      </p>
-                    )}
-                  </div>
-                  <div className="text-right">
-                    <p className="font-semibold font-display">
-                      {formatINR(e.amount)}
-                    </p>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 px-2 text-destructive mt-1"
-                      onClick={async () => {
-                        if (!confirm("Delete this expense?")) return;
-                        try {
-                          await societyApi.deleteExpense(buildingId, e.id);
-                          qc.invalidateQueries({
-                            queryKey: ["society-ledger", buildingId],
-                          });
-                          toast({ title: "Expense deleted." });
-                        } catch (err) {
-                          toast({
-                            title: "Couldn't delete",
-                            description: extractErrorMessage(err),
-                            variant: "destructive",
-                          });
-                        }
-                      }}
+            /* Tabular layout — one expense per row, columns line up so
+             * the maintainer can scan amounts and dates without their
+             * eye jumping the way it did with the card list. The notes
+             * line stays as a soft second row underneath the
+             * description so a long context doesn't blow out the
+             * column widths. */
+            <div className="overflow-x-auto rounded-xl border border-border/60">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="bg-secondary/40 border-b border-border/60">
+                    <th className="text-left px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+                      Category
+                    </th>
+                    <th className="text-left px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground">
+                      Description
+                    </th>
+                    <th className="text-left px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+                      Vendor
+                    </th>
+                    <th className="text-left px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+                      Paid on
+                    </th>
+                    <th className="text-right px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+                      Amount
+                    </th>
+                    <th className="text-right px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+                      <span className="sr-only">Actions</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ledgerQ.data.expenses.map((e) => (
+                    <tr
+                      key={e.id}
+                      className="border-b border-border/60 last:border-b-0 hover:bg-secondary/20"
                     >
-                      <Trash2 className="size-3.5" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                      <td className="px-3 py-2 align-top whitespace-nowrap">
+                        <Badge variant="secondary" className="text-[10px]">
+                          {CATEGORY_LABELS[e.category]}
+                        </Badge>
+                      </td>
+                      <td className="px-3 py-2 align-top">
+                        <p className="font-medium text-sm">
+                          {e.subcategory ?? e.vendorName ?? "—"}
+                        </p>
+                        {e.notes && (
+                          <p className="text-[11px] text-muted-foreground italic mt-0.5 line-clamp-2">
+                            {e.notes}
+                          </p>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 align-top text-sm text-muted-foreground whitespace-nowrap">
+                        {e.vendorName ?? "—"}
+                      </td>
+                      <td className="px-3 py-2 align-top text-sm text-muted-foreground whitespace-nowrap">
+                        {e.paidOnDate}
+                      </td>
+                      <td className="px-3 py-2 align-top text-right">
+                        <span className="font-semibold font-display whitespace-nowrap">
+                          {formatINR(e.amount)}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 align-top text-right whitespace-nowrap">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Delete expense"
+                          className="size-7 text-muted-foreground hover:text-destructive"
+                          onClick={async () => {
+                            if (!confirm("Delete this expense?")) return;
+                            try {
+                              await societyApi.deleteExpense(
+                                buildingId,
+                                e.id,
+                              );
+                              qc.invalidateQueries({
+                                queryKey: ["society-ledger", buildingId],
+                              });
+                              toast({ title: "Expense deleted." });
+                            } catch (err) {
+                              toast({
+                                title: "Couldn't delete",
+                                description: extractErrorMessage(err),
+                                variant: "destructive",
+                              });
+                            }
+                          }}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </CardContent>
