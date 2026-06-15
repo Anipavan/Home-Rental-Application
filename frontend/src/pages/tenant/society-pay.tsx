@@ -1,11 +1,14 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
   CheckCircle2,
+  ChevronDown,
   Copy,
   Loader2,
+  Lock,
+  ShieldCheck,
   Smartphone,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
@@ -13,8 +16,6 @@ import { societyApi } from "@/lib/api/society";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/layout/page-header";
@@ -38,28 +39,25 @@ const CATEGORY_LABELS: Record<FlatChargeCategory, string> = {
 
 /**
  * Dedicated payment page for one society charge. Reached from the
- * tenant's society page ("Pay" button on a DUE charge row) — replaces
- * the earlier in-page modal. URL shape mirrors the rent-pay route
- * (/app/payments/:id/pay) so the navigation pattern is familiar:
+ * tenant's society page ("Pay" button on a DUE charge row). URL
+ * shape mirrors the rent-pay route (/app/payments/:id/pay) so the
+ * navigation pattern is familiar:
  * /app/society/pay/:buildingId/:collectionId.
  *
- * <p>The page shows:
- * <ol>
- *   <li>Charge details (category, month, amount, notes).</li>
- *   <li>A large centred UPI QR code targeting the society's
- *       collection account, plus a tap-to-pay link for mobile.</li>
- *   <li>Bank fallback details (UPI ID, payee, account number, IFSC)
- *       for tenants who'd rather add the account as a banking
- *       beneficiary.</li>
- *   <li>An "I've paid" form that records the tenant's UPI reference
- *       on the row's notes. The maintainer sees the self-reported
- *       payment on their dashboard, verifies it in their bank app,
- *       then flips the row to PAID.</li>
- * </ol>
+ * <p>Default action: a single "Pay via Razorpay" button that bridges
+ * to the existing rent-pay UI — same UPI / Card / Net Banking method
+ * picker. Under the hood it calls
+ * {@code societyApi.initiateSocietyChargePayment([collectionId])}
+ * (a one-element array — the bulk-pay endpoint is reused with a list
+ * of one), which mints a Payment row and forwards the user to
+ * /app/payments/{paymentId}/pay. When Razorpay confirms, a Kafka
+ * listener flips this collection row PAID.
  *
- * <p>No Razorpay integration yet — payments still settle into the
- * society's bank account via UPI / bank transfer, and the maintainer
- * confirms manually. That's the documented limitation.
+ * <p>For tenants who'd rather skip the gateway (saves the convenience
+ * fee on large amounts, or works when the gateway is down), a
+ * collapsed "Pay directly via UPI" disclosure on the same card
+ * reveals the legacy QR + bank-transfer details. That path requires
+ * the maintainer to mark PAID manually after verifying the deposit.
  */
 export function SocietyPayPage() {
   const { buildingId, collectionId } = useParams<{
@@ -222,45 +220,186 @@ export function SocietyPayPage() {
             </Button>
           </CardContent>
         </Card>
-      ) : canPayUpi ? (
-        <UpiPaySection
-          cfg={cfg}
+      ) : (
+        <RazorpayLaunchSection
           row={row}
           buildingId={buildingId}
-          categoryLabel={categoryLabel}
-          onMarked={() => navigate("/app/society")}
-        />
-      ) : (
-        <EmptyState
-          variant="info"
-          icon={Smartphone}
-          title="Payment account not configured"
-          description="The maintainer hasn't set up a UPI ID for collections yet. Ask them to fill in the Common bank account on their society page so this button starts working."
+          cfg={cfg}
+          canPayUpiDirect={canPayUpi}
+          onCancel={() => navigate("/app/society")}
         />
       )}
     </div>
   );
 }
 
-function UpiPaySection({
-  cfg,
+/**
+ * Razorpay launcher for ONE society charge. Primary action is the
+ * gradient "Pay via Razorpay" button — same backend bridge as the
+ * /app/society/pay-all bulk-pay page, just called with a single
+ * collectionId. On success the user lands on /app/payments/{id}/pay,
+ * the existing rent-pay UI, and picks PhonePe / GPay / Paytm / Card /
+ * Net Banking from the familiar method tile grid.
+ *
+ * <p>Below the primary action, a "Pay directly via UPI" disclosure
+ * collapses the legacy QR + bank-transfer flow. Tenants who'd rather
+ * pay the society's UPI ID outside the gateway (saves the convenience
+ * fee on large amounts, or works when Razorpay/payment-service is
+ * having a bad day) still have a path. It's collapsed by default so
+ * the gateway flow is the "default behaviour".
+ */
+function RazorpayLaunchSection({
   row,
   buildingId,
-  onMarked,
+  cfg,
+  canPayUpiDirect,
+  onCancel,
 }: {
-  cfg: SocietyConfig;
   row: FlatMaintenanceRow;
   buildingId: string;
-  /** `categoryLabel` is rendered upstream — we keep it out of this
-   *  component's prop surface so the QR section stays focused on the
-   *  scan / bank / "I've paid" flow. */
-  categoryLabel?: string;
-  onMarked: () => void;
+  cfg: SocietyConfig;
+  canPayUpiDirect: boolean;
+  onCancel: () => void;
+}) {
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const [upiDirectOpen, setUpiDirectOpen] = useState(false);
+
+  // Stable idempotency key for this render — two clicks of the Pay
+  // button send the SAME key, so payment-service collides on the
+  // (idempotency-key, tenant) tuple and returns the existing
+  // paymentId instead of minting a second Razorpay order.
+  const idempotencyKeyRef = useRef<string>(
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
+
+  const payMut = useMutation({
+    mutationFn: () =>
+      societyApi.initiateSocietyChargePayment(
+        buildingId,
+        row.collectionId ? [row.collectionId] : [],
+        idempotencyKeyRef.current,
+      ),
+    onSuccess: (res) => {
+      // replace:true so the back button doesn't bring the user back
+      // here and let them double-launch a second Razorpay order.
+      navigate(`/app/payments/${res.paymentId}/pay`, { replace: true });
+    },
+    onError: (err) =>
+      toast({
+        variant: "destructive",
+        title: "Couldn't start the payment",
+        description: extractErrorMessage(err),
+      }),
+  });
+
+  return (
+    <>
+      {/* Primary action — Razorpay launcher */}
+      <Card className="mb-4">
+        <CardContent className="p-6">
+          <div className="flex items-start gap-4 mb-4">
+            <div className="size-12 rounded-2xl bg-primary/10 grid place-items-center shrink-0">
+              <ShieldCheck className="size-6 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-display text-lg font-semibold">
+                Pay via Razorpay
+              </h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Pick PhonePe, Google Pay, Paytm, Credit / Debit Card, or
+                Net Banking on the next screen — same secure flow you
+                use for rent.
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="gradient"
+            size="lg"
+            className="w-full"
+            onClick={() => payMut.mutate()}
+            disabled={payMut.isPending || !row.collectionId}
+          >
+            {payMut.isPending ? (
+              <>
+                <Loader2 className="size-4 animate-spin" /> Starting…
+              </>
+            ) : (
+              <>
+                <Lock className="size-4" /> Pay {formatINR(row.monthAmount)}
+              </>
+            )}
+          </Button>
+          <p className="text-[11px] text-muted-foreground text-center mt-3 flex items-center justify-center gap-1">
+            <ShieldCheck className="size-3" /> Secured by Razorpay · 256-bit TLS
+          </p>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full mt-1"
+            onClick={onCancel}
+          >
+            Cancel & go back
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Secondary — UPI / bank fallback, collapsed by default. Only
+        * surfaced when the society has actually configured a UPI ID;
+        * without one the QR target would be malformed. */}
+      {canPayUpiDirect && (
+        <Card>
+          <CardContent className="p-0">
+            <button
+              type="button"
+              onClick={() => setUpiDirectOpen((v) => !v)}
+              className="w-full flex items-center justify-between p-4 text-left hover:bg-secondary/30 transition-colors"
+            >
+              <div>
+                <h4 className="text-sm font-semibold">
+                  Pay directly via UPI (no gateway)
+                </h4>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Scan the society's UPI QR — useful if you'd rather
+                  skip the gateway. Maintainer marks PAID manually.
+                </p>
+              </div>
+              <ChevronDown
+                className={`size-4 text-muted-foreground shrink-0 transition-transform ${
+                  upiDirectOpen ? "rotate-180" : ""
+                }`}
+              />
+            </button>
+            {upiDirectOpen && (
+              <div className="border-t border-border/60 p-5 space-y-4">
+                <DirectUpiBlock row={row} cfg={cfg} />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </>
+  );
+}
+
+/**
+ * Direct-UPI fallback content. Same QR + bank-details + reference fields
+ * as the previous standalone {@code UpiPaySection}, lifted out of the
+ * primary flow so it lives behind the "Pay directly via UPI" disclosure
+ * on the Razorpay launcher card. Tenants who choose this path settle
+ * outside the gateway — the maintainer marks PAID manually once they
+ * see the deposit in their bank app.
+ */
+function DirectUpiBlock({
+  row,
+  cfg,
+}: {
+  row: FlatMaintenanceRow;
+  cfg: SocietyConfig;
 }) {
   const { toast } = useToast();
-  const qc = useQueryClient();
-  const [reference, setReference] = useState("");
-
   const txnNote = `${row.category ?? "Maintenance"} ${row.forMonth} Flat ${row.flatNumber}`;
   const upiUri =
     `upi://pay?pa=${encodeURIComponent(cfg.upiId ?? "")}` +
@@ -274,134 +413,53 @@ function UpiPaySection({
     toast({ title: "UPI ID copied" });
   };
 
-  // "I've paid" → patches the collection row's notes with the
-  // tenant-reported UPI reference. The row stays in its current
-  // status (DUE) until the maintainer manually verifies; this is
-  // intentional — we don't want tenants self-marking PAID without
-  // verification.
-  const markMut = useMutation({
-    mutationFn: () => {
-      const existingNotes = row.notes ?? "";
-      const stamp = new Date().toISOString().slice(0, 16).replace("T", " ");
-      const tag = `[self-reported ${stamp}] tenant paid via UPI, ref: ${reference || "(none provided)"}`;
-      const merged = existingNotes
-        ? `${existingNotes}\n${tag}`
-        : tag;
-      return societyApi.upsertFlatCollection(buildingId, row.flatId, {
-        forMonth: row.forMonth,
-        amountDue: row.monthAmount,
-        category: row.category ?? "MAINTENANCE",
-        // Don't change status — the maintainer verifies before
-        // flipping PAID. We only update notes to surface the
-        // tenant's reference number on the maintainer dashboard.
-        notes: merged,
-      });
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["tenant-society-bills"] });
-      toast({
-        title: "Thanks — we'll notify the maintainer",
-        description:
-          "Your reference number is now visible on their dashboard. They'll mark this charge paid after verifying receipt in their bank app.",
-      });
-      onMarked();
-    },
-    onError: (err) =>
-      toast({
-        title: "Couldn't record payment",
-        description: extractErrorMessage(err),
-        variant: "destructive",
-      }),
-  });
-
   return (
     <>
-      {/* QR */}
-      <Card className="mb-4">
-        <CardContent className="p-6 text-center">
-          <p className="text-xs uppercase tracking-wider text-muted-foreground mb-3">
-            Scan to pay {formatINR(row.monthAmount)}
-          </p>
-          <div className="inline-block rounded-xl border-2 border-border/60 bg-white p-4">
-            <QRCodeSVG value={upiUri} size={220} includeMargin={false} />
-          </div>
-          <p className="text-xs text-muted-foreground mt-3">
-            Scan with any UPI app — GPay, PhonePe, Paytm, BHIM.
-          </p>
-          <a
-            href={upiUri}
-            className="inline-block mt-2 text-sm text-primary underline underline-offset-2"
-          >
-            Or tap here to open your UPI app
-          </a>
-        </CardContent>
-      </Card>
+      <div className="text-center">
+        <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-3">
+          Scan to pay {formatINR(row.monthAmount)}
+        </p>
+        <div className="inline-block rounded-xl border-2 border-border/60 bg-white p-4">
+          <QRCodeSVG value={upiUri} size={180} includeMargin={false} />
+        </div>
+        <a
+          href={upiUri}
+          className="block mt-2 text-sm text-primary underline underline-offset-2"
+        >
+          Or tap here to open your UPI app
+        </a>
+      </div>
 
-      {/* Bank fallback */}
-      <Card className="mb-4">
-        <CardContent className="p-5">
-          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-            Bank transfer (alternative)
-          </h4>
-          <div className="space-y-2 text-sm">
-            <Row label="UPI ID" value={cfg.upiId!} mono>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-6 px-2"
-                onClick={copyUpi}
-              >
-                <Copy className="size-3.5" />
-              </Button>
-            </Row>
-            <Row label="Payee" value={cfg.payeeName ?? "—"} />
-            {cfg.accountNumber && (
-              <Row label="A/c no." value={cfg.accountNumber} mono />
-            )}
-            {cfg.ifscCode && <Row label="IFSC" value={cfg.ifscCode} mono />}
-            <Row
-              label="Reference"
-              value={txnNote}
-              note="Use this in your payment note so the maintainer can match the transfer."
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* I've paid */}
-      <Card>
-        <CardContent className="p-5">
-          <h4 className="text-sm font-semibold mb-2">After you've paid</h4>
-          <p className="text-xs text-muted-foreground mb-3">
-            Drop your UPI transaction reference here so the maintainer can
-            find the payment in their bank statement. The charge will be
-            marked PAID by the maintainer once they verify receipt.
-          </p>
-          <Label htmlFor="ref">UPI reference / transaction ID</Label>
-          <Input
-            id="ref"
-            placeholder="optional — e.g. 419823456712"
-            value={reference}
-            onChange={(e) => setReference(e.target.value)}
-            className="mt-1.5"
-          />
+      <div className="space-y-2 text-sm">
+        <h5 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Bank transfer details
+        </h5>
+        <Row label="UPI ID" value={cfg.upiId!} mono>
           <Button
-            variant="gradient"
-            className="mt-3 w-full"
-            disabled={markMut.isPending}
-            onClick={() => markMut.mutate()}
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-6 px-2"
+            onClick={copyUpi}
           >
-            {markMut.isPending ? (
-              <>
-                <Loader2 className="size-4 animate-spin" /> Sending…
-              </>
-            ) : (
-              "I've paid — notify maintainer"
-            )}
+            <Copy className="size-3.5" />
           </Button>
-        </CardContent>
-      </Card>
+        </Row>
+        <Row label="Payee" value={cfg.payeeName ?? "—"} />
+        {cfg.accountNumber && (
+          <Row label="A/c no." value={cfg.accountNumber} mono />
+        )}
+        {cfg.ifscCode && <Row label="IFSC" value={cfg.ifscCode} mono />}
+        <Row
+          label="Reference"
+          value={txnNote}
+          note="Use this in your payment note so the maintainer can match the transfer."
+        />
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        After paying, ping the maintainer with your UPI reference — they
+        verify the deposit in their bank app and flip the charge to PAID.
+      </p>
     </>
   );
 }
