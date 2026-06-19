@@ -27,6 +27,13 @@ public record PaymentResponse(
         String         gatewayOrderId,
         String         gatewayName,
         String         failureReason,
+        /**
+         * What this payment is for — drives the Rent | Maintenance
+         * tab split on the tenant Payments page. Values: RENT (default,
+         * monthly scheduler-fed invoices), SOCIETY_CHARGE
+         * (resident-initiated bulk-pay / per-charge society payment).
+         */
+        String         sourceType,
         Instant        createdAt,
         Instant        updatedAt
 ) {}

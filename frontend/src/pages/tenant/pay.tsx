@@ -129,6 +129,7 @@ export function PayPage() {
         amount={total}
         dueDate={p.dueDate}
         transactionId={p.transactionId}
+        sourceType={p.sourceType}
       />
     );
   }
@@ -776,12 +777,26 @@ function SuccessView({
   amount,
   dueDate,
   transactionId,
+  sourceType,
 }: {
   paymentId: string;
   amount: number;
   dueDate: string;
   transactionId?: string;
+  /** RENT or SOCIETY_CHARGE — picks which tab the "Back to payments"
+   *  link lands on so the user sees the category they just paid. */
+  sourceType?: string;
 }) {
+  // Pick the right tab + heading copy off the source. The Razorpay
+  // SuccessView is shared between rent and society — the only thing
+  // that changes is the labelling and the back-to-list destination.
+  const isSocietyCharge = sourceType === "SOCIETY_CHARGE";
+  const backHref = isSocietyCharge
+    ? "/app/payments?type=maintenance"
+    : "/app/payments";
+  const successCopy = isSocietyCharge
+    ? `We've received ${formatINR(amount)} for your society charges.`
+    : `We've received ${formatINR(amount)} for the rent due ${formatDate(dueDate)}.`;
   const [downloading, setDownloading] = useState(false);
 
   async function handleReceiptDownload() {
@@ -813,9 +828,7 @@ function SuccessView({
         <CheckCircle2 className="size-10 text-success" />
       </div>
       <h2 className="font-display text-3xl font-bold mt-6">Payment successful</h2>
-      <p className="text-muted-foreground mt-2">
-        We've received {formatINR(amount)} for the rent due {formatDate(dueDate)}.
-      </p>
+      <p className="text-muted-foreground mt-2">{successCopy}</p>
       <Card className="mt-7 text-left">
         <CardContent className="p-6 space-y-2 text-sm">
           {transactionId && (
@@ -836,7 +849,7 @@ function SuccessView({
       </Card>
       <div className="mt-7 flex flex-col sm:flex-row gap-2 justify-center">
         <Button asChild variant="gradient" size="lg">
-          <Link to="/app/payments">Back to payments</Link>
+          <Link to={backHref}>Back to payments</Link>
         </Button>
         <Button
           variant="outline"

@@ -185,8 +185,18 @@ export function PaymentReturnPage() {
           </CardContent>
         </Card>
         <div className="mt-7 flex justify-center">
+          {/* Land the user back on the tab matching what they just
+            * paid — SOCIETY_CHARGE → Maintenance, anything else → Rent. */}
           <Button asChild variant="gradient" size="lg">
-            <Link to="/app/payments">Back to payments</Link>
+            <Link
+              to={
+                payment.sourceType === "SOCIETY_CHARGE"
+                  ? "/app/payments?type=maintenance"
+                  : "/app/payments"
+              }
+            >
+              Back to payments
+            </Link>
           </Button>
         </div>
       </div>
@@ -213,7 +223,15 @@ export function PaymentReturnPage() {
           Try again
         </Button>
         <Button asChild variant="outline" size="lg">
-          <Link to="/app/payments">Back to payments</Link>
+          <Link
+            to={
+              payment?.sourceType === "SOCIETY_CHARGE"
+                ? "/app/payments?type=maintenance"
+                : "/app/payments"
+            }
+          >
+            Back to payments
+          </Link>
         </Button>
       </div>
     </div>

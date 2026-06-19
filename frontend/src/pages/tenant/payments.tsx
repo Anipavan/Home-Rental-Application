@@ -1,7 +1,7 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Banknote, CheckCircle2, Download, FileText, Inbox, Loader2, Receipt, Wallet } from "lucide-react";
+import { Banknote, CheckCircle2, Download, FileText, Home, Inbox, Loader2, Receipt, Wallet, Wrench } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { paymentsApi } from "@/lib/api/payments";
 import { extractErrorMessage } from "@/lib/api/client";
@@ -12,9 +12,21 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/layout/page-header";
 import { formatINR, formatDate } from "@/lib/utils";
 import type { PaymentResponse, PaymentStatus } from "@/types/api";
+
+/**
+ * Payment sourceType bucket. Anything not explicitly tagged
+ * SOCIETY_CHARGE falls into "rent" so legacy rows (pre-V2 migration)
+ * stay on the Rent tab where they were always assumed to live.
+ */
+type PaymentBucket = "rent" | "maintenance";
+
+function bucketOf(p: PaymentResponse): PaymentBucket {
+  return p.sourceType === "SOCIETY_CHARGE" ? "maintenance" : "rent";
+}
 
 /**
  * Trigger a browser download for a Blob fetched from the API.
@@ -33,6 +45,17 @@ async function downloadBlob(blob: Blob, filename: string) {
 
 export function PaymentsListPage() {
   const { authUserId } = useAuthStore();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Initial tab pulled from the URL — the Razorpay SuccessView lands
+  // here with ?type=rent or ?type=maintenance so the user sees the
+  // category they just paid. Default to "rent" because rent is the
+  // higher-volume, daily-default case.
+  const tabFromUrl = searchParams.get("type") === "maintenance"
+    ? "maintenance"
+    : "rent";
+  const [tab, setTab] = useState<PaymentBucket>(tabFromUrl);
+
   const q = useQuery({
     queryKey: ["my-payments", authUserId],
     queryFn: () => paymentsApi.byTenant(authUserId!),
@@ -40,15 +63,33 @@ export function PaymentsListPage() {
   });
 
   const payments = q.data ?? [];
-  const dueNow = payments.filter(
-    (p) => p.status === "PENDING" || p.status === "OVERDUE",
+
+  // Split once by bucket so each tab can filter dueNow + history off
+  // a stable slice rather than re-walking the full array twice.
+  const rentPayments = useMemo(
+    () => payments.filter((p) => bucketOf(p) === "rent"),
+    [payments],
   );
-  const history = payments.filter(
-    (p) => p.status === "PAID" || p.status === "FAILED",
+  const maintenancePayments = useMemo(
+    () => payments.filter((p) => bucketOf(p) === "maintenance"),
+    [payments],
   );
 
   // Resolve flatId UUIDs -> "A-302" once for the whole page.
   const flatLookup = useFlatLookup(payments.map((p) => p.flatId));
+
+  /** Keep the URL in sync as the user clicks between tabs so a copy-
+   *  paste of the URL or a back-button hop lands on the same view. */
+  const handleTabChange = (next: string) => {
+    const value = (next === "maintenance" ? "maintenance" : "rent") as PaymentBucket;
+    setTab(value);
+    if (value === "rent") {
+      searchParams.delete("type");
+    } else {
+      searchParams.set("type", value);
+    }
+    setSearchParams(searchParams, { replace: true });
+  };
 
   return (
     <div className="animate-fade-in">
@@ -57,18 +98,85 @@ export function PaymentsListPage() {
         description="Pay rent, download receipts, see your history."
       />
 
+      <Tabs value={tab} onValueChange={handleTabChange} className="w-full">
+        <TabsList className="mb-6">
+          <TabsTrigger value="rent">
+            <Home className="size-4" /> Rent
+          </TabsTrigger>
+          <TabsTrigger value="maintenance">
+            <Wrench className="size-4" /> Maintenance
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="rent" className="mt-0">
+          <PaymentsSection
+            scope="rent"
+            payments={rentPayments}
+            loading={q.isLoading}
+            flatLookup={flatLookup}
+          />
+        </TabsContent>
+
+        <TabsContent value="maintenance" className="mt-0">
+          <PaymentsSection
+            scope="maintenance"
+            payments={maintenancePayments}
+            loading={q.isLoading}
+            flatLookup={flatLookup}
+          />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+/**
+ * One tab's content. Same "Due now + History" shape we had before, just
+ * scoped to a single payment bucket. Empty-state copy varies by scope
+ * so the success / quiet states read naturally for either flow.
+ */
+function PaymentsSection({
+  scope,
+  payments,
+  loading,
+  flatLookup,
+}: {
+  scope: PaymentBucket;
+  payments: PaymentResponse[];
+  loading: boolean;
+  flatLookup: ReturnType<typeof useFlatLookup>;
+}) {
+  const dueNow = payments.filter(
+    (p) => p.status === "PENDING" || p.status === "OVERDUE",
+  );
+  const history = payments.filter(
+    (p) => p.status === "PAID" || p.status === "FAILED",
+  );
+
+  const dueEmptyTitle =
+    scope === "rent" ? "You're all paid up." : "No maintenance dues right now.";
+  const dueEmptyDesc =
+    scope === "rent"
+      ? "Your next rent bill will appear here when it's generated. Until then, enjoy the home."
+      : "Society charges show up here when the maintainer adds new bills. Until then, you're settled.";
+  const historyEmptyTitle =
+    scope === "rent" ? "No past rent payments yet." : "No past maintenance payments yet.";
+  const historyEmptyDesc =
+    scope === "rent"
+      ? "Receipts and invoices appear here after your first rent payment goes through."
+      : "Maintenance receipts appear here after your first society payment goes through.";
+
+  return (
+    <>
       <section className="mb-8">
         <h2 className="font-display font-semibold text-lg mb-3">Due now</h2>
-        {q.isLoading && <Skeleton className="h-32 rounded-2xl" />}
-        {!q.isLoading && dueNow.length === 0 && (
-          // "Success" variant — green wash with the brand gradient.
-          // Being all-paid-up is GOOD news; the gradient reinforces
-          // that rather than reading as a sad / blank state.
+        {loading && <Skeleton className="h-32 rounded-2xl" />}
+        {!loading && dueNow.length === 0 && (
           <EmptyState
             variant="success"
             icon={CheckCircle2}
-            title="You're all paid up."
-            description="Your next bill will appear here when it's generated. Until then, enjoy the home."
+            title={dueEmptyTitle}
+            description={dueEmptyDesc}
           />
         )}
         <div className="space-y-3">
@@ -85,18 +193,18 @@ export function PaymentsListPage() {
       <section>
         <h2 className="font-display font-semibold text-lg mb-3">History</h2>
         <Card>
-          {q.isLoading &&
+          {loading &&
             Array.from({ length: 3 }).map((_, i) => (
               <div key={i} className="px-6 py-4 border-b border-border/60 last:border-0">
                 <Skeleton className="h-12" />
               </div>
             ))}
-          {!q.isLoading && history.length === 0 && (
+          {!loading && history.length === 0 && (
             <EmptyState
               variant="info"
               icon={Inbox}
-              title="No past payments yet."
-              description="Receipts and invoices appear here after your first rent payment goes through."
+              title={historyEmptyTitle}
+              description={historyEmptyDesc}
               className="border-0 shadow-none rounded-none"
             />
           )}
@@ -105,7 +213,7 @@ export function PaymentsListPage() {
           ))}
         </Card>
       </section>
-    </div>
+    </>
   );
 }
 

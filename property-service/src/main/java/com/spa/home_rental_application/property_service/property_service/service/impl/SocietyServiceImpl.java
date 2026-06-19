@@ -1072,7 +1072,10 @@ public class SocietyServiceImpl implements SocietyService {
                 flat.getId(),
                 b.getOwnerId(),
                 total,
-                LocalDate.now()  // due "now" — the tenant is paying right now
+                LocalDate.now(),  // due "now" — the tenant is paying right now
+                // Tag this as a society charge so the tenant Payments
+                // page shows it under the Maintenance tab (not Rent).
+                "SOCIETY_CHARGE"
         );
         PaymentClient.SocietyChargePaymentResponse pay =
                 paymentClient.createSocietyChargePayment(body, idempotencyKey);

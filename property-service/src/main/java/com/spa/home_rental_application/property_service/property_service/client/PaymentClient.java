@@ -53,14 +53,17 @@ public interface PaymentClient {
     /**
      * Body mirror of payment-service's {@code CreatePaymentRequest}.
      * Inlined as a nested record so this client module stays
-     * dependency-free of payment-service's DTOs.
+     * dependency-free of payment-service's DTOs. {@code sourceType}
+     * must be "SOCIETY_CHARGE" so the FE shows this payment under
+     * the Maintenance tab on /app/payments (not Rent).
      */
     record CreatePaymentRequest(
             String tenantId,
             String flatId,
             String ownerId,
             BigDecimal amount,
-            LocalDate dueDate
+            LocalDate dueDate,
+            String sourceType
     ) {}
 
     /**

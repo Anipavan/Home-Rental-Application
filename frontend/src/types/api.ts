@@ -438,6 +438,14 @@ export interface PaymentResponse {
   gatewayOrderId?: string;
   gatewayName?: string;
   failureReason?: string;
+  /**
+   * What this payment is for. Drives the Rent | Maintenance tab
+   * split on /app/payments. "RENT" for monthly scheduler-fed
+   * invoices, "SOCIETY_CHARGE" for resident-initiated bulk-pay
+   * or per-charge society payments. Older payments (pre-V2
+   * migration) may be undefined — treat as RENT.
+   */
+  sourceType?: "RENT" | "SOCIETY_CHARGE" | string;
   createdAt?: string;
   updatedAt?: string;
 }

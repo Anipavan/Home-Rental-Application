@@ -150,6 +150,13 @@ public class PaymentServiceImpl implements PaymentService {
             throw new IllegalArgumentException("Payment dueDate is required.");
         }
 
+        // Default to RENT when caller doesn't supply sourceType — keeps
+        // the scheduler-fed rent flow + every legacy admin caller
+        // working without code changes. POST /payments/society-charge
+        // passes "SOCIETY_CHARGE" so the FE can split tabs.
+        String sourceType = (dto.sourceType() == null || dto.sourceType().isBlank())
+                ? "RENT" : dto.sourceType();
+
         Payment p = Payment.builder()
                 .tenantId(dto.tenantId())
                 .flatId(dto.flatId())
@@ -159,6 +166,7 @@ public class PaymentServiceImpl implements PaymentService {
                 .totalAmount(dto.amount())
                 .dueDate(dto.dueDate())
                 .status(PaymentStatus.PENDING)
+                .sourceType(sourceType)
                 .build();
         Payment saved = paymentRepo.save(p);
         Invoice inv = generateInvoice(saved);

@@ -103,6 +103,22 @@ public class Payment {
     @Column(name = "failure_reason", length = 500)
     private String failureReason;
 
+    /**
+     * What this payment is for. Drives the Rent vs Maintenance tab
+     * split on the tenant Payments page + decides which tab the
+     * post-Razorpay SuccessView lands on. See V2 migration for the
+     * enum-as-string values currently in use:
+     * RENT (default) and SOCIETY_CHARGE.
+     *
+     * <p>Stored as a plain String rather than @Enumerated so the FE /
+     * downstream services can introduce new values (e.g. DEPOSIT,
+     * MAINTENANCE_REQUEST) without forcing a coupled enum update in
+     * every service that deserialises PaymentResponse.
+     */
+    @Column(name = "source_type", length = 30, nullable = false)
+    @Builder.Default
+    private String sourceType = "RENT";
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -117,6 +133,10 @@ public class Payment {
         if (status == null) status = PaymentStatus.PENDING;
         if (lateFee == null) lateFee = BigDecimal.ZERO;
         if (totalAmount == null) totalAmount = amount.add(lateFee);
+        // Defensive default — sourceType is NOT NULL in V2 onwards;
+        // if a code path forgets to set it (e.g. legacy admin POST
+        // /payments before this commit), default to RENT.
+        if (sourceType == null || sourceType.isBlank()) sourceType = "RENT";
     }
 
     @PreUpdate
