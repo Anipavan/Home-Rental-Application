@@ -1050,8 +1050,11 @@ public class SocietyServiceImpl implements SocietyService {
             total = total.add(row.getAmountDue());
         }
 
-        Flat flat = flatRepo.findById(flatId).orElseThrow(
-                () -> new IllegalArgumentException("Flat not found: " + flatId));
+        // Lambda capture needs an effectively final reference, but
+        // `flatId` was reassigned inside the loop above. Copy it.
+        final String resolvedFlatId = flatId;
+        Flat flat = flatRepo.findById(resolvedFlatId).orElseThrow(
+                () -> new IllegalArgumentException("Flat not found: " + resolvedFlatId));
         if (!CallerSecurity.isAdmin() && !me.equals(flat.getTenantId())) {
             throw new ForbiddenException(
                     "Only the resident of this flat can pay its society charges.");
