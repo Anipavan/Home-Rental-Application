@@ -1063,7 +1063,10 @@ public class SocietyServiceImpl implements SocietyService {
         // creating two Razorpay orders.
         PaymentClient.CreatePaymentRequest body = new PaymentClient.CreatePaymentRequest(
                 flat.getTenantId(),
-                flat.getFlatId(),
+                // Flat entity's @Id column is just "id" — the "flatId"
+                // string lives on MaintenanceCollection / Payment as
+                // their FK to this row. Don't confuse the two.
+                flat.getId(),
                 b.getOwnerId(),
                 total,
                 LocalDate.now()  // due "now" — the tenant is paying right now
