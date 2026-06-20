@@ -1,7 +1,7 @@
 import { useMemo, useRef } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Loader2, Receipt } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Loader2, Receipt } from "lucide-react";
 import { societyApi } from "@/lib/api/society";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,6 +13,27 @@ import { formatINR } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { extractErrorMessage } from "@/lib/api/client";
 import type { FlatChargeCategory, FlatMaintenanceRow } from "@/types/api";
+
+/**
+ * Per-transaction cap for the bulk-pay launcher, in rupees.
+ *
+ * <p>Razorpay's test-mode hosted checkout rejects single transactions
+ * over a per-bank simulator cap (mocksharp, netbanking simulator etc.)
+ * with {@code BAD_REQUEST_ERROR / "Amount exceeds maximum"}. The
+ * effective ceiling varies by bank but ~₹50k is universally safe.
+ *
+ * <p>Live-mode Razorpay (post-KYC) has no such cap — when we cut over
+ * to live mode, bump this to a much higher value (or read it from an
+ * env var). Until then, the cap stops the FE from constructing a
+ * single Razorpay order that will fail at the gateway, which would
+ * leave the resident on a "Payment didn't go through" page with no
+ * clear way out.
+ *
+ * <p>If the total exceeds the cap, the bulk-pay button is disabled and
+ * an inline banner tells the user to pay each charge individually
+ * (which works fine for the per-row amounts we have).
+ */
+const BULK_PAY_MAX_INR = 49_999;
 
 const CATEGORY_LABELS: Record<FlatChargeCategory, string> = {
   WATER_BILL: "Water bill",
@@ -98,6 +119,12 @@ export function SocietyPayAllPage() {
     [dueRows],
   );
 
+  // Razorpay test-mode bank simulators reject single transactions over
+  // a per-bank cap with BAD_REQUEST_ERROR. Detect ahead of time and
+  // route the user to per-charge Pay buttons instead — those work
+  // because each individual amount is under the cap.
+  const exceedsBulkCap = total > BULK_PAY_MAX_INR;
+
   // Bridge to the Razorpay flow. Calls the backend to mint a Payment
   // row covering the DUE rows, then navigates to the existing rent
   // pay page — same UPI / Card / Net-Banking picker user already
@@ -175,6 +202,32 @@ export function SocietyPayAllPage() {
         />
       ) : (
         <>
+          {/* Over-the-cap warning. Razorpay test-mode bank simulators
+            * reject single transactions over a per-bank ceiling with
+            * BAD_REQUEST_ERROR. Catching it here means the user never
+            * has to click → fail → "Payment didn't go through" with
+            * no clue what happened — they're routed to per-charge
+            * buttons that work. */}
+          {exceedsBulkCap && (
+            <Card className="mb-4 border-warning/40 bg-warning/5">
+              <CardContent className="p-4 flex items-start gap-3">
+                <AlertTriangle className="size-5 text-warning shrink-0 mt-0.5" />
+                <div className="text-sm">
+                  <p className="font-semibold">
+                    Total exceeds Razorpay test-mode limit (
+                    {formatINR(BULK_PAY_MAX_INR)})
+                  </p>
+                  <p className="text-muted-foreground mt-0.5">
+                    Razorpay's test bank simulators reject single
+                    transactions over a per-bank cap. Please use the
+                    individual <strong>Pay</strong> buttons on each row
+                    below — those work for any amount. The cap goes
+                    away once we switch to Razorpay live mode (post-KYC).
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
           {/* Totals card. Mirrors the "Order summary" style from the
             * rent-pay page so the tenant sees the same visual language
             * across both flows. */}
@@ -203,12 +256,19 @@ export function SocietyPayAllPage() {
                   variant="gradient"
                   size="lg"
                   onClick={() => payAllMut.mutate()}
-                  disabled={payAllMut.isPending || !dueRows.length}
+                  disabled={payAllMut.isPending || !dueRows.length || exceedsBulkCap}
+                  title={
+                    exceedsBulkCap
+                      ? `Total exceeds the ${formatINR(BULK_PAY_MAX_INR)} Razorpay test-mode cap — pay individually below.`
+                      : undefined
+                  }
                 >
                   {payAllMut.isPending ? (
                     <>
                       <Loader2 className="size-4 animate-spin" /> Starting…
                     </>
+                  ) : exceedsBulkCap ? (
+                    "Pay individually below ↓"
                   ) : (
                     `Pay all via Razorpay · ${formatINR(total)}`
                   )}

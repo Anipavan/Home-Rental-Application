@@ -57,9 +57,26 @@ export function PaymentReturnPage() {
     const signature =
       params.get("signature") ?? params.get("razorpay_signature") ?? "";
 
+    // Razorpay forwards its own error context on failed payments — surface
+    // it verbatim instead of the generic "didn't return verification details."
+    // message. The gateway sends BAD_REQUEST_ERROR with a description like
+    // "Amount exceeds maximum amount allowed" when test-mode banks hit
+    // their per-transaction cap. Users seeing that string can fix the
+    // problem themselves (pay smaller / pay individually) instead of
+    // bouncing back into the same failure.
+    const razorpayErrorCode = params.get("error_code");
+    const razorpayErrorDescription = params.get("error_description");
+    const razorpayErrorMessage = razorpayErrorCode
+      ? razorpayErrorDescription
+        ? `${razorpayErrorDescription} (${razorpayErrorCode})`
+        : `Razorpay returned ${razorpayErrorCode}.`
+      : null;
+
     if (!gatewayOrderId || !transactionId || !signature) {
-      // No verification params — the user might have hit cancel on the gateway.
-      // Fall back to checking the payment row in case a webhook already settled it.
+      // No verification params — the user might have hit cancel on the gateway,
+      // OR Razorpay declined before completion (test-mode amount cap, card
+      // declined, etc). Fall back to checking the payment row in case a
+      // webhook already settled it.
       paymentsApi
         .get(paymentId)
         .then((p) => {
@@ -70,14 +87,18 @@ export function PaymentReturnPage() {
           } else {
             setPhase("failed");
             setError(
-              "Payment was cancelled or didn't return verification details.",
+              razorpayErrorMessage ??
+                "Payment was cancelled or didn't return verification details.",
             );
           }
         })
         .catch(() => {
           if (cancelled) return;
           setPhase("failed");
-          setError("Could not verify the payment. Try again from the dashboard.");
+          setError(
+            razorpayErrorMessage ??
+              "Could not verify the payment. Try again from the dashboard.",
+          );
         });
       return () => {
         cancelled = true;
