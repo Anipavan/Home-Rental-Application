@@ -34,6 +34,20 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.FORBIDDEN, ex.getMessage(), "FORBIDDEN", req);
     }
 
+    /**
+     * REG_PAY token failures from {@code RegistrationPaymentTokenVerifier}.
+     * Return 401 with a distinct error code so the frontend can route
+     * the user back to the paywall instead of treating it as a generic
+     * gateway error.
+     */
+    @ExceptionHandler(com.spa.home_rental_application.payment_service.payment_service.security.RegistrationPaymentTokenVerifier.InvalidRegistrationTokenException.class)
+    public ResponseEntity<APIErrorResponse> handleInvalidRegistrationToken(
+            com.spa.home_rental_application.payment_service.payment_service.security.RegistrationPaymentTokenVerifier.InvalidRegistrationTokenException ex,
+            HttpServletRequest req) {
+        log.warn("Invalid REG_PAY token at {}: {}", req.getRequestURI(), ex.getMessage());
+        return build(HttpStatus.UNAUTHORIZED, ex.getMessage(), "INVALID_REGISTRATION_TOKEN", req);
+    }
+
     @ExceptionHandler(PaymentNotFoundException.class)
     public ResponseEntity<APIErrorResponse> handleNotFound(PaymentNotFoundException ex, HttpServletRequest req) {
         log.warn("Payment not found at {}: {}", req.getRequestURI(), ex.getMessage());

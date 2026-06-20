@@ -91,6 +91,25 @@ public class UserDetails implements org.springframework.security.core.userdetail
     @Builder.Default
     private Boolean enabled = true;
 
+    /**
+     * Why the account is currently disabled, when {@link #enabled} is
+     * false. Null on enabled accounts and on accounts disabled for
+     * generic reasons (admin action, etc.).
+     *
+     * <p>Today the only populated value is
+     * {@code REGISTRATION_PAYMENT_PENDING}: a new maintainer signup
+     * has been created but the ₹999 activation fee hasn't cleared
+     * yet. AuthServiceImpl.login() reads this column when it catches
+     * DisabledException so it can surface a distinct error code to
+     * the frontend — the paywall path, not the generic
+     * ACCOUNT_DISABLED path.
+     *
+     * <p>Cleared back to NULL by activateRegistration() once the
+     * Razorpay callback marks the payment PAID.
+     */
+    @Column(name = "disable_reason", length = 60)
+    private String disableReason;
+
     @Column(name = "account_non_locked", nullable = false)
     @Builder.Default
     private Boolean accountNonLocked = true;

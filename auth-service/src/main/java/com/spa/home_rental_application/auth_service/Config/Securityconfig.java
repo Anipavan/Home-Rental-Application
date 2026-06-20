@@ -36,6 +36,7 @@ public class Securityconfig {
 
     private static final String[] PUBLIC_ENDPOINTS = {
             "/auth/register",
+            "/auth/register/pending",
             "/auth/login",
             "/auth/refresh",
             "/auth/forgot-password",
@@ -83,8 +84,9 @@ public class Securityconfig {
                                 org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter
                                         .ReferrerPolicy.NO_REFERRER)))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.POST, "/auth/register", "/auth/login",
-                                "/auth/refresh", "/auth/forgot-password", "/auth/reset-password").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/auth/register", "/auth/register/pending",
+                                "/auth/login", "/auth/refresh", "/auth/forgot-password",
+                                "/auth/reset-password").permitAll()
                         .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
                         .anyRequest().authenticated()
                 )

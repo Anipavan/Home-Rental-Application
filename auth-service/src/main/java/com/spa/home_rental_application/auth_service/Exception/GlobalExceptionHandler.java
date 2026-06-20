@@ -71,6 +71,36 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.UNAUTHORIZED, "Invalid username or password", "BAD_CREDENTIALS", req);
     }
 
+    /**
+     * MUST be declared before {@link #handleDisabled} — Spring's
+     * exception-handler resolver picks the most specific match, but
+     * explicit ordering keeps the intent obvious to readers. Returns
+     * a distinct error code so the frontend can route the user to
+     * the registration paywall instead of a generic "account
+     * disabled" banner. The {@code paymentId} is surfaced on the body
+     * (under {@code message}) so the frontend can resume the right
+     * Payment row.
+     */
+    @ExceptionHandler(RegistrationPaymentPendingException.class)
+    public ResponseEntity<APIErrorResponse> handleRegistrationPaymentPending(
+            RegistrationPaymentPendingException ex, HttpServletRequest req) {
+        APIErrorResponse body = APIErrorResponse.builder()
+                .timestamp(LocalDateTime.now())
+                .status(HttpStatus.FORBIDDEN.value())
+                .error(HttpStatus.FORBIDDEN.getReasonPhrase())
+                .message("Registration payment pending — complete the activation fee to sign in.")
+                .errorCode("REGISTRATION_PAYMENT_PENDING")
+                .path(req.getRequestURI())
+                // Stuffed into fieldErrors because the existing
+                // APIErrorResponse shape doesn't carry a dedicated
+                // "extras" bag — the frontend reads
+                // fieldErrors[0].authUserId to resume the paywall.
+                .fieldErrors(List.of(Map.of(
+                        "authUserId", ex.getPaymentPendingForUserId())))
+                .build();
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
+    }
+
     @ExceptionHandler(DisabledException.class)
     public ResponseEntity<APIErrorResponse> handleDisabled(DisabledException ex, HttpServletRequest req) {
         return build(HttpStatus.FORBIDDEN, "Account is disabled", "ACCOUNT_DISABLED", req);

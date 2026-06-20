@@ -38,6 +38,7 @@ import { authApi } from "@/lib/api/auth";
 import { claimsApi } from "@/lib/api/claims";
 import { propertiesApi } from "@/lib/api/properties";
 import { extractErrorMessage } from "@/lib/api/client";
+import { PENDING_MAINTAINER_SESSION_KEY } from "@/pages/public/registration-payment";
 import { toast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/lib/utils";
@@ -251,9 +252,51 @@ export function RegisterPage() {
 
   const mutation = useMutation({
     mutationFn: async (req: Parameters<typeof authApi.register>[0]) => {
+      // SOCIETY (maintainer) signups go through the paid path —
+      // /auth/register/pending creates the auth row disabled, mints a
+      // PENDING Payment row, and hands back a REG_PAY token the
+      // /registration-payment page uses to drive the Razorpay paywall.
+      // We stash the credentials + claim payload in sessionStorage so
+      // the paywall page can auto-login + post the MAINTAINER claim
+      // after Razorpay confirms PAID.
+      if (choice === "SOCIETY" && claimRole === "MAINTAINER") {
+        const pending = await authApi.registerPending({
+          userName: req.userName,
+          userPassword: req.userPassword,
+          email: req.email,
+          firstName: req.firstName,
+          lastName: req.lastName,
+          gender: req.gender,
+          phone: req.phone,
+          address: req.address,
+          dateOfBirth: req.dateOfBirth,
+          maritalStatus: req.maritalStatus,
+          tenantType: req.tenantType,
+        });
+        sessionStorage.setItem(
+          PENDING_MAINTAINER_SESSION_KEY,
+          JSON.stringify({
+            authUserId: pending.authUserId,
+            paymentId: pending.paymentId,
+            paymentToken: pending.paymentToken,
+            amountInr: pending.amountInr,
+            userName: req.userName,
+            userPassword: req.userPassword,
+            claim: pickedBuilding
+              ? {
+                  buildingId: pickedBuilding.buildingId,
+                  flatNumber: societyFlatNumber.trim() || undefined,
+                  note: societyNote.trim() || undefined,
+                }
+              : undefined,
+          }),
+        );
+        return { kind: "paywall" as const };
+      }
+
       await authApi.register(req);
       if (!submitsClaim || !claimRole) return { kind: "plain" as const };
-      // Claim path — auto-login, then submit the appropriate claim.
+      // Claim path (free, non-SOCIETY) — auto-login, submit the claim.
       const auth = await authApi.login({
         userName: req.userName,
         password: req.userPassword,
@@ -262,7 +305,6 @@ export function RegisterPage() {
       await claimsApi.create({
         buildingId: pickedBuilding!.buildingId,
         requestedRole: claimRole,
-        // SOCIETY maintainer: flat number is optional metadata.
         // FLAT_OWNER: flat number is required (backend enforces too).
         claimedFlatNumber: societyFlatNumber.trim() || undefined,
         applicantNote: societyNote.trim() || undefined,
@@ -270,14 +312,18 @@ export function RegisterPage() {
       return { kind: "claim" as const, claimRole };
     },
     onSuccess: (result) => {
+      if (result.kind === "paywall") {
+        // Don't toast here — the paywall page surfaces its own copy
+        // and the toast would compete with the activation card.
+        navigate("/registration-payment");
+        return;
+      }
       if (result.kind === "claim") {
         toast({
           title: "Claim submitted",
           description:
             "We've notified the building owner. You'll get access as soon as they approve.",
         });
-        // /pending-claim is role-agnostic — works for both SOCIETY
-        // (TENANT-role) and EXISTING_FLAT (OWNER-role) claimants.
         navigate("/pending-claim");
       } else {
         toast({

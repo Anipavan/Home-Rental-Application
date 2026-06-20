@@ -56,6 +56,65 @@ export interface RegisterResponse {
   message?: string;
 }
 
+/**
+ * Body for {@code POST /auth/register/pending} — the entry endpoint
+ * for the paid maintainer-signup flow. Same fields as
+ * {@link RegisterRequest} <em>minus</em> {@code userRole}: the backend
+ * pins the role to TENANT for this endpoint (society-signup behaviour).
+ */
+export interface RegisterPendingRequest {
+  userName: string;
+  userPassword: string;
+  email: string;
+  firstName: string;
+  lastName?: string;
+  gender?: string;
+  phone?: string;
+  address?: string;
+  dateOfBirth?: string;
+  maritalStatus?: string;
+  tenantType?: string;
+}
+
+/**
+ * Returned from {@code POST /auth/register/pending}. The {@code paymentToken}
+ * is a short-lived (30 min) REG_PAY-purpose JWT the frontend attaches
+ * as {@code Authorization: Bearer ...} on the subsequent
+ * {@code /payments/registration/initiate} and {@code /verify} calls.
+ */
+export interface RegisterPendingResponse {
+  authUserId: number;
+  paymentId: string;
+  paymentToken: string;
+  amountInr: number;
+}
+
+/**
+ * Body for {@code POST /payments/registration/initiate}. The frontend
+ * stashes the {@code paymentToken} from the pending-registration
+ * response, then sends it as {@code Authorization: Bearer <token>}.
+ */
+export interface InitiateRegistrationPaymentRequest {
+  paymentId: string;
+  paymentMethod: string;
+  upiVpa?: string;
+}
+
+/** Body for {@code POST /payments/registration/verify}. */
+export interface VerifyRegistrationPaymentRequest {
+  paymentId: string;
+  razorpayPaymentId: string;
+  razorpayOrderId: string;
+  razorpaySignature: string;
+}
+
+/** Response from {@code POST /payments/registration/verify}. */
+export interface RegistrationPaymentResultResponse {
+  paymentId: string;
+  status: string;
+  accountActivated: boolean;
+}
+
 export interface AuthUserResponse {
   id: string;
   /**
@@ -488,6 +547,12 @@ export interface InitiatePaymentResponse {
   bankAccountNumber?: string;
   bankIfsc?: string;
   bankAccountName?: string;
+  /**
+   * Active gateway's public key id (Razorpay's {@code key_id} etc.).
+   * Surfaced for frontend modal launchers (Razorpay Checkout.js on
+   * the paid-registration paywall). Null on flows that don't need it.
+   */
+  gatewayKeyId?: string;
 }
 
 export interface VerifyPaymentRequest {

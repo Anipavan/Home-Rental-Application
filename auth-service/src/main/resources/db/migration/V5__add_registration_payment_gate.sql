@@ -1,0 +1,27 @@
+-- ─────────────────────────────────────────────────────────────────
+--  V5 — Paid maintainer registration: gate column.
+--
+--  Background. Until now every signup landed on user_details_table
+--  with enabled=true, instantly usable. We're now monetising the
+--  "I'm a maintainer" signup path: the row is created with
+--  enabled=false and disable_reason='REGISTRATION_PAYMENT_PENDING'
+--  and only flips to enabled=true after Razorpay confirms a ₹999
+--  one-time fee.
+--
+--  disable_reason carries the *why* so login() can return a
+--  distinct error code (REGISTRATION_PAYMENT_PENDING) instead of
+--  the generic ACCOUNT_DISABLED — that lets the frontend route
+--  the user to the paywall instead of showing "contact support".
+--  Admin-disabled accounts (future) will leave the reason NULL
+--  so the existing ACCOUNT_DISABLED path keeps working.
+--
+--  Grandfathering: every existing row keeps disable_reason=NULL,
+--  so this migration is a no-op for existing maintainers — no
+--  backfill needed.
+--
+--  Idempotent: ALTER ADD fails on re-run, but Flyway's checksum
+--  prevents that. Safe to run on already-populated tables — the
+--  column is nullable so no DEFAULT churn.
+-- ─────────────────────────────────────────────────────────────────
+
+ALTER TABLE user_details_table ADD disable_reason VARCHAR2(60);

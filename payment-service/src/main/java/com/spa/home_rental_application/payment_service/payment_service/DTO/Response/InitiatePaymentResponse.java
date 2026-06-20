@@ -28,5 +28,15 @@ public record InitiatePaymentResponse(
         // For BANK_TRANSFER — instruct tenant to manually transfer to these
         String bankAccountNumber,
         String bankIfsc,
-        String bankAccountName
+        String bankAccountName,
+
+        /**
+         * The active gateway's public key id (Razorpay's {@code key_id},
+         * Stripe's publishable key, etc.). Surfaced so a frontend that
+         * launches the gateway via a client-side modal (Razorpay
+         * Checkout.js) can configure the modal without having the value
+         * hard-coded in the bundle. Null on flows that don't need a
+         * modal — the existing rent / society redirect flows ignore it.
+         */
+        String gatewayKeyId
 ) {}

@@ -18,6 +18,7 @@ import java.util.Base64;
 import java.util.Date;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 
 /**
  * JWT helper. Secret + TTLs come from {@link JwtProperties}; never hardcoded.
@@ -110,6 +111,42 @@ public class JWTUtil {
             // `c.get("uid", String.class)` works regardless of whether
             // the underlying id is Long, Integer, or already a String.
             b = b.claim("uid", uid.toString());
+        }
+        return b.signWith(key).compact();
+    }
+
+    /**
+     * Custom-claims overload used by short-lived, single-purpose
+     * tokens that aren't tied to a Spring Authentication — today
+     * the only caller is the paid-registration flow, which mints a
+     * 30-minute token whose only valid use is hitting
+     * {@code /payments/registration/initiate} and
+     * {@code /verify} for one specific paymentId.
+     *
+     * <p>Unlike the Authentication-bound overload, this one lets
+     * the caller dictate the subject, the claim payload, and the
+     * TTL. The same signing key + issuer is used so the gateway
+     * and payment-service verify these tokens without any extra
+     * configuration.
+     *
+     * @param subject     the {@code sub} claim — for REG_PAY this
+     *                    is the new auth user's username.
+     * @param extraClaims claims to merge onto the token (e.g.
+     *                    {@code purpose=REG_PAY, paymentId=...}).
+     *                    A null or empty map is allowed.
+     * @param ttlMillis   token lifetime from now in milliseconds.
+     */
+    public String generateToken(String subject, Map<String, Object> extraClaims, long ttlMillis) {
+        Date now = new Date();
+        io.jsonwebtoken.JwtBuilder b = Jwts.builder()
+                .issuer(props.getIssuer())
+                .subject(subject)
+                .issuedAt(now)
+                .expiration(new Date(now.getTime() + ttlMillis));
+        if (extraClaims != null) {
+            for (Map.Entry<String, Object> e : extraClaims.entrySet()) {
+                b = b.claim(e.getKey(), e.getValue());
+            }
         }
         return b.signWith(key).compact();
     }

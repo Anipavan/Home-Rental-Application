@@ -21,4 +21,14 @@ public class PaymentInitiationResult {
     String bankAccountNumber;
     String bankIfsc;
     String bankAccountName;
+    /**
+     * Gateway-side public key id (Razorpay's {@code key_id},
+     * Stripe's publishable key, etc.). Surfaced so a frontend that
+     * launches the gateway via a client-side modal — Razorpay
+     * Checkout.js, Stripe Elements — can configure itself without
+     * hard-coding the value in the bundle. Null on flows that
+     * don't need a modal (the rent / society redirect flows
+     * ignore it).
+     */
+    String publicKeyId;
 }

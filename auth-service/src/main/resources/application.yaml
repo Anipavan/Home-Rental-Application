@@ -98,6 +98,18 @@ app:
   password-reset:
     token-validity-minutes: ${PASSWORD_RESET_TTL_MINUTES:15}
 
+  maintainer-registration:
+    # One-time activation fee for the paid "I'm a maintainer" signup
+    # path. Surfaced to the frontend on /auth/register/pending and
+    # persisted on the matching payment-service Payment row.
+    fee-inr: ${MAINTAINER_REGISTRATION_FEE_INR:999}
+    cleanup:
+      # Auth rows persisted by /auth/register/pending that never
+      # complete payment within this many hours are deleted by
+      # OrphanRegistrationCleanupScheduler so the user can re-sign-up
+      # with the same email / phone.
+      expiry-hours: ${MAINTAINER_REGISTRATION_CLEANUP_HOURS:24}
+
 feign:
   # Wrap each Feign client in a Resilience4j CircuitBreaker. Combined with
   # the per-client Resilience4j instance config below, this gives us per-

@@ -4,6 +4,8 @@ import type {
   AuthUserResponse,
   LoginRequest,
   MessageResponse,
+  RegisterPendingRequest,
+  RegisterPendingResponse,
   RegisterRequest,
   RegisterResponse,
 } from "@/types/api";
@@ -13,6 +15,16 @@ export const authApi = {
     api.post<AuthResponse>("/auth/login", body).then((r) => r.data),
   register: (body: RegisterRequest) =>
     api.post<RegisterResponse>("/auth/register", body).then((r) => r.data),
+  /**
+   * Paid maintainer signup — entry point for the "I'm a maintainer"
+   * card. Creates the auth row as disabled, mints a PENDING Payment
+   * row on payment-service, and returns the bundle the
+   * /registration-payment page uses to launch the Razorpay paywall.
+   */
+  registerPending: (body: RegisterPendingRequest) =>
+    api
+      .post<RegisterPendingResponse>("/auth/register/pending", body)
+      .then((r) => r.data),
   forgotPassword: (email: string) =>
     api
       .post<MessageResponse>("/auth/forgot-password", { email })

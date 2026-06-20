@@ -82,4 +82,32 @@ public interface PaymentRepository extends JpaRepository<Payment, String> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT p FROM Payment p WHERE p.id = :id")
     java.util.Optional<Payment> findByIdForUpdate(String id);
+
+    /**
+     * Reconciler query used by
+     * {@code RegistrationActivationReconciler}. Surfaces every PAID
+     * {@code MAINTAINER_REGISTRATION} row newer than {@code since},
+     * so the scheduler can ping auth-service to flip the matching
+     * disabled row to enabled — covering the rare case where the
+     * Feign callback inside {@code verify} failed (auth-service
+     * down, network glitch) right after Razorpay confirmed payment.
+     */
+    @Query("SELECT p FROM Payment p " +
+            "WHERE p.sourceType = 'MAINTAINER_REGISTRATION' " +
+            "  AND p.status = com.spa.home_rental_application.payment_service.payment_service.enums.PaymentStatus.PAID " +
+            "  AND p.paymentDate > :since")
+    List<Payment> findRecentPaidRegistrationPayments(Instant since);
+
+    /**
+     * Idempotency fast-path for
+     * {@code createRegistrationPaymentPending}: if the caller already
+     * has an active PENDING row for this user, reuse it instead of
+     * creating a duplicate. Lets a user who refreshed the paywall
+     * page (or hit Pay twice quickly) come back to the same Payment.
+     */
+    @Query("SELECT p FROM Payment p " +
+            "WHERE p.sourceType = 'MAINTAINER_REGISTRATION' " +
+            "  AND p.tenantId = :payerAuthUserId " +
+            "  AND p.status = com.spa.home_rental_application.payment_service.payment_service.enums.PaymentStatus.PENDING")
+    List<Payment> findPendingRegistrationPaymentsForUser(String payerAuthUserId);
 }

@@ -8,10 +8,13 @@ import com.spa.home_rental_application.KafkaEvents.Producers.Events.AuditEventPu
 import com.spa.home_rental_application.KafkaEvents.Producers.Events.AuthServiceEvents;
 import com.spa.home_rental_application.auth_service.Config.JwtProperties;
 import com.spa.home_rental_application.auth_service.Dto.AuthUserMapper;
+import com.spa.home_rental_application.auth_service.Dto.External.CreateRegistrationPaymentRequest;
+import com.spa.home_rental_application.auth_service.Dto.External.CreateRegistrationPaymentResponse;
 import com.spa.home_rental_application.auth_service.Dto.External.UserProfileCreateRequest;
 import com.spa.home_rental_application.auth_service.Dto.Request.*;
 import com.spa.home_rental_application.auth_service.Dto.Response.AuthResponse;
 import com.spa.home_rental_application.auth_service.Dto.Response.AuthUserResponse;
+import com.spa.home_rental_application.auth_service.Dto.Response.RegisterPendingResponse;
 import com.spa.home_rental_application.auth_service.Dto.Response.RegisterResponse;
 import com.spa.home_rental_application.auth_service.Entity.PasswordResetToken;
 import com.spa.home_rental_application.auth_service.Entity.RefreshToken;
@@ -19,10 +22,12 @@ import com.spa.home_rental_application.auth_service.Entity.UserDetails;
 import com.spa.home_rental_application.auth_service.Exception.AuthRecordNotFoundException;
 import com.spa.home_rental_application.auth_service.Exception.DuplicateUserException;
 import com.spa.home_rental_application.auth_service.Exception.InvalidTokenException;
+import com.spa.home_rental_application.auth_service.Exception.RegistrationPaymentPendingException;
 import com.spa.home_rental_application.auth_service.Repository.PasswordResetTokenRepository;
 import com.spa.home_rental_application.auth_service.Repository.RefreshTokenRepository;
 import com.spa.home_rental_application.auth_service.Repository.UserRepository;
 import com.spa.home_rental_application.auth_service.Service.AuthService;
+import com.spa.home_rental_application.auth_service.Service.external.PaymentServiceFeign;
 import com.spa.home_rental_application.auth_service.Service.external.UserServiceFeign;
 import com.spa.home_rental_application.auth_service.Utils.JWTUtil;
 import com.spa.home_rental_application.auth_service.enums.Roles;
@@ -30,6 +35,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.LockedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -38,9 +44,11 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -71,9 +79,11 @@ public class AuthServiceImpl implements AuthService {
     private final JWTUtil jwtUtil;
     private final JwtProperties jwtProperties;
     private final UserServiceFeign userServiceFeign;
+    private final PaymentServiceFeign paymentServiceFeign;
     private final AuthServiceEvents authEvents;
     private final AuditEventPublisher audit;
     private final long passwordResetTtlMinutes;
+    private final BigDecimal registrationFeeInr;
 
     public AuthServiceImpl(UserRepository userRepository,
                            RefreshTokenRepository refreshTokenRepository,
@@ -83,9 +93,11 @@ public class AuthServiceImpl implements AuthService {
                            JWTUtil jwtUtil,
                            JwtProperties jwtProperties,
                            UserServiceFeign userServiceFeign,
+                           PaymentServiceFeign paymentServiceFeign,
                            AuthServiceEvents authEvents,
                            AuditEventPublisher audit,
-                           @Value("${app.password-reset.token-validity-minutes:15}") long passwordResetTtlMinutes) {
+                           @Value("${app.password-reset.token-validity-minutes:15}") long passwordResetTtlMinutes,
+                           @Value("${app.maintainer-registration.fee-inr:999}") BigDecimal registrationFeeInr) {
         this.userRepository = userRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.passwordResetTokenRepository = passwordResetTokenRepository;
@@ -94,9 +106,11 @@ public class AuthServiceImpl implements AuthService {
         this.jwtUtil = jwtUtil;
         this.jwtProperties = jwtProperties;
         this.userServiceFeign = userServiceFeign;
+        this.paymentServiceFeign = paymentServiceFeign;
         this.authEvents = authEvents;
         this.audit = audit;
         this.passwordResetTtlMinutes = passwordResetTtlMinutes;
+        this.registrationFeeInr = registrationFeeInr;
     }
 
     /* ---------- Register ---------- */
@@ -195,6 +209,179 @@ public class AuthServiceImpl implements AuthService {
         return AuthUserMapper.toRegisterResponse(saved);
     }
 
+    /* ---------- Paid maintainer registration ---------- */
+
+    @Override
+    @Transactional
+    public RegisterPendingResponse registerPending(RegisterPendingRequest req) {
+        log.info("registerPending userName={} email={}", req.userName(), req.email());
+
+        if (userRepository.existsByUserName(req.userName())) {
+            throw new DuplicateUserException("userName already taken: " + req.userName());
+        }
+        if (userRepository.existsByEmailIgnoreCase(req.email())) {
+            throw new DuplicateUserException("email already registered: " + req.email());
+        }
+
+        String normalisedPhone = normalisePhone(req.phone(), "+91");
+        if (normalisedPhone != null && userRepository.existsByPhone(normalisedPhone)) {
+            throw new DuplicateUserException(
+                    "phone number already registered: " + normalisedPhone);
+        }
+
+        Instant now = Instant.now();
+
+        // Persist as TENANT (today's society-signup default). Disabled
+        // until payment clears; disable_reason carries the *why* so
+        // login() can surface a distinct error code instead of a
+        // generic ACCOUNT_DISABLED. accountNonLocked stays true — the
+        // lock counter only fires from real failed-credential attempts.
+        UserDetails entity = UserDetails.builder()
+                .userName(req.userName())
+                .userPassword(passwordEncoder.encode(req.userPassword()))
+                .email(req.email())
+                .phone(normalisedPhone)
+                .userRole(Roles.TENANT)
+                .enabled(false)
+                .disableReason("REGISTRATION_PAYMENT_PENDING")
+                .accountNonLocked(true)
+                .recordCreatedDate(now)
+                .recodeUpdatedDate(now)
+                .build();
+        UserDetails saved = userRepository.save(entity);
+
+        // Forward the profile to user-service immediately — even though
+        // the auth row is disabled. Same Feign-failure-rollback shape as
+        // register(). Doing the profile create now (vs after PAID)
+        // keeps the two services in sync at every step: if the user
+        // abandons mid-flow, the cleanup sweep removes BOTH the auth
+        // row AND the orphaned user-service row (the sweep emits a
+        // user.deleted event).
+        try {
+            userServiceFeign.createUser(new UserProfileCreateRequest(
+                    saved.getId().toString(),
+                    req.firstName(),
+                    req.lastName(),
+                    req.email(),
+                    normalisedPhone,
+                    req.dateOfBirth(),
+                    req.gender(),
+                    req.address(),
+                    null,
+                    null,
+                    req.maritalStatus(),
+                    req.tenantType()
+            ));
+        } catch (Exception ex) {
+            log.error("User Service profile-creation failed for pending authUserId={} — rolling back",
+                    saved.getId(), ex);
+            throw ex;
+        }
+
+        // Ask payment-service to mint a PENDING Payment row for this
+        // user. Round-trip is synchronous so we can embed the
+        // paymentId in the REG_PAY JWT below — without it the frontend
+        // would have to make a second call to get the id.
+        CreateRegistrationPaymentResponse paymentInit;
+        try {
+            paymentInit = paymentServiceFeign.createPendingRegistrationPayment(
+                    new CreateRegistrationPaymentRequest(
+                            saved.getId().toString(),
+                            registrationFeeInr));
+        } catch (Exception ex) {
+            log.error("Payment Service create-pending failed for authUserId={} — rolling back",
+                    saved.getId(), ex);
+            throw ex;
+        }
+
+        // Short-lived (30 min) single-purpose JWT. The
+        // purpose claim is what payment-service's JwtAuthenticationFilter
+        // keys on: it'll accept this token *only* on the two
+        // /payments/registration/* endpoints, and *only* when the
+        // paymentId in the request body matches the paymentId claim.
+        long ttlMillis = 30L * 60L * 1000L;
+        String paymentToken = jwtUtil.generateToken(
+                saved.getUsername(),
+                Map.of(
+                        "purpose", "REG_PAY",
+                        "uid", saved.getId().toString(),
+                        "paymentId", paymentInit.paymentId()),
+                ttlMillis);
+
+        // Mirror to the audit channel for security-ops visibility.
+        // user.registered fires from activateRegistration(), NOT here —
+        // downstream consumers should only see paid users.
+        audit.publishSuccess("auth.register.pending", saved.getId().toString(),
+                saved.getId().toString(), saved.getId().toString(),
+                java.util.Map.of(
+                        "paymentId", paymentInit.paymentId(),
+                        "amountInr", registrationFeeInr.toPlainString()));
+
+        return new RegisterPendingResponse(
+                saved.getId(),
+                paymentInit.paymentId(),
+                paymentToken,
+                registrationFeeInr);
+    }
+
+    @Override
+    @Transactional
+    public AuthUserResponse activateRegistration(Long authUserId, String paymentId) {
+        UserDetails user = userRepository.findById(authUserId)
+                .orElseThrow(() -> new AuthRecordNotFoundException(
+                        "User not found with id: " + authUserId));
+
+        // Idempotent no-op: a retry from payment-service's reconciler
+        // can land here for an already-activated row. Logging it but
+        // not re-firing the welcome event prevents double-notifying.
+        if (Boolean.TRUE.equals(user.getEnabled())
+                && user.getDisableReason() == null) {
+            log.info("activateRegistration no-op for authUserId={} paymentId={} — already enabled",
+                    authUserId, paymentId);
+            return AuthUserMapper.toAuthUserResponse(user);
+        }
+
+        // Defensive: refuse to activate if the row was disabled for
+        // some *other* reason than the registration paywall. Today
+        // only REGISTRATION_PAYMENT_PENDING is populated, but if
+        // an admin manually marks a row disabled-for-fraud and
+        // payment-service later mis-routes a PAID callback here, we
+        // shouldn't silently re-enable it.
+        if (user.getDisableReason() != null
+                && !"REGISTRATION_PAYMENT_PENDING".equals(user.getDisableReason())) {
+            log.warn("activateRegistration refused for authUserId={} — disable_reason={}",
+                    authUserId, user.getDisableReason());
+            throw new IllegalStateException(
+                    "Cannot activate account: disabled for reason '"
+                            + user.getDisableReason() + "'");
+        }
+
+        user.setEnabled(true);
+        user.setDisableReason(null);
+        user.setRecodeUpdatedDate(Instant.now());
+        UserDetails saved = userRepository.save(user);
+
+        // Deferred user.registered — same payload register() sends, just
+        // moved to the moment when the user is actually usable.
+        authEvents.sendUserRegistered(UserRegisteredEvent.builder()
+                .eventType("user.registered")
+                .authUserId(saved.getId().toString())
+                .userName(saved.getUsername())
+                .role(saved.getUserRole().name())
+                .email(saved.getEmail())
+                .phone(saved.getPhone())
+                .timestamp(Instant.now())
+                .build());
+
+        audit.publishSuccess("auth.register.activated", saved.getId().toString(),
+                saved.getId().toString(), saved.getId().toString(),
+                java.util.Map.of("paymentId", paymentId));
+
+        log.info("Maintainer registration activated authUserId={} paymentId={}",
+                authUserId, paymentId);
+        return AuthUserMapper.toAuthUserResponse(saved);
+    }
+
     /* ---------- Login ---------- */
 
     @Override
@@ -259,6 +446,26 @@ public class AuthServiceImpl implements AuthService {
                         "Bad credentials for username '" + req.userName() + "'");
                 throw ex;
             }
+        } catch (DisabledException ex) {
+            // Distinguish the paywall-pending case from the generic
+            // admin-disabled case. The fetch is cheap (the AuthN
+            // already loaded the row once); we don't bother caching.
+            UserDetails disabled = prelocked != null
+                    ? prelocked
+                    : userRepository.findByUserName(req.userName()).orElse(null);
+            if (disabled != null
+                    && "REGISTRATION_PAYMENT_PENDING".equals(disabled.getDisableReason())) {
+                audit.publishFailure("auth.login.payment-pending",
+                        null,
+                        String.valueOf(disabled.getId()),
+                        "Login blocked — registration payment still pending");
+                throw new RegistrationPaymentPendingException(disabled.getId().toString());
+            }
+            audit.publishFailure("auth.login.disabled",
+                    null,
+                    disabled == null ? null : String.valueOf(disabled.getId()),
+                    "Account disabled");
+            throw ex;
         } catch (AuthenticationException ex) {
             if (lockoutEnabled) registerFailedLogin(prelocked);
             audit.publishFailure("auth.login.failed",

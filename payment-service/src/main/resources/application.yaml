@@ -103,6 +103,24 @@ app:
     key-secret: ${RAZORPAY_KEY_SECRET:CHANGE_ME_RAZORPAY_KEY_SECRET_PLACEHOLDER}
     webhook-secret: ${RAZORPAY_WEBHOOK_SECRET:CHANGE_ME_RAZORPAY_WEBHOOK_SECRET_PLACEHOLDER}
 
+  # Shared HMAC secret used to verify the short-lived REG_PAY tokens
+  # auth-service mints for the paid maintainer-signup flow. MUST be
+  # the same value auth-service uses for `app.jwt.secret` — both
+  # services source it from the JWT_SECRET env var in prod.
+  jwt:
+    secret: ${JWT_SECRET:CHANGE_ME_LOCAL_DEV_JWT_SECRET_PLACEHOLDER_AT_LEAST_32_BYTES_LONG_ABC}
+
+  maintainer-registration:
+    # One-time activation fee for the "I'm a maintainer" signup path.
+    # Echoed back to the frontend's paywall card and persisted on the
+    # PENDING Payment row.
+    fee-inr: ${MAINTAINER_REGISTRATION_FEE_INR:999}
+    reconciler:
+      # How far back the activation reconciler looks for PAID
+      # registration payments whose auth-side activation didn't
+      # land. 60 min covers a full Razorpay retry window comfortably.
+      lookback-minutes: ${MAINTAINER_REGISTRATION_RECONCILER_LOOKBACK_MIN:60}
+
   stripe:
     secret-key: ${STRIPE_SECRET:CHANGE_ME_STRIPE_SECRET_KEY_PLACEHOLDER}
     webhook-secret: ${STRIPE_WEBHOOK_SECRET:CHANGE_ME_STRIPE_WEBHOOK_SECRET_PLACEHOLDER}

@@ -126,6 +126,30 @@
         </dependency>
 
         <!--
+            jjwt — needed to parse + verify the short-lived REG_PAY
+            token the frontend ships on /payments/registration/initiate
+            and /verify (paid maintainer-signup flow). Same version
+            auth-service uses so signature math stays compatible.
+        -->
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-api</artifactId>
+            <version>0.12.5</version>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-impl</artifactId>
+            <version>0.12.5</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-jackson</artifactId>
+            <version>0.12.5</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!--
             OpenPDF for generating receipt + invoice PDFs. Pure-Java fork of
             iText 4 (LGPL) so we don't need an iText commercial license.
         -->

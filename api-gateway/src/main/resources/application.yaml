@@ -451,6 +451,21 @@ app:
       - /api/auth/refresh
       - /api/auth/forgot-password
       - /api/auth/reset-password
+      # ─── Paid maintainer registration (REG_PAY-token-gated) ───
+      # The auth-side pending-registration endpoint creates the
+      # disabled auth row + the PENDING Payment, then returns a
+      # short-lived REG_PAY JWT the frontend uses on the next two
+      # payment endpoints. These three paths bypass the regular JWT
+      # check at the gateway (the user has no access token yet);
+      # downstream services enforce their own purpose-scoped checks
+      # — payment-service validates the REG_PAY purpose + paymentId
+      # claim before any state change.
+      - POST /rentals/v1/auth/register/pending
+      - POST /api/auth/register/pending
+      - POST /rentals/v1/payments/registration/initiate
+      - POST /api/payments/registration/initiate
+      - POST /rentals/v1/payments/registration/verify
+      - POST /api/payments/registration/verify
       # ─── Public property browse (read-only) ───
       # Buildings + flats + their images are world-readable so the
       # landing / browse pages render without sign-in. Same model as

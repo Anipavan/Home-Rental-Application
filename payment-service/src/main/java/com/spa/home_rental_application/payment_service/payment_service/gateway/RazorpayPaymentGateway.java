@@ -166,7 +166,13 @@ public class RazorpayPaymentGateway implements PaymentGateway {
 
         var b = PaymentInitiationResult.builder()
                 .gatewayName(NAME)
-                .gatewayOrderId(orderId);
+                .gatewayOrderId(orderId)
+                // Always surface the public key id — frontend modal
+                // launchers (Razorpay Checkout.js for the paywall flow)
+                // need it; the existing redirect flow already encodes
+                // it into redirectUrl and ignores the extra field, so
+                // populating it here is a no-op for that path.
+                .publicKeyId(props.getKeyId());
 
         switch (req.paymentMethod()) {
             case UPI -> {

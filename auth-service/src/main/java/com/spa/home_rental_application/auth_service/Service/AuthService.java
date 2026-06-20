@@ -3,6 +3,7 @@ package com.spa.home_rental_application.auth_service.Service;
 import com.spa.home_rental_application.auth_service.Dto.Request.*;
 import com.spa.home_rental_application.auth_service.Dto.Response.AuthResponse;
 import com.spa.home_rental_application.auth_service.Dto.Response.AuthUserResponse;
+import com.spa.home_rental_application.auth_service.Dto.Response.RegisterPendingResponse;
 import com.spa.home_rental_application.auth_service.Dto.Response.RegisterResponse;
 import com.spa.home_rental_application.auth_service.enums.Roles;
 
@@ -10,6 +11,38 @@ import java.util.List;
 
 public interface AuthService {
     RegisterResponse register(RegisterRequest req);
+
+    /**
+     * Paid maintainer signup — entry point for the "I'm a maintainer"
+     * card on the public register screen. Persists the auth row as
+     * {@code enabled=false, disable_reason='REGISTRATION_PAYMENT_PENDING'},
+     * forwards the profile to user-service (same as
+     * {@link #register}), and asks payment-service to mint a PENDING
+     * Payment row for the &#8377;999 fee. Returns the payment bundle
+     * the frontend uses to launch the Razorpay paywall.
+     *
+     * <p>The {@code user.registered} Kafka event is <em>not</em> fired
+     * here — only on a successful {@link #activateRegistration}, so
+     * downstream consumers see the user only after they've actually
+     * paid. The orphan-row sweep on auth-service deletes disabled
+     * rows older than 24 hours that never made it to activation.
+     */
+    RegisterPendingResponse registerPending(RegisterPendingRequest req);
+
+    /**
+     * Internal endpoint hit by payment-service via Feign on Razorpay
+     * PAID for a {@code MAINTAINER_REGISTRATION} payment. Flips
+     * {@code enabled=true, disable_reason=null} on the user row and
+     * fires the deferred {@code user.registered} event so welcome
+     * fan-outs (email + SMS + bell) trigger as if the user had just
+     * signed up the normal free way.
+     *
+     * <p>Idempotent: if the row is already enabled, returns the
+     * existing record without re-firing events. That way a retry
+     * from payment-service's {@code RegistrationActivationReconciler}
+     * scheduler can't double-notify the user.
+     */
+    AuthUserResponse activateRegistration(Long authUserId, String paymentId);
     AuthResponse     login(LoginRequest req, String ipAddress, String userAgent);
     /**
      * Rotate the supplied refresh token. The IP + user-agent are

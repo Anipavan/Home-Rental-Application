@@ -1,4 +1,5 @@
 import { useState } from "react";
+import axios from "axios";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
@@ -35,17 +36,32 @@ export function LoginPage() {
       toast({ title: `Welcome back, ${data.userName}` });
       navigate(dest, { replace: true });
     },
-    onError: () => {
-      // Audit M22: never relay backend specifics on login failure —
-      // a clear distinction between "user not found" and "wrong
-      // password" lets an attacker enumerate valid usernames. Always
-      // a single generic copy regardless of HTTP status / errorCode.
-      //
-      // dedupeKey: repeated wrong-password attempts otherwise stack
-      // up four identical destructive toasts that obscure the form.
-      // With a stable key, every new failure replaces the previous
-      // one — the user sees a single, fresh "Sign-in failed" instead
-      // of a wall of them.
+    onError: (err) => {
+      // Special-case the paid-maintainer paywall path: when login
+      // returns errorCode=REGISTRATION_PAYMENT_PENDING the user
+      // signed up earlier but never completed the activation fee.
+      // Send them back to the paywall instead of the generic
+      // "wrong password" copy that would leave them confused.
+      if (axios.isAxiosError(err)) {
+        const data = err.response?.data as
+          | { errorCode?: string }
+          | undefined;
+        if (data?.errorCode === "REGISTRATION_PAYMENT_PENDING") {
+          toast({
+            title: "Activation pending",
+            description:
+              "Finish your one-time activation fee to sign in.",
+          });
+          // The paywall page hydrates the bundle from sessionStorage;
+          // if the user is on a different device / cleared storage,
+          // it surfaces a "start over from /register" message.
+          navigate("/registration-payment", { replace: true });
+          return;
+        }
+      }
+      // Audit M22: every other login failure surfaces the same
+      // generic copy so attackers can't enumerate usernames /
+      // distinguish wrong-password from no-such-user.
       toast({
         variant: "destructive",
         title: "Sign-in failed",

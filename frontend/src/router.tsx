@@ -15,6 +15,7 @@ import { PropertyDetailPage } from "@/pages/public/property-detail";
 import { AboutPage } from "@/pages/public/about";
 import { LoginPage } from "@/pages/public/login";
 import { RegisterPage } from "@/pages/public/register";
+import { RegistrationPaymentPage } from "@/pages/public/registration-payment";
 import { ForgotPasswordPage } from "@/pages/public/forgot-password";
 import { ResetPasswordPage } from "@/pages/public/reset-password";
 import { NotFoundPage } from "@/pages/public/not-found";
@@ -93,6 +94,7 @@ export const router = createBrowserRouter([
   },
   { path: "/login", element: <LoginPage /> },
   { path: "/register", element: <RegisterPage /> },
+  { path: "/registration-payment", element: <RegistrationPaymentPage /> },
   { path: "/forgot-password", element: <ForgotPasswordPage /> },
   { path: "/reset-password", element: <ResetPasswordPage /> },
   // ─── Public society ledger ───

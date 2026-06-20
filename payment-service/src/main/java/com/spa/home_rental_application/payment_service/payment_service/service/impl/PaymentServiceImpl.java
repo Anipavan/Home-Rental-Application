@@ -384,7 +384,8 @@ public class PaymentServiceImpl implements PaymentService {
                 r.getRedirectUrl(),
                 r.getUpiIntentUrl(),
                 r.getUpiCollectStatus(),
-                r.getBankAccountNumber(), r.getBankIfsc(), r.getBankAccountName());
+                r.getBankAccountNumber(), r.getBankIfsc(), r.getBankAccountName(),
+                r.getPublicKeyId());
     }
 
     @Override
