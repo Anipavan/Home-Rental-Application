@@ -60,6 +60,24 @@ public record UpsertFlatCollectionRequest(
         BigDecimal amountPaid,
 
         @Size(max = 32)
-        String paidVia
+        String paidVia,
+
+        /**
+         * Water-meter reading at the start of the billing period.
+         * Only meaningful for {@code category=WATER_BILL} — other
+         * categories should leave this null. Surfaces on the matrix
+         * view's new Previous Usage column.
+         */
+        @DecimalMin(value = "0.00", message = "prevUsageReading cannot be negative")
+        BigDecimal prevUsageReading,
+
+        /**
+         * Water-meter reading at the end of the billing period.
+         * Together with {@link #prevUsageReading} this lets every
+         * stakeholder reconstruct the unit count behind the rupee
+         * figure on the water-bill row.
+         */
+        @DecimalMin(value = "0.00", message = "currUsageReading cannot be negative")
+        BigDecimal currUsageReading
 ) {
 }

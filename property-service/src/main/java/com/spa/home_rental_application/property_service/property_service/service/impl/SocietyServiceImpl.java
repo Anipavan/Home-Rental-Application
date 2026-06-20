@@ -740,6 +740,8 @@ public class SocietyServiceImpl implements SocietyService {
                             .paidVia(r.getPaidVia())
                             .amountPaid(r.getAmountPaid())
                             .category(r.getCategory())
+                            .prevUsageReading(r.getPrevUsageReading())
+                            .currUsageReading(r.getCurrUsageReading())
                             .collectionId(r.getId())
                             .build());
                 }
@@ -810,6 +812,13 @@ public class SocietyServiceImpl implements SocietyService {
         if (req.paidVia() != null && !req.paidVia().isBlank()) {
             row.setPaidVia(req.paidVia().trim());
         }
+        // Water-meter readings — explicit setters (no null-guard) so the
+        // maintainer can also clear them by submitting the form with
+        // empty values. The UI only renders these inputs when category
+        // = WATER_BILL, so non-water rows naturally pass null and stay
+        // null in the DB.
+        row.setPrevUsageReading(req.prevUsageReading());
+        row.setCurrUsageReading(req.currUsageReading());
         row.setUpdatedAt(now);
 
         // Ensure required-on-insert fields when JpaRepository.save flips
@@ -853,6 +862,8 @@ public class SocietyServiceImpl implements SocietyService {
                 .paidVia(saved.getPaidVia())
                 .amountPaid(saved.getAmountPaid())
                 .category(saved.getCategory())
+                .prevUsageReading(saved.getPrevUsageReading())
+                .currUsageReading(saved.getCurrUsageReading())
                 .collectionId(saved.getId())
                 .build();
     }
@@ -923,6 +934,8 @@ public class SocietyServiceImpl implements SocietyService {
                 .paidVia(r.getPaidVia())
                 .amountPaid(r.getAmountPaid())
                 .category(r.getCategory())
+                .prevUsageReading(r.getPrevUsageReading())
+                .currUsageReading(r.getCurrUsageReading())
                 .build()).toList();
     }
 

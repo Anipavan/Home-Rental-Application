@@ -1213,6 +1213,16 @@ export interface FlatMaintenanceRow {
   paidVia: string | null;
   amountPaid: number | null;
   category: FlatChargeCategory | null;
+  /**
+   * Water-meter reading at the start of the billing period — meaningful
+   * only on a WATER_BILL row. Drives the "Previous Usage" column on
+   * the maintainer matrix view + public ledger so residents can
+   * reconstruct the unit count behind the bill.
+   */
+  prevUsageReading?: number | null;
+  /** Water-meter reading at the end of the billing period. See
+   *  {@link prevUsageReading}. */
+  currUsageReading?: number | null;
 }
 
 /** Body for {@code POST /society/{buildingId}/flats/{flatId}/collection}. */
@@ -1225,4 +1235,9 @@ export interface UpsertFlatCollectionRequest {
   paidOn?: string;
   amountPaid?: number;
   paidVia?: string;
+  /** Water-meter reading — start of billing period. Only set when
+   *  category=WATER_BILL; other categories leave undefined. */
+  prevUsageReading?: number;
+  /** Water-meter reading — end of billing period. */
+  currUsageReading?: number;
 }

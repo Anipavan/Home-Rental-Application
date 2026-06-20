@@ -116,6 +116,23 @@ public class MaintenanceCollection {
     @Column(name = "notes", length = 500)
     private String notes;
 
+    /**
+     * Water-meter reading at the start of the billing period. Combined
+     * with {@link #currUsageReading} this exposes the unit count behind
+     * the rupee figure on a WATER_BILL row, so every resident on the
+     * public ledger can verify the bill independently.
+     *
+     * <p>Only meaningful for category=WATER_BILL — other categories
+     * leave this null. The UI shows the readings on the water-bill
+     * cell only.
+     */
+    @Column(name = "prev_usage_reading", precision = 12, scale = 2)
+    private BigDecimal prevUsageReading;
+
+    /** Water-meter reading at the end of the billing period. See {@link #prevUsageReading}. */
+    @Column(name = "curr_usage_reading", precision = 12, scale = 2)
+    private BigDecimal currUsageReading;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

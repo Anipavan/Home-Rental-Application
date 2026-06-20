@@ -67,6 +67,22 @@ public record FlatMaintenanceRowResponse(
 
         /** Per-flat charge category. Null for pre-V4 rows; the UI
          *  renders NULL as OTHER. */
-        MaintenanceCategory category
+        MaintenanceCategory category,
+
+        /**
+         * Water-meter reading at the start of the billing period.
+         * Null on every non-WATER_BILL row. Drives the new
+         * "Previous Usage" column on the maintainer dashboard +
+         * the public ledger so residents can verify the bill.
+         */
+        BigDecimal prevUsageReading,
+
+        /**
+         * Water-meter reading at the end of the billing period.
+         * Null on every non-WATER_BILL row. With
+         * {@link #prevUsageReading} this exposes the unit count
+         * (curr - prev) behind the rupee figure.
+         */
+        BigDecimal currUsageReading
 ) {
 }

@@ -483,10 +483,17 @@ function makePlaceholderRow(group: FlatGroup): FlatMaintenanceRow {
  * cell because both labels resolve to "Additional Expenses" in
  * {@link CATEGORY_LABELS}, but new entries always use COMMON_AREA_SHARE.
  */
+/**
+ * Categories that get a dedicated column on the per-flat matrix view.
+ * COMMON_AREA_SHARE was dropped — the maintainer asked for the matrix
+ * to focus on actual category charges plus the new water-meter usage
+ * columns; "Additional Expenses" wasn't being used in practice. The
+ * enum value still exists server-side so historical rows render fine
+ * elsewhere; just no dedicated column here.
+ */
 const CATEGORY_COLUMNS: FlatChargeCategory[] = [
   "MAINTENANCE",
   "WATER_BILL",
-  "COMMON_AREA_SHARE",
 ];
 
 /**
@@ -527,6 +534,16 @@ function FlatsTable({
                 {CATEGORY_LABELS[c]}
               </th>
             ))}
+            {/* Water-meter readings — only meaningful for WATER_BILL
+              * rows but the columns sit next to the Water bill cell so
+              * the reader can compute (curr - prev) at a glance. Empty
+              * cells when there's no WATER_BILL row for the flat. */}
+            <th className="text-right px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+              Previous Usage
+            </th>
+            <th className="text-right px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+              Current Usage
+            </th>
             <th className="text-right px-3 py-2 font-semibold text-xs uppercase tracking-wider text-muted-foreground whitespace-nowrap">
               Total
             </th>
@@ -651,6 +668,31 @@ function FlatRow({
           </td>
         );
       })}
+
+      {/* Previous Usage — readings live on the WATER_BILL row (if any).
+        * Showing this column unconditionally even when there's no
+        * water-bill yet, with a "—" placeholder, so the column count
+        * stays stable across rows / months. */}
+      <td className="px-3 py-2 align-top text-right">
+        {byCategory.get("WATER_BILL")?.prevUsageReading != null ? (
+          <span className="font-mono text-sm whitespace-nowrap">
+            {byCategory.get("WATER_BILL")!.prevUsageReading}
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        )}
+      </td>
+
+      {/* Current Usage */}
+      <td className="px-3 py-2 align-top text-right">
+        {byCategory.get("WATER_BILL")?.currUsageReading != null ? (
+          <span className="font-mono text-sm whitespace-nowrap">
+            {byCategory.get("WATER_BILL")!.currUsageReading}
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        )}
+      </td>
 
       {/* Total (= sum across category cells, was 'Other' column) */}
       <td className="px-3 py-2 align-top text-right">
@@ -1025,6 +1067,8 @@ function SetAmountDialog({
     paidOn: row.paidOn ?? undefined,
     amountPaid: row.amountPaid ?? undefined,
     paidVia: row.paidVia ?? undefined,
+    prevUsageReading: row.prevUsageReading ?? undefined,
+    currUsageReading: row.currUsageReading ?? undefined,
   });
 
   // Track whether the maintainer is editing the "received" sub-panel.
@@ -1071,6 +1115,8 @@ function SetAmountDialog({
             paidOn: row.paidOn ?? undefined,
             amountPaid: row.amountPaid ?? undefined,
             paidVia: row.paidVia ?? undefined,
+            prevUsageReading: row.prevUsageReading ?? undefined,
+            currUsageReading: row.currUsageReading ?? undefined,
           });
           setShowReceived(row.status === "PAID");
         }
@@ -1177,6 +1223,70 @@ function SetAmountDialog({
               </Select>
             </div>
           </div>
+
+          {/* Water-meter readings — only visible for WATER_BILL rows.
+            * Lets the maintainer record the start + end meter readings
+            * so every resident can verify the bill themselves (curr -
+            * prev = units consumed). Both optional — leave blank if
+            * billing on a flat share without a meter. */}
+          {form.category === "WATER_BILL" && (
+            <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 space-y-2">
+              <p className="text-xs font-semibold text-primary uppercase tracking-wider">
+                Water meter readings
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Previous Usage</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder="e.g. 1240"
+                    value={form.prevUsageReading ?? ""}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        prevUsageReading:
+                          e.target.value === ""
+                            ? undefined
+                            : Number(e.target.value),
+                      })
+                    }
+                  />
+                </div>
+                <div>
+                  <Label>Current Usage</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder="e.g. 1280"
+                    value={form.currUsageReading ?? ""}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        currUsageReading:
+                          e.target.value === ""
+                            ? undefined
+                            : Number(e.target.value),
+                      })
+                    }
+                  />
+                </div>
+              </div>
+              {form.prevUsageReading != null &&
+                form.currUsageReading != null && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Units consumed:{" "}
+                    <span className="font-semibold text-foreground">
+                      {(form.currUsageReading - form.prevUsageReading).toFixed(
+                        2,
+                      )}
+                    </span>
+                  </p>
+                )}
+            </div>
+          )}
 
           <div>
             <Label>Line-item notes</Label>

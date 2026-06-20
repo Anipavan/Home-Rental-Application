@@ -108,10 +108,16 @@ const FLAT_CATEGORY_LEGEND_LABEL: Record<FlatChargeCategory, string> = {
 /** Per-flat charge categories shown on the public table. Same set
  *  as the maintainer dashboard — Gas/Electricity excluded because
  *  they aren't society-collected. */
+/**
+ * Categories that get a dedicated column on the public Per-flat bills
+ * table. Mirrors the maintainer dashboard's CATEGORY_COLUMNS so the
+ * two views stay in sync — drop COMMON_AREA_SHARE (folded into OTHER
+ * on the maintainer side; no dedicated column here either) and let
+ * water-meter readings show up in their own pair of columns.
+ */
 const FLAT_CHARGE_COLUMNS: FlatChargeCategory[] = [
   "MAINTENANCE",
   "WATER_BILL",
-  "COMMON_AREA_SHARE",
   "OTHER",
 ];
 
