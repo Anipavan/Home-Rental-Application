@@ -252,23 +252,23 @@ export function SocietyPayAllPage() {
                   * Payment + we forward to the existing
                   * /app/payments/{id}/pay page (UPI / Card / Net
                   * Banking method picker, same as rent). */}
+                {/* Bulk-pay button stays enabled even when over the
+                  * test-mode cap — the user might be on live mode now,
+                  * or just willing to try. The warning banner above
+                  * tells them what's likely to happen; the error
+                  * surface on payment-return shows Razorpay's actual
+                  * message if it does fail. Disabling would block
+                  * legitimate live-mode use cases. */}
                 <Button
                   variant="gradient"
                   size="lg"
                   onClick={() => payAllMut.mutate()}
-                  disabled={payAllMut.isPending || !dueRows.length || exceedsBulkCap}
-                  title={
-                    exceedsBulkCap
-                      ? `Total exceeds the ${formatINR(BULK_PAY_MAX_INR)} Razorpay test-mode cap — pay individually below.`
-                      : undefined
-                  }
+                  disabled={payAllMut.isPending || !dueRows.length}
                 >
                   {payAllMut.isPending ? (
                     <>
                       <Loader2 className="size-4 animate-spin" /> Starting…
                     </>
-                  ) : exceedsBulkCap ? (
-                    "Pay individually below ↓"
                   ) : (
                     `Pay all via Razorpay · ${formatINR(total)}`
                   )}
