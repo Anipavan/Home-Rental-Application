@@ -730,7 +730,45 @@ public class PaymentServiceImpl implements PaymentService {
         Payment p = mustFind(paymentId);
         Receipt r = receiptRepo.findByPaymentId(paymentId).orElseThrow(
                 () -> new PaymentNotFoundException("No receipt for paymentId: " + paymentId));
-        return pdfGenerator.generateReceipt(p, r);
+
+        // Resolve human-readable identifiers off the wire. Every Feign
+        // call is wrapped — if user-service / property-service is
+        // unreachable, the lookup degrades to null and the PDF
+        // generator falls back to printing the raw UUID. Receipt
+        // download never 500s on a downstream blip.
+        String tenantName = null;
+        try {
+            UserClient.UserProfileSummary profile = userClient.getByAuthUserId(p.getTenantId());
+            if (profile != null) tenantName = profile.displayName();
+        } catch (Exception ex) {
+            log.warn("Receipt: tenant-name lookup failed for paymentId={} authUserId={}: {}",
+                    paymentId, p.getTenantId(), ex.toString());
+        }
+
+        String flatNumber = null;
+        try {
+            PropertyClient.FlatSummary flat = propertyClient.getFlatById(p.getFlatId());
+            if (flat != null) flatNumber = flat.flatNumber();
+        } catch (Exception ex) {
+            log.warn("Receipt: flat-number lookup failed for paymentId={} flatId={}: {}",
+                    paymentId, p.getFlatId(), ex.toString());
+        }
+
+        // Only fetch the itemised lines for society-charge payments —
+        // rent payments don't have rows in maintenance_collection, so
+        // the call would always return empty.
+        java.util.List<PropertyClient.SocietyChargeLine> societyLines = java.util.List.of();
+        if ("SOCIETY_CHARGE".equals(p.getSourceType())) {
+            try {
+                societyLines = propertyClient.getSocietyChargesByPayment(paymentId);
+                if (societyLines == null) societyLines = java.util.List.of();
+            } catch (Exception ex) {
+                log.warn("Receipt: society-charge itemisation failed for paymentId={}: {}",
+                        paymentId, ex.toString());
+            }
+        }
+
+        return pdfGenerator.generateReceipt(p, r, tenantName, flatNumber, societyLines);
     }
 
     /* ---------------- Analytics ---------------- */

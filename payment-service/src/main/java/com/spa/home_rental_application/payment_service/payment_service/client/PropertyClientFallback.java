@@ -40,4 +40,13 @@ public class PropertyClientFallback implements PropertyClient {
         log.warn("property-service unavailable — getFlatsByBuilding({}) falling back to empty", buildingId);
         return Collections.emptyList();
     }
+
+    @Override
+    public List<PropertyClient.SocietyChargeLine> getSocietyChargesByPayment(String paymentId) {
+        // Empty list is a safe fallback — the receipt PDF then collapses
+        // the line-item table to one "Society charges" summary line
+        // instead of itemising. Better than 500ing on receipt generation.
+        log.warn("property-service unavailable — getSocietyChargesByPayment({}) falling back to empty", paymentId);
+        return Collections.emptyList();
+    }
 }

@@ -21,6 +21,16 @@ public interface UserClient {
     PayoutDetails getPayoutDetails(@PathVariable("userId") String userId);
 
     /**
+     * Resolve an auth-user-id to the user's profile (first + last name)
+     * so the receipt PDF can print "Name: Pavan Anirudh" instead of
+     * "Tenant ID: 25a2d158-c987-4220-92ab-9185e215807c". On fallback
+     * we return an empty profile so the PDF generator falls back to
+     * the raw id — never blocks receipt generation.
+     */
+    @GetMapping("/users/auth/{authUserId}")
+    UserProfileSummary getByAuthUserId(@PathVariable("authUserId") String authUserId);
+
+    /**
      * Payable subset of a user's bank account — local mirror of
      * user-service's BankAccountPayoutDto so payment-service doesn't
      * have to depend on user-service code. Field-by-field identical
@@ -37,6 +47,36 @@ public interface UserClient {
     ) {
         public static PayoutDetails empty() {
             return new PayoutDetails(null, null, null, null, null, null, null);
+        }
+    }
+
+    /**
+     * Tiny subset of user-service's {@code UserResponseDto} — just the
+     * fields the receipt PDF actually prints. Jackson silently drops
+     * everything else, keeping the contract loose so user-service can
+     * add fields without breaking payment-service deserialisation.
+     */
+    record UserProfileSummary(
+            String id,
+            String authUserId,
+            String firstName,
+            String lastName,
+            String email
+    ) {
+        public static UserProfileSummary empty() {
+            return new UserProfileSummary(null, null, null, null, null);
+        }
+
+        /**
+         * "First Last" joined, blanks collapsed. Returns null when
+         * neither name is set so callers can fall back to a different
+         * identifier (auth id, email, etc.).
+         */
+        public String displayName() {
+            String fn = firstName == null ? "" : firstName.trim();
+            String ln = lastName == null ? "" : lastName.trim();
+            String full = (fn + " " + ln).trim();
+            return full.isEmpty() ? null : full;
         }
     }
 }

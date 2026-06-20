@@ -4,6 +4,7 @@ import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
@@ -49,6 +50,18 @@ public interface PropertyClient {
     List<FlatSummary> getFlatsByBuilding(@PathVariable("buildingId") String buildingId);
 
     /**
+     * Drives the maintenance-receipt PDF — payment-service calls this
+     * for every SOCIETY_CHARGE Payment to itemise the line-item table
+     * (Water bill ₹X, Maintenance ₹Y, Common-area share ₹Z) instead
+     * of showing one lumped "Society charge" total. Fallback returns
+     * an empty list, in which case the PDF generator collapses to a
+     * single "Society charges" line — safe degradation.
+     */
+    @GetMapping("/society/charges/by-payment/{paymentId}")
+    List<SocietyChargeLine> getSocietyChargesByPayment(
+            @PathVariable("paymentId") String paymentId);
+
+    /**
      * Subset of property-service {@code BuildingResponseDTO} — only the
      * fields the payment-service consumes. Extra fields on the wire
      * are silently dropped by Jackson, keeping the contract loose.
@@ -64,15 +77,29 @@ public interface PropertyClient {
 
     /**
      * Subset of property-service {@code FlatResponseDTO} — only the
-     * fields the payment-service consumes.
+     * fields the payment-service consumes. {@code flatNumber} drives
+     * the human-readable "Flat No" line on the receipt PDF; without
+     * it we'd be left showing the raw UUID.
      */
     record FlatSummary(
             String id,
             String buildingId,
-            String tenantId
+            String tenantId,
+            String flatNumber
     ) {
         public static FlatSummary empty() {
-            return new FlatSummary(null, null, null);
+            return new FlatSummary(null, null, null, null);
         }
     }
+
+    /**
+     * Local mirror of property-service's {@code SocietyChargeLineItemResponse}.
+     * Fields match exactly so Jackson can roundtrip; extras the server adds
+     * later are silently dropped.
+     */
+    record SocietyChargeLine(
+            String category,
+            String forMonth,
+            BigDecimal amountDue
+    ) {}
 }

@@ -9,6 +9,7 @@ import com.spa.home_rental_application.property_service.property_service.DTO.Res
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.FlatMaintenanceRowResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.MaintenanceExpenseResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.PromoteTenantResponse;
+import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyChargeLineItemResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyChargePaymentInitiatedResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyConfigResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyLedgerResponse;
@@ -209,6 +210,13 @@ public class SocietyController {
             @PathVariable String buildingId,
             @RequestParam(name = "month", required = false) String month) {
         return ResponseEntity.ok(service.listMyBillsForMonth(buildingId, month));
+    }
+
+    @Operation(summary = "Internal: list every society-charge row linked to a given paymentId. Used by payment-service to itemise the maintenance-receipt PDF.")
+    @GetMapping("/charges/by-payment/{paymentId}")
+    public ResponseEntity<List<SocietyChargeLineItemResponse>> chargesByPayment(
+            @PathVariable String paymentId) {
+        return ResponseEntity.ok(service.getChargesByPaymentId(paymentId));
     }
 
     @Operation(summary = "Tenant: bridge a set of DUE / OVERDUE charges to the Razorpay rent-pay flow. Returns the new Payment row's id so the FE can navigate to /app/payments/{id}/pay.")

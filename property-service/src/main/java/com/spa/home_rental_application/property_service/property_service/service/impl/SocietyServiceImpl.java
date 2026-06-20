@@ -10,6 +10,7 @@ import com.spa.home_rental_application.property_service.property_service.DTO.Res
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.MaintenanceExpenseResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.PromoteTenantResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.PublicFlatBillResponse;
+import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyChargeLineItemResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyChargePaymentInitiatedResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyConfigResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyLedgerResponse;
@@ -989,6 +990,19 @@ public class SocietyServiceImpl implements SocietyService {
         if (isTenantHere) return;
         throw new ForbiddenException(
                 "Only residents, the owner, or the maintainer can view this ledger.");
+    }
+
+    @Override
+    public List<SocietyChargeLineItemResponse> getChargesByPaymentId(String paymentId) {
+        if (paymentId == null || paymentId.isBlank()) {
+            return List.of();
+        }
+        return collectionRepo.findByPaymentId(paymentId).stream()
+                .map(c -> new SocietyChargeLineItemResponse(
+                        c.getCategory() == null ? "OTHER" : c.getCategory().name(),
+                        c.getForMonth(),
+                        c.getAmountDue()))
+                .toList();
     }
 
     /** 32-char URL-safe base64 — ~192 bits of entropy. */

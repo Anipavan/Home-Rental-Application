@@ -9,6 +9,7 @@ import com.spa.home_rental_application.property_service.property_service.DTO.Res
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.FlatMaintenanceRowResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.MaintenanceExpenseResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.PromoteTenantResponse;
+import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyChargeLineItemResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyChargePaymentInitiatedResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyConfigResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyLedgerResponse;
@@ -162,4 +163,17 @@ public interface SocietyService {
      * consumer's commit can ack safely on retries.
      */
     void onSocietyChargePaymentCompleted(String paymentId, java.time.LocalDate paidOn);
+
+    /**
+     * Every {@code maintenance_collection} row tagged with the given
+     * paymentId. Drives the maintenance-receipt PDF — payment-service
+     * calls this via Feign to itemise a bulk Pay-all receipt with one
+     * line per category (Water bill, Maintenance, Common-area share,
+     * etc.) instead of one lumped total.
+     *
+     * <p>Returns an empty list when paymentId is null or no rows
+     * match, which the caller renders as a single fallback "Society
+     * charge" line.
+     */
+    List<SocietyChargeLineItemResponse> getChargesByPaymentId(String paymentId);
 }
