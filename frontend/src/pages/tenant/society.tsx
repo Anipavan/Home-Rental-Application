@@ -104,8 +104,8 @@ export function TenantSocietyPage() {
   return (
     <div className="animate-fade-in max-w-5xl">
       <PageHeader
-        title="Society ledger"
-        description="Your monthly bills + a transparent record of common-area expenses."
+        title="Income & Expenses"
+        description="Your monthly bills + a transparent record of common-area income and expenses."
       />
 
       {configQ.isLoading ? (
