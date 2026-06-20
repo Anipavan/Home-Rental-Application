@@ -33,16 +33,27 @@ function buildContentSecurityPolicy(mode: string): string {
     .filter(Boolean)
     .join(" ");
 
+  // Razorpay Checkout.js is loaded on-demand from checkout.razorpay.com
+  // when a user reaches the paid-maintainer paywall, and the modal it
+  // opens needs to talk to api.razorpay.com + ship telemetry to
+  // lumberjack.razorpay.com. The modal renders inside an iframe sourced
+  // from api.razorpay.com, so frame-src has to allow it too. We list
+  // each subdomain we know we use rather than `*.razorpay.com` so a
+  // single bad URL on their side doesn't get a free pass.
+  const RAZORPAY_SCRIPT = "https://checkout.razorpay.com";
+  const RAZORPAY_API = "https://api.razorpay.com";
+  const RAZORPAY_TELEMETRY = "https://lumberjack.razorpay.com";
+
   // In dev Vite injects HMR client + uses module preloading, both of
   // which need 'unsafe-inline' for the injected <script> tags + the
   // WebSocket back to the dev server. We tighten in prod where we
   // control the build output and there are no inline scripts.
   const scriptSrc = isDev
-    ? "'self' 'unsafe-inline' 'unsafe-eval'"
-    : "'self'";
+    ? `'self' 'unsafe-inline' 'unsafe-eval' ${RAZORPAY_SCRIPT}`
+    : `'self' ${RAZORPAY_SCRIPT}`;
   const connectSrc = isDev
-    ? `'self' ${apiOrigin} ws: wss: ${connectSrcExtra}`.trim()
-    : `'self' ${apiOrigin} ${connectSrcExtra}`.trim();
+    ? `'self' ${apiOrigin} ws: wss: ${RAZORPAY_API} ${RAZORPAY_TELEMETRY} ${connectSrcExtra}`.trim()
+    : `'self' ${apiOrigin} ${RAZORPAY_API} ${RAZORPAY_TELEMETRY} ${connectSrcExtra}`.trim();
 
   return [
     "default-src 'self'",
@@ -53,6 +64,8 @@ function buildContentSecurityPolicy(mode: string): string {
     // data: + blob: needed for image previews + canvas signatures.
     "img-src 'self' data: blob: https:",
     `connect-src ${connectSrc}`,
+    // Razorpay's Checkout modal renders inside an iframe from api.razorpay.com.
+    `frame-src ${RAZORPAY_API} ${RAZORPAY_SCRIPT}`,
     // Lock anything trying to embed us in a frame; matches the
     // gateway's X-Frame-Options: DENY (defense in depth).
     "frame-ancestors 'none'",
