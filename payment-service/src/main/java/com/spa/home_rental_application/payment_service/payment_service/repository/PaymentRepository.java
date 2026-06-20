@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
@@ -20,6 +21,18 @@ public interface PaymentRepository extends JpaRepository<Payment, String> {
     List<Payment> findByTenantId(String tenantId);
     List<Payment> findByOwnerId(String ownerId);
     List<Payment> findByFlatIdAndStatusIn(String flatId, Collection<PaymentStatus> statuses);
+
+    /**
+     * Drives the scheduled-expiry sweep that auto-fails Payment rows
+     * stuck in PENDING / PROCESSING long after the user abandoned the
+     * Razorpay flow (closed tab, Razorpay rejected, etc.). Without
+     * this, every failed attempt leaves a stale "Due now" entry on
+     * the tenant Payments page forever. Updated-at as the cutoff so a
+     * payment actively being re-tried resets its clock on each
+     * /initiate or /verify touch.
+     */
+    List<Payment> findByStatusInAndUpdatedAtBefore(
+            Collection<PaymentStatus> statuses, Instant updatedAtBefore);
 
     /**
      * Lookup every payment whose flat is in the given collection.

@@ -1060,6 +1060,42 @@ public class SocietyServiceImpl implements SocietyService {
                     "Only the resident of this flat can pay its society charges.");
         }
 
+        // Idempotency — if every selected collection already shares one
+        // PENDING Payment, reuse it instead of creating a new one. Stops
+        // the orphan-PENDING pileup users were hitting when a Razorpay
+        // attempt failed (BAD_REQUEST_ERROR, abandoned tab, etc.) and
+        // they clicked Pay all again. Without this, every retry created
+        // a fresh Payment row → multiple "Due now" entries cluttering
+        // the Maintenance tab forever.
+        //
+        // Reuse criteria: all rows in this request point to the SAME
+        // prior paymentId AND that payment is still PENDING. If any
+        // row points to a different paymentId, or the prior one's
+        // already PAID/FAILED, we let it fall through and create a
+        // new Payment cleanly.
+        Set<String> priorPaymentIds = new HashSet<>();
+        for (MaintenanceCollection row : rows) {
+            if (row.getPaymentId() != null) priorPaymentIds.add(row.getPaymentId());
+        }
+        if (priorPaymentIds.size() == 1) {
+            String candidateId = priorPaymentIds.iterator().next();
+            try {
+                PaymentClient.SocietyChargePaymentResponse existing =
+                        paymentClient.getPayment(candidateId);
+                if (existing != null && "PENDING".equals(existing.status())) {
+                    log.info("Reusing existing PENDING payment {} for society charges (idempotency)",
+                            candidateId);
+                    return new SocietyChargePaymentInitiatedResponse(
+                            existing.id(),
+                            existing.totalAmount() != null ? existing.totalAmount() : total,
+                            rows.size());
+                }
+            } catch (Exception ex) {
+                // Best-effort — fall through to creating a new Payment.
+                log.debug("Idempotency lookup for paymentId={} failed: {}", candidateId, ex.toString());
+            }
+        }
+
         // Mint the Payment row via payment-service. Idempotency-Key is
         // forwarded so a fast double-click on "Pay all" collides on
         // the same key and returns the existing paymentId instead of

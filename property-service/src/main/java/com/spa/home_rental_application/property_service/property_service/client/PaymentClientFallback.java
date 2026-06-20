@@ -21,6 +21,17 @@ public class PaymentClientFallback implements PaymentClient {
     }
 
     @Override
+    public SocietyChargePaymentResponse getPayment(String id) {
+        // Soft-fail — the idempotency lookup is best-effort. Returning
+        // null lets the bridge fall through to creating a new Payment
+        // rather than blocking the user; the scheduled-expiry job
+        // will eventually clean up any leftover PENDING rows once
+        // payment-service is reachable again.
+        log.warn("payment-service unavailable — skipping idempotency lookup for paymentId={}", id);
+        return null;
+    }
+
+    @Override
     public SocietyChargePaymentResponse createSocietyChargePayment(
             CreatePaymentRequest body, String idempotencyKey) {
         // Fail loud here. Returning a sentinel would let the FE

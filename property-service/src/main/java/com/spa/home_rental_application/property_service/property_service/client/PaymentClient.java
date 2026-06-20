@@ -51,6 +51,18 @@ public interface PaymentClient {
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey);
 
     /**
+     * Read-only fetch of a Payment's current status. Used by the
+     * society-charge bridge to implement idempotency — if a collection
+     * row already has a payment_id pointing to a PENDING payment, the
+     * bridge returns that paymentId instead of creating a new one,
+     * which would leave the old row orphaned. Returns null when the
+     * fallback fires (payment-service unreachable); caller treats that
+     * as "no prior payment known" and falls through to creating one.
+     */
+    @GetMapping("/payments/{id}")
+    SocietyChargePaymentResponse getPayment(@PathVariable("id") String id);
+
+    /**
      * Body mirror of payment-service's {@code CreatePaymentRequest}.
      * Inlined as a nested record so this client module stays
      * dependency-free of payment-service's DTOs. {@code sourceType}
