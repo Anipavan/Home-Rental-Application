@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   Link,
   NavLink,
@@ -404,29 +404,120 @@ export function AppShell() {
             banner above keeps surfacing remaining steps regardless. */}
         <OnboardingWizard />
 
-        <nav className="lg:hidden border-t border-border/60 bg-background/95 backdrop-blur sticky bottom-0 z-30">
-          <div className="grid grid-cols-5">
-            {items.slice(0, 5).map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.to === "/app" || item.to === "/owner" || item.to === "/admin"}
-                className={({ isActive }) =>
-                  cn(
-                    "flex flex-col items-center justify-center gap-1 py-2.5 text-[11px]",
-                    isActive
-                      ? "text-primary"
-                      : "text-muted-foreground hover:text-foreground",
-                  )
-                }
-              >
-                <item.icon className="size-5" />
-                {item.label}
-              </NavLink>
-            ))}
-          </div>
-        </nav>
+        <MobileBottomNav items={items} />
       </div>
     </div>
+  );
+}
+
+/**
+ * Mobile bottom-tab nav. Phones can't comfortably fit 16 sidebar
+ * entries — owners have buildings/flats/tenants/payments/maintenance
+ * /complaints/agreements/leases/documents/enquiries/kyc/compliance/
+ * analytics/society/profile + overview, which is most of them.
+ *
+ * <p>The earlier version sliced to {@code items.slice(0, 5)} and
+ * silently dropped the rest. Fix: keep the first 4 tabs as direct
+ * shortcuts (most-used: Overview / primary entity / payments /
+ * maintenance — the order each role's nav array already puts them in)
+ * and turn the 5th slot into a "More" button that opens a fullscreen
+ * sheet listing everything. The sheet auto-closes on navigation.
+ */
+function MobileBottomNav({ items }: { items: NavItem[] }) {
+  const [moreOpen, setMoreOpen] = useState(false);
+  const PRIMARY_COUNT = 4;
+  const primary = items.slice(0, PRIMARY_COUNT);
+  const overflow = items.slice(PRIMARY_COUNT);
+
+  return (
+    <>
+      <nav className="lg:hidden border-t border-border/60 bg-background/95 backdrop-blur sticky bottom-0 z-30">
+        <div className="grid grid-cols-5">
+          {primary.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.to === "/app" || item.to === "/owner" || item.to === "/admin"}
+              className={({ isActive }) =>
+                cn(
+                  "flex flex-col items-center justify-center gap-1 py-2.5 text-[11px]",
+                  isActive
+                    ? "text-primary"
+                    : "text-muted-foreground hover:text-foreground",
+                )
+              }
+            >
+              <item.icon className="size-5" />
+              {item.label}
+            </NavLink>
+          ))}
+          {overflow.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setMoreOpen(true)}
+              className={cn(
+                "flex flex-col items-center justify-center gap-1 py-2.5 text-[11px]",
+                "text-muted-foreground hover:text-foreground",
+              )}
+              aria-label={`More — ${overflow.length} additional pages`}
+            >
+              <LayoutGrid className="size-5" />
+              More
+            </button>
+          )}
+        </div>
+      </nav>
+
+      {/* Fullscreen overflow sheet. Opens on More tap, closes on any
+          NavLink tap so the navigation feels native. We don't use the
+          shadcn Dialog here because the slide-up + safe-area-bottom
+          interaction wants a custom panel, not a centered modal. */}
+      {moreOpen && (
+        <div
+          className="lg:hidden fixed inset-0 z-50 flex flex-col"
+          role="dialog"
+          aria-modal="true"
+        >
+          <button
+            type="button"
+            aria-label="Close menu"
+            className="flex-1 bg-foreground/40 backdrop-blur-sm"
+            onClick={() => setMoreOpen(false)}
+          />
+          <div className="bg-background border-t border-border/60 rounded-t-2xl shadow-lift max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border/40">
+              <h2 className="font-display font-semibold">More</h2>
+              <button
+                type="button"
+                onClick={() => setMoreOpen(false)}
+                className="text-sm text-muted-foreground hover:text-foreground"
+              >
+                Close
+              </button>
+            </div>
+            <div className="px-2 py-2 grid grid-cols-1">
+              {overflow.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  onClick={() => setMoreOpen(false)}
+                  className={({ isActive }) =>
+                    cn(
+                      "flex items-center gap-3 px-3 py-3 rounded-lg text-sm",
+                      isActive
+                        ? "bg-primary/10 text-primary"
+                        : "text-foreground hover:bg-secondary/60",
+                    )
+                  }
+                >
+                  <item.icon className="size-5 shrink-0" />
+                  <span>{item.label}</span>
+                </NavLink>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
