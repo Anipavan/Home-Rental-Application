@@ -56,6 +56,26 @@ export function AdminDashboard() {
     .reduce((s, p) => s + Number(p.totalAmount ?? p.amount), 0);
   const overdue = allPayments.filter((p) => p.status === "OVERDUE").length;
 
+  // flatId → flatNumber lookup so the Recent payments list shows the
+  // human-readable number ("203") instead of the raw UUID. We already
+  // fetched up to 200 flats above; reuse that data — zero extra round
+  // trips. Any flat outside that window falls back to a short UUID
+  // suffix so the row stays legible.
+  const flatNumberById = new Map<string, string>();
+  for (const f of flats.data?.content ?? []) {
+    flatNumberById.set(f.id, f.flatNumber);
+  }
+  const flatLabel = (flatId: string): string => {
+    // Sentinel used by the paid-maintainer-registration flow — the
+    // Payment row has no real flat behind it.
+    if (flatId === "REGISTRATION_FEE") return "Registration fee";
+    const num = flatNumberById.get(flatId);
+    if (num) return `Flat ${num}`;
+    // Unknown flat (outside the first 200) — show the UUID's last
+    // 6 chars so admins still have something they can grep for.
+    return `Flat ${flatId.slice(-6)}`;
+  };
+
   const allMaintenance = maintenance.data?.content ?? [];
   const openMaint = allMaintenance.filter(
     (r) => r.status === "OPEN" || r.status === "IN_PROGRESS",
@@ -225,7 +245,7 @@ export function AdminDashboard() {
               >
                 <div className="min-w-0">
                   <p className="font-medium truncate">
-                    Flat #{p.flatId} · Tenant {p.tenantId}
+                    {flatLabel(p.flatId)} · Tenant {p.tenantId}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {p.paymentDate
@@ -282,7 +302,7 @@ export function AdminDashboard() {
                   <div className="flex-1 min-w-0">
                     <p className="font-medium truncate">{r.title}</p>
                     <p className="text-xs text-muted-foreground">
-                      Flat #{r.flatId} ·{" "}
+                      {flatLabel(r.flatId)} ·{" "}
                       {r.category ?? r.complaintCategory ?? "—"}
                     </p>
                   </div>
