@@ -8,6 +8,7 @@ import {
   EyeOff,
   Home,
   Loader2,
+  MapPin,
   Search,
   Users,
 } from "lucide-react";
@@ -38,6 +39,7 @@ import { authApi } from "@/lib/api/auth";
 import { claimsApi } from "@/lib/api/claims";
 import { propertiesApi } from "@/lib/api/properties";
 import { extractErrorMessage } from "@/lib/api/client";
+import { useReverseGeocode } from "@/hooks/use-reverse-geocode";
 import { PENDING_MAINTAINER_SESSION_KEY } from "@/pages/public/registration-payment";
 import { toast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/stores/auth-store";
@@ -135,6 +137,12 @@ export function RegisterPage() {
   const [gender, setGender] = useState<string>(UNSELECTED);
   const [maritalStatus, setMaritalStatus] = useState<string>(UNSELECTED);
   const [tenantType, setTenantType] = useState<string>(UNSELECTED);
+  // Controlled value for the address textarea so the "Use my location"
+  // button can drop a detected address straight into the field. Stays
+  // editable; the user can refine after auto-fill.
+  const [address, setAddress] = useState("");
+  const { detect: detectAddress, isDetecting: detectingAddress, error: addressError } =
+    useReverseGeocode();
 
   /**
    * Maintainer-claim residency gate (added Jun 2026).
@@ -721,7 +729,25 @@ export function RegisterPage() {
                 )}
 
                 <div>
-                  <Label htmlFor="address">Address</Label>
+                  <div className="flex items-center justify-between gap-2">
+                    <Label htmlFor="address">Address</Label>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const detected = await detectAddress();
+                        if (detected) setAddress(detected);
+                      }}
+                      disabled={detectingAddress}
+                      className="text-[11px] inline-flex items-center gap-1 text-primary hover:underline disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {detectingAddress ? (
+                        <Loader2 className="size-3 animate-spin" />
+                      ) : (
+                        <MapPin className="size-3" />
+                      )}
+                      {detectingAddress ? "Detecting…" : "Use my location"}
+                    </button>
+                  </div>
                   <Textarea
                     id="address"
                     name="address"
@@ -729,10 +755,20 @@ export function RegisterPage() {
                     placeholder="Current address — street, city, state, PIN"
                     rows={3}
                     maxLength={4000}
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
                   />
-                  <p className="text-[11px] text-muted-foreground mt-1">
-                    Optional. Required later for KYC and rental agreements.
-                  </p>
+                  {addressError ? (
+                    <p className="text-[11px] text-destructive mt-1">
+                      {addressError}
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      Optional. Tap{" "}
+                      <span className="font-medium">Use my location</span> to
+                      auto-fill — you can edit before saving.
+                    </p>
+                  )}
                 </div>
               </>
             )}

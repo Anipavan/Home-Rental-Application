@@ -44,6 +44,11 @@ function buildContentSecurityPolicy(mode: string): string {
   const RAZORPAY_API = "https://api.razorpay.com";
   const RAZORPAY_TELEMETRY = "https://lumberjack.razorpay.com";
 
+  // Nominatim (OpenStreetMap) is hit by the "Use my location" button on
+  // the registration form for one-shot reverse-geocoding. Free, no API
+  // key. Connect-src only — Nominatim returns JSON, not a script.
+  const NOMINATIM_API = "https://nominatim.openstreetmap.org";
+
   // In dev Vite injects HMR client + uses module preloading, both of
   // which need 'unsafe-inline' for the injected <script> tags + the
   // WebSocket back to the dev server. We tighten in prod where we
@@ -52,8 +57,8 @@ function buildContentSecurityPolicy(mode: string): string {
     ? `'self' 'unsafe-inline' 'unsafe-eval' ${RAZORPAY_SCRIPT}`
     : `'self' ${RAZORPAY_SCRIPT}`;
   const connectSrc = isDev
-    ? `'self' ${apiOrigin} ws: wss: ${RAZORPAY_API} ${RAZORPAY_TELEMETRY} ${connectSrcExtra}`.trim()
-    : `'self' ${apiOrigin} ${RAZORPAY_API} ${RAZORPAY_TELEMETRY} ${connectSrcExtra}`.trim();
+    ? `'self' ${apiOrigin} ws: wss: ${RAZORPAY_API} ${RAZORPAY_TELEMETRY} ${NOMINATIM_API} ${connectSrcExtra}`.trim()
+    : `'self' ${apiOrigin} ${RAZORPAY_API} ${RAZORPAY_TELEMETRY} ${NOMINATIM_API} ${connectSrcExtra}`.trim();
 
   return [
     "default-src 'self'",
