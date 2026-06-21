@@ -3,6 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- PWA manifest + Apple-touch-icon. Drop these two lines (plus
+         the SW registration block in src/main.tsx and the public/sw.js
+         + public/manifest.webmanifest files) to remove PWA support
+         entirely. Users with the SW already cached can unregister via
+         DevTools → Application → Service Workers; otherwise the SW
+         self-expires on the next deploy since CACHE name is version-
+         pinned in sw.js. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!-- theme-color is the new emerald brand primary (matches
          hsl(158 64% 38%)) so the browser chrome on mobile tints to

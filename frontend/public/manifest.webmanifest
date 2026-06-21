@@ -1,0 +1,21 @@
+{
+  "name": "Anirudh Homes",
+  "short_name": "Anirudh Homes",
+  "description": "Find a home you'll love, manage rentals you'll trust.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#23a47a",
+  "categories": ["lifestyle", "finance", "productivity"],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": []
+}
