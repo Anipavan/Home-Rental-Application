@@ -76,6 +76,22 @@ export function AdminDashboard() {
     return `Flat ${flatId.slice(-6)}`;
   };
 
+  // tenantId / authUserId → username lookup so payment + maintenance
+  // rows surface a recognisable handle ("aanya.mehta") instead of the
+  // numeric auth id ("Tenant 2"). Built from the tenant + owner lists
+  // we already fetched. AuthUserResponse only carries `userName`, not
+  // first+last — pulling display names would cost another round trip
+  // per row through user-service, which isn't worth it for the admin
+  // dashboard preview. The /admin/users page has the full profile.
+  const userNameById = new Map<string, string>();
+  for (const u of [...(tenants.data ?? []), ...(owners.data ?? [])]) {
+    userNameById.set(u.id, u.userName);
+  }
+  const userLabel = (authUserId: string): string => {
+    const name = userNameById.get(authUserId);
+    return name ?? `User #${authUserId}`;
+  };
+
   const allMaintenance = maintenance.data?.content ?? [];
   const openMaint = allMaintenance.filter(
     (r) => r.status === "OPEN" || r.status === "IN_PROGRESS",
@@ -245,7 +261,7 @@ export function AdminDashboard() {
               >
                 <div className="min-w-0">
                   <p className="font-medium truncate">
-                    {flatLabel(p.flatId)} · Tenant {p.tenantId}
+                    {flatLabel(p.flatId)} · {userLabel(p.tenantId)}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {p.paymentDate
