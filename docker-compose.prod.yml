@@ -47,6 +47,19 @@ services:
   #                  (Let's Encrypt has a 5-cert/week rate limit).
   #   caddy_config — Caddy's runtime config dump. Safe to lose;
   #                  recreated from Caddyfile on start.
+  # ─── Infrastructure services — explicitly close their host port
+  # bindings. Plain `ports: []` would silently merge with the parent
+  # docker-compose.yml list and leave the dev-time host bindings
+  # (Mongo 27017, ZK 2181, Kafka 9093) wide-open on the public IP.
+  # `!reset []` actually clears the parent list. None of these need
+  # to be reachable from outside the Docker network in prod.
+  mongodb:
+    ports: !reset []
+  zookeeper:
+    ports: !reset []
+  kafka:
+    ports: !reset []
+
   caddy:
     image: caddy:2-alpine
     container_name: anirudhhomes-caddy
@@ -84,7 +97,11 @@ services:
     container_name: anirudhhomes-frontend
     restart: unless-stopped
     # No host port binding — Caddy reaches us on the internal network.
-    ports: []
+    # !reset clears the parent file's port list — plain `ports: []`
+    # silently merges to "[] + parent" which leaves the host bindings
+    # intact. The frontend container is the only ingress; backends
+    # talk to each other over hra-net without host bindings.
+    ports: !reset []
     # Must be on hra-net so nginx can resolve `api-gateway` for its
     # upstream proxy. Without this, frontend lands on docker-compose's
     # auto-created default network while api-gateway is on hra-net,
@@ -105,7 +122,11 @@ services:
       EUREKA_USERNAME: ${EUREKA_USERNAME}
       EUREKA_PASSWORD: ${EUREKA_PASSWORD}
     # No host port — only reachable from other compose services
-    ports: []
+    # !reset clears the parent file's port list — plain `ports: []`
+    # silently merges to "[] + parent" which leaves the host bindings
+    # intact. The frontend container is the only ingress; backends
+    # talk to each other over hra-net without host bindings.
+    ports: !reset []
     restart: unless-stopped
 
   # ─── Config server ──────────────────────────────────────────────
@@ -115,7 +136,11 @@ services:
       EUREKA_URL: ${EUREKA_URL}
       EUREKA_USERNAME: ${EUREKA_USERNAME}
       EUREKA_PASSWORD: ${EUREKA_PASSWORD}
-    ports: []
+    # !reset clears the parent file's port list — plain `ports: []`
+    # silently merges to "[] + parent" which leaves the host bindings
+    # intact. The frontend container is the only ingress; backends
+    # talk to each other over hra-net without host bindings.
+    ports: !reset []
     restart: unless-stopped
 
   # ─── API Gateway ────────────────────────────────────────────────
@@ -131,7 +156,11 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
       MANAGEMENT_TRACING_SAMPLING_PROBABILITY: ${MANAGEMENT_TRACING_SAMPLING_PROBABILITY:-0.1}
     # No host port — nginx in the frontend container proxies to it.
-    ports: []
+    # !reset clears the parent file's port list — plain `ports: []`
+    # silently merges to "[] + parent" which leaves the host bindings
+    # intact. The frontend container is the only ingress; backends
+    # talk to each other over hra-net without host bindings.
+    ports: !reset []
     restart: unless-stopped
     deploy:
       resources:
@@ -164,7 +193,11 @@ services:
       APP_FRONTEND_BASE_URL: ${FRONTEND_URL:-https://anirudhhomes.in}
       FRONTEND_URL: ${FRONTEND_URL:-https://anirudhhomes.in}
       APP_AUTH_LOCKOUT_ENABLED: ${APP_AUTH_LOCKOUT_ENABLED:-true}
-    ports: []
+    # !reset clears the parent file's port list — plain `ports: []`
+    # silently merges to "[] + parent" which leaves the host bindings
+    # intact. The frontend container is the only ingress; backends
+    # talk to each other over hra-net without host bindings.
+    ports: !reset []
     restart: unless-stopped
     deploy:
       resources:
@@ -181,7 +214,11 @@ services:
       PII_ENCRYPTION_KEY: ${PII_ENCRYPTION_KEY}
       APP_RETENTION_SOFT_DELETE_DAYS: ${APP_RETENTION_SOFT_DELETE_DAYS:-30}
       APP_RETENTION_ENABLED: ${APP_RETENTION_ENABLED:-true}
-    ports: []
+    # !reset clears the parent file's port list — plain `ports: []`
+    # silently merges to "[] + parent" which leaves the host bindings
+    # intact. The frontend container is the only ingress; backends
+    # talk to each other over hra-net without host bindings.
+    ports: !reset []
     restart: unless-stopped
     deploy:
       resources:
@@ -191,7 +228,11 @@ services:
   # ─── Property service ──────────────────────────────────────────
   property-service:
     environment: *spring-jpa-env
-    ports: []
+    # !reset clears the parent file's port list — plain `ports: []`
+    # silently merges to "[] + parent" which leaves the host bindings
+    # intact. The frontend container is the only ingress; backends
+    # talk to each other over hra-net without host bindings.
+    ports: !reset []
     restart: unless-stopped
     deploy:
       resources:
@@ -207,7 +248,11 @@ services:
       APP_RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET}
       APP_STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       APP_STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
-    ports: []
+    # !reset clears the parent file's port list — plain `ports: []`
+    # silently merges to "[] + parent" which leaves the host bindings
+    # intact. The frontend container is the only ingress; backends
+    # talk to each other over hra-net without host bindings.
+    ports: !reset []
     restart: unless-stopped
     deploy:
       resources:
@@ -217,7 +262,11 @@ services:
   # ─── Maintenance service ───────────────────────────────────────
   maintenance-service:
     environment: *spring-jpa-env
-    ports: []
+    # !reset clears the parent file's port list — plain `ports: []`
+    # silently merges to "[] + parent" which leaves the host bindings
+    # intact. The frontend container is the only ingress; backends
+    # talk to each other over hra-net without host bindings.
+    ports: !reset []
     restart: unless-stopped
     deploy:
       resources:
@@ -227,7 +276,11 @@ services:
   # ─── Lease service ─────────────────────────────────────────────
   lease-service:
     environment: *spring-jpa-env
-    ports: []
+    # !reset clears the parent file's port list — plain `ports: []`
+    # silently merges to "[] + parent" which leaves the host bindings
+    # intact. The frontend container is the only ingress; backends
+    # talk to each other over hra-net without host bindings.
+    ports: !reset []
     restart: unless-stopped
     deploy:
       resources:
@@ -237,7 +290,11 @@ services:
   # ─── Compliance service ────────────────────────────────────────
   compliance-service:
     environment: *spring-jpa-env
-    ports: []
+    # !reset clears the parent file's port list — plain `ports: []`
+    # silently merges to "[] + parent" which leaves the host bindings
+    # intact. The frontend container is the only ingress; backends
+    # talk to each other over hra-net without host bindings.
+    ports: !reset []
     restart: unless-stopped
     deploy:
       resources:
@@ -247,7 +304,11 @@ services:
   # ─── KYC service ───────────────────────────────────────────────
   kyc-service:
     environment: *spring-jpa-env
-    ports: []
+    # !reset clears the parent file's port list — plain `ports: []`
+    # silently merges to "[] + parent" which leaves the host bindings
+    # intact. The frontend container is the only ingress; backends
+    # talk to each other over hra-net without host bindings.
+    ports: !reset []
     restart: unless-stopped
     deploy:
       resources:
@@ -257,7 +318,11 @@ services:
   # ─── Review service ────────────────────────────────────────────
   review-service:
     environment: *spring-jpa-env
-    ports: []
+    # !reset clears the parent file's port list — plain `ports: []`
+    # silently merges to "[] + parent" which leaves the host bindings
+    # intact. The frontend container is the only ingress; backends
+    # talk to each other over hra-net without host bindings.
+    ports: !reset []
     restart: unless-stopped
     deploy:
       resources:
@@ -296,7 +361,11 @@ services:
       APP_TWILIO_AUTH_TOKEN: ${APP_TWILIO_AUTH_TOKEN:-}
       APP_TWILIO_SMS_FROM: ${APP_TWILIO_SMS_FROM:-}
       APP_TWILIO_WHATSAPP_FROM: ${APP_TWILIO_WHATSAPP_FROM:-}
-    ports: []
+    # !reset clears the parent file's port list — plain `ports: []`
+    # silently merges to "[] + parent" which leaves the host bindings
+    # intact. The frontend container is the only ingress; backends
+    # talk to each other over hra-net without host bindings.
+    ports: !reset []
     restart: unless-stopped
     deploy:
       resources:
@@ -313,7 +382,11 @@ services:
       <<: *spring-jpa-env
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
       DOWNLOAD_URL_SECRET: ${DOWNLOAD_URL_SECRET}
-    ports: []
+    # !reset clears the parent file's port list — plain `ports: []`
+    # silently merges to "[] + parent" which leaves the host bindings
+    # intact. The frontend container is the only ingress; backends
+    # talk to each other over hra-net without host bindings.
+    ports: !reset []
     restart: unless-stopped
     volumes:
       - anirudhhomes-documents:/uploads
@@ -325,7 +398,11 @@ services:
   # ─── Analytics service ─────────────────────────────────────────
   analytics-service:
     environment: *spring-jpa-env
-    ports: []
+    # !reset clears the parent file's port list — plain `ports: []`
+    # silently merges to "[] + parent" which leaves the host bindings
+    # intact. The frontend container is the only ingress; backends
+    # talk to each other over hra-net without host bindings.
+    ports: !reset []
     restart: unless-stopped
     deploy:
       resources:
