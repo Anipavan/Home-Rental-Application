@@ -296,9 +296,15 @@ function Table({
             {/* Flat: prefer "#<number> · <building>" via lookup; fall
                 back to the raw flatId when the flats list hasn't
                 resolved yet (or this payment references a deleted
-                flat). Same fallback pattern below for tenant/owner. */}
+                flat). Sentinel REGISTRATION_FEE is the paid-maintainer
+                signup flow — surface as "Registration fee" instead of
+                "#REGISTRATION_FEE". Same fallback pattern below for
+                tenant/owner. */}
             <span className="truncate" title={p.flatId}>
               {(() => {
+                if (p.flatId === "REGISTRATION_FEE") {
+                  return <span className="font-medium">Registration fee</span>;
+                }
                 const f = fLookup.get(String(p.flatId));
                 if (!f) return <span className="font-mono text-xs">#{p.flatId}</span>;
                 return (

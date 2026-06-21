@@ -10,6 +10,8 @@ import com.spa.home_rental_application.auth_service.Repository.PasswordResetToke
 import com.spa.home_rental_application.auth_service.Repository.RefreshTokenRepository;
 import com.spa.home_rental_application.auth_service.Repository.UserRepository;
 import com.spa.home_rental_application.auth_service.Service.Impul.AuthServiceImpl;
+import com.spa.home_rental_application.auth_service.Service.SystemSettingsService;
+import com.spa.home_rental_application.auth_service.Service.external.PaymentServiceFeign;
 import com.spa.home_rental_application.auth_service.Service.external.UserServiceFeign;
 import com.spa.home_rental_application.auth_service.Utils.JWTUtil;
 import com.spa.home_rental_application.auth_service.enums.Roles;
@@ -27,6 +29,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Optional;
@@ -80,6 +83,8 @@ class AuthLockoutTest {
     @Mock JWTUtil jwtUtil;
     @Mock JwtProperties jwtProperties;
     @Mock UserServiceFeign userServiceFeign;
+    @Mock PaymentServiceFeign paymentServiceFeign;
+    @Mock SystemSettingsService systemSettingsService;
     @Mock AuthServiceEvents authEvents;
     @Mock AuditEventPublisher audit;
 
@@ -90,10 +95,16 @@ class AuthLockoutTest {
         service = new AuthServiceImpl(
                 userRepository, refreshTokenRepository, passwordResetTokenRepository,
                 passwordEncoder, authenticationManager, jwtUtil, jwtProperties,
-                userServiceFeign, authEvents, audit,
-                15L);
-        // Lockout opt-in flag is @Value-injected; flip on by default.
+                userServiceFeign, paymentServiceFeign, systemSettingsService,
+                authEvents, audit,
+                15L, BigDecimal.valueOf(999));
+        // Lockout opt-in flag + thresholds are @Value-injected; populate
+        // them manually since we're skipping Spring DI. Without
+        // lockoutMinutes>0 the "lockedUntil > now" assertion races
+        // the clock and flakes on fast machines.
         ReflectionTestUtils.setField(service, "lockoutEnabled", true);
+        ReflectionTestUtils.setField(service, "maxFailedAttempts", 5);
+        ReflectionTestUtils.setField(service, "lockoutMinutes", 15);
 
         // Generic stubbing that several tests share. lenient() because
         // not every test exercises every mock path.

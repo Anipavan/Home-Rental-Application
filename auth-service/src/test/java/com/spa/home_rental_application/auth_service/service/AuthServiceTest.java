@@ -12,6 +12,8 @@ import com.spa.home_rental_application.auth_service.Repository.PasswordResetToke
 import com.spa.home_rental_application.auth_service.Repository.RefreshTokenRepository;
 import com.spa.home_rental_application.auth_service.Repository.UserRepository;
 import com.spa.home_rental_application.auth_service.Service.Impul.AuthServiceImpl;
+import com.spa.home_rental_application.auth_service.Service.SystemSettingsService;
+import com.spa.home_rental_application.auth_service.Service.external.PaymentServiceFeign;
 import com.spa.home_rental_application.auth_service.Service.external.UserServiceFeign;
 import com.spa.home_rental_application.auth_service.Utils.JWTUtil;
 import com.spa.home_rental_application.auth_service.enums.Roles;
@@ -23,6 +25,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -40,16 +43,19 @@ class AuthServiceTest {
     @Mock AuthenticationManager authenticationManager;
     @Mock JWTUtil jwtUtil;
     @Mock UserServiceFeign userServiceFeign;
+    @Mock PaymentServiceFeign paymentServiceFeign;
+    @Mock SystemSettingsService systemSettingsService;
     @Mock AuthServiceEvents authEvents;
 
     AuthServiceImpl service() {
         JwtProperties props = new JwtProperties();
         props.setSecret("U3VwZXJTZWNyZXRLZXlGb3JKV1RUb2tlbkdlbmVyYXRpb24xMjM0NTY3ODkwIQ==");
         return new AuthServiceImpl(userRepository, refreshTokenRepository, passwordResetTokenRepository,
-                passwordEncoder, authenticationManager, jwtUtil, props, userServiceFeign, authEvents,
+                passwordEncoder, authenticationManager, jwtUtil, props, userServiceFeign,
+                paymentServiceFeign, systemSettingsService, authEvents,
                 org.mockito.Mockito.mock(
                         com.spa.home_rental_application.KafkaEvents.Producers.Events.AuditEventPublisher.class),
-                15L);
+                15L, BigDecimal.valueOf(999));
     }
 
     @Test
@@ -57,7 +63,8 @@ class AuthServiceTest {
         RegisterRequest req = new RegisterRequest(
                 "asha.rao", "Strong123", Roles.TENANT, "asha@example.com",
                 "Asha", "Rao", "FEMALE", "+919876543210", "1 MG Road",
-                LocalDate.of(1995, 4, 12));
+                LocalDate.of(1995, 4, 12),
+                null, null);
         when(userRepository.existsByUserName("asha.rao")).thenReturn(false);
         when(userRepository.existsByEmailIgnoreCase("asha@example.com")).thenReturn(false);
         when(passwordEncoder.encode("Strong123")).thenReturn("HASHED");
@@ -90,7 +97,7 @@ class AuthServiceTest {
     void register_whenUserNameExists_throwsDuplicate() {
         when(userRepository.existsByUserName("dup")).thenReturn(true);
         RegisterRequest req = new RegisterRequest("dup", "Strong123", Roles.OWNER,
-                "x@y.com", "X", "Y", null, null, null, null);
+                "x@y.com", "X", "Y", null, null, null, null, null, null);
         assertThatThrownBy(() -> service().register(req))
                 .isInstanceOf(DuplicateUserException.class);
         verifyNoInteractions(userServiceFeign, authEvents);
@@ -101,7 +108,7 @@ class AuthServiceTest {
         when(userRepository.existsByUserName("u")).thenReturn(false);
         when(userRepository.existsByEmailIgnoreCase("x@y.com")).thenReturn(true);
         RegisterRequest req = new RegisterRequest("u", "Strong123", Roles.OWNER,
-                "x@y.com", "X", "Y", null, null, null, null);
+                "x@y.com", "X", "Y", null, null, null, null, null, null);
         assertThatThrownBy(() -> service().register(req))
                 .isInstanceOf(DuplicateUserException.class);
     }

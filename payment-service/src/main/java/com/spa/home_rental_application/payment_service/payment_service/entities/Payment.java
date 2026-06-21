@@ -19,7 +19,13 @@ import java.time.LocalDate;
         @Index(name = "idx_payments_owner",  columnList = "owner_id"),
         @Index(name = "idx_payments_flat",   columnList = "flat_id"),
         @Index(name = "idx_payments_status", columnList = "status"),
-        @Index(name = "idx_payments_due",    columnList = "due_date")
+        @Index(name = "idx_payments_due",    columnList = "due_date"),
+        // Composite for RegistrationActivationReconciler — runs every
+        // 5 min and asks (source_type, status, payment_date>since).
+        // Equality cols first, range col last so Oracle can seek and
+        // order in one pass. See V3 migration for the same in SQL.
+        @Index(name = "idx_payments_reg_reconciler",
+                columnList = "source_type, status, payment_date")
 })
 @Getter
 @Setter
