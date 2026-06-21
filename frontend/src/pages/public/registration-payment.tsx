@@ -12,16 +12,23 @@ import { useAuthStore } from "@/stores/auth-store";
 import { toast } from "@/hooks/use-toast";
 
 /**
- * Bundle stashed by {@code register.tsx} just before navigating here.
- * Lives in sessionStorage so a tab refresh during the paywall step
- * doesn't strand the user — the Pay button can pick the bundle up
- * again. Cleared on successful activation OR when the user explicitly
- * cancels and goes back.
+ * Bundle stashed in sessionStorage by either of two entry points:
  *
- * <p>{@code userPassword} is here so the page can auto-log-in after
- * Razorpay confirms PAID, then post the MAINTAINER claim from the
- * fresh session. sessionStorage is per-tab and cleared on close, so
- * the password lifetime is the active paywall session only.
+ *  1. <b>Anonymous signup</b> — {@code register.tsx} (SOCIETY card)
+ *     stashes credentials + claim payload before navigating here.
+ *     On Razorpay PAID the page auto-logs-in and posts the
+ *     MAINTAINER claim before routing to {@code /pending-claim}.
+ *
+ *  2. <b>Logged-in initiation</b> — the maintainer dashboard's
+ *     {@code PaymentPromptModal} stashes a credentials-free bundle
+ *     ({@code userPassword} and {@code claim} both absent). On PAID
+ *     the page skips login + claim and just routes the
+ *     already-authenticated user back to {@code /maintainer}.
+ *
+ * <p>{@code userPassword} when present is in sessionStorage for the
+ * duration of the paywall step only — sessionStorage is per-tab and
+ * cleared on close, so the password's lifetime is bounded by the
+ * active flow.
  */
 type PendingBundle = {
   authUserId: number;
@@ -29,7 +36,8 @@ type PendingBundle = {
   paymentToken: string;
   amountInr: number;
   userName: string;
-  userPassword: string;
+  /** Only present in the anonymous-signup flow. */
+  userPassword?: string;
   /** Optional society-claim payload posted after activation. */
   claim?: {
     buildingId: string;
@@ -181,36 +189,59 @@ export function RegistrationPaymentPage() {
   }
 
   /**
-   * Post-PAID: log the user in with their stashed credentials, post
-   * the society membership claim if one was queued, then send them to
-   * the pending-claim screen.
+   * Post-PAID: branch on the bundle shape.
+   *
+   *  - Anonymous-signup flow ({@code userPassword} present): log the
+   *    user in, post the claim if queued, route to
+   *    {@code /pending-claim}.
+   *  - Logged-in initiation flow ({@code userPassword} absent): user
+   *    already has a session. Just clear the bundle and route back
+   *    to {@code /maintainer}, where MaintainerPaymentGate will
+   *    refetch status and confirm PAID.
    */
   async function activateAndContinue() {
     if (!bundle) return;
     setPhase("activating");
     try {
-      const auth = await authApi.login({
-        userName: bundle.userName,
-        password: bundle.userPassword,
-      });
-      setSession(auth);
-      if (bundle.claim) {
-        await claimsApi.create({
-          buildingId: bundle.claim.buildingId,
-          requestedRole: "MAINTAINER",
-          claimedFlatNumber: bundle.claim.flatNumber || undefined,
-          applicantNote: bundle.claim.note || undefined,
+      if (bundle.userPassword) {
+        // Anonymous-signup path: log in, post claim, route.
+        const auth = await authApi.login({
+          userName: bundle.userName,
+          password: bundle.userPassword,
         });
+        setSession(auth);
+        if (bundle.claim) {
+          await claimsApi.create({
+            buildingId: bundle.claim.buildingId,
+            requestedRole: "MAINTAINER",
+            claimedFlatNumber: bundle.claim.flatNumber || undefined,
+            applicantNote: bundle.claim.note || undefined,
+          });
+        }
+        sessionStorage.removeItem(SESSION_KEY);
+        setPhase("done");
+        toast({
+          title: "Account activated",
+          description: bundle.claim
+            ? "Your claim is with the building owner."
+            : "Welcome to Anirudh Homes.",
+        });
+        navigate(bundle.claim ? "/pending-claim" : "/app", { replace: true });
+        return;
       }
+
+      // Logged-in initiation path: nothing else to do. Clear the
+      // bundle so a stale tab doesn't relaunch the paywall on
+      // refresh, and route the existing session back to the
+      // maintainer dashboard. The gate's React Query refetch will
+      // see PAID and remove the modal.
       sessionStorage.removeItem(SESSION_KEY);
       setPhase("done");
       toast({
-        title: "Account activated",
-        description: bundle.claim
-          ? "Your claim is with the building owner."
-          : "Welcome to Anirudh Homes.",
+        title: "Activation confirmed",
+        description: "Thanks — your maintainer access is now permanent.",
       });
-      navigate(bundle.claim ? "/pending-claim" : "/app", { replace: true });
+      navigate("/maintainer", { replace: true });
     } catch (err) {
       setPhase("error");
       setErrorMsg(extractErrorMessage(err));

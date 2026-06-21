@@ -56,6 +56,8 @@ import { OwnerCompliancePage } from "@/pages/owner/compliance";
 import { AdminDashboard } from "@/pages/admin/dashboard";
 import { AdminUsersPage } from "@/pages/admin/users";
 import { AdminVendorUsagePage } from "@/pages/admin/vendor-usage";
+import { AdminSettingsPage } from "@/pages/admin/settings";
+import { MaintainerPaymentGate } from "@/components/maintainer/payment-gate";
 import { AdminPropertiesPage } from "@/pages/admin/properties";
 import { AdminPaymentsPage } from "@/pages/admin/payments";
 import { AdminMaintenancePage } from "@/pages/admin/maintenance";
@@ -320,7 +322,9 @@ export const router = createBrowserRouter([
     path: "/maintainer",
     element: (
       <ProtectedRoute roles={["MAINTAINER", "OWNER"]}>
-        <AppShell />
+        <MaintainerPaymentGate>
+          <AppShell />
+        </MaintainerPaymentGate>
       </ProtectedRoute>
     ),
     children: [
@@ -356,6 +360,7 @@ export const router = createBrowserRouter([
       { path: "visit-requests", element: <AdminVisitRequestsPage /> },
       { path: "announcements", element: <AdminAnnouncementsPage /> },
       { path: "vendor-usage", element: <AdminVendorUsagePage /> },
+      { path: "settings", element: <AdminSettingsPage /> },
       { path: "notifications", element: <NotificationsInboxPage /> },
       { path: "notifications/preferences", element: <NotificationPreferencesPage /> },
       // Admin profile mirrors the owner/tenant Profile page — same UI,

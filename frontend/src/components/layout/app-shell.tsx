@@ -35,6 +35,7 @@ import {
   BellRing,
   Server,
   HandCoins,
+  SlidersHorizontal,
 } from "lucide-react";
 import { Logo } from "./logo";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -158,6 +159,10 @@ const adminNav: NavItem[] = [
   // Per-vendor API usage + billing alerts. Admin-only — server enforces
   // the role, nav entry is admin-scoped so non-admins never see the link.
   { to: "/admin/vendor-usage", label: "Vendor usage", icon: Server },
+  // Global feature toggles (maintainer activation fee, etc.). Admin-
+  // only; route file lives at pages/admin/settings.tsx and reads
+  // /auth/admin/settings.
+  { to: "/admin/settings", label: "Settings", icon: SlidersHorizontal },
   { to: "/admin/profile", label: "Profile", icon: Settings },
 ];
 

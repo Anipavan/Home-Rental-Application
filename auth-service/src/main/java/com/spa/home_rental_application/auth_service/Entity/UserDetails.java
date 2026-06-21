@@ -150,6 +150,47 @@ public class UserDetails implements org.springframework.security.core.userdetail
     @Column(name = "tokens_revoked_before")
     private Instant tokensRevokedBefore;
 
+    /* ---------- Maintainer-payment soft gate (V15) ---------- */
+
+    /**
+     * When the 30-day free trial clock started. For maintainer
+     * signups this is the registration timestamp; the
+     * {@link com.spa.home_rental_application.auth_service.scheduler.MaintainerPaymentStatusEvaluator}
+     * uses {@code trialStartedAt + 30 days} as the trial-expiry
+     * boundary. Grandfathered users get
+     * {@code recordCreatedDate} stamped here on the V15 migration so
+     * the column never holds NULL.
+     */
+    @Column(name = "payment_trial_started_at")
+    private Instant paymentTrialStartedAt;
+
+    /**
+     * How many times this user has clicked "Skip for 4 more days"
+     * on the post-trial payment modal. 0, 1, or 2. The third prompt
+     * is mandatory — see {@code MaintainerPaymentService.computeStatus}
+     * for the full state machine.
+     */
+    @Column(name = "payment_skip_count", nullable = false,
+            columnDefinition = "NUMBER(2) DEFAULT 0")
+    @Builder.Default
+    private Integer paymentSkipCount = 0;
+
+    /**
+     * Timestamp of the most recent Skip click. With
+     * {@link #paymentSkipCount} this lets the state machine compute
+     * the 4-day grace window between prompts.
+     */
+    @Column(name = "payment_last_skip_at")
+    private Instant paymentLastSkipAt;
+
+    /**
+     * When the activation fee was paid (or stamped for grandfathered
+     * users on the V15 migration). Non-null = user is permanently in
+     * the PAID state and the gate never fires for them.
+     */
+    @Column(name = "payment_paid_at")
+    private Instant paymentPaidAt;
+
     @Column(name = "record_created_date", nullable = false, updatable = false)
     private Instant recordCreatedDate;
 

@@ -252,13 +252,15 @@ export function RegisterPage() {
 
   const mutation = useMutation({
     mutationFn: async (req: Parameters<typeof authApi.register>[0]) => {
-      // SOCIETY (maintainer) signups go through the paid path —
-      // /auth/register/pending creates the auth row disabled, mints a
-      // PENDING Payment row, and hands back a REG_PAY token the
-      // /registration-payment page uses to drive the Razorpay paywall.
-      // We stash the credentials + claim payload in sessionStorage so
-      // the paywall page can auto-login + post the MAINTAINER claim
-      // after Razorpay confirms PAID.
+      // SOCIETY (maintainer) signups always go through
+      // /auth/register/pending. The response shape now varies on the
+      // admin toggle:
+      //   - Toggle OFF (default): paymentToken=null. Account is
+      //     created enabled + grandfathered. We treat this like a
+      //     normal free signup — auto-login + post the MAINTAINER
+      //     claim + route to /pending-claim.
+      //   - Toggle ON: paymentToken non-null. We stash credentials +
+      //     claim and route to the paywall.
       if (choice === "SOCIETY" && claimRole === "MAINTAINER") {
         const pending = await authApi.registerPending({
           userName: req.userName,
@@ -273,6 +275,27 @@ export function RegisterPage() {
           maritalStatus: req.maritalStatus,
           tenantType: req.tenantType,
         });
+
+        if (!pending.paymentToken) {
+          // Gate OFF — free signup path. Auto-login + claim like the
+          // other claim flows.
+          const auth = await authApi.login({
+            userName: req.userName,
+            password: req.userPassword,
+          });
+          setSession(auth);
+          if (pickedBuilding) {
+            await claimsApi.create({
+              buildingId: pickedBuilding.buildingId,
+              requestedRole: "MAINTAINER",
+              claimedFlatNumber: societyFlatNumber.trim() || undefined,
+              applicantNote: societyNote.trim() || undefined,
+            });
+          }
+          return { kind: "claim" as const, claimRole };
+        }
+
+        // Gate ON — stash bundle for the paywall page.
         sessionStorage.setItem(
           PENDING_MAINTAINER_SESSION_KEY,
           JSON.stringify({

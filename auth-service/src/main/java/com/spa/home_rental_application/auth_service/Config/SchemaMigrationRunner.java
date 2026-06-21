@@ -60,7 +60,19 @@ public class SchemaMigrationRunner {
             // UserDetails. New registrations populate this column
             // with the E.164-normalised number; AuthServiceImpl
             // rejects duplicates with DuplicateUserException → HTTP 409.
-            new Migration("user_details_table", "phone",                 "VARCHAR2(20)")
+            new Migration("user_details_table", "phone",                 "VARCHAR2(20)"),
+            // V5 — reason carried alongside enabled=false so login()
+            // can branch on it.
+            new Migration("user_details_table", "disable_reason",        "VARCHAR2(60)"),
+            // V15 — maintainer-payment soft gate. trial clock + skip
+            // counters + paid-at watermark. NULL paid_at = trialling
+            // or past the skip window; non-null = either paid or
+            // grandfathered. See the V15 migration header for the full
+            // state machine.
+            new Migration("user_details_table", "payment_trial_started_at", "TIMESTAMP"),
+            new Migration("user_details_table", "payment_skip_count",       "NUMBER(2) DEFAULT 0 NOT NULL"),
+            new Migration("user_details_table", "payment_last_skip_at",     "TIMESTAMP"),
+            new Migration("user_details_table", "payment_paid_at",          "TIMESTAMP")
     );
 
     private final JdbcTemplate jdbc;
@@ -103,6 +115,85 @@ public class SchemaMigrationRunner {
             }
         }
         log.info("SchemaMigrationRunner: complete (added={}, skipped={})", added, skipped);
+
+        // ── One-time data backfills paired with the columns above. ─
+        // These are guarded by NOT-EXISTS / IS-NULL clauses so they're
+        // safe to re-run on every boot — the second run finds zero
+        // rows to touch and exits without writes. Mirrors what the
+        // V14 + V15 Flyway migrations do, for the deploys that have
+        // Flyway disabled (compose.bootstrap.yml).
+        backfillGrandfatherPaidAt();
+        backfillSeedSystemSettings();
+    }
+
+    /**
+     * V15 — every existing user gets payment_paid_at =
+     * record_created_date so they're permanently in the PAID state.
+     * Idempotent: WHERE payment_paid_at IS NULL means a second pass
+     * touches zero rows. Also clears any V5-era
+     * disable_reason='REGISTRATION_PAYMENT_PENDING' rows since the
+     * hard-paywall path is being rolled back.
+     */
+    private void backfillGrandfatherPaidAt() {
+        try {
+            int rows = jdbc.update(
+                    "UPDATE user_details_table " +
+                    "   SET payment_paid_at = record_created_date, " +
+                    "       payment_trial_started_at = record_created_date " +
+                    " WHERE payment_paid_at IS NULL");
+            if (rows > 0) {
+                log.info("Grandfathered {} existing user row(s): payment_paid_at = record_created_date", rows);
+            } else {
+                log.debug("Grandfather UPDATE matched 0 rows (already done)");
+            }
+        } catch (Exception ex) {
+            // Most likely cause: payment_paid_at column doesn't exist
+            // yet (Hibernate hasn't created the table; first boot).
+            // Hibernate's ddl-auto=update will add it; next boot
+            // backfills.
+            log.warn("Grandfather UPDATE skipped — column not yet present? {}",
+                    ex.getMessage() == null ? ex.getClass().getSimpleName()
+                            : ex.getMessage().lines().findFirst().orElse(""));
+        }
+
+        try {
+            int rows = jdbc.update(
+                    "UPDATE user_details_table " +
+                    "   SET disable_reason = NULL, enabled = 1 " +
+                    " WHERE disable_reason = 'REGISTRATION_PAYMENT_PENDING'");
+            if (rows > 0) {
+                log.info("Reversed V5 paywall on {} row(s) — disable_reason cleared, enabled=1", rows);
+            }
+        } catch (Exception ex) {
+            log.warn("V5 paywall reversal skipped: {}",
+                    ex.getMessage() == null ? ex.getClass().getSimpleName()
+                            : ex.getMessage().lines().findFirst().orElse(""));
+        }
+    }
+
+    /**
+     * V14 — seed the default {@code maintainer_payment_enabled=false}
+     * row if the system_settings table exists and the row is missing.
+     * Idempotent via NOT EXISTS. The table itself is created by
+     * Hibernate from the {@code SystemSetting} entity.
+     */
+    private void backfillSeedSystemSettings() {
+        try {
+            int rows = jdbc.update(
+                    "INSERT INTO system_settings (setting_key, value, updated_at) " +
+                    "SELECT 'maintainer_payment_enabled', 'false', SYSTIMESTAMP FROM dual " +
+                    " WHERE NOT EXISTS (" +
+                    "       SELECT 1 FROM system_settings WHERE setting_key = 'maintainer_payment_enabled')");
+            if (rows > 0) {
+                log.info("Seeded default system_settings: maintainer_payment_enabled=false");
+            }
+        } catch (Exception ex) {
+            // Table not present yet (Hibernate hasn't run, first
+            // boot) — next boot will seed.
+            log.warn("system_settings seed skipped: {}",
+                    ex.getMessage() == null ? ex.getClass().getSimpleName()
+                            : ex.getMessage().lines().findFirst().orElse(""));
+        }
     }
 
     private record Migration(String table, String column, String type) {}

@@ -84,8 +84,14 @@ export interface RegisterPendingRequest {
  */
 export interface RegisterPendingResponse {
   authUserId: number;
-  paymentId: string;
-  paymentToken: string;
+  /**
+   * Null when the admin toggle is OFF — the account has been created
+   * as free + grandfathered, no Payment row exists, no paywall to
+   * navigate to. The frontend treats null as "treat this like a free
+   * register() response".
+   */
+  paymentId: string | null;
+  paymentToken: string | null;
   amountInr: number;
 }
 
@@ -113,6 +119,42 @@ export interface RegistrationPaymentResultResponse {
   paymentId: string;
   status: string;
   accountActivated: boolean;
+}
+
+/**
+ * Maintainer-payment state machine read from
+ * {@code GET /auth/me/payment-status}. The maintainer dashboard
+ * gates its rendering on {@link MaintainerPaymentStatusResponse#status}:
+ * PAID = no overlay, TRIAL = countdown banner, SKIP_GRACE = amber
+ * banner, PROMPT = open modal with Skip, FORCED = open modal without
+ * Skip and block the page underneath.
+ */
+export type MaintainerPaymentStatus =
+  | "PAID"
+  | "TRIAL"
+  | "PROMPT"
+  | "SKIP_GRACE"
+  | "FORCED";
+
+export interface MaintainerPaymentStatusResponse {
+  status: MaintainerPaymentStatus;
+  trialDaysLeft: number | null;
+  skipsLeft: number | null;
+  nextPromptAt: string | null;
+  amountInr: number;
+}
+
+/** One row of {@code GET /auth/admin/settings}. */
+export interface SystemSettingResponse {
+  settingKey: string;
+  value: string;
+  updatedAt: string;
+  updatedBy: number | null;
+}
+
+/** Body of {@code PUT /auth/admin/settings/maintainer-payment-enabled}. */
+export interface SetMaintainerPaymentEnabledRequest {
+  enabled: boolean;
 }
 
 export interface AuthUserResponse {

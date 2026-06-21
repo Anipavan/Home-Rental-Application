@@ -3,6 +3,7 @@ package com.spa.home_rental_application.auth_service.Service;
 import com.spa.home_rental_application.auth_service.Dto.Request.*;
 import com.spa.home_rental_application.auth_service.Dto.Response.AuthResponse;
 import com.spa.home_rental_application.auth_service.Dto.Response.AuthUserResponse;
+import com.spa.home_rental_application.auth_service.Dto.Response.MaintainerPaymentStatusResponse;
 import com.spa.home_rental_application.auth_service.Dto.Response.RegisterPendingResponse;
 import com.spa.home_rental_application.auth_service.Dto.Response.RegisterResponse;
 import com.spa.home_rental_application.auth_service.enums.Roles;
@@ -107,4 +108,33 @@ public interface AuthService {
      * would be a regression.
      */
     AuthUserResponse grantMaintainerRole(Long authUserId);
+
+    /* ---------- Maintainer-payment soft gate ---------- */
+
+    /**
+     * Evaluate the maintainer-payment state machine for the
+     * authenticated user. Delegates to
+     * {@link SystemSettingsService#computeStatus}. Cached values are
+     * preferred — the per-page refetch from the frontend
+     * (MaintainerPaymentGate) goes through a 60 s cache on the
+     * toggle read.
+     */
+    MaintainerPaymentStatusResponse getPaymentStatus(Long authUserId);
+
+    /**
+     * Record a "Skip for 4 more days" click. Increments
+     * payment_skip_count + stamps payment_last_skip_at=now. Refuses
+     * if the user isn't in the PROMPT state — this prevents the
+     * client from sneaking past mandatory by spamming the endpoint.
+     */
+    MaintainerPaymentStatusResponse recordPaymentSkip(Long authUserId);
+
+    /**
+     * Logged-in counterpart to the anonymous
+     * {@link #registerPending}. Mints a PENDING Payment row on
+     * payment-service and a fresh 30-min REG_PAY token for the
+     * caller, so the dashboard payment modal can route them into
+     * the existing /registration-payment paywall page.
+     */
+    RegisterPendingResponse initiateOwnPayment(Long authUserId);
 }
