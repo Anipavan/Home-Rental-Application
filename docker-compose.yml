@@ -25,7 +25,14 @@ services:
       ORACLE_PASSWORD: ${ORACLE_PASSWORD:-Pavan@123}
       APP_USER: ${ORACLE_APP_USER:-siva}
       APP_USER_PASSWORD: ${ORACLE_APP_PASSWORD:-Pavan@123}
-    ports: ["1521:1521"]
+    # No host port binding. Every backend reaches Oracle via the
+    # internal `hra-net` Docker network at oracle-db:1521. Exposing
+    # 1521 on the host was a real risk — anyone scanning the VPS IP
+    # could hit Oracle's listener directly. For local debugging
+    # use `docker exec hra-oracle sqlplus ...` or
+    # `docker run --rm --network home-rental_hra-net …` to reach it.
+    expose:
+      - "1521"
     volumes: ["oracle-data:/opt/oracle/oradata"]
     networks: [hra-net]
     healthcheck:
