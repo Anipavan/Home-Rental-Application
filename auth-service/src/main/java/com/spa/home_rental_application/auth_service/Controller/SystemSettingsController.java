@@ -1,6 +1,7 @@
 package com.spa.home_rental_application.auth_service.Controller;
 
 import com.spa.home_rental_application.auth_commons.GatewayAuthFilter;
+import com.spa.home_rental_application.auth_service.Dto.Request.SetEmailVerificationRequiredRequest;
 import com.spa.home_rental_application.auth_service.Dto.Request.SetMaintainerPaymentEnabledRequest;
 import com.spa.home_rental_application.auth_service.Dto.Response.SystemSettingResponse;
 import com.spa.home_rental_application.auth_service.Service.SystemSettingsService;
@@ -57,6 +58,23 @@ public class SystemSettingsController {
         return ResponseEntity.ok(
                 settingsService.listAll().stream()
                         .filter(s -> "maintainer_payment_enabled".equals(s.settingKey()))
+                        .findFirst()
+                        .orElseThrow(() -> new IllegalStateException(
+                                "system_settings row vanished after write")));
+    }
+
+    @Operation(summary = "Require email verification before login can succeed.")
+    @PutMapping(value = "/email-verification-required", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<SystemSettingResponse> setEmailVerificationRequired(
+            @RequestHeader(GatewayAuthFilter.HDR_UID) Long adminUserId,
+            @Valid @RequestBody SetEmailVerificationRequiredRequest req) {
+        log.info("PUT /admin/settings/email-verification-required required={} by adminUserId={}",
+                req.required(), adminUserId);
+        settingsService.setEmailVerificationRequired(req.required(), adminUserId);
+        return ResponseEntity.ok(
+                settingsService.listAll().stream()
+                        .filter(s -> "email_verification_required".equals(s.settingKey()))
                         .findFirst()
                         .orElseThrow(() -> new IllegalStateException(
                                 "system_settings row vanished after write")));

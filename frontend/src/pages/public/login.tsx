@@ -9,13 +9,23 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuthStore } from "@/stores/auth-store";
 import { authApi } from "@/lib/api/auth";
+import { emailVerificationApi } from "@/lib/api/email-verification";
+import { extractErrorMessage } from "@/lib/api/client";
 import { toast } from "@/hooks/use-toast";
+
+interface ApiErrorShape {
+  response?: { data?: { errorCode?: string; message?: string } };
+}
 
 export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation() as { state?: { from?: string } };
   const setSession = useAuthStore((s) => s.setSession);
   const [show, setShow] = useState(false);
+  const [unverifiedEmailHint, setUnverifiedEmailHint] = useState<string | null>(
+    null,
+  );
+  const [resending, setResending] = useState(false);
 
   const mutation = useMutation({
     mutationFn: authApi.login,
@@ -35,12 +45,25 @@ export function LoginPage() {
       toast({ title: `Welcome back, ${data.userName}` });
       navigate(dest, { replace: true });
     },
-    onError: () => {
-      // Audit M22: every login failure surfaces the same generic
-      // copy so attackers can't enumerate usernames / distinguish
-      // wrong-password from no-such-user. The earlier paywall-redirect
-      // branch was removed when the hard paywall was replaced with
-      // the in-app soft gate (see MaintainerPaymentGate).
+    onError: (err) => {
+      const errorCode = (err as ApiErrorShape).response?.data?.errorCode;
+      // V16 — when the email-verification gate rejects login,
+      // surface a distinct copy + resend affordance instead of the
+      // generic "bad credentials" toast.
+      if (errorCode === "EMAIL_VERIFICATION_REQUIRED") {
+        setUnverifiedEmailHint("");
+        toast({
+          variant: "destructive",
+          title: "Verify your email first",
+          description:
+            "Check your inbox for the verification link. Need a fresh one? Use the resend form below.",
+          dedupeKey: "login-unverified",
+        });
+        return;
+      }
+      // Audit M22: every other login failure surfaces the same
+      // generic copy so attackers can't enumerate usernames /
+      // distinguish wrong-password from no-such-user.
       toast({
         variant: "destructive",
         title: "Sign-in failed",
@@ -57,6 +80,29 @@ export function LoginPage() {
       userName: String(fd.get("userName") ?? ""),
       password: String(fd.get("password") ?? ""),
     });
+  }
+
+  async function handleResend(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!unverifiedEmailHint?.trim()) return;
+    setResending(true);
+    try {
+      await emailVerificationApi.resend(unverifiedEmailHint.trim());
+      toast({
+        title: "Verification email sent",
+        description:
+          "If an unverified account exists for that address, a fresh link is on its way.",
+      });
+      setUnverifiedEmailHint(null);
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Couldn't resend",
+        description: extractErrorMessage(err),
+      });
+    } finally {
+      setResending(false);
+    }
   }
 
   return (
@@ -79,6 +125,46 @@ export function LoginPage() {
             <p className="text-muted-foreground mt-1.5">
               Sign in to manage your home, payments and maintenance.
             </p>
+
+            {unverifiedEmailHint !== null ? (
+              <Card className="mt-6 p-5 border-amber-200 bg-amber-50/60">
+                <form onSubmit={handleResend} className="space-y-3">
+                  <div>
+                    <h3 className="font-display text-sm font-semibold text-amber-900">
+                      Resend verification email
+                    </h3>
+                    <p className="text-xs text-amber-800 mt-1">
+                      Enter your email and we'll send you a fresh link.
+                    </p>
+                  </div>
+                  <Input
+                    type="email"
+                    placeholder="you@example.com"
+                    value={unverifiedEmailHint}
+                    onChange={(e) => setUnverifiedEmailHint(e.target.value)}
+                    required
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      type="submit"
+                      variant="gradient"
+                      className="flex-1"
+                      disabled={resending}
+                    >
+                      {resending && <Loader2 className="size-4 animate-spin mr-2" />}
+                      Send link
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setUnverifiedEmailHint(null)}
+                    >
+                      Close
+                    </Button>
+                  </div>
+                </form>
+              </Card>
+            ) : null}
 
             <Card className="mt-8 p-6 sm:p-7">
               <form onSubmit={onSubmit} className="space-y-4">

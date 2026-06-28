@@ -22,11 +22,13 @@ import com.spa.home_rental_application.auth_service.Entity.RefreshToken;
 import com.spa.home_rental_application.auth_service.Entity.UserDetails;
 import com.spa.home_rental_application.auth_service.Exception.AuthRecordNotFoundException;
 import com.spa.home_rental_application.auth_service.Exception.DuplicateUserException;
+import com.spa.home_rental_application.auth_service.Exception.EmailVerificationRequiredException;
 import com.spa.home_rental_application.auth_service.Exception.InvalidTokenException;
 import com.spa.home_rental_application.auth_service.Repository.PasswordResetTokenRepository;
 import com.spa.home_rental_application.auth_service.Repository.RefreshTokenRepository;
 import com.spa.home_rental_application.auth_service.Repository.UserRepository;
 import com.spa.home_rental_application.auth_service.Service.AuthService;
+import com.spa.home_rental_application.auth_service.Service.EmailVerificationService;
 import com.spa.home_rental_application.auth_service.Service.SystemSettingsService;
 import com.spa.home_rental_application.auth_service.Service.external.PaymentServiceFeign;
 import com.spa.home_rental_application.auth_service.Service.external.UserServiceFeign;
@@ -82,6 +84,7 @@ public class AuthServiceImpl implements AuthService {
     private final UserServiceFeign userServiceFeign;
     private final PaymentServiceFeign paymentServiceFeign;
     private final SystemSettingsService systemSettingsService;
+    private final EmailVerificationService emailVerificationService;
     private final AuthServiceEvents authEvents;
     private final AuditEventPublisher audit;
     private final long passwordResetTtlMinutes;
@@ -97,6 +100,7 @@ public class AuthServiceImpl implements AuthService {
                            UserServiceFeign userServiceFeign,
                            PaymentServiceFeign paymentServiceFeign,
                            SystemSettingsService systemSettingsService,
+                           EmailVerificationService emailVerificationService,
                            AuthServiceEvents authEvents,
                            AuditEventPublisher audit,
                            @Value("${app.password-reset.token-validity-minutes:15}") long passwordResetTtlMinutes,
@@ -111,6 +115,7 @@ public class AuthServiceImpl implements AuthService {
         this.userServiceFeign = userServiceFeign;
         this.paymentServiceFeign = paymentServiceFeign;
         this.systemSettingsService = systemSettingsService;
+        this.emailVerificationService = emailVerificationService;
         this.authEvents = authEvents;
         this.audit = audit;
         this.passwordResetTtlMinutes = passwordResetTtlMinutes;
@@ -147,6 +152,14 @@ public class AuthServiceImpl implements AuthService {
         Roles role = (req.userRole() == Roles.TENENT) ? Roles.TENANT : req.userRole();
         Instant now = Instant.now();
 
+        // V16: when the email-verification toggle is OFF (default on
+        // first deploy), grandfather new signups to verified=true so
+        // login works immediately and no verification email goes out.
+        // Flip the toggle ON from /admin/settings and new signups will
+        // start with verified=false → mintAndDispatch fires below →
+        // login is blocked until they click the link.
+        boolean emailGateOn = systemSettingsService.isEmailVerificationRequired();
+
         UserDetails entity = UserDetails.builder()
                 .userName(req.userName())
                 .userPassword(passwordEncoder.encode(req.userPassword()))
@@ -155,6 +168,7 @@ public class AuthServiceImpl implements AuthService {
                 .userRole(role)
                 .enabled(true)
                 .accountNonLocked(true)
+                .emailVerified(!emailGateOn)
                 .recordCreatedDate(now)
                 .recodeUpdatedDate(now)
                 .build();
@@ -210,6 +224,13 @@ public class AuthServiceImpl implements AuthService {
                 saved.getId().toString(), saved.getId().toString(),
                 java.util.Map.of("role", role.name(), "email", saved.getEmail()));
 
+        // V16: when the email-verification toggle is ON, mint a token
+        // + dispatch the verify-your-email link. When OFF, this is
+        // skipped — the user is already verified above.
+        if (emailGateOn) {
+            emailVerificationService.mintAndDispatch(saved);
+        }
+
         return AuthUserMapper.toRegisterResponse(saved);
     }
 
@@ -242,6 +263,10 @@ public class AuthServiceImpl implements AuthService {
         // payment_paid_at=null so the trial clock starts ticking; the
         // dashboard gate evaluates the state machine on first load.
         boolean gateOn = systemSettingsService.isMaintainerPaymentEnabled();
+        // V16 parallel: same toggle pattern for email verification.
+        // OFF = grandfather to verified, no verification email; ON =
+        // start unverified, dispatch link.
+        boolean emailGateOn = systemSettingsService.isEmailVerificationRequired();
 
         // Persist as TENANT (today's society-signup default), always
         // enabled. The hard-paywall disable_reason path is gone; the
@@ -254,6 +279,7 @@ public class AuthServiceImpl implements AuthService {
                 .userRole(Roles.TENANT)
                 .enabled(true)
                 .accountNonLocked(true)
+                .emailVerified(!emailGateOn)
                 .recordCreatedDate(now)
                 .recodeUpdatedDate(now)
                 .paymentTrialStartedAt(now)
@@ -298,6 +324,13 @@ public class AuthServiceImpl implements AuthService {
                 .phone(normalisedPhone)
                 .timestamp(Instant.now())
                 .build());
+
+        // V16 email-verification dispatch (independent of the
+        // payment gate above). When the toggle is ON, the user landed
+        // here with emailVerified=false and we send them the magic link.
+        if (emailGateOn) {
+            emailVerificationService.mintAndDispatch(saved);
+        }
 
         // Toggle OFF path — no Payment row, no REG_PAY token. The
         // frontend reads paymentToken=null and skips the paywall page,
@@ -477,6 +510,23 @@ public class AuthServiceImpl implements AuthService {
         // instead of a second findByUserName, so the success and
         // failure paths take the same time.
         UserDetails user = (UserDetails) authenticated.getPrincipal();
+
+        // V16 email-verification gate. When the
+        // email_verification_required toggle is ON, a user with
+        // emailVerified=false can authenticate (creds were valid)
+        // but they can't get a session — frontend surfaces a
+        // "verify your email" prompt + resend button. When the
+        // toggle is OFF, the field is read but ignored, so today's
+        // behaviour (login works whether or not the address is
+        // confirmed) is unchanged.
+        if (systemSettingsService.isEmailVerificationRequired()
+                && !Boolean.TRUE.equals(user.getEmailVerified())) {
+            audit.publishFailure("auth.login.unverified",
+                    null,
+                    String.valueOf(user.getId()),
+                    "Email not verified");
+            throw new EmailVerificationRequiredException(user.getEmail());
+        }
 
         // H4 — successful login clears any lingering failed-attempt
         // counter (still safe to run even when lockout is disabled,

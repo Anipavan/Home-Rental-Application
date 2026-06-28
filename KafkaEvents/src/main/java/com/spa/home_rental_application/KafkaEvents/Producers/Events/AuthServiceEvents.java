@@ -1,5 +1,6 @@
 package com.spa.home_rental_application.KafkaEvents.Producers.Events;
 
+import com.spa.home_rental_application.KafkaEvents.Producers.DTO.AuthServiceEvents.EmailVerificationRequestedEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.AuthServiceEvents.PasswordResetRequestedEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.AuthServiceEvents.UserLoginEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.AuthServiceEvents.UserLogoutEvent;
@@ -14,4 +15,5 @@ public interface AuthServiceEvents {
     void sendUserLogin(UserLoginEvent event);
     void sendUserLogout(UserLogoutEvent event);
     void sendPasswordResetRequested(PasswordResetRequestedEvent event);
+    void sendEmailVerificationRequested(EmailVerificationRequestedEvent event);
 }

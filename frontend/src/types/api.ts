@@ -157,6 +157,29 @@ export interface SetMaintainerPaymentEnabledRequest {
   enabled: boolean;
 }
 
+/** Body of {@code PUT /auth/admin/settings/email-verification-required}. */
+export interface SetEmailVerificationRequiredRequest {
+  required: boolean;
+}
+
+/** Body of {@code POST /auth/verify-email}. */
+export interface VerifyEmailRequest {
+  token: string;
+}
+
+/** Response from {@code POST /auth/verify-email}. */
+export interface VerifyEmailResponse {
+  authUserId: number;
+  userName: string;
+  email: string;
+  emailVerified: boolean;
+}
+
+/** Body of {@code POST /auth/resend-verification}. */
+export interface ResendVerificationRequest {
+  email: string;
+}
+
 export interface AuthUserResponse {
   id: string;
   /**

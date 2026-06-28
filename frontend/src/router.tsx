@@ -18,6 +18,8 @@ import { RegisterPage } from "@/pages/public/register";
 import { RegistrationPaymentPage } from "@/pages/public/registration-payment";
 import { ForgotPasswordPage } from "@/pages/public/forgot-password";
 import { ResetPasswordPage } from "@/pages/public/reset-password";
+import { VerifyEmailPage } from "@/pages/public/verify-email";
+import { VerifyEmailSentPage } from "@/pages/public/verify-email-sent";
 import { NotFoundPage } from "@/pages/public/not-found";
 import { TenantDashboard } from "@/pages/tenant/dashboard";
 import { MyFlatPage } from "@/pages/tenant/my-flat";
@@ -99,6 +101,8 @@ export const router = createBrowserRouter([
   { path: "/registration-payment", element: <RegistrationPaymentPage /> },
   { path: "/forgot-password", element: <ForgotPasswordPage /> },
   { path: "/reset-password", element: <ResetPasswordPage /> },
+  { path: "/verify-email-sent", element: <VerifyEmailSentPage /> },
+  { path: "/verify-email/:token", element: <VerifyEmailPage /> },
   // ─── Public society ledger ───
   // Standalone page (no AppShell). The {token} in the URL is the only
   // credential — gateway whitelisted under

@@ -27,6 +27,16 @@ public interface SystemSettingsService {
      */
     void setMaintainerPaymentEnabled(boolean enabled, Long adminUserId);
 
+    /** Cached read of the {@code email_verification_required} toggle. */
+    boolean isEmailVerificationRequired();
+
+    /**
+     * Persist a new value for {@code email_verification_required} and
+     * invalidate the cache. {@code adminUserId} is recorded on the
+     * row for audit.
+     */
+    void setEmailVerificationRequired(boolean required, Long adminUserId);
+
     /** Admin /admin/settings list — every toggle as a flat response. */
     List<SystemSettingResponse> listAll();
 

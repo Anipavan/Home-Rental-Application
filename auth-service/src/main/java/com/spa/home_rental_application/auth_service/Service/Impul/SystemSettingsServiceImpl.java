@@ -35,11 +35,13 @@ import java.util.concurrent.atomic.AtomicReference;
 public class SystemSettingsServiceImpl implements SystemSettingsService {
 
     private static final String KEY_MAINTAINER_PAYMENT = "maintainer_payment_enabled";
+    private static final String KEY_EMAIL_VERIFICATION = "email_verification_required";
     private static final Duration CACHE_TTL = Duration.ofSeconds(60);
 
     private final SystemSettingRepository repo;
     private final BigDecimal registrationFeeInr;
     private final AtomicReference<CachedFlag> cache = new AtomicReference<>();
+    private final AtomicReference<CachedFlag> emailVerifCache = new AtomicReference<>();
 
     public SystemSettingsServiceImpl(
             SystemSettingRepository repo,
@@ -75,6 +77,32 @@ public class SystemSettingsServiceImpl implements SystemSettingsService {
         repo.save(row);
         invalidateCache();
         log.info("system_settings updated: maintainer_payment_enabled={} by admin={}", enabled, adminUserId);
+    }
+
+    @Override
+    public boolean isEmailVerificationRequired() {
+        CachedFlag c = emailVerifCache.get();
+        if (c != null && c.fresh()) return c.value;
+        boolean v = repo.findBySettingKey(KEY_EMAIL_VERIFICATION)
+                .map(s -> "true".equalsIgnoreCase(s.getValue()))
+                .orElse(false);
+        emailVerifCache.set(new CachedFlag(v, Instant.now()));
+        return v;
+    }
+
+    @Override
+    @Transactional
+    public void setEmailVerificationRequired(boolean required, Long adminUserId) {
+        SystemSetting row = repo.findBySettingKey(KEY_EMAIL_VERIFICATION)
+                .orElseGet(() -> SystemSetting.builder()
+                        .settingKey(KEY_EMAIL_VERIFICATION)
+                        .build());
+        row.setValue(Boolean.toString(required));
+        row.setUpdatedAt(Instant.now());
+        row.setUpdatedBy(adminUserId);
+        repo.save(row);
+        emailVerifCache.set(null);
+        log.info("system_settings updated: email_verification_required={} by admin={}", required, adminUserId);
     }
 
     @Override

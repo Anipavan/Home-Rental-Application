@@ -6,6 +6,16 @@ package com.spa.home_rental_application.notification_service.notification_servic
  */
 public enum NotificationCategory {
     USER_REGISTRATION,
+    /**
+     * V16 — magic-link verification email sent on signup when the
+     * {@code email_verification_required} toggle is ON. Recipient is
+     * the new user; the template embeds a {@code {{verifyLink}}}
+     * pointing at {@code /verify-email/{token}} on the SPA. Deliberately
+     * single-channel (EMAIL only) — same reasoning as PASSWORD_RESET,
+     * auth-grade traffic shouldn't expand its attack surface to SMS /
+     * WhatsApp.
+     */
+    EMAIL_VERIFICATION,
     PASSWORD_RESET,
     PAYMENT_CREATED,
     PAYMENT_REMINDER,

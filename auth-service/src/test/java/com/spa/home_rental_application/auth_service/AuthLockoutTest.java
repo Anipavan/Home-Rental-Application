@@ -9,6 +9,7 @@ import com.spa.home_rental_application.auth_service.Entity.UserDetails;
 import com.spa.home_rental_application.auth_service.Repository.PasswordResetTokenRepository;
 import com.spa.home_rental_application.auth_service.Repository.RefreshTokenRepository;
 import com.spa.home_rental_application.auth_service.Repository.UserRepository;
+import com.spa.home_rental_application.auth_service.Service.EmailVerificationService;
 import com.spa.home_rental_application.auth_service.Service.Impul.AuthServiceImpl;
 import com.spa.home_rental_application.auth_service.Service.SystemSettingsService;
 import com.spa.home_rental_application.auth_service.Service.external.PaymentServiceFeign;
@@ -85,6 +86,7 @@ class AuthLockoutTest {
     @Mock UserServiceFeign userServiceFeign;
     @Mock PaymentServiceFeign paymentServiceFeign;
     @Mock SystemSettingsService systemSettingsService;
+    @Mock EmailVerificationService emailVerificationService;
     @Mock AuthServiceEvents authEvents;
     @Mock AuditEventPublisher audit;
 
@@ -96,6 +98,7 @@ class AuthLockoutTest {
                 userRepository, refreshTokenRepository, passwordResetTokenRepository,
                 passwordEncoder, authenticationManager, jwtUtil, jwtProperties,
                 userServiceFeign, paymentServiceFeign, systemSettingsService,
+                emailVerificationService,
                 authEvents, audit,
                 15L, BigDecimal.valueOf(999));
         // Lockout opt-in flag + thresholds are @Value-injected; populate

@@ -1,5 +1,6 @@
 package com.spa.home_rental_application.notification_service.notification_service.listener;
 
+import com.spa.home_rental_application.KafkaEvents.Producers.DTO.AuthServiceEvents.EmailVerificationRequestedEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.AuthServiceEvents.PasswordResetRequestedEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.AuthServiceEvents.UserRegisteredEvent;
 import com.spa.home_rental_application.notification_service.notification_service.DTO.Request.PreferenceRequest;
@@ -174,6 +175,55 @@ public class AuthEventListener {
     @org.springframework.beans.factory.annotation.Value(
             "${app.frontend.base-url:http://localhost:5173}/reset-password")
     private String resetLinkBaseUrl;
+
+    /**
+     * V16 — base URL for the magic link in the email-verification
+     * email. The token is appended as a path segment, e.g.
+     * {@code https://anirudhhomes.in/verify-email/abc123...}. Derived
+     * off {@code app.frontend.base-url} so a single env override
+     * configures every link.
+     */
+    @org.springframework.beans.factory.annotation.Value(
+            "${app.frontend.base-url:http://localhost:5173}/verify-email")
+    private String verifyLinkBaseUrl;
+
+    @KafkaListener(
+            topics = "${app.kafka.auth-topic:auth-events}",
+            groupId = "${spring.kafka.consumer.group-id:hra-notification-service}-email-verification",
+            properties = {"spring.json.value.default.type=com.spa.home_rental_application.KafkaEvents.Producers.DTO.AuthServiceEvents.EmailVerificationRequestedEvent"}
+    )
+    public void onEmailVerification(EmailVerificationRequestedEvent e) {
+        if (e == null || !"user.email.verification.requested".equals(e.getEventType())) return;
+        if (e.getAuthUserId() == null || e.getAuthUserId().isBlank()
+                || e.getToken() == null || e.getToken().isBlank()) {
+            log.debug("Ignoring email-verification event with no token/user.");
+            return;
+        }
+        log.info("Received {} for authUserId={}", e.getEventType(), e.getAuthUserId());
+
+        String verifyLink = verifyLinkBaseUrl.replaceAll("/+$", "") + "/" + e.getToken();
+        log.info(
+                "\n" +
+                "============================================================\n" +
+                " EMAIL VERIFICATION LINK — copy to the user's browser if\n" +
+                " SMTP isn't wired up.\n" +
+                "   user  : {}  <{}>\n" +
+                "   token : {}\n" +
+                "   link  : {}\n" +
+                "   valid : until {}\n" +
+                "============================================================",
+                safe(e.getUserName()), safe(e.getEmail()),
+                safe(e.getToken()), verifyLink, safe(e.getExpiresAt()));
+
+        // Email-only by design; auth-grade traffic stays single-channel.
+        notifications.sendFromTemplate(e.getAuthUserId(),
+                com.spa.home_rental_application.notification_service.notification_service.enums.NotificationType.EMAIL,
+                com.spa.home_rental_application.notification_service.notification_service.enums.NotificationCategory.EMAIL_VERIFICATION,
+                Map.of("userName",   safe(e.getUserName()),
+                        "email",     safe(e.getEmail()),
+                        "verifyLink", verifyLink,
+                        "expiresAt", safe(e.getExpiresAt())));
+    }
 
     /**
      * Same base URL as {@link #resetLinkBaseUrl}, but without the

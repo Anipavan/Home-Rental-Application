@@ -76,6 +76,14 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.FORBIDDEN, "Account is disabled", "ACCOUNT_DISABLED", req);
     }
 
+    @ExceptionHandler(EmailVerificationRequiredException.class)
+    public ResponseEntity<APIErrorResponse> handleEmailVerificationRequired(
+            EmailVerificationRequiredException ex, HttpServletRequest req) {
+        return build(HttpStatus.FORBIDDEN,
+                "Please verify your email before signing in. Check your inbox for the verification link.",
+                "EMAIL_VERIFICATION_REQUIRED", req);
+    }
+
     @ExceptionHandler(LockedException.class)
     public ResponseEntity<APIErrorResponse> handleLocked(LockedException ex, HttpServletRequest req) {
         return build(HttpStatus.FORBIDDEN, "Account is locked", "ACCOUNT_LOCKED", req);

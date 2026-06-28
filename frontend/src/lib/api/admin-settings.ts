@@ -1,5 +1,6 @@
 import { api } from "./client";
 import type {
+  SetEmailVerificationRequiredRequest,
   SetMaintainerPaymentEnabledRequest,
   SystemSettingResponse,
 } from "@/types/api";
@@ -20,6 +21,14 @@ export const adminSettingsApi = {
       .put<SystemSettingResponse>(
         "/auth/admin/settings/maintainer-payment-enabled",
         { enabled } satisfies SetMaintainerPaymentEnabledRequest,
+      )
+      .then((r) => r.data),
+
+  setEmailVerificationRequired: (required: boolean) =>
+    api
+      .put<SystemSettingResponse>(
+        "/auth/admin/settings/email-verification-required",
+        { required } satisfies SetEmailVerificationRequiredRequest,
       )
       .then((r) => r.data),
 };

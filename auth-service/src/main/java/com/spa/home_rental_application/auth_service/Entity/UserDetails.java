@@ -92,6 +92,24 @@ public class UserDetails implements org.springframework.security.core.userdetail
     private Boolean enabled = true;
 
     /**
+     * V16: has the user clicked the magic-link in their post-signup
+     * verification email? Defaults to false for new signups; existing
+     * users are grandfathered to true via the V16 migration backfill.
+     *
+     * <p>Login enforcement is gated on the
+     * {@code email_verification_required} {@link SystemSetting}: when
+     * that toggle is OFF (the default on first deploy) this column is
+     * read but ignored, so an unverified user can still log in. Flip
+     * the toggle ON from {@code /admin/settings} and AuthServiceImpl.login
+     * will start rejecting unverified accounts with
+     * {@code errorCode=EMAIL_VERIFICATION_REQUIRED}.
+     */
+    @Column(name = "email_verified", nullable = false,
+            columnDefinition = "NUMBER(1) DEFAULT 0")
+    @Builder.Default
+    private Boolean emailVerified = false;
+
+    /**
      * Why the account is currently disabled, when {@link #enabled} is
      * false. Null on enabled accounts and on accounts disabled for
      * generic reasons (admin action, etc.).

@@ -11,6 +11,7 @@ import com.spa.home_rental_application.auth_service.Exception.DuplicateUserExcep
 import com.spa.home_rental_application.auth_service.Repository.PasswordResetTokenRepository;
 import com.spa.home_rental_application.auth_service.Repository.RefreshTokenRepository;
 import com.spa.home_rental_application.auth_service.Repository.UserRepository;
+import com.spa.home_rental_application.auth_service.Service.EmailVerificationService;
 import com.spa.home_rental_application.auth_service.Service.Impul.AuthServiceImpl;
 import com.spa.home_rental_application.auth_service.Service.SystemSettingsService;
 import com.spa.home_rental_application.auth_service.Service.external.PaymentServiceFeign;
@@ -45,6 +46,7 @@ class AuthServiceTest {
     @Mock UserServiceFeign userServiceFeign;
     @Mock PaymentServiceFeign paymentServiceFeign;
     @Mock SystemSettingsService systemSettingsService;
+    @Mock EmailVerificationService emailVerificationService;
     @Mock AuthServiceEvents authEvents;
 
     AuthServiceImpl service() {
@@ -52,7 +54,7 @@ class AuthServiceTest {
         props.setSecret("U3VwZXJTZWNyZXRLZXlGb3JKV1RUb2tlbkdlbmVyYXRpb24xMjM0NTY3ODkwIQ==");
         return new AuthServiceImpl(userRepository, refreshTokenRepository, passwordResetTokenRepository,
                 passwordEncoder, authenticationManager, jwtUtil, props, userServiceFeign,
-                paymentServiceFeign, systemSettingsService, authEvents,
+                paymentServiceFeign, systemSettingsService, emailVerificationService, authEvents,
                 org.mockito.Mockito.mock(
                         com.spa.home_rental_application.KafkaEvents.Producers.Events.AuditEventPublisher.class),
                 15L, BigDecimal.valueOf(999));

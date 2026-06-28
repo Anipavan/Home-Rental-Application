@@ -1,5 +1,6 @@
 package com.spa.home_rental_application.KafkaEvents.Producers.Impliments;
 
+import com.spa.home_rental_application.KafkaEvents.Producers.DTO.AuthServiceEvents.EmailVerificationRequestedEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.AuthServiceEvents.PasswordResetRequestedEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.AuthServiceEvents.UserLoginEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.AuthServiceEvents.UserLogoutEvent;
@@ -64,6 +65,12 @@ public class AuthEventImpl implements AuthServiceEvents {
     public void sendPasswordResetRequested(PasswordResetRequestedEvent event) {
         log.info("→ {} : user.password.reset.requested authUserId={}", topics.getAuthTopic(), event.getAuthUserId());
         publishSafely("user.password.reset.requested", event.getAuthUserId(), event);
+    }
+
+    @Override
+    public void sendEmailVerificationRequested(EmailVerificationRequestedEvent event) {
+        log.info("→ {} : user.email.verification.requested authUserId={}", topics.getAuthTopic(), event.getAuthUserId());
+        publishSafely("user.email.verification.requested", event.getAuthUserId(), event);
     }
 
     /**

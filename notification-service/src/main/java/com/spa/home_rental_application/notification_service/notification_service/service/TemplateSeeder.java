@@ -219,6 +219,18 @@ public class TemplateSeeder {
                         + "current password is unchanged.",
                 List.of("userName", "token", "resetLink", "expiresAt"));
 
+        // V16 — magic-link verification email sent at signup when the
+        // email_verification_required toggle is ON. Single channel by
+        // design (no SMS / WhatsApp).
+        seedIfAbsent("email-verification-email",
+                NotificationCategory.EMAIL_VERIFICATION, NotificationType.EMAIL,
+                "Verify your Anirudh Homes email",
+                "Hi {{userName}},\n\nThanks for signing up. Confirm your email so we know we can reach you.\n\n"
+                        + "Click the link below to verify (valid until {{expiresAt}}):\n\n"
+                        + "  {{verifyLink}}\n\n"
+                        + "If you did not sign up for an Anirudh Homes account, you can safely ignore this email.",
+                List.of("userName", "email", "verifyLink", "expiresAt"));
+
         seedIfAbsent("payment-created-email", NotificationCategory.PAYMENT_CREATED, NotificationType.EMAIL,
                 "New invoice {{invoiceNumber}} — ₹{{amount}} due {{dueDate}}",
                 "A new rent invoice has been generated for you.\n\nInvoice: {{invoiceNumber}}\nAmount: ₹{{amount}}\nDue date: {{dueDate}}\n\nLog in to pay via UPI, card, net-banking, or wallet.",

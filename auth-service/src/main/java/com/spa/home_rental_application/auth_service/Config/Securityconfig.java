@@ -86,7 +86,11 @@ public class Securityconfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.POST, "/auth/register", "/auth/register/pending",
                                 "/auth/login", "/auth/refresh", "/auth/forgot-password",
-                                "/auth/reset-password").permitAll()
+                                "/auth/reset-password",
+                                // V16 — public because the recipient
+                                // clicks the link before they're logged
+                                // in. Token in the body is the credential.
+                                "/auth/verify-email", "/auth/resend-verification").permitAll()
                         .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
                         .anyRequest().authenticated()
                 )

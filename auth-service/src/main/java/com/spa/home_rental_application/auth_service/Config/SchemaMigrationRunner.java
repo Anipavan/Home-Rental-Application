@@ -72,7 +72,12 @@ public class SchemaMigrationRunner {
             new Migration("user_details_table", "payment_trial_started_at", "TIMESTAMP"),
             new Migration("user_details_table", "payment_skip_count",       "NUMBER(2) DEFAULT 0 NOT NULL"),
             new Migration("user_details_table", "payment_last_skip_at",     "TIMESTAMP"),
-            new Migration("user_details_table", "payment_paid_at",          "TIMESTAMP")
+            new Migration("user_details_table", "payment_paid_at",          "TIMESTAMP"),
+            // V16 — email-verification gate. Boolean column starts 0;
+            // backfill below flips every existing row to 1 (grandfather).
+            // Token table is created by Hibernate from the
+            // EmailVerificationToken @Entity.
+            new Migration("user_details_table", "email_verified",          "NUMBER(1) DEFAULT 0 NOT NULL")
     );
 
     private final JdbcTemplate jdbc;
@@ -124,6 +129,8 @@ public class SchemaMigrationRunner {
         // Flyway disabled (compose.bootstrap.yml).
         backfillGrandfatherPaidAt();
         backfillSeedSystemSettings();
+        backfillGrandfatherEmailVerified();
+        backfillSeedEmailVerificationToggle();
     }
 
     /**
@@ -166,6 +173,51 @@ public class SchemaMigrationRunner {
             }
         } catch (Exception ex) {
             log.warn("V5 paywall reversal skipped: {}",
+                    ex.getMessage() == null ? ex.getClass().getSimpleName()
+                            : ex.getMessage().lines().findFirst().orElse(""));
+        }
+    }
+
+    /**
+     * V16 — grandfather every existing user as email_verified=1 so the
+     * later toggle flip doesn't lock them out. Idempotent: subsequent
+     * runs match zero rows (every row already at 1).
+     */
+    private void backfillGrandfatherEmailVerified() {
+        try {
+            int rows = jdbc.update(
+                    "UPDATE user_details_table " +
+                    "   SET email_verified = 1 " +
+                    " WHERE email_verified = 0");
+            if (rows > 0) {
+                log.info("Grandfathered {} existing user row(s): email_verified = 1", rows);
+            } else {
+                log.debug("Grandfather email_verified UPDATE matched 0 rows (already done)");
+            }
+        } catch (Exception ex) {
+            log.warn("Grandfather email_verified UPDATE skipped — column not yet present? {}",
+                    ex.getMessage() == null ? ex.getClass().getSimpleName()
+                            : ex.getMessage().lines().findFirst().orElse(""));
+        }
+    }
+
+    /**
+     * V16 — seed the email_verification_required toggle as 'false' so
+     * the gate is dormant on first deploy. Admin flips it from
+     * /admin/settings when ready. Idempotent via NOT EXISTS.
+     */
+    private void backfillSeedEmailVerificationToggle() {
+        try {
+            int rows = jdbc.update(
+                    "INSERT INTO system_settings (setting_key, value, updated_at) " +
+                    "SELECT 'email_verification_required', 'false', SYSTIMESTAMP FROM dual " +
+                    " WHERE NOT EXISTS (" +
+                    "       SELECT 1 FROM system_settings WHERE setting_key = 'email_verification_required')");
+            if (rows > 0) {
+                log.info("Seeded default system_settings: email_verification_required=false");
+            }
+        } catch (Exception ex) {
+            log.warn("email_verification_required seed skipped: {}",
                     ex.getMessage() == null ? ex.getClass().getSimpleName()
                             : ex.getMessage().lines().findFirst().orElse(""));
         }

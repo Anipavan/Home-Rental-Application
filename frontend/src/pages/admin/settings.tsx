@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, ShieldCheck, Wallet } from "lucide-react";
+import { Loader2, MailCheck, ShieldCheck, Wallet } from "lucide-react";
 import { adminSettingsApi } from "@/lib/api/admin-settings";
 import { extractErrorMessage } from "@/lib/api/client";
 import { Card } from "@/components/ui/card";
@@ -21,6 +21,17 @@ import { formatDate } from "@/lib/utils";
 import type { SystemSettingResponse } from "@/types/api";
 
 const KEY_MAINTAINER_PAYMENT = "maintainer_payment_enabled";
+const KEY_EMAIL_VERIFICATION = "email_verification_required";
+
+/**
+ * The settings page lists every system_settings row as a separate
+ * confirmation-gated Switch. `pendingToggle` tracks which toggle the
+ * admin is about to confirm so the same Dialog can serve both flips
+ * (and any future ones) without duplicating modal markup.
+ */
+type PendingToggle =
+  | { key: typeof KEY_MAINTAINER_PAYMENT; value: boolean }
+  | { key: typeof KEY_EMAIL_VERIFICATION; value: boolean };
 
 /**
  * Global feature toggles, admin-only. Currently one switch:
@@ -35,7 +46,7 @@ const KEY_MAINTAINER_PAYMENT = "maintainer_payment_enabled";
  */
 export function AdminSettingsPage() {
   const qc = useQueryClient();
-  const [pendingValue, setPendingValue] = useState<boolean | null>(null);
+  const [pendingToggle, setPendingToggle] = useState<PendingToggle | null>(null);
 
   const settingsQ = useQuery({
     queryKey: ["admin", "settings"],
@@ -52,9 +63,20 @@ export function AdminSettingsPage() {
   );
   const maintainerEnabled = maintainerToggle?.value === "true";
 
+  const emailToggle = useMemo<SystemSettingResponse | undefined>(
+    () =>
+      (settingsQ.data ?? []).find(
+        (s) => s.settingKey === KEY_EMAIL_VERIFICATION,
+      ),
+    [settingsQ.data],
+  );
+  const emailEnabled = emailToggle?.value === "true";
+
   const flipMut = useMutation({
-    mutationFn: (enabled: boolean) =>
-      adminSettingsApi.setMaintainerPaymentEnabled(enabled),
+    mutationFn: (p: PendingToggle) =>
+      p.key === KEY_MAINTAINER_PAYMENT
+        ? adminSettingsApi.setMaintainerPaymentEnabled(p.value)
+        : adminSettingsApi.setEmailVerificationRequired(p.value),
     onSuccess: (row) => {
       qc.setQueryData<SystemSettingResponse[]>(
         ["admin", "settings"],
@@ -64,14 +86,21 @@ export function AdminSettingsPage() {
           return [...others, row];
         },
       );
+      const isOn = row.value === "true";
+      const isPayment = row.settingKey === KEY_MAINTAINER_PAYMENT;
       toast({
-        title: `Maintainer activation fee ${row.value === "true" ? "enabled" : "disabled"}`,
-        description:
-          row.value === "true"
+        title: isPayment
+          ? `Maintainer activation fee ${isOn ? "enabled" : "disabled"}`
+          : `Email verification ${isOn ? "required" : "no longer required"}`,
+        description: isPayment
+          ? isOn
             ? "New maintainer signups now go through the 30-day trial."
-            : "New maintainer signups are free again. Existing users unaffected.",
+            : "New maintainer signups are free again. Existing users unaffected."
+          : isOn
+            ? "New signups must verify their email before logging in. Existing users unaffected."
+            : "Email verification is no longer enforced at login.",
       });
-      setPendingValue(null);
+      setPendingToggle(null);
     },
     onError: (err) => {
       toast({
@@ -79,7 +108,7 @@ export function AdminSettingsPage() {
         title: "Couldn't update setting",
         description: extractErrorMessage(err),
       });
-      setPendingValue(null);
+      setPendingToggle(null);
     },
   });
 
@@ -119,7 +148,9 @@ export function AdminSettingsPage() {
                 <Switch
                   checked={maintainerEnabled}
                   disabled={settingsQ.isLoading || flipMut.isPending}
-                  onCheckedChange={(v: boolean) => setPendingValue(v)}
+                  onCheckedChange={(v: boolean) =>
+                    setPendingToggle({ key: KEY_MAINTAINER_PAYMENT, value: v })
+                  }
                   aria-label="Toggle maintainer activation fee"
                 />
               </div>
@@ -147,35 +178,104 @@ export function AdminSettingsPage() {
         </Card>
       )}
 
+      {settingsQ.isError ? null : (
+        <Card className="p-5 mt-4">
+          <div className="flex items-start gap-4">
+            <div className="rounded-xl bg-primary/10 p-2.5 mt-0.5">
+              <MailCheck className="size-5 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-start gap-3 justify-between">
+                <div>
+                  <h3 className="font-display font-semibold text-base">
+                    Email verification at signup
+                  </h3>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    When enabled, new signups must click the magic link in
+                    their inbox before they can log in. Existing users are
+                    grandfathered and keep logging in normally.
+                  </p>
+                </div>
+                <Switch
+                  checked={emailEnabled}
+                  disabled={settingsQ.isLoading || flipMut.isPending}
+                  onCheckedChange={(v: boolean) =>
+                    setPendingToggle({ key: KEY_EMAIL_VERIFICATION, value: v })
+                  }
+                  aria-label="Toggle email verification at signup"
+                />
+              </div>
+              <div className="mt-4 text-[11px] text-muted-foreground flex items-center gap-3">
+                {flipMut.isPending && (
+                  <Loader2 className="size-3 animate-spin" />
+                )}
+                {emailToggle ? (
+                  <span>
+                    Current: <b>{emailEnabled ? "Required" : "Not required"}</b>
+                    {" — last changed "}
+                    {emailToggle.updatedAt
+                      ? formatDate(emailToggle.updatedAt)
+                      : "never"}
+                    {emailToggle.updatedBy
+                      ? ` by admin #${emailToggle.updatedBy}`
+                      : " (seed value, never touched)"}
+                  </span>
+                ) : (
+                  <span>Loading…</span>
+                )}
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
+
       {/* Confirmation dialog — flipping a platform-wide switch deserves
-          a "are you sure" gate. The Switch above only sets pendingValue;
+          a "are you sure" gate. The Switch above only sets pendingToggle;
           this dialog is what actually fires the mutation. */}
       <Dialog
-        open={pendingValue !== null}
+        open={pendingToggle !== null}
         onOpenChange={(o) => {
-          if (!o) setPendingValue(null);
+          if (!o) setPendingToggle(null);
         }}
       >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {pendingValue
-                ? "Enable maintainer activation fee?"
-                : "Disable maintainer activation fee?"}
+              {pendingToggle?.key === KEY_MAINTAINER_PAYMENT
+                ? pendingToggle.value
+                  ? "Enable maintainer activation fee?"
+                  : "Disable maintainer activation fee?"
+                : pendingToggle?.value
+                  ? "Require email verification at signup?"
+                  : "Stop requiring email verification?"}
             </DialogTitle>
             <DialogDescription>
-              {pendingValue ? (
+              {pendingToggle?.key === KEY_MAINTAINER_PAYMENT ? (
+                pendingToggle.value ? (
+                  <>
+                    Every <b>new</b> maintainer signup from now on goes through
+                    the 30-day free trial → 2 skips → forced payment flow.
+                    Existing maintainer accounts are unaffected — they stay
+                    free forever.
+                  </>
+                ) : (
+                  <>
+                    New maintainer signups become free again. Maintainers
+                    currently in TRIAL or SKIP_GRACE state will see the modal
+                    disappear on their next dashboard load.
+                  </>
+                )
+              ) : pendingToggle?.value ? (
                 <>
-                  Every <b>new</b> maintainer signup from now on goes through
-                  the 30-day free trial → 2 skips → forced payment flow.
-                  Existing maintainer accounts are unaffected — they stay
-                  free forever.
+                  Every <b>new</b> signup must click a magic link in their
+                  inbox before logging in. Existing users are grandfathered
+                  and unaffected.
                 </>
               ) : (
                 <>
-                  New maintainer signups become free again. Maintainers
-                  currently in TRIAL or SKIP_GRACE state will see the modal
-                  disappear on their next dashboard load.
+                  Email verification at signup will be turned off. Anyone who
+                  signs up next can log in immediately, even with an unverified
+                  email address.
                 </>
               )}
             </DialogDescription>
@@ -183,22 +283,22 @@ export function AdminSettingsPage() {
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setPendingValue(null)}
+              onClick={() => setPendingToggle(null)}
               disabled={flipMut.isPending}
             >
               Cancel
             </Button>
             <Button
               variant="gradient"
-              disabled={flipMut.isPending || pendingValue === null}
+              disabled={flipMut.isPending || pendingToggle === null}
               onClick={() => {
-                if (pendingValue !== null) flipMut.mutate(pendingValue);
+                if (pendingToggle) flipMut.mutate(pendingToggle);
               }}
             >
               {flipMut.isPending ? (
                 <Loader2 className="animate-spin size-4 mr-2" />
               ) : null}
-              {pendingValue ? "Enable" : "Disable"}
+              {pendingToggle?.value ? "Enable" : "Disable"}
             </Button>
           </DialogFooter>
         </DialogContent>
