@@ -575,9 +575,13 @@ public class AuthServiceImpl implements AuthService {
         String responseRole = authenticatedAsMaintainer
                 ? Roles.MAINTAINER.name()
                 : user.getUserRole().name();
+        List<String> rolesList = user.getAllRoles().stream()
+                .map(Roles::name)
+                .sorted()
+                .toList();
         return AuthResponse.bearer(accessToken, refresh.getToken(),
                 jwtProperties.getAccessTokenValiditySeconds(),
-                user.getUsername(), user.getId().toString(), responseRole);
+                user.getUsername(), user.getId().toString(), responseRole, rolesList);
     }
 
     /* ---------- Refresh (rotate) ---------- */
@@ -618,9 +622,14 @@ public class AuthServiceImpl implements AuthService {
                 user.getUsername(), null, user.getAuthorities());
         String accessToken = jwtUtil.generateToken(auth, user.getId());
 
+        List<String> rolesList = user.getAllRoles().stream()
+                .map(Roles::name)
+                .sorted()
+                .toList();
         return AuthResponse.bearer(accessToken, next.getToken(),
                 jwtProperties.getAccessTokenValiditySeconds(),
-                user.getUsername(), user.getId().toString(), user.getUserRole().name());
+                user.getUsername(), user.getId().toString(),
+                user.getUserRole().name(), rolesList);
     }
 
     /* ---------- Logout ---------- */

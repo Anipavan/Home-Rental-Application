@@ -83,9 +83,38 @@ public class UserDetails implements org.springframework.security.core.userdetail
     @Column(name = "phone", unique = true, length = 20)
     private String phone;
 
+    /**
+     * The "primary role" — the one a user signed up with and the one
+     * the frontend's post-login redirect keys on. Kept as a top-level
+     * column (rather than synthesised from {@link #userRoles}) so the
+     * gateway's role-header stamping, every existing {@code
+     * findByUserRole} query, and the legacy {@code AuthUserResponse}
+     * shape all continue to work without changes.
+     */
     @Enumerated(EnumType.STRING)
     @Column(name = "user_role", nullable = false, length = 32)
     private Roles userRole;
+
+    /**
+     * V17 — multi-role foundation. The set of every role this user
+     * holds, including their primary role. Backed by the
+     * {@code user_roles} join table (V17 migration creates it +
+     * backfills one row per user from the legacy {@link #userRole}
+     * column).
+     *
+     * <p>EAGER fetch: {@link #getAuthorities()} runs on every JWT
+     * issuance + every gateway-stamped request, so a lazy proxy
+     * would either crash outside the transaction or hammer the DB
+     * once per call. The set never exceeds the number of declared
+     * Roles (today: 4), so eager loading is free.
+     */
+    @ElementCollection(targetClass = Roles.class, fetch = FetchType.EAGER)
+    @CollectionTable(name = "user_roles",
+            joinColumns = @JoinColumn(name = "user_id"))
+    @Column(name = "role", length = 32)
+    @Enumerated(EnumType.STRING)
+    @Builder.Default
+    private Set<Roles> userRoles = new HashSet<>();
 
     @Column(name = "enabled", nullable = false)
     @Builder.Default
@@ -229,12 +258,59 @@ public class UserDetails implements org.springframework.security.core.userdetail
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         Set<SimpleGrantedAuthority> authorities = new HashSet<>();
-        authorities.add(new SimpleGrantedAuthority("ROLE_" + userRole.name()));
-        Set<SimpleGrantedAuthority> permissionAuthorities = userRole.getPermissions().stream()
-                .map(p -> new SimpleGrantedAuthority(p.name()))
-                .collect(Collectors.toSet());
-        authorities.addAll(permissionAuthorities);
+        // Build the union: primary role + every role in the multi-role
+        // set. On a freshly-V17-backfilled DB these are the same value,
+        // but a multi-role user (added in later commits) gets a
+        // ROLE_* authority for each.
+        Set<Roles> activeRoles = new HashSet<>();
+        if (userRole != null) activeRoles.add(userRole);
+        if (userRoles != null) activeRoles.addAll(userRoles);
+        for (Roles r : activeRoles) {
+            authorities.add(new SimpleGrantedAuthority("ROLE_" + r.name()));
+            r.getPermissions().stream()
+                    .map(p -> new SimpleGrantedAuthority(p.name()))
+                    .forEach(authorities::add);
+        }
         return authorities;
+    }
+
+    /**
+     * Convenience: returns the union of {@link #userRole} (primary)
+     * and {@link #userRoles} (multi-role set). Helpful for DTO
+     * projections that want a single source of truth.
+     */
+    public Set<Roles> getAllRoles() {
+        Set<Roles> all = new HashSet<>();
+        if (userRole != null) all.add(userRole);
+        if (userRoles != null) all.addAll(userRoles);
+        return all;
+    }
+
+    /**
+     * Grant the user an additional role. Idempotent — adding the
+     * primary role to the set is a no-op. Use this instead of
+     * {@code getUserRoles().add(...)} so the null-safe initialisation
+     * happens automatically.
+     */
+    public void addRole(Roles role) {
+        if (role == null) return;
+        if (userRoles == null) userRoles = new HashSet<>();
+        userRoles.add(role);
+    }
+
+    /**
+     * V17 sync hook: every time an auth row is INSERTed or UPDATEd,
+     * make sure the multi-role set contains the primary role. Without
+     * this, code that mutates {@link #userRole} via the Lombok setter
+     * (or via the builder at registration) would leave the
+     * {@code user_roles} join table out of sync with the legacy column
+     * for newly-created rows. The PrePersist + PreUpdate combo
+     * guarantees the invariant on every flush.
+     */
+    @PrePersist
+    @PreUpdate
+    void syncPrimaryRoleIntoRoleSet() {
+        if (userRole != null) addRole(userRole);
     }
 
     @Override public String getPassword() { return userPassword; }

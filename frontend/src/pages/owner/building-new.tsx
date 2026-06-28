@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ImagePlus, Loader2, X } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
@@ -35,6 +35,14 @@ export function BuildingNewPage() {
   const { authUserId } = useAuthStore();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  // Phase 2 — when the user landed here from the "I'm starting a
+  // society" signup card, show a softer onboarding banner. State is
+  // passed via react-router from /register; falls back to null on
+  // direct navigation or refresh.
+  const location = useLocation();
+  const fromSocietyFounder =
+    (location.state as { fromSocietyFounder?: boolean } | null)?.fromSocietyFounder ===
+    true;
 
   const [pickedState, setPickedState] = useState<RefStateDto | null>(null);
   const [pickedCity, setPickedCity] = useState<RefCityDto | null>(null);
@@ -167,9 +175,25 @@ export function BuildingNewPage() {
         </Link>
       </Button>
       <PageHeader
-        title="Add a building"
-        description="The big-picture details. You'll add flats next."
+        title={fromSocietyFounder ? "Set up your society" : "Add a building"}
+        description={
+          fromSocietyFounder
+            ? "Give your building a name and address. You can add flats and invite residents on the next screen."
+            : "The big-picture details. You'll add flats next."
+        }
       />
+
+      {fromSocietyFounder ? (
+        <Card className="mb-4 border-primary/30 bg-primary/5">
+          <CardContent className="p-4 text-sm">
+            <p className="font-medium">Step 1 of 3 — Building basics</p>
+            <p className="text-muted-foreground text-xs mt-1">
+              Next: add flats, then share the join link with residents.
+              Every join request lands in your dashboard for approval.
+            </p>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardContent className="p-6 sm:p-8">

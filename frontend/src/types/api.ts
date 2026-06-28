@@ -8,6 +8,14 @@ export interface AuthResponse {
   userName: string;
   authUserId: string;
   role: Role;
+  /**
+   * V17 — the multi-role union. Always contains at least {@link #role};
+   * may contain more for users who have been granted additional roles
+   * (e.g. an OWNER who's also a MAINTAINER of one of their buildings).
+   * Optional in the type so older clients that haven't been updated
+   * yet still compile against the new auth-service response.
+   */
+  roles?: string[];
 }
 
 export interface LoginRequest {

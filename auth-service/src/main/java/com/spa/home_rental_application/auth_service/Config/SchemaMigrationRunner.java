@@ -131,6 +131,7 @@ public class SchemaMigrationRunner {
         backfillSeedSystemSettings();
         backfillGrandfatherEmailVerified();
         backfillSeedEmailVerificationToggle();
+        backfillUserRolesJoinTable();
     }
 
     /**
@@ -173,6 +174,46 @@ public class SchemaMigrationRunner {
             }
         } catch (Exception ex) {
             log.warn("V5 paywall reversal skipped: {}",
+                    ex.getMessage() == null ? ex.getClass().getSimpleName()
+                            : ex.getMessage().lines().findFirst().orElse(""));
+        }
+    }
+
+    /**
+     * V17 — backfill the user_roles join table from the legacy
+     * single-role column. Hibernate's ddl-auto=update creates the
+     * empty join table on first boot from the
+     * {@code @ElementCollection} on UserDetails. This method then
+     * copies every existing (user_id, user_role) pair into it,
+     * guarded by NOT EXISTS so re-runs are no-ops.
+     *
+     * <p>Order matters: this MUST run after Hibernate's CREATE TABLE
+     * pass, which is true here because SchemaMigrationRunner is
+     * @PostConstruct-bound (fires after the EntityManagerFactory is
+     * ready) but the actual INSERT is wrapped in a try/catch so a
+     * missing table on the very first boot just logs a warning and
+     * the next boot completes the backfill.
+     */
+    private void backfillUserRolesJoinTable() {
+        try {
+            int rows = jdbc.update(
+                    "INSERT INTO user_roles (user_id, role) " +
+                    "SELECT u.id, u.user_role " +
+                    "  FROM user_details_table u " +
+                    " WHERE u.user_role IS NOT NULL " +
+                    "   AND NOT EXISTS (" +
+                    "       SELECT 1 FROM user_roles r " +
+                    "        WHERE r.user_id = u.id AND r.role = u.user_role)");
+            if (rows > 0) {
+                log.info("Backfilled {} row(s) into user_roles from legacy user_role column", rows);
+            } else {
+                log.debug("user_roles backfill matched 0 rows (already done)");
+            }
+        } catch (Exception ex) {
+            // Most likely cause: user_roles table not present yet
+            // (Hibernate hasn't created it on first boot). Next boot
+            // will complete the backfill.
+            log.warn("user_roles backfill skipped: {}",
                     ex.getMessage() == null ? ex.getClass().getSimpleName()
                             : ex.getMessage().lines().findFirst().orElse(""));
         }

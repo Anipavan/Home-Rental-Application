@@ -87,8 +87,16 @@ const UNSELECTED = "__none__";
  * as a TENANT (role = TENANT in auth-service); the claim approval
  * later swaps role to MAINTAINER for the maintainer path, or binds
  * the user as a flat tenant for the resident path.
+ *
+ * SOCIETY_FOUNDER is the Phase 2 path: someone setting up their RWA
+ * / society from scratch. Backend-wise it's identical to OWNER +
+ * NEW_BUILDING (we register them as OWNER so they can create the
+ * building themselves and approve future joiner claims via the
+ * existing dashboard widget), but the UI framing + post-signup
+ * landing differs so a society admin doesn't have to mentally
+ * translate "owner" into their role.
  */
-type SignupChoice = "TENANT" | "OWNER" | "SOCIETY";
+type SignupChoice = "TENANT" | "OWNER" | "SOCIETY" | "SOCIETY_FOUNDER";
 
 export function RegisterPage() {
   const navigate = useNavigate();
@@ -179,7 +187,12 @@ export function RegisterPage() {
   // /auth/register body. SOCIETY users register as TENANT — their
   // promotion to MAINTAINER (when applicable) happens via the claim
   // approval path, not at signup time.
-  const authRole: Role = choice === "OWNER" ? "OWNER" : "TENANT";
+  // Phase 2: SOCIETY_FOUNDER follows the OWNER signup path — they
+  // need OWNER role to create the building and approve resident
+  // claims from their dashboard. Only the post-success navigation
+  // differs from a plain OWNER signup.
+  const authRole: Role =
+    choice === "OWNER" || choice === "SOCIETY_FOUNDER" ? "OWNER" : "TENANT";
 
   /**
    * Debounced preview check — only runs for SOCIETY signups where a
@@ -326,6 +339,16 @@ export function RegisterPage() {
       }
 
       await authApi.register(req);
+      if (choice === "SOCIETY_FOUNDER") {
+        // Auto-login + land on the building-creation page so the
+        // founder can name their society and add flats immediately.
+        const auth = await authApi.login({
+          userName: req.userName,
+          password: req.userPassword,
+        });
+        setSession(auth);
+        return { kind: "founder" as const };
+      }
       if (!submitsClaim || !claimRole) return { kind: "plain" as const };
       // Claim path (free, non-SOCIETY) — auto-login, submit the claim.
       const auth = await authApi.login({
@@ -347,6 +370,17 @@ export function RegisterPage() {
         // Don't toast here — the paywall page surfaces its own copy
         // and the toast would compete with the activation card.
         navigate("/registration-payment");
+        return;
+      }
+      if (result.kind === "founder") {
+        toast({
+          title: "Welcome — let's set up your society",
+          description:
+            "Add your building details next. You can invite residents to join once a few flats are listed.",
+        });
+        navigate("/owner/buildings/new", {
+          state: { fromSocietyFounder: true },
+        });
         return;
       }
       if (result.kind === "claim") {
@@ -541,7 +575,7 @@ export function RegisterPage() {
             (/society/view/<token>) — no account needed for that
             read-only view.
           */}
-          <div className="grid sm:grid-cols-3 gap-3 mt-6">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-6">
             <RoleCard
               label="I'm renting"
               desc="Find a home and pay rent online"
@@ -557,8 +591,15 @@ export function RegisterPage() {
               onClick={() => setChoice("OWNER")}
             />
             <RoleCard
+              label="I'm starting a society"
+              desc="Set up a new RWA / society and invite residents"
+              icon={Building2}
+              active={choice === "SOCIETY_FOUNDER"}
+              onClick={() => setChoice("SOCIETY_FOUNDER")}
+            />
+            <RoleCard
               label="I'm a maintainer"
-              desc="Manage a society's books, dues, and expenses"
+              desc="Join an existing society's books, dues, expenses"
               icon={Users}
               active={choice === "SOCIETY"}
               onClick={() => setChoice("SOCIETY")}
@@ -575,6 +616,24 @@ export function RegisterPage() {
               onNoteChange={setSocietyNote}
               residencyState={residencyState}
             />
+          )}
+
+          {/* SOCIETY_FOUNDER: a one-screen banner just to set
+              expectations. Backend-wise this is an OWNER signup;
+              the post-signup navigation routes them straight to
+              the building-creation page so they don't have to hunt
+              for "Add a building". */}
+          {choice === "SOCIETY_FOUNDER" && (
+            <div className="mt-4 rounded-xl border border-primary/30 bg-primary/5 p-4 text-sm">
+              <p className="font-medium">Welcome, society founder.</p>
+              <p className="text-muted-foreground text-xs mt-1">
+                We'll create your admin account, then walk you straight
+                to "Add your building". You can invite residents to
+                join with their flat number once the building is set
+                up — every join request lands in your dashboard for
+                approval.
+              </p>
+            </div>
           )}
 
           {/* OWNER sub-mode toggle. The two paths look identical to the

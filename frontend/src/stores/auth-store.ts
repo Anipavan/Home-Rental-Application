@@ -16,6 +16,13 @@ interface AuthState {
   authUserId: string | null;
   userName: string | null;
   role: Role | null;
+  /**
+   * V17 multi-role: full set of roles the user holds. Always contains
+   * {@link #role}; may contain additional roles. Single-role users
+   * see roles=[role]; everything that currently keys on `role`
+   * continues to work unchanged.
+   */
+  roles: string[];
   isAuthenticated: boolean;
 
   /** Epoch millis when the access token expires (issued + TTL from auth-service). */
@@ -61,6 +68,7 @@ export const useAuthStore = create<AuthState>()(
       authUserId: null,
       userName: null,
       role: null,
+      roles: [],
       isAuthenticated: false,
       accessTokenExpiresAt: null,
       lastActivityAt: null,
@@ -71,6 +79,12 @@ export const useAuthStore = create<AuthState>()(
           authUserId: auth.authUserId,
           userName: auth.userName,
           role: auth.role,
+          roles:
+            auth.roles && auth.roles.length > 0
+              ? auth.roles
+              : auth.role
+                ? [auth.role]
+                : [],
           isAuthenticated: true,
           accessTokenExpiresAt:
             auth.accessTokenExpiresInSeconds != null
@@ -93,6 +107,7 @@ export const useAuthStore = create<AuthState>()(
           authUserId: null,
           userName: null,
           role: null,
+          roles: [],
           isAuthenticated: false,
           accessTokenExpiresAt: null,
           lastActivityAt: null,
@@ -109,6 +124,7 @@ export const useAuthStore = create<AuthState>()(
         authUserId: state.authUserId,
         userName: state.userName,
         role: state.role,
+        roles: state.roles,
         isAuthenticated: state.isAuthenticated,
         lastActivityAt: state.lastActivityAt,
       }),
