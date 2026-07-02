@@ -1,11 +1,16 @@
 package com.spa.home_rental_application.auth_service.Controller;
 
 import com.spa.home_rental_application.auth_commons.GatewayAuthFilter;
+import com.spa.home_rental_application.auth_service.Dto.Request.SetPrimaryRoleRequest;
+import com.spa.home_rental_application.auth_service.Dto.Response.AuthResponse;
 import com.spa.home_rental_application.auth_service.Dto.Response.MaintainerPaymentStatusResponse;
 import com.spa.home_rental_application.auth_service.Dto.Response.RegisterPendingResponse;
 import com.spa.home_rental_application.auth_service.Service.AuthService;
+import com.spa.home_rental_application.auth_service.enums.Roles;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -67,5 +72,24 @@ public class MaintainerPaymentController {
             @RequestHeader(GatewayAuthFilter.HDR_UID) Long authUserId) {
         log.info("POST /auth/me/payment/initiate authUserId={}", authUserId);
         return ResponseEntity.ok(authService.initiateOwnPayment(authUserId));
+    }
+
+    /**
+     * Phase 4 — Welcome-page role picker. Authenticated user swaps
+     * their primary role between TENANT and OWNER. Returns a fresh
+     * AuthResponse (new JWT + refresh) carrying the updated
+     * authorities so the SPA can setSession without re-login.
+     */
+    @Operation(summary = "Self-service primary role change (TENANT ↔ OWNER only).")
+    @PostMapping(value = "/role", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<AuthResponse> setPrimaryRole(
+            @RequestHeader(GatewayAuthFilter.HDR_UID) Long authUserId,
+            @Valid @RequestBody SetPrimaryRoleRequest req,
+            HttpServletRequest servletReq) {
+        Roles newRole = Roles.valueOf(req.role());
+        log.info("POST /auth/me/role authUserId={} newRole={}", authUserId, newRole);
+        String ip = servletReq.getRemoteAddr();
+        String ua = servletReq.getHeader("User-Agent");
+        return ResponseEntity.ok(authService.setPrimaryRole(authUserId, newRole, ip, ua));
     }
 }

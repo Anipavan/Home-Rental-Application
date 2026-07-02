@@ -137,4 +137,27 @@ public interface AuthService {
      * the existing /registration-payment paywall page.
      */
     RegisterPendingResponse initiateOwnPayment(Long authUserId);
+
+    /* ---------- Phase 4: unified-signup role selection ---------- */
+
+    /**
+     * Self-service primary-role change. Backs the {@code /welcome}
+     * "what brings you here?" screen that new signups land on. Only
+     * TENANT ↔ OWNER transitions are permitted — MAINTAINER requires
+     * the existing claim-approval flow and ADMIN is admin-granted.
+     *
+     * <p>Side-effects:
+     * <ul>
+     *   <li>{@code userRole} updated to the requested value</li>
+     *   <li>The new role is added to {@code userRoles} (Phase 3
+     *       multi-role set) so the user keeps both roles going
+     *       forward — a TENANT who upgrades to OWNER can still
+     *       browse listings on their TENANT dashboard if desired.</li>
+     *   <li>A fresh access + refresh token pair is minted with the
+     *       updated authorities so the frontend immediately reflects
+     *       the new role without a re-login.</li>
+     * </ul>
+     */
+    AuthResponse setPrimaryRole(Long authUserId, Roles newRole,
+                                String ipAddress, String userAgent);
 }

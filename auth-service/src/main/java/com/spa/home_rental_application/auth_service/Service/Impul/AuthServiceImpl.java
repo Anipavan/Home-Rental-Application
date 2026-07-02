@@ -895,6 +895,65 @@ public class AuthServiceImpl implements AuthService {
         return AuthUserMapper.toAuthUserResponse(saved);
     }
 
+    /* ---------- Phase 4: unified-signup role selection ---------- */
+
+    @Override
+    @Transactional
+    public AuthResponse setPrimaryRole(Long authUserId, Roles newRole,
+                                       String ipAddress, String userAgent) {
+        if (newRole != Roles.TENANT && newRole != Roles.OWNER) {
+            // Redundant guard — the DTO validates the wire input, but
+            // defence in depth in case someone bypasses the controller
+            // (Feign, internal call, etc.).
+            throw new IllegalArgumentException(
+                    "Only TENANT and OWNER are self-service roles; got " + newRole);
+        }
+
+        UserDetails user = userRepository.findById(authUserId)
+                .orElseThrow(() -> new AuthRecordNotFoundException(
+                        "User not found with id: " + authUserId));
+
+        Roles before = user.getUserRole();
+
+        if (before == Roles.ADMIN) {
+            // Prevent an ADMIN from downgrading themselves via /welcome.
+            log.warn("setPrimaryRole refused — refusing to override ADMIN authUserId={}",
+                    authUserId);
+            throw new IllegalStateException("Cannot change the primary role of an ADMIN user.");
+        }
+
+        if (before == newRole) {
+            log.info("setPrimaryRole no-op for authUserId={} — already {}", authUserId, newRole);
+        } else {
+            user.setUserRole(newRole);
+            user.addRole(newRole);                        // Phase 3 multi-role set
+            user.setRecodeUpdatedDate(Instant.now());
+            userRepository.save(user);
+            log.info("setPrimaryRole authUserId={} {} -> {}", authUserId, before, newRole);
+            audit.publishSuccess("auth.set-primary-role",
+                    user.getId().toString(),
+                    user.getId().toString(),
+                    user.getId().toString(),
+                    Map.of("priorRole", before.name(), "newRole", newRole.name()));
+        }
+
+        // Re-issue tokens carrying the fresh authorities so the SPA
+        // doesn't have to re-login. Mirrors the refresh() shape.
+        Authentication auth = new UsernamePasswordAuthenticationToken(
+                user.getUsername(), null, user.getAuthorities());
+        String accessToken = jwtUtil.generateToken(auth, user.getId());
+        RefreshToken refresh = persistNewRefreshToken(user.getId(), ipAddress, userAgent);
+
+        List<String> rolesList = user.getAllRoles().stream()
+                .map(Roles::name)
+                .sorted()
+                .toList();
+        return AuthResponse.bearer(accessToken, refresh.getToken(),
+                jwtProperties.getAccessTokenValiditySeconds(),
+                user.getUsername(), user.getId().toString(),
+                user.getUserRole().name(), rolesList);
+    }
+
     /* ---------- Helpers ---------- */
 
     /**

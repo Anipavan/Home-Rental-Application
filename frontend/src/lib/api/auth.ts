@@ -58,4 +58,14 @@ export const authApi = {
    */
   lookupById: (id: string) =>
     api.get<AuthUserResponse>(`/auth/users/lookup/${id}`).then((r) => r.data),
+  /**
+   * Phase 4 — Welcome-page role picker. POSTs the chosen role and
+   * gets back a fresh AuthResponse (new access + refresh tokens
+   * carrying the updated authorities). Restricted to TENANT / OWNER;
+   * MAINTAINER and ADMIN require an approval path.
+   */
+  setPrimaryRole: (role: "TENANT" | "OWNER") =>
+    api
+      .post<AuthResponse>("/auth/me/role", { role })
+      .then((r) => r.data),
 };
