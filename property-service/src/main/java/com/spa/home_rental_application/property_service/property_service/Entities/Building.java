@@ -63,6 +63,26 @@
         private Boolean isDeleted = false;
 
         /**
+         * V14 — Two-facet building. When set, this building has a
+         * "society management" facet: {@link #maintainerUserId} is the
+         * auth-user who registered the building via the maintainer
+         * signup flow ({@code POST /society/buildings/register-as-maintainer}).
+         *
+         * <p>Nullable — legacy owner-listed rental buildings have no
+         * society facet and this column is NULL. A building can have
+         * BOTH facets simultaneously (an owner lists flats for rent
+         * AND a maintainer also runs the RWA), OR just one, OR neither
+         * transitionally (should never happen but is technically legal).
+         *
+         * <p>Approval routing for MAINTAINEE (RESIDENT) claims uses
+         * {@code society_config.maintainer_user_id} which is set at
+         * the same time as this column — see
+         * {@code BuildingService.registerAsMaintainer}.
+         */
+        @Column(name = "maintainer_user_id", length = 64)
+        private String maintainerUserId;
+
+        /**
          * Free-text "What's included" list — separate from {@link #amenities}
          * so the public detail page can render them as two distinct sections.
          * Amenities are building-level perks (lift, pool, gym); included

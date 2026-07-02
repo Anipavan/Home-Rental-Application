@@ -441,8 +441,21 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
             return decideDual(claim, building, req, callerId, callerIsOwner, true);
         }
 
-        // Single-party flow (owner-only).
-        CallerSecurity.requireOwnerOrAdmin(building.getOwnerId());
+        // Single-party flow.
+        //
+        // Phase 5 — maintainee (RESIDENT) claims can also be approved
+        // by the building's current maintainer, not just the owner.
+        // This is what lets Eshwar (maintainer of Sunshine Valley)
+        // approve Siva's join request without Aarav (rental owner)
+        // being in the loop. MAINTAINER + FLAT_OWNER claims are still
+        // owner-only because those touch rental / ownership semantics.
+        if (claim.getRequestedRole() == RequestedRole.RESIDENT
+                && callerIsCurrentMaintainer) {
+            // Maintainer of the society approves the maintainee.
+            // No further check needed.
+        } else {
+            CallerSecurity.requireOwnerOrAdmin(building.getOwnerId());
+        }
 
         switch (claim.getRequestedRole()) {
             case MAINTAINER -> applyMaintainerApproval(claim, building);
@@ -490,6 +503,9 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
                 throw new ForbiddenException(
                         "Only the building owner or the current maintainer can reject this claim.");
             }
+        } else if (claim.getRequestedRole() == RequestedRole.RESIDENT
+                && callerIsCurrentMaintainer) {
+            // Phase 5 — maintainer can reject a maintainee claim.
         } else {
             CallerSecurity.requireOwnerOrAdmin(building.getOwnerId());
         }

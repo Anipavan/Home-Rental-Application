@@ -71,6 +71,11 @@ public class SchemaMigrationRunner {
             new Migration("registered_buildings", "state_id",   "NUMBER(19)"),
             new Migration("registered_buildings", "city_id",    "NUMBER(19)"),
             new Migration("registered_buildings", "is_deleted", "NUMBER(1) DEFAULT 0 NOT NULL"),
+            // V14 — Two-facet building. maintainer_user_id is the
+            // auth-user who registered this building for society mgmt
+            // (NULL for legacy owner-listed rental buildings). Tracking
+            // + fast dedup; approval routing still uses society_config.
+            new Migration("registered_buildings", "maintainer_user_id", "VARCHAR2(64)"),
 
             // ── propertyimages (cover + sort_order from gallery feature) ──
             new Migration("propertyimages", "is_cover",   "NUMBER(1) DEFAULT 0 NOT NULL"),

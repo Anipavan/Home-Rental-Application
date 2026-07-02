@@ -901,12 +901,12 @@ public class AuthServiceImpl implements AuthService {
     @Transactional
     public AuthResponse setPrimaryRole(Long authUserId, Roles newRole,
                                        String ipAddress, String userAgent) {
-        if (newRole != Roles.TENANT && newRole != Roles.OWNER) {
+        if (newRole != Roles.TENANT && newRole != Roles.OWNER && newRole != Roles.MAINTAINER) {
             // Redundant guard — the DTO validates the wire input, but
             // defence in depth in case someone bypasses the controller
-            // (Feign, internal call, etc.).
+            // (Feign, internal call, etc.). ADMIN is admin-granted only.
             throw new IllegalArgumentException(
-                    "Only TENANT and OWNER are self-service roles; got " + newRole);
+                    "Only TENANT, OWNER, MAINTAINER are self-service roles; got " + newRole);
         }
 
         UserDetails user = userRepository.findById(authUserId)

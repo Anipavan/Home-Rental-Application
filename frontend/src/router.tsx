@@ -21,6 +21,7 @@ import { ResetPasswordPage } from "@/pages/public/reset-password";
 import { VerifyEmailPage } from "@/pages/public/verify-email";
 import { VerifyEmailSentPage } from "@/pages/public/verify-email-sent";
 import { WelcomePage } from "@/pages/public/welcome";
+import { SetupSocietyPage } from "@/pages/public/setup-society";
 import { NotFoundPage } from "@/pages/public/not-found";
 import { TenantDashboard } from "@/pages/tenant/dashboard";
 import { MyFlatPage } from "@/pages/tenant/my-flat";
@@ -105,6 +106,7 @@ export const router = createBrowserRouter([
   { path: "/verify-email-sent", element: <VerifyEmailSentPage /> },
   { path: "/verify-email/:token", element: <VerifyEmailPage /> },
   { path: "/welcome", element: <WelcomePage /> },
+  { path: "/setup-society", element: <SetupSocietyPage /> },
   // ─── Public society ledger ───
   // Standalone page (no AppShell). The {token} in the URL is the only
   // credential — gateway whitelisted under

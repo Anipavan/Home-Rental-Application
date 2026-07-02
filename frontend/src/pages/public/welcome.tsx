@@ -17,24 +17,27 @@ import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/lib/utils";
 import type { BuildingResponseDTO } from "@/types/api";
 
-type WelcomeChoice = "TENANT" | "OWNER" | "SOCIETY_FOUNDER" | "MAINTAINER";
+type WelcomeChoice = "TENANT" | "OWNER" | "MAINTAINER" | "MAINTAINEE";
 
 /**
- * Phase 4 — "What brings you here today?" — the post-signup
- * differentiation screen. Users pick from four cards; each dispatches
- * a role-appropriate follow-up:
+ * Phase 5 — "What brings you here today?" — the post-signup role
+ * picker. Two clean worlds:
  *
- *   TENANT           → /app (no role change; the default at signup).
- *   OWNER            → POST /auth/me/role (OWNER) → /owner.
- *   SOCIETY_FOUNDER  → POST /auth/me/role (OWNER) → /owner/buildings/new
- *                      (framed as "set up your society").
- *   MAINTAINER       → building picker + flat number → POST
- *                      /society/claims (MAINTAINER) → /pending-claim
- *                      (existing claim-approval flow, unchanged).
+ *   Rental marketplace:
+ *     TENANT     → /app (no role change; TENANT is the signup default)
+ *     OWNER      → POST /auth/me/role (OWNER) → /owner
  *
- * Reachable by anyone signed in — new signups land here from the
- * simplified register flow; existing users can bookmark it if they
- * ever want to switch roles.
+ *   Society management:
+ *     MAINTAINER → POST /auth/me/role (MAINTAINER) → /setup-society →
+ *                  register their building + flats, then /maintainer.
+ *                  Maintainers can't see rent/tenant data; they only
+ *                  see maintenance dues + the maintainees of their
+ *                  building.
+ *     MAINTAINEE → building picker (must be a maintainer-registered
+ *                  building) + flat number → POST /society/claims
+ *                  with requestedRole=RESIDENT → /pending-claim →
+ *                  maintainer approves. After approval the user gets
+ *                  a maintenance-only dashboard.
  */
 export function WelcomePage() {
   const navigate = useNavigate();
@@ -53,18 +56,18 @@ export function WelcomePage() {
       if (target === "TENANT") {
         return { destination: "/app" as const };
       }
-      if (target === "OWNER" || target === "SOCIETY_FOUNDER") {
+      if (target === "OWNER") {
         const auth = await authApi.setPrimaryRole("OWNER");
         setSession(auth);
-        return {
-          destination:
-            target === "SOCIETY_FOUNDER"
-              ? ("/owner/buildings/new" as const)
-              : ("/owner" as const),
-          societyFounder: target === "SOCIETY_FOUNDER",
-        };
+        return { destination: "/owner" as const };
       }
-      // MAINTAINER — submit the claim as the currently-logged-in TENANT.
+      if (target === "MAINTAINER") {
+        const auth = await authApi.setPrimaryRole("MAINTAINER");
+        setSession(auth);
+        return { destination: "/setup-society" as const };
+      }
+      // MAINTAINEE — submit a RESIDENT claim on a maintainer-registered
+      // building. The building's maintainer (not owner) approves.
       if (!pickedBuilding) {
         throw new Error("Search and pick your society's building first.");
       }
@@ -73,27 +76,24 @@ export function WelcomePage() {
       }
       await claimsApi.create({
         buildingId: pickedBuilding.buildingId,
-        requestedRole: "MAINTAINER",
+        requestedRole: "RESIDENT",
         claimedFlatNumber: flatNumber.trim(),
         applicantNote: note.trim() || undefined,
       });
       return { destination: "/pending-claim" as const };
     },
     onSuccess: (result) => {
-      if ("societyFounder" in result && result.societyFounder) {
+      if (result.destination === "/setup-society") {
         toast({
-          title: "Welcome — let's set up your society",
+          title: "Welcome, maintainer",
           description:
-            "Add your building details next. Invite residents once a few flats are listed.",
+            "Register your society building next so residents can join.",
         });
-        navigate(result.destination, { state: { fromSocietyFounder: true } });
-        return;
-      }
-      if (result.destination === "/pending-claim") {
+      } else if (result.destination === "/pending-claim") {
         toast({
           title: "Request submitted",
           description:
-            "The building owner will review your request. You'll get access once they approve.",
+            "The building maintainer will review your request. You'll get access once they approve.",
         });
       } else {
         toast({ title: "All set" });
@@ -156,22 +156,22 @@ export function WelcomePage() {
               onClick={() => setChoice("OWNER")}
             />
             <WelcomeCard
-              label="I'm starting a society"
-              desc="Set up a new RWA / society and invite residents."
-              icon={Building2}
-              active={choice === "SOCIETY_FOUNDER"}
-              onClick={() => setChoice("SOCIETY_FOUNDER")}
-            />
-            <WelcomeCard
               label="I'm a maintainer"
-              desc="Join an existing society's books, dues, expenses."
-              icon={Users}
+              desc="Register my society building and collect maintenance dues."
+              icon={Building2}
               active={choice === "MAINTAINER"}
               onClick={() => setChoice("MAINTAINER")}
             />
+            <WelcomeCard
+              label="I'm a maintainee"
+              desc="I live in a society-managed building and want to pay dues."
+              icon={Users}
+              active={choice === "MAINTAINEE"}
+              onClick={() => setChoice("MAINTAINEE")}
+            />
           </div>
 
-          {choice === "MAINTAINER" && (
+          {choice === "MAINTAINEE" && (
             <div className="mt-4 rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-4">
               <div>
                 <Label htmlFor="building-search">Search for your building</Label>
