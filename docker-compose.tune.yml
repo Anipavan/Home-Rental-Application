@@ -1,0 +1,64 @@
+# docker-compose.tune.yml
+# Phase 5 memory tuning for 4 GB droplet.
+
+services:
+  # Config + discovery infra
+  config-server:
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx256m -Xms128m"
+  service-registry:
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx256m -Xms128m"
+
+  # Core hot-path services (more heap)
+  api-gateway:
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx320m -Xms192m"
+  auth-service:
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx320m -Xms192m"
+  property-service:
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx320m -Xms192m"
+
+  # Warm services
+  user-service:
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx256m -Xms128m"
+  payment-service:
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx256m -Xms128m"
+  notification-service:
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx256m -Xms128m"
+
+  # Optional / on-demand (currently stopped; tuned for when started)
+  kyc-service:
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx256m -Xms128m"
+  lease-service:
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx256m -Xms128m"
+  compliance-service:
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx256m -Xms128m"
+  document-service:
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx256m -Xms128m"
+  review-service:
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx256m -Xms128m"
+  maintenance-service:
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx256m -Xms128m"
+  analytics-service:
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx256m -Xms128m"
+
+  # Kafka + Zookeeper (Confluent images use KAFKA_HEAP_OPTS)
+  kafka:
+    environment:
+      KAFKA_HEAP_OPTS: "-Xmx384M -Xms384M"
+  zookeeper:
+    environment:
+       KAFKA_HEAP_OPTS: "-Xmx512M -Xms512M"
