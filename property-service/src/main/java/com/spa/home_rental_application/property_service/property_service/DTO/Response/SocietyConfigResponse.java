@@ -33,6 +33,17 @@ public record SocietyConfigResponse(
         String accountNumber,
         String ifscCode,
 
+        /* ─── Bank-config health flag (V16) ───
+         * Non-null timestamp = at least one tenant has reported the
+         * society's UPI as broken via the "This UPI isn't working"
+         * button on the direct-UPI pay page. Maintainer dashboard
+         * renders a warning banner and prompts them to re-check
+         * their UPI / payee details. Auto-cleared when the maintainer
+         * next saves fresh bank details via the bank panel.
+         */
+        LocalDateTime bankConfigFlaggedAt,
+        Integer bankConfigFlagReports,
+
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {

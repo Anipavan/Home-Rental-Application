@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Banknote, Pencil, Save } from "lucide-react";
+import { AlertTriangle, Banknote, Pencil, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -42,6 +42,24 @@ export function SocietyBankPanel({
   config: SocietyConfig;
 }) {
   const hasUpi = !!config.upiId;
+  const flagged = !!config.bankConfigFlaggedAt;
+  const flagReports = config.bankConfigFlagReports ?? 0;
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const clearFlagMut = useMutation({
+    mutationFn: () => societyApi.clearBankIssueFlag(buildingId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["society", buildingId] });
+      qc.invalidateQueries({ queryKey: ["my-societies"] });
+      toast({ title: "Flag cleared." });
+    },
+    onError: (err) =>
+      toast({
+        variant: "destructive",
+        title: "Couldn't clear the flag",
+        description: extractErrorMessage(err),
+      }),
+  });
   // Header composes the BUILDING/apartment name with "Bank Account"
   // — e.g. "Sunshine Apartments Bank Account". The society display
   // name is sometimes the welfare-fund name (e.g. "social society")
@@ -73,6 +91,34 @@ export function SocietyBankPanel({
             headerLabel={headerLabel}
           />
         </div>
+
+        {flagged && (
+          <div className="mb-3 rounded-lg border border-destructive/40 bg-destructive/5 p-3 flex items-start gap-2.5">
+            <AlertTriangle className="size-4 text-destructive shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-destructive">
+                {flagReports === 1
+                  ? "A resident reported this UPI isn't working"
+                  : `${flagReports} residents reported this UPI isn't working`}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Double-check the UPI ID and payee name below — a typo in
+                the handle means every tenant scan will fail silently.
+                Saving fresh details clears this warning automatically.
+              </p>
+              <button
+                type="button"
+                onClick={() => clearFlagMut.mutate()}
+                disabled={clearFlagMut.isPending}
+                className="text-[11px] text-muted-foreground hover:text-foreground underline underline-offset-2 mt-1.5"
+              >
+                {clearFlagMut.isPending
+                  ? "Dismissing…"
+                  : "Dismiss — the details are correct"}
+              </button>
+            </div>
+          </div>
+        )}
 
         {hasUpi ? (
           <div className="grid sm:grid-cols-2 gap-3 text-sm">

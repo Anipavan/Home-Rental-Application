@@ -202,6 +202,14 @@ public class SocietyServiceImpl implements SocietyService {
         // → null (clear the field) so the maintainer can explicitly
         // wipe a stale entry. ifsc_code normalised to upper-case to
         // match the @Pattern validator on the request DTO.
+        // Track whether the maintainer touched any bank field this
+        // update — if they did, and the config was flagged as broken,
+        // treat the fresh save as acknowledgement + clear the flag.
+        boolean bankFieldEdited = req.upiId() != null
+                || req.payeeName() != null
+                || req.accountNumber() != null
+                || req.ifscCode() != null;
+
         if (req.upiId() != null) cfg.setUpiId(blankToNull(req.upiId()));
         if (req.payeeName() != null) cfg.setPayeeName(blankToNull(req.payeeName()));
         if (req.accountNumber() != null) cfg.setAccountNumber(blankToNull(req.accountNumber()));
@@ -215,8 +223,60 @@ public class SocietyServiceImpl implements SocietyService {
         // still validate against the existing payeeName on the row.
         requirePayeeWhenUpi(cfg.getUpiId(), cfg.getPayeeName());
 
+        // V16 auto-clear: fresh bank details = maintainer has addressed
+        // the report. Skip when only non-bank fields (monthlyDueDay,
+        // displayName, etc.) were touched — those don't fix the flag's
+        // underlying cause.
+        if (bankFieldEdited && cfg.getBankConfigFlaggedAt() != null) {
+            log.info("Auto-clearing bank-config flag on society {} — maintainer edited bank fields",
+                    cfg.getId());
+            cfg.setBankConfigFlaggedAt(null);
+            cfg.setBankConfigFlagReports(0);
+        }
+
         cfg.setUpdatedAt(LocalDateTime.now());
         cfg = configRepo.save(cfg);
+        return mapper.toResponse(cfg);
+    }
+
+    @Override
+    @Transactional
+    public SocietyConfigResponse reportBankIssue(String buildingId) {
+        SocietyConfig cfg = requireConfig(buildingId);
+        // Any authenticated caller can report — this is a signal from
+        // the payer side, and locking it down to just-this-building's
+        // tenants would require another lookup for what is essentially
+        // a "please double-check this" nudge. Abuse-mitigation lives
+        // in the fact that flags auto-clear on save + the maintainer
+        // can manually clear a false report.
+        String reporterId = CallerSecurity.getCurrentAuthUserId().orElse(null);
+
+        if (cfg.getBankConfigFlaggedAt() == null) {
+            cfg.setBankConfigFlaggedAt(LocalDateTime.now());
+        }
+        int currentReports = cfg.getBankConfigFlagReports() == null
+                ? 0 : cfg.getBankConfigFlagReports();
+        cfg.setBankConfigFlagReports(currentReports + 1);
+        cfg.setUpdatedAt(LocalDateTime.now());
+        cfg = configRepo.save(cfg);
+        log.info("Bank-config flag raised on society {} by user {} (total reports={})",
+                cfg.getId(), reporterId, cfg.getBankConfigFlagReports());
+        return mapper.toResponse(cfg);
+    }
+
+    @Override
+    @Transactional
+    public SocietyConfigResponse clearBankIssueFlag(String buildingId) {
+        SocietyConfig cfg = requireConfig(buildingId);
+        Building b = requireBuilding(buildingId);
+        // Only the owner / maintainer / admin can clear — a random
+        // tenant shouldn't be able to silence a legit warning.
+        requireOwnerOrMaintainerOrAdmin(cfg, b);
+        cfg.setBankConfigFlaggedAt(null);
+        cfg.setBankConfigFlagReports(0);
+        cfg.setUpdatedAt(LocalDateTime.now());
+        cfg = configRepo.save(cfg);
+        log.info("Bank-config flag manually cleared on society {}", cfg.getId());
         return mapper.toResponse(cfg);
     }
 

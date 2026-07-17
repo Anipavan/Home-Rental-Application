@@ -1168,6 +1168,16 @@ export interface SocietyConfig {
   payeeName: string | null;
   accountNumber: string | null;
   ifscCode: string | null;
+  /** V16 — non-null ISO timestamp when a tenant reported the society's
+   *  UPI as broken via the "This UPI isn't working" button on the
+   *  direct-UPI pay page. Auto-cleared when the maintainer next saves
+   *  fresh UPI / payee-name details. */
+  bankConfigFlaggedAt: string | null;
+  /** Cumulative tenant-report count since the flag was last cleared.
+   *  0 or null when healthy. Useful for prioritising which societies
+   *  to nudge first — a config with 10 reports is clearly worse than
+   *  one with 1. */
+  bankConfigFlagReports: number | null;
   createdAt: string;
   updatedAt: string;
 }

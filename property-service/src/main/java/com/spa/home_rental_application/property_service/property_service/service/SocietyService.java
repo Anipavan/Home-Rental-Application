@@ -42,6 +42,24 @@ public interface SocietyService {
 
     SocietyConfigResponse regeneratePublicToken(String buildingId);
 
+    /**
+     * Tenant-invoked report that the society's UPI ID doesn't work.
+     * Called from the "This UPI isn't working" button on the direct-
+     * UPI pay page. Stamps {@code bank_config_flagged_at} + increments
+     * the report counter. Idempotent per session — repeated clicks
+     * bump the counter but don't reset the flag timestamp.
+     *
+     * <p>Auto-cleared when the maintainer next saves fresh UPI /
+     * payee-name details via {@link #updateConfig}.
+     */
+    SocietyConfigResponse reportBankIssue(String buildingId);
+
+    /**
+     * Manual clear — maintainer confirms the UPI is fine and the
+     * tenant made a mistake. Wipes the flag + resets the counter.
+     */
+    SocietyConfigResponse clearBankIssueFlag(String buildingId);
+
     /** All societies the caller manages — owner or assigned maintainer.
      *  Powers the /owner/society overview list. */
     List<SocietyConfigResponse> listMySocieties();

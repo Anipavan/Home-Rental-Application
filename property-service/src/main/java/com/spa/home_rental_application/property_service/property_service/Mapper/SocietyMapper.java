@@ -42,6 +42,8 @@ public class SocietyMapper {
                 .payeeName(e.getPayeeName())
                 .accountNumber(e.getAccountNumber())
                 .ifscCode(e.getIfscCode())
+                .bankConfigFlaggedAt(e.getBankConfigFlaggedAt())
+                .bankConfigFlagReports(e.getBankConfigFlagReports())
                 .createdAt(e.getCreatedAt())
                 .updatedAt(e.getUpdatedAt())
                 .build();

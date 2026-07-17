@@ -92,6 +92,23 @@ public class SocietyController {
         return ResponseEntity.ok(service.regeneratePublicToken(buildingId));
     }
 
+    @Operation(summary = "Tenant: report that the society's UPI ID isn't working. "
+            + "Flags the config so the maintainer notices; auto-clears on next bank edit.")
+    @PostMapping("/{buildingId}/report-bank-issue")
+    public ResponseEntity<SocietyConfigResponse> reportBankIssue(
+            @PathVariable String buildingId) {
+        log.info("POST /society/{}/report-bank-issue", buildingId);
+        return ResponseEntity.ok(service.reportBankIssue(buildingId));
+    }
+
+    @Operation(summary = "Owner/maintainer: manually clear the bank-config flag.")
+    @PostMapping("/{buildingId}/report-bank-issue/clear")
+    public ResponseEntity<SocietyConfigResponse> clearBankIssueFlag(
+            @PathVariable String buildingId) {
+        log.info("POST /society/{}/report-bank-issue/clear", buildingId);
+        return ResponseEntity.ok(service.clearBankIssueFlag(buildingId));
+    }
+
     @Operation(summary = "List all societies the caller manages (as owner or assigned maintainer).")
     @GetMapping("/mine")
     public ResponseEntity<List<SocietyConfigResponse>> mine() {

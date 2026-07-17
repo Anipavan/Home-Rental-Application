@@ -121,6 +121,30 @@ public class SocietyConfig {
     @Column(name = "ifsc_code", length = 16)
     private String ifscCode;
 
+    /* ─── Bank-config health flag (V16) ───
+     * Set by {@code reportBankIssue()} when a tenant taps the "This UPI
+     * isn't working" button on the direct-UPI pay page. Cleared
+     * automatically the next time the maintainer edits {@code upi_id}
+     * or {@code payee_name} via {@code updateConfig()} — the intent is
+     * that saving fresh bank details acknowledges + addresses the
+     * report. Also clearable manually via {@code /report-bank-issue/
+     * clear} for the "our UPI is fine, tenant made a mistake" case.
+     *
+     * <p>Non-null timestamp = flagged; null = healthy. Frontend renders
+     * a warning banner on the maintainer dashboard whenever this is
+     * non-null so the maintainer notices before more tenants fail.
+     */
+    @Column(name = "bank_config_flagged_at")
+    private LocalDateTime bankConfigFlaggedAt;
+
+    /** How many separate tenant reports have accumulated since the flag
+     *  was last cleared. Useful signal for prioritising which societies
+     *  to nudge first — a config with 10 reports is clearly worse than
+     *  one with 1. Reset to 0 when the flag clears. */
+    @Column(name = "bank_config_flag_reports")
+    @Builder.Default
+    private Integer bankConfigFlagReports = 0;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

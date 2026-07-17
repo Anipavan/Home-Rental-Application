@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
+  AlertTriangle,
   ArrowLeft,
   CheckCircle2,
   ChevronDown,
@@ -374,7 +375,7 @@ function RazorpayLaunchSection({
             </button>
             {upiDirectOpen && (
               <div className="border-t border-border/60 p-5 space-y-4">
-                <DirectUpiBlock row={row} cfg={cfg} />
+                <DirectUpiBlock row={row} cfg={cfg} buildingId={buildingId} />
               </div>
             )}
           </CardContent>
@@ -395,11 +396,31 @@ function RazorpayLaunchSection({
 function DirectUpiBlock({
   row,
   cfg,
+  buildingId,
 }: {
   row: FlatMaintenanceRow;
   cfg: SocietyConfig;
+  buildingId: string;
 }) {
   const { toast } = useToast();
+  const [reported, setReported] = useState(false);
+  const reportMut = useMutation({
+    mutationFn: () => societyApi.reportBankIssue(buildingId),
+    onSuccess: () => {
+      setReported(true);
+      toast({
+        title: "Reported — thanks",
+        description:
+          "The building maintainer will get a warning to double-check the UPI details.",
+      });
+    },
+    onError: (err) =>
+      toast({
+        variant: "destructive",
+        title: "Couldn't send the report",
+        description: extractErrorMessage(err),
+      }),
+  });
   const txnNote = `${row.category ?? "Maintenance"} ${row.forMonth} Flat ${row.flatNumber}`;
   const upiUri =
     `upi://pay?pa=${encodeURIComponent(cfg.upiId ?? "")}` +
@@ -460,6 +481,32 @@ function DirectUpiBlock({
         After paying, ping the maintainer with your UPI reference — they
         verify the deposit in their bank app and flip the charge to PAID.
       </p>
+
+      {/* Broken-UPI reporter. Small, muted CTA below the pay details —
+        * kept low-emphasis so it doesn't prime tenants to click it
+        * before they've tried paying. When clicked, flags the society
+        * config so the maintainer gets a warning on their dashboard;
+        * auto-clears when they next save fresh bank details. */}
+      <div className="pt-2 border-t border-border/40">
+        {reported ? (
+          <p className="text-[11px] text-success flex items-center gap-1.5">
+            <CheckCircle2 className="size-3" /> Reported. The maintainer
+            will be notified.
+          </p>
+        ) : (
+          <button
+            type="button"
+            onClick={() => reportMut.mutate()}
+            disabled={reportMut.isPending}
+            className="text-[11px] text-muted-foreground hover:text-destructive underline underline-offset-2 inline-flex items-center gap-1"
+          >
+            <AlertTriangle className="size-3" />
+            {reportMut.isPending
+              ? "Sending report…"
+              : "This UPI ID isn't working"}
+          </button>
+        )}
+      </div>
     </>
   );
 }

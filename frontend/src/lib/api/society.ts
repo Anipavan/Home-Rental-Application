@@ -38,6 +38,20 @@ export const societyApi = {
       .post<SocietyConfig>(`/society/${buildingId}/regenerate-token`)
       .then((r) => r.data),
 
+  /** Tenant-invoked "This UPI isn't working" report. Flags the
+   *  society config so the maintainer notices. Idempotent — repeated
+   *  clicks bump the counter but keep the same flagged-at timestamp. */
+  reportBankIssue: (buildingId: string) =>
+    api
+      .post<SocietyConfig>(`/society/${buildingId}/report-bank-issue`)
+      .then((r) => r.data),
+
+  /** Owner/maintainer: clear the flag when a report was a false alarm. */
+  clearBankIssueFlag: (buildingId: string) =>
+    api
+      .post<SocietyConfig>(`/society/${buildingId}/report-bank-issue/clear`)
+      .then((r) => r.data),
+
   /** All societies the caller manages (as owner or assigned maintainer). */
   mine: () =>
     api.get<SocietyConfig[]>("/society/mine").then((r) => r.data),

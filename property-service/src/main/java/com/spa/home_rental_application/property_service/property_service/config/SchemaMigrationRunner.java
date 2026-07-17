@@ -79,7 +79,15 @@ public class SchemaMigrationRunner {
 
             // ── propertyimages (cover + sort_order from gallery feature) ──
             new Migration("propertyimages", "is_cover",   "NUMBER(1) DEFAULT 0 NOT NULL"),
-            new Migration("propertyimages", "sort_order", "NUMBER(10) DEFAULT 1000 NOT NULL")
+            new Migration("propertyimages", "sort_order", "NUMBER(10) DEFAULT 1000 NOT NULL"),
+
+            // ── building_society_config (V16 — bank-config health flag) ──
+            // Non-null bank_config_flagged_at = a tenant reported the
+            // society's UPI as broken. Maintainer dashboard renders a
+            // warning banner; editing upi_id or payee_name in the bank
+            // panel auto-clears both columns (see SocietyServiceImpl).
+            new Migration("building_society_config", "bank_config_flagged_at",   "TIMESTAMP"),
+            new Migration("building_society_config", "bank_config_flag_reports", "NUMBER(10) DEFAULT 0")
     );
 
     private final JdbcTemplate jdbc;
