@@ -39,8 +39,19 @@ public record SetupSocietyRequest(
         /* ─── Collection bank / UPI ───
          * All optional. Setting upi_id makes the tenant Pay-Now
          * button render a QR; null upi_id hides the button.
+         *
+         * <p>The @Pattern accepts empty (so the field can be cleared)
+         * OR a well-formed VPA: 2-64 chars from [a-zA-Z0-9._-], an
+         * '@', then a PSP handle of 2+ letters (oksbi, ybl, paytm,
+         * axl, ibl, etc.). Format validation catches typos before the
+         * QR is generated; actual VPA resolution requires a PSP call
+         * we're not making at MVP. Payee-name-required-when-UPI-set
+         * is enforced in {@code SocietyServiceImpl} (cross-field
+         * checks don't fit @Pattern).
          */
         @Size(max = 64)
+        @Pattern(regexp = "^$|^[a-zA-Z0-9._-]{2,64}@[a-zA-Z]{2,}$",
+                message = "UPI ID must look like name@bank (e.g. anirudh@oksbi)")
         String upiId,
 
         @Size(max = 200)

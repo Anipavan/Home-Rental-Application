@@ -178,6 +178,21 @@ function EditBankDialog({
   const ifscOk =
     form.ifscCode === "" || /^[A-Z]{4}0[A-Z0-9]{6}$/i.test(form.ifscCode);
 
+  // UPI VPA: 2-64 chars of [a-zA-Z0-9._-], then '@', then a PSP
+  // handle of 2+ letters. Mirrors the backend @Pattern on
+  // SetupSocietyRequest.upiId. Empty = OK (field cleared / not set).
+  const upiTrim = form.upiId.trim();
+  const upiOk =
+    upiTrim === "" || /^[a-zA-Z0-9._-]{2,64}@[a-zA-Z]{2,}$/.test(upiTrim);
+
+  // Cross-field: once a UPI ID is set, payee name is required. The
+  // payer's UPI app renders it on the confirmation screen; blank
+  // reads as scam and kills payment completion.
+  const payeeRequired = upiTrim !== "";
+  const payeeMissing = payeeRequired && form.payeeName.trim() === "";
+
+  const canSave = ifscOk && upiOk && !payeeMissing && !saveMut.isPending;
+
   return (
     <Dialog
       open={open}
@@ -216,21 +231,38 @@ function EditBankDialog({
               placeholder="e.g. anirudh@oksbi"
               value={form.upiId}
               onChange={(e) => setForm({ ...form, upiId: e.target.value })}
+              aria-invalid={!upiOk}
             />
-            <p className="text-[10px] text-muted-foreground mt-0.5">
-              The handle the QR resolves to. Required for Pay-Now.
-            </p>
+            {!upiOk ? (
+              <p className="text-[10px] text-destructive mt-0.5">
+                Format: name@bank (e.g. anirudh@oksbi, 9876543210@ybl).
+              </p>
+            ) : (
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                The handle the QR resolves to. Required for Pay-Now.
+              </p>
+            )}
           </div>
 
           <div>
-            <Label>Payee name (shown in tenant's UPI app)</Label>
+            <Label>
+              Payee name (shown in tenant's UPI app)
+              {payeeRequired && <span className="text-destructive ml-0.5">*</span>}
+            </Label>
             <Input
               placeholder="e.g. Anirudh Residency Welfare Fund"
               value={form.payeeName}
               onChange={(e) =>
                 setForm({ ...form, payeeName: e.target.value })
               }
+              aria-invalid={payeeMissing}
             />
+            {payeeMissing && (
+              <p className="text-[10px] text-destructive mt-0.5">
+                Required when a UPI ID is set — the payer sees this name
+                on their confirmation screen.
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -268,7 +300,7 @@ function EditBankDialog({
           </Button>
           <Button
             variant="gradient"
-            disabled={!ifscOk || saveMut.isPending}
+            disabled={!canSave}
             onClick={() => saveMut.mutate()}
           >
             <Save className="size-4" />

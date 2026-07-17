@@ -131,6 +131,10 @@ public class SocietyServiceImpl implements SocietyService {
                 ? b.getBuildingName()
                 : req.societyDisplayName().trim();
 
+        String upi = blankToNull(req.upiId());
+        String payee = blankToNull(req.payeeName());
+        requirePayeeWhenUpi(upi, payee);
+
         LocalDateTime now = LocalDateTime.now();
         SocietyConfig cfg = SocietyConfig.builder()
                 .buildingId(buildingId)
@@ -139,8 +143,8 @@ public class SocietyServiceImpl implements SocietyService {
                 .maintainerUserId(maintainerUserId)
                 .publicViewToken(generateToken())
                 .societyDisplayName(displayName)
-                .upiId(blankToNull(req.upiId()))
-                .payeeName(blankToNull(req.payeeName()))
+                .upiId(upi)
+                .payeeName(payee)
                 .accountNumber(blankToNull(req.accountNumber()))
                 .ifscCode(blankToNull(req.ifscCode() == null ? null
                         : req.ifscCode().toUpperCase()))
@@ -204,9 +208,29 @@ public class SocietyServiceImpl implements SocietyService {
         if (req.ifscCode() != null) {
             cfg.setIfscCode(blankToNull(req.ifscCode().toUpperCase()));
         }
+        // Cross-field check on the POST-update state — the tenant's UPI
+        // app shows payeeName next to the amount, so a blank one reads
+        // as a scam and tanks payment completion. Enforce after applying
+        // updates so partial edits (e.g. maintainer only touches upiId)
+        // still validate against the existing payeeName on the row.
+        requirePayeeWhenUpi(cfg.getUpiId(), cfg.getPayeeName());
+
         cfg.setUpdatedAt(LocalDateTime.now());
         cfg = configRepo.save(cfg);
         return mapper.toResponse(cfg);
+    }
+
+    /** Cross-field invariant: whenever a UPI ID is on file, the payee
+     *  name must be set too. The tenant's UPI app renders it on the
+     *  confirmation screen; a blank payee name reads as a phishing
+     *  attempt and kills payment completion. */
+    private static void requirePayeeWhenUpi(String upiId, String payeeName) {
+        if (upiId != null && !upiId.isBlank()
+                && (payeeName == null || payeeName.isBlank())) {
+            throw new IllegalArgumentException(
+                    "Payee name is required when a UPI ID is set — it's shown "
+                            + "on the payer's confirmation screen.");
+        }
     }
 
     @Override
