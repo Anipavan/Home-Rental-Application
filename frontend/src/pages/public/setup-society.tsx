@@ -118,14 +118,21 @@ function PickExistingForm() {
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<BuildingResponseDTO[]>([]);
   const [picked, setPicked] = useState<BuildingResponseDTO | null>(null);
+  const [flatNumber, setFlatNumber] = useState("");
   const [note, setNote] = useState("");
 
   const claimM = useMutation({
     mutationFn: async () => {
       if (!picked) throw new Error("Search and pick your building first.");
+      if (!flatNumber.trim()) {
+        throw new Error(
+          "Enter the flat you live in — the building owner uses it to verify you.",
+        );
+      }
       return claimsApi.create({
         buildingId: picked.buildingId,
         requestedRole: "MAINTAINER",
+        claimedFlatNumber: flatNumber.trim(),
         applicantNote: note.trim() || undefined,
       });
     },
@@ -246,6 +253,25 @@ function PickExistingForm() {
       </div>
 
       <div>
+        <Label htmlFor="flat-number">
+          Your flat number <span className="text-destructive">*</span>
+        </Label>
+        <Input
+          id="flat-number"
+          value={flatNumber}
+          onChange={(e) => setFlatNumber(e.target.value)}
+          placeholder="e.g. 203"
+          maxLength={32}
+          className="mt-1.5"
+          disabled={!picked}
+        />
+        <p className="text-[11px] text-muted-foreground mt-1">
+          The building owner uses your flat number to verify you actually
+          live there before granting maintainer access.
+        </p>
+      </div>
+
+      <div>
         <Label htmlFor="note">Note to the owner (optional)</Label>
         <Textarea
           id="note"
@@ -263,7 +289,7 @@ function PickExistingForm() {
         size="lg"
         variant="gradient"
         className="w-full"
-        disabled={!picked || claimM.isPending}
+        disabled={!picked || !flatNumber.trim() || claimM.isPending}
         onClick={() => claimM.mutate()}
       >
         {claimM.isPending && <Loader2 className="size-4 animate-spin mr-2" />}
