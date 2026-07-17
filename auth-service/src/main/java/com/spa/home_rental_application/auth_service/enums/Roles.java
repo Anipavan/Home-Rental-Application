@@ -33,6 +33,28 @@ public enum Roles {
 
     TENANT(Set.of(permissions.HRA_READ, permissions.HRA_UPDATE)),
 
+    /**
+     * Society-only resident. Signed up via the "I'm a maintainee" card
+     * on /welcome and had their RESIDENT membership claim approved by
+     * the building owner (or auto-approved for owner-occupier
+     * scenarios). Occupies a flat for maintenance-billing purposes
+     * without a rental relationship with the building owner.
+     *
+     * <p>Kept distinct from TENANT so the frontend can render a
+     * slim, society-focused sidebar (Payments / Society / Profile)
+     * instead of the full rental-tenant nav that includes Browse,
+     * Lease, Maintenance-request, etc. — surfaces a pure maintainee
+     * has no use for.
+     *
+     * <p>Permission set matches TENANT (read + update) — a maintainee
+     * still needs to update their profile, pay dues, etc. Application-
+     * level guards (SocietyServiceImpl, MembershipClaimServiceImpl)
+     * gate what they can actually see/do; the enum permissions are
+     * deliberately broad so the JWT doesn't have to be re-issued the
+     * moment someone becomes both a tenant AND a maintainee.
+     */
+    MAINTAINEE(Set.of(permissions.HRA_READ, permissions.HRA_UPDATE)),
+
     /** @deprecated misspelled — use {@link #TENANT}. */
     @Deprecated
     TENENT(Set.of(permissions.HRA_READ, permissions.HRA_UPDATE));

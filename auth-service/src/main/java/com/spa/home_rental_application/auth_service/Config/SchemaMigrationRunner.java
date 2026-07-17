@@ -132,6 +132,76 @@ public class SchemaMigrationRunner {
         backfillGrandfatherEmailVerified();
         backfillSeedEmailVerificationToggle();
         backfillUserRolesJoinTable();
+        applyV18MaintaineeCheckConstraint();
+    }
+
+    /**
+     * V18 — extend the {@code user_role} CHECK constraint to allow
+     * {@code MAINTAINEE} alongside the existing role values. Idempotent
+     * via CONSTRAINT_NAME probes: if a constraint permitting
+     * MAINTAINEE already exists we don't touch it, otherwise drop
+     * every non-NOT-NULL CHECK on {@code user_role} and add a fresh
+     * one under a stable name.
+     *
+     * <p>Mirror of the V18 Flyway migration for deploys that run
+     * Flyway-disabled (compose.bootstrap.yml).
+     */
+    private void applyV18MaintaineeCheckConstraint() {
+        try {
+            // Skip if any existing CHECK constraint on user_role already
+            // mentions MAINTAINEE — nothing to do.
+            Integer existing = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM user_cons_columns cc " +
+                    " JOIN user_constraints c ON c.constraint_name = cc.constraint_name " +
+                    " WHERE UPPER(cc.table_name)  = 'USER_DETAILS_TABLE' " +
+                    "   AND UPPER(cc.column_name) = 'USER_ROLE' " +
+                    "   AND c.constraint_type    = 'C' " +
+                    "   AND DBMS_LOB.INSTR(TO_CLOB(c.search_condition), 'MAINTAINEE') > 0",
+                    Integer.class);
+            if (existing != null && existing > 0) {
+                log.debug("V18 CHECK constraint already permits MAINTAINEE — skipping");
+                return;
+            }
+
+            // Drop every non-NOT-NULL CHECK on user_role in a single
+            // anonymous PL/SQL block, then add the replacement.
+            jdbc.execute(
+                    "DECLARE " +
+                    "  v_count NUMBER; " +
+                    "BEGIN " +
+                    "  FOR rec IN ( " +
+                    "    SELECT c.constraint_name " +
+                    "      FROM user_cons_columns cc " +
+                    "      JOIN user_constraints  c ON c.constraint_name = cc.constraint_name " +
+                    "     WHERE UPPER(cc.table_name)  = 'USER_DETAILS_TABLE' " +
+                    "       AND UPPER(cc.column_name) = 'USER_ROLE' " +
+                    "       AND c.constraint_type     = 'C' " +
+                    "       AND DBMS_LOB.INSTR(TO_CLOB(c.search_condition), 'IS NOT NULL') = 0 " +
+                    "  ) LOOP " +
+                    "    BEGIN " +
+                    "      EXECUTE IMMEDIATE 'ALTER TABLE user_details_table DROP CONSTRAINT ' " +
+                    "        || rec.constraint_name; " +
+                    "    EXCEPTION WHEN OTHERS THEN " +
+                    "      IF SQLCODE != -2443 THEN RAISE; END IF; " +
+                    "    END; " +
+                    "  END LOOP; " +
+                    "  SELECT COUNT(*) INTO v_count FROM user_constraints " +
+                    "   WHERE constraint_name = 'CK_USER_DETAILS_ROLE'; " +
+                    "  IF v_count = 0 THEN " +
+                    "    EXECUTE IMMEDIATE " +
+                    "      'ALTER TABLE user_details_table ADD CONSTRAINT ck_user_details_role " +
+                    "       CHECK (user_role IN " +
+                    "         (''ADMIN'',''OWNER'',''MAINTAINER'',''MAINTAINEE'',''TENANT'',''TENENT''))'; " +
+                    "  END IF; " +
+                    "END;");
+            log.info("V18: user_role CHECK constraint updated to permit MAINTAINEE");
+        } catch (Exception ex) {
+            // Never crash boot over a schema-migration failure — the
+            // service still starts; operator can inspect and re-run.
+            log.warn("V18 CHECK constraint update skipped: {}",
+                    ex.getMessage() == null ? ex.getClass().getSimpleName()
+                            : ex.getMessage().lines().findFirst().orElse(""));
+        }
     }
 
     /**

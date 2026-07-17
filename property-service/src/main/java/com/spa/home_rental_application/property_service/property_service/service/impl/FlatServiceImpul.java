@@ -10,6 +10,7 @@ import com.spa.home_rental_application.property_service.property_service.DTO.Res
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.FlatResponseDTO;
 import com.spa.home_rental_application.property_service.property_service.Entities.Building;
 import com.spa.home_rental_application.property_service.property_service.Entities.Flat;
+import com.spa.home_rental_application.property_service.property_service.Entities.FlatSocietyMembership;
 import com.spa.home_rental_application.property_service.property_service.ExceptionClass.FlatOccupiedException;
 import com.spa.home_rental_application.property_service.property_service.ExceptionClass.InvalidLeasePeriodException;
 import com.spa.home_rental_application.property_service.property_service.ExceptionClass.OutstandingDuesException;
@@ -18,6 +19,7 @@ import com.spa.home_rental_application.property_service.property_service.client.
 import com.spa.home_rental_application.property_service.property_service.client.UserClient;
 import com.spa.home_rental_application.property_service.property_service.repository.BuildingRepo;
 import com.spa.home_rental_application.property_service.property_service.repository.FlatRepo;
+import com.spa.home_rental_application.property_service.property_service.repository.FlatSocietyMembershipRepository;
 import com.spa.home_rental_application.property_service.property_service.security.CallerSecurity;
 import com.spa.home_rental_application.property_service.property_service.service.AgreementService;
 import com.spa.home_rental_application.property_service.property_service.service.FlatService;
@@ -45,6 +47,7 @@ public class FlatServiceImpul implements FlatService {
     private final AgreementService agreementService;
     private final UserClient userClient;
     private final PaymentClient paymentClient;
+    private final FlatSocietyMembershipRepository membershipRepo;
 
     public FlatServiceImpul(FlatRepo flatRepo,
                             BuildingRepo buildingRepo,
@@ -52,7 +55,8 @@ public class FlatServiceImpul implements FlatService {
                             FlatMapper flatMapper,
                             AgreementService agreementService,
                             UserClient userClient,
-                            PaymentClient paymentClient) {
+                            PaymentClient paymentClient,
+                            FlatSocietyMembershipRepository membershipRepo) {
         this.flatRepo = flatRepo;
         this.buildingRepo = buildingRepo;
         this.eventProducer = eventProducer;
@@ -60,6 +64,7 @@ public class FlatServiceImpul implements FlatService {
         this.agreementService = agreementService;
         this.userClient = userClient;
         this.paymentClient = paymentClient;
+        this.membershipRepo = membershipRepo;
     }
 
     @Override
@@ -280,6 +285,22 @@ public class FlatServiceImpul implements FlatService {
         flat.setScheduledVacateDate(null);
         flat.setVacateWarningSentAt(null);
         flat.setUpdatedAt(LocalDateTime.now());
+
+        // V15: rental vacate ends the rental relationship, but the
+        // person may still be a society member (owner-occupier who
+        // was also renting a second flat, or a tenant who transitioned
+        // to buying, etc.). We deactivate the specific mirrored row
+        // that was created alongside the lease. Purely-maintainee
+        // society members (created via a RESIDENT claim, not via
+        // assign-flat) are untouched — they have their own lifecycle.
+        if (tenantBeingVacated != null && !tenantBeingVacated.isBlank()) {
+            membershipRepo.findByFlatIdAndUserId(flatId, tenantBeingVacated)
+                    .filter(m -> Boolean.TRUE.equals(m.getIsActive()))
+                    .ifPresent(m -> {
+                        m.setIsActive(false);
+                        membershipRepo.save(m);
+                    });
+        }
 
         log.info("Vacated flat {} (origin={} tenant={})", flatId, origin, tenantBeingVacated);
 
@@ -590,6 +611,29 @@ public class FlatServiceImpul implements FlatService {
         flat.setIsOccupied(true);
         flat.setUpdatedAt(LocalDateTime.now());
         Flat saved = flatRepo.save(flat);
+
+        // V15: mirror the rental tenant into flat_society_membership
+        // so the maintainer's per-flat resident list and the
+        // maintenance-billing scan pick them up automatically. Owner
+        // shouldn't have to double-enrol a tenant they've already
+        // assigned. Idempotent — reactivates an existing row if the
+        // same person moved out and back in.
+        String approverId = CallerSecurity.getCurrentAuthUserId().orElse(null);
+        membershipRepo.findByFlatIdAndUserId(saved.getId(), req.tenantId())
+                .ifPresentOrElse(existing -> {
+                    if (!Boolean.TRUE.equals(existing.getIsActive())) {
+                        existing.setIsActive(true);
+                        existing.setJoinedAt(LocalDateTime.now());
+                        existing.setApprovedBy(approverId);
+                        membershipRepo.save(existing);
+                    }
+                }, () -> membershipRepo.save(FlatSocietyMembership.builder()
+                        .flatId(saved.getId())
+                        .userId(req.tenantId())
+                        .joinedAt(LocalDateTime.now())
+                        .approvedBy(approverId)
+                        .isActive(true)
+                        .build()));
 
         // Best-effort. KafkaTemplate.send() returns a future, but the
         // very first call (or any call after a metadata refresh expires)

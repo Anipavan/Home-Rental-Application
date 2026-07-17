@@ -895,6 +895,60 @@ public class AuthServiceImpl implements AuthService {
         return AuthUserMapper.toAuthUserResponse(saved);
     }
 
+    @Override
+    @Transactional
+    public AuthUserResponse grantMaintaineeRole(Long authUserId) {
+        UserDetails user = userRepository.findById(authUserId)
+                .orElseThrow(() -> new AuthRecordNotFoundException(
+                        "User not found with id: " + authUserId));
+
+        Roles before = user.getUserRole();
+
+        if (before == Roles.ADMIN) {
+            log.warn("grantMaintaineeRole refused — refusing to override ADMIN authUserId={}",
+                    authUserId);
+            throw new IllegalStateException(
+                    "Cannot grant maintainee role to an ADMIN user.");
+        }
+
+        // OWNER / MAINTAINER keep their primary role; MAINTAINEE just
+        // becomes an additional facet in the multi-role set. This lets
+        // an owner-occupier pay society dues without losing their
+        // owner dashboard. Idempotent — addRole no-ops when the role
+        // is already present.
+        boolean alreadyHadMaintainee = user.getAllRoles().contains(Roles.MAINTAINEE);
+        user.addRole(Roles.MAINTAINEE);
+
+        // Only promote the PRIMARY role for pure-maintainee signups
+        // (current primary = TENANT). Everyone else keeps their existing
+        // primary — MAINTAINEE just augments it.
+        boolean primaryChanged = false;
+        if (before == Roles.TENANT) {
+            user.setUserRole(Roles.MAINTAINEE);
+            primaryChanged = true;
+        }
+
+        if (!alreadyHadMaintainee || primaryChanged) {
+            user.setRecodeUpdatedDate(Instant.now());
+            userRepository.save(user);
+            audit.publishSuccess("auth.grant-maintainee-role",
+                    user.getId().toString(),
+                    user.getId().toString(),
+                    user.getId().toString(),
+                    java.util.Map.of(
+                            "priorPrimaryRole", before.name(),
+                            "newPrimaryRole", user.getUserRole().name(),
+                            "addedFacet", "MAINTAINEE"));
+            log.info("grantMaintaineeRole authUserId={} primary {} -> {} (MAINTAINEE facet added)",
+                    authUserId, before, user.getUserRole());
+        } else {
+            log.info("grantMaintaineeRole no-op for authUserId={} — already carries MAINTAINEE facet",
+                    authUserId);
+        }
+
+        return AuthUserMapper.toAuthUserResponse(user);
+    }
+
     /* ---------- Phase 4: unified-signup role selection ---------- */
 
     @Override

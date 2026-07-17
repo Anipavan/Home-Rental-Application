@@ -130,7 +130,13 @@ export const router = createBrowserRouter([
   {
     path: "/app",
     element: (
-      <ProtectedRoute roles={["TENANT"]}>
+      // MAINTAINEE reuses the tenant AppShell — the pages inside are
+      // role-agnostic (Overview, Society, Payments, Profile all key
+      // off authUserId, not role). The app-shell renders a slim
+      // sidebar for MAINTAINEE via navFor(); nav hiding is enough
+      // because a maintainee has no data on the tenant-only surfaces
+      // (Lease, Maintenance-request, etc.) even if they navigate there.
+      <ProtectedRoute roles={["TENANT", "MAINTAINEE"]}>
         <AppShell />
       </ProtectedRoute>
     ),

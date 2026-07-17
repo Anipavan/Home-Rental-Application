@@ -109,6 +109,22 @@ public interface AuthService {
      */
     AuthUserResponse grantMaintainerRole(Long authUserId);
 
+    /**
+     * Grant the MAINTAINEE role to a user whose RESIDENT membership
+     * claim was just approved. Adds MAINTAINEE to the multi-role set
+     * (idempotent) and, if the current primary role is TENANT (i.e.
+     * the user signed up as a pure maintainee via the "I'm a
+     * maintainee" card on /welcome), promotes the primary role to
+     * MAINTAINEE so post-approval login lands on the slim dashboard.
+     *
+     * <p>Never touches OWNER / MAINTAINER / ADMIN users' primary role
+     * — they retain their existing role and just gain MAINTAINEE as
+     * an additional facet in the multi-role set. This lets an owner
+     * who's also a resident of their own building pay maintenance
+     * without losing their OWNER dashboard.
+     */
+    AuthUserResponse grantMaintaineeRole(Long authUserId);
+
     /* ---------- Maintainer-payment soft gate ---------- */
 
     /**

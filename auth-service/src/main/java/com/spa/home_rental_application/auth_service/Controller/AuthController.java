@@ -186,6 +186,22 @@ public class AuthController {
         return ResponseEntity.ok(authService.grantMaintainerRole(authUserId));
     }
 
+    /**
+     * Sibling of {@link #grantMaintainerRole} for society-only
+     * residents. Called by property-service when an owner approves a
+     * RESIDENT membership claim. Adds MAINTAINEE to the user's role
+     * set (and promotes their primary role from TENANT to MAINTAINEE
+     * for pure-maintainee signups).
+     *
+     * <p>Same X-Internal-Auth-Sig gating as the maintainer variant.
+     */
+    @Operation(summary = "Grant MAINTAINEE role to an existing user (internal, no password change)")
+    @PostMapping("/internal/users/{authUserId}/grant-maintainee-role")
+    public ResponseEntity<AuthUserResponse> grantMaintaineeRole(@PathVariable Long authUserId) {
+        log.info("POST /auth/internal/users/{}/grant-maintainee-role", authUserId);
+        return ResponseEntity.ok(authService.grantMaintaineeRole(authUserId));
+    }
+
 
     private static Roles parseRole(String input) {
         try {

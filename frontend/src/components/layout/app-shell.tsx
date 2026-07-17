@@ -176,17 +176,21 @@ const maintainerNav: NavItem[] = [
   { to: "/maintainer/profile", label: "Profile", icon: Settings },
 ];
 
-/** Slimmed sidebar for MAINTAINEE-only users — signed up via the
- *  "I'm a maintainee" card on /welcome, has an APPROVED RESIDENT
- *  claim, no rental relationship on this platform. They only need
- *  to see the society ledger + their payments + Profile. No Browse /
- *  Lease / Maintenance / Complaints / etc. — those are rental-tenant
- *  surfaces. Auth role is still TENANT under the hood (the RESIDENT
- *  claim doesn't currently promote them), so the /app route accepts
- *  them; only the nav shape changes. */
+/** Slimmed sidebar for MAINTAINEE users — signed up via the "I'm
+ *  a maintainee" card on /welcome, had their RESIDENT claim approved,
+ *  no rental relationship on this platform.
+ *
+ *  <p>Society is the single hub — it lists their monthly dues, opens
+ *  the pay flow (/app/society/pay/…), and shows payment history. No
+ *  separate Payments entry because the tenant Payments page reads
+ *  rent invoices, which a maintainee doesn't have; the route is also
+ *  gated by FlatRequiredOutlet (checks flat.tenantId, which the
+ *  RESIDENT approval path no longer sets after V15).
+ *
+ *  <p>Browse / Lease / Maintenance / Complaints stay off entirely —
+ *  those are rental-tenant surfaces. */
 const maintaineeNav: NavItem[] = [
   { to: "/app", label: "Overview", icon: Home },
-  { to: "/app/payments", label: "Payments", icon: Receipt },
   { to: "/app/society", label: "Society", icon: HandCoins },
   { to: "/app/profile", label: "Profile", icon: Settings },
 ];
@@ -194,6 +198,7 @@ const maintaineeNav: NavItem[] = [
 function navFor(role: Role | null): NavItem[] {
   if (role === "OWNER") return ownerNav;
   if (role === "MAINTAINER") return maintainerNav;
+  if (role === "MAINTAINEE") return maintaineeNav;
   if (role === "ADMIN") return adminNav;
   return tenantNav;
 }
@@ -227,20 +232,6 @@ export function AppShell() {
   const hasPendingClaim = (myClaimsQ.data ?? []).some(
     (c) => c.status === "PENDING",
   );
-  // MAINTAINEE detection — a TENANT-role user with an APPROVED
-  // RESIDENT claim is functionally a maintainee (they signed up via
-  // the "I'm a maintainee" card and got approved into a society-
-  // managed building). Their auth role is still TENANT because the
-  // RESIDENT approval path doesn't currently promote roles — see the
-  // separate follow-up on splitting tenancy from society membership.
-  // For now we just slim the sidebar so the rental-focused surfaces
-  // (Browse / Lease / KYC / Complaints / etc.) don't show up.
-  const isMaintaineeOnly =
-    role === "TENANT" &&
-    !hasPendingClaim &&
-    (myClaimsQ.data ?? []).some(
-      (c) => c.status === "APPROVED" && c.requestedRole === "RESIDENT",
-    );
 
   // While pending, force every /app/* request back to the role-agnostic
   // /pending-claim page. The redirect runs inside an effect so we don't
@@ -252,15 +243,12 @@ export function AppShell() {
     }
   }, [hasPendingClaim, location.pathname, navigate]);
 
-  // Sidebar items: full tenant nav normally, single "Application" entry
-  // while pending so the user can't try to click into things they
-  // can't reach yet. Maintainee-only accounts get the slim nav even
-  // though their auth role is TENANT.
+  // Sidebar items: full role-based nav normally, single "Application"
+  // entry while pending so the user can't try to click into things they
+  // can't reach yet.
   const items: NavItem[] = hasPendingClaim
     ? [{ to: "/pending-claim", label: "Your application", icon: Hourglass }]
-    : isMaintaineeOnly
-      ? maintaineeNav
-      : navFor(role);
+    : navFor(role);
 
   // Fetch the signed-in user's profile so the header avatar can render
   // their uploaded photo (Instagram / WhatsApp style — name next to a

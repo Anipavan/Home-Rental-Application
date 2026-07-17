@@ -125,7 +125,24 @@ public class SchemaMigrationRunner {
             "  CONSTRAINT uq_fav_user_flat UNIQUE (user_id, flat_id)" +
             ")",
             "CREATE INDEX idx_fav_user ON flat_favorites (user_id)",
-            "CREATE INDEX idx_fav_flat ON flat_favorites (flat_id)"
+            "CREATE INDEX idx_fav_flat ON flat_favorites (flat_id)",
+
+            // ── flat_society_membership (V15) ──
+            // Splits "who lives here for maintenance billing" from
+            // flats.tenant_id (which now means rental tenant only).
+            // Written by both applyResidentApproval and the owner-side
+            // assignFlat flow — the maintainer's dashboard reads this,
+            // not tenant_id, when listing residents.
+            "CREATE TABLE flat_society_membership (" +
+            "  flat_id       VARCHAR2(64) NOT NULL," +
+            "  user_id       VARCHAR2(64) NOT NULL," +
+            "  joined_at     TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL," +
+            "  approved_by   VARCHAR2(64)," +
+            "  is_active     NUMBER(1) DEFAULT 1 NOT NULL," +
+            "  CONSTRAINT pk_flat_society_membership PRIMARY KEY (flat_id, user_id)" +
+            ")",
+            "CREATE INDEX idx_fsm_user ON flat_society_membership (user_id)",
+            "CREATE INDEX idx_fsm_flat_active ON flat_society_membership (flat_id, is_active)"
     );
 
     @PostConstruct

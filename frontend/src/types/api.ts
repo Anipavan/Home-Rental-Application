@@ -1,4 +1,17 @@
-export type Role = "ADMIN" | "OWNER" | "TENANT" | "MAINTAINER";
+export type Role =
+  | "ADMIN"
+  | "OWNER"
+  | "TENANT"
+  | "MAINTAINER"
+  /**
+   * V15/V18 — society-only resident. Signed up via the "I'm a
+   * maintainee" card on /welcome and had their RESIDENT membership
+   * claim approved by the building owner. Occupies a flat for
+   * maintenance-billing purposes without a rental relationship. The
+   * app-shell routes MAINTAINEE users to a slim sidebar
+   * (Overview / Payments / Society / Profile).
+   */
+  | "MAINTAINEE";
 
 export interface AuthResponse {
   accessToken: string;

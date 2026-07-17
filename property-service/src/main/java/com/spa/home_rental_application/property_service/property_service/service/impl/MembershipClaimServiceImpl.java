@@ -5,6 +5,7 @@ import com.spa.home_rental_application.property_service.property_service.DTO.Req
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.MembershipClaimResponse;
 import com.spa.home_rental_application.property_service.property_service.Entities.Building;
 import com.spa.home_rental_application.property_service.property_service.Entities.Flat;
+import com.spa.home_rental_application.property_service.property_service.Entities.FlatSocietyMembership;
 import com.spa.home_rental_application.property_service.property_service.Entities.MembershipClaim;
 import com.spa.home_rental_application.property_service.property_service.Entities.MembershipClaim.RequestedRole;
 import com.spa.home_rental_application.property_service.property_service.Entities.MembershipClaim.Status;
@@ -14,6 +15,7 @@ import com.spa.home_rental_application.property_service.property_service.client.
 import com.spa.home_rental_application.property_service.property_service.client.UserClient;
 import com.spa.home_rental_application.property_service.property_service.repository.BuildingRepo;
 import com.spa.home_rental_application.property_service.property_service.repository.FlatRepo;
+import com.spa.home_rental_application.property_service.property_service.repository.FlatSocietyMembershipRepository;
 import com.spa.home_rental_application.property_service.property_service.repository.MembershipClaimRepository;
 import com.spa.home_rental_application.property_service.property_service.repository.SocietyConfigRepository;
 import com.spa.home_rental_application.property_service.property_service.security.CallerSecurity;
@@ -68,6 +70,7 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
     private final MembershipClaimRepository claimRepo;
     private final BuildingRepo buildingRepo;
     private final FlatRepo flatRepo;
+    private final FlatSocietyMembershipRepository membershipRepo;
     private final SocietyConfigRepository configRepo;
     private final UserClient userClient;
     private final AuthClient authClient;
@@ -76,6 +79,7 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
     public MembershipClaimServiceImpl(MembershipClaimRepository claimRepo,
                                       BuildingRepo buildingRepo,
                                       FlatRepo flatRepo,
+                                      FlatSocietyMembershipRepository membershipRepo,
                                       SocietyConfigRepository configRepo,
                                       UserClient userClient,
                                       AuthClient authClient,
@@ -83,6 +87,7 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
         this.claimRepo = claimRepo;
         this.buildingRepo = buildingRepo;
         this.flatRepo = flatRepo;
+        this.membershipRepo = membershipRepo;
         this.configRepo = configRepo;
         this.userClient = userClient;
         this.authClient = authClient;
@@ -142,10 +147,19 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
                                 + ". Double-check the flat number with the owner.");
             }
             Flat targetFlat = matches.get(0);
-            boolean occupied = Boolean.TRUE.equals(targetFlat.getIsOccupied())
+            // Post-V15: a resident of the flat is EITHER a rental tenant
+            // (flat.tenantId set) OR an active society member. Purely-
+            // maintainee residents no longer touch flat.tenantId, so we
+            // have to consult the membership table too, else a fresh
+            // maintainer who joined the society first would fail this
+            // gate on their own MAINTAINER application.
+            boolean hasRentalTenant = Boolean.TRUE.equals(targetFlat.getIsOccupied())
                     && targetFlat.getTenantId() != null
                     && !targetFlat.getTenantId().isBlank();
-            if (!occupied) {
+            boolean hasSocietyMember = !membershipRepo
+                    .findByFlatIdAndIsActiveTrue(targetFlat.getId())
+                    .isEmpty();
+            if (!hasRentalTenant && !hasSocietyMember) {
                 throw new IllegalArgumentException(
                         "Flat " + req.claimedFlatNumber() + " in "
                                 + building.getBuildingName() + " is currently vacant. "
@@ -652,9 +666,18 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
     }
 
     /**
-     * RESIDENT claim approved → bind the user as tenant of the named
-     * flat. Refuses if the flat is currently occupied — the owner has
-     * to vacate it first via the existing flow.
+     * RESIDENT claim approved → register the user as a society member
+     * of the named flat and grant them the MAINTAINEE role.
+     *
+     * <p>V15: this used to also set {@code flat.tenantId} and
+     * {@code flat.isOccupied=true}, which conflated the "someone lives
+     * here for maintenance billing" concept with the "someone is
+     * renting from the owner" concept. Owners saw self-registered
+     * maintainees as rental tenants they'd never assigned. After V15
+     * we route the maintenance-side relationship through
+     * {@code flat_society_membership} and leave rental columns alone —
+     * a flat can now have zero, one, or many society members
+     * independently of whether it has a rental tenant.
      */
     private void applyResidentApproval(MembershipClaim claim, Building building) {
         if (claim.getClaimedFlatNumber() == null || claim.getClaimedFlatNumber().isBlank()) {
@@ -670,18 +693,57 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
                             + "' exists in this building.");
         }
         Flat flat = matches.get(0);
-        if (Boolean.TRUE.equals(flat.getIsOccupied())
-                && flat.getTenantId() != null
-                && !flat.getTenantId().equals(claim.getUserId())) {
+
+        // Idempotent upsert. A user who moved out (is_active=0) and
+        // moves back in re-uses the same row instead of erroring on
+        // the composite PK.
+        String approverId = CallerSecurity.getCurrentAuthUserId().orElse(null);
+        membershipRepo.findByFlatIdAndUserId(flat.getId(), claim.getUserId())
+                .ifPresentOrElse(existing -> {
+                    if (!Boolean.TRUE.equals(existing.getIsActive())) {
+                        existing.setIsActive(true);
+                        existing.setJoinedAt(LocalDateTime.now());
+                        existing.setApprovedBy(approverId);
+                        membershipRepo.save(existing);
+                        log.info("Reactivated society membership: user {} → flat {} of building {}",
+                                claim.getUserId(), flat.getFlatNumber(), building.getBuildingId());
+                    } else {
+                        log.info("Society membership already active — no-op: user {} → flat {} of building {}",
+                                claim.getUserId(), flat.getFlatNumber(), building.getBuildingId());
+                    }
+                }, () -> {
+                    membershipRepo.save(FlatSocietyMembership.builder()
+                            .flatId(flat.getId())
+                            .userId(claim.getUserId())
+                            .joinedAt(LocalDateTime.now())
+                            .approvedBy(approverId)
+                            .isActive(true)
+                            .build());
+                    log.info("Created society membership: user {} → flat {} of building {}",
+                            claim.getUserId(), flat.getFlatNumber(), building.getBuildingId());
+                });
+
+        // Grant MAINTAINEE role so the frontend routes them to the
+        // slim society-focused dashboard on next login. authClient
+        // preserves OWNER/MAINTAINER/ADMIN primary roles — MAINTAINEE
+        // just becomes an additional facet in those cases.
+        long authId;
+        try {
+            authId = Long.parseLong(claim.getUserId());
+        } catch (NumberFormatException e) {
             throw new IllegalStateException(
-                    "Flat " + flat.getFlatNumber()
-                            + " is already occupied. Vacate the existing tenant first.");
+                    "Internal: claim.userId '" + claim.getUserId()
+                            + "' is not a numeric authUserId. The user was created "
+                            + "outside the standard /auth/register flow.");
         }
-        flat.setTenantId(claim.getUserId());
-        flat.setIsOccupied(true);
-        flatRepo.save(flat);
-        log.info("Resident claim approved: user {} bound to flat {} of building {}",
-                claim.getUserId(), flat.getFlatNumber(), building.getBuildingId());
+        try {
+            authClient.grantMaintaineeRole(authId);
+        } catch (feign.FeignException fe) {
+            log.error("auth-service grant-maintainee-role failed authUserId={} status={} body={}",
+                    authId, fe.status(), fe.contentUTF8());
+            throw new IllegalStateException(
+                    "Couldn't update the user's role: " + fe.contentUTF8(), fe);
+        }
     }
 
     /**

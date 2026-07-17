@@ -52,6 +52,21 @@ public interface AuthClient {
     @PostMapping(value = "/auth/internal/users/{authUserId}/grant-maintainer-role")
     AuthUserSummary grantMaintainerRole(@PathVariable("authUserId") Long authUserId);
 
+    /**
+     * Mirrors auth-service {@code POST /auth/internal/users/{authUserId}/grant-maintainee-role}.
+     *
+     * <p>Called by {@code MembershipClaimServiceImpl.applyResidentApproval}
+     * when an owner approves a self-registered "I'm a maintainee"
+     * signup. Adds MAINTAINEE to the user's role set (and promotes
+     * their primary role to MAINTAINEE if they signed up as a pure
+     * maintainee — TENANT primary role becomes MAINTAINEE; OWNER /
+     * MAINTAINER / ADMIN primaries are preserved).
+     *
+     * <p>Same gateway-HMAC gating as {@link #grantMaintainerRole}.
+     */
+    @PostMapping(value = "/auth/internal/users/{authUserId}/grant-maintainee-role")
+    AuthUserSummary grantMaintaineeRole(@PathVariable("authUserId") Long authUserId);
+
     /** Inbound body for the promote call. Mirrors auth-service's
      *  {@code PromoteToMaintainerRequest}. */
     record PromoteBody(String newPassword) {}
