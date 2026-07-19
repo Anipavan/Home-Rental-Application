@@ -276,9 +276,11 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
             // claim creation (worst case the decider sees the chip on
             // next dashboard refresh).
             String distinctMaintainer = distinctMaintainerId(building);
+            // Only RESIDENT (society-membership) claims delegate to the
+            // maintainer. MAINTAINER + FLAT_OWNER always ping the owner
+            // — see listPendingForOwner for the parallel filter.
             boolean routeToMaintainer = distinctMaintainer != null
-                    && (saved.getRequestedRole() == RequestedRole.RESIDENT
-                            || saved.getRequestedRole() == RequestedRole.FLAT_OWNER);
+                    && saved.getRequestedRole() == RequestedRole.RESIDENT;
             if (routeToMaintainer) {
                 notifyCurrentMaintainerOfNewClaim(saved, building);
             } else {
@@ -409,13 +411,17 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
         // Ownership vs. society-membership split (updated 2026-07):
         //   * MAINTAINER claims → owner decides (only the owner can
         //     appoint a new maintainer).
-        //   * RESIDENT / FLAT_OWNER claims where a DISTINCT maintainer
-        //     exists → that maintainer decides; hide from owner's list
-        //     so the queue doesn't clutter with things they can't act
-        //     on cleanly.
-        //   * RESIDENT / FLAT_OWNER claims where no distinct maintainer
-        //     is set (fresh building, or owner-as-maintainer) → still
-        //     shown to owner as fallback so nothing gets stranded.
+        //   * FLAT_OWNER claims → owner decides (legal transfer of
+        //     a flat's ownership is between the building owner and
+        //     the incoming flat-owner; the society maintainer has no
+        //     say in that transaction).
+        //   * RESIDENT claims where a DISTINCT maintainer exists →
+        //     that maintainer decides; hide from owner's list so the
+        //     queue doesn't clutter with things they can't act on
+        //     cleanly.
+        //   * RESIDENT claims where no distinct maintainer is set
+        //     (fresh building, or owner-as-maintainer) → still shown
+        //     to owner as fallback so nothing gets stranded.
         Map<String, String> distinctMaintainerByBuilding = myBuildings.stream()
                 .collect(Collectors.toMap(
                         Building::getBuildingId,
@@ -426,8 +432,10 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
 
         List<MembershipClaim> forOwner = pending.stream()
                 .filter(c -> {
+                    // MAINTAINER + FLAT_OWNER always go to the owner.
                     if (c.getRequestedRole() == RequestedRole.MAINTAINER) return true;
-                    // RESIDENT / FLAT_OWNER — owner only if no distinct maintainer.
+                    if (c.getRequestedRole() == RequestedRole.FLAT_OWNER) return true;
+                    // RESIDENT — owner only if no distinct maintainer.
                     String m = distinctMaintainerByBuilding.getOrDefault(c.getBuildingId(), "");
                     return m.isEmpty();
                 })
@@ -461,14 +469,15 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
                 .toList();
 
         // Two buckets:
-        //   1. RESIDENT / FLAT_OWNER claims for buildings I maintain —
-        //      society-membership decisions, my job.
+        //   1. RESIDENT claims for buildings I maintain — society-
+        //      membership decisions, my job. FLAT_OWNER claims are
+        //      NOT included here: legal ownership transfers are the
+        //      building owner's call, not the maintainer's.
         //   2. Dual-approval MAINTAINER takeover claims — the
         //      incumbent maintainer must weigh in.
         List<MembershipClaim> residencyClaims = claimRepo
                 .findByBuildingIdInAndStatus(buildingIds, Status.PENDING).stream()
-                .filter(c -> c.getRequestedRole() == RequestedRole.RESIDENT
-                        || c.getRequestedRole() == RequestedRole.FLAT_OWNER)
+                .filter(c -> c.getRequestedRole() == RequestedRole.RESIDENT)
                 .toList();
         List<MembershipClaim> dualApproval = claimRepo
                 .findByBuildingIdInAndStatusAndRequiresDualApproval(

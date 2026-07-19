@@ -221,10 +221,20 @@ public class FlatServiceImpul implements FlatService {
             return FlatPreviewResponseDTO.notFound();
         }
         Flat flat = matches.get(0);
-        boolean occupied = Boolean.TRUE.equals(flat.getIsOccupied())
-                && flat.getTenantId() != null
+        // Post-V15 definition of "occupied" for preview purposes:
+        // either a rental tenant is assigned (flat.tenantId) OR at
+        // least one active society member exists in
+        // flat_society_membership. Purely-maintainee residents don't
+        // touch tenantId anymore, so the old tenantId-only check would
+        // report a flat as vacant even when a family (via society
+        // membership) actually lives there — which would then wrongly
+        // block a legit second-resident RESIDENT claim on the same
+        // flat.
+        boolean hasRentalTenant = flat.getTenantId() != null
                 && !flat.getTenantId().isBlank();
-        return FlatPreviewResponseDTO.of(occupied);
+        boolean hasSocietyMember = !membershipRepo
+                .findByFlatIdAndIsActiveTrue(flat.getId()).isEmpty();
+        return FlatPreviewResponseDTO.of(hasRentalTenant || hasSocietyMember);
     }
 
     /** Great-circle distance in km between two lat/lng pairs. */

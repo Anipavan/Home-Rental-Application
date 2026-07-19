@@ -1,7 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useMutation } from "@tanstack/react-query";
-import { Loader2, Building2, Plus, Search } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import {
+  AlertCircle,
+  Building2,
+  CheckCircle2,
+  Loader2,
+  Plus,
+  Search,
+} from "lucide-react";
 import { Logo } from "@/components/layout/logo";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -120,6 +127,24 @@ function PickExistingForm() {
   const [picked, setPicked] = useState<BuildingResponseDTO | null>(null);
   const [flatNumber, setFlatNumber] = useState("");
   const [note, setNote] = useState("");
+
+  // Debounced inline preview — mirrors the createClaim server-side
+  // vacancy guard so the maintainer applicant knows upfront if the
+  // flat they're entering is vacant / doesn't exist. Prevents a
+  // "submit → server rejects" round-trip.
+  const [debouncedFlat, setDebouncedFlat] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedFlat(flatNumber.trim()), 350);
+    return () => clearTimeout(t);
+  }, [flatNumber]);
+  const previewQ = useQuery({
+    queryKey: ["flat-preview", picked?.buildingId, debouncedFlat],
+    queryFn: () =>
+      propertiesApi.flats.preview(picked!.buildingId, debouncedFlat),
+    enabled: !!picked && debouncedFlat.length >= 1,
+    staleTime: 30_000,
+    retry: false,
+  });
 
   const claimM = useMutation({
     mutationFn: async () => {
@@ -264,11 +289,36 @@ function PickExistingForm() {
           maxLength={32}
           className="mt-1.5"
           disabled={!picked}
+          aria-invalid={
+            previewQ.data ? !previewQ.data.exists || !previewQ.data.occupied : false
+          }
         />
-        <p className="text-[11px] text-muted-foreground mt-1">
-          The building owner uses your flat number to verify you actually
-          live there before granting maintainer access.
-        </p>
+        {picked && debouncedFlat.length >= 1 && previewQ.data && (
+          !previewQ.data.exists ? (
+            <p className="text-[11px] text-destructive mt-1 flex items-start gap-1">
+              <AlertCircle className="size-3 mt-0.5 shrink-0" />
+              No flat "{debouncedFlat}" in {picked.buildingName}. Double-check
+              the flat number.
+            </p>
+          ) : !previewQ.data.occupied ? (
+            <p className="text-[11px] text-destructive mt-1 flex items-start gap-1">
+              <AlertCircle className="size-3 mt-0.5 shrink-0" />
+              Flat {debouncedFlat} is currently vacant. Only a current
+              resident can apply to maintain the society.
+            </p>
+          ) : (
+            <p className="text-[11px] text-success mt-1 flex items-start gap-1">
+              <CheckCircle2 className="size-3 mt-0.5 shrink-0" />
+              Flat {debouncedFlat} found.
+            </p>
+          )
+        )}
+        {(!picked || debouncedFlat.length === 0) && (
+          <p className="text-[11px] text-muted-foreground mt-1">
+            The building owner uses your flat number to verify you actually
+            live there before granting maintainer access.
+          </p>
+        )}
       </div>
 
       <div>
