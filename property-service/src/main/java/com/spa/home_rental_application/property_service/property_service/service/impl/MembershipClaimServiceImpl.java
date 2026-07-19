@@ -25,8 +25,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -624,24 +627,52 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
     // ── Side-effects on approval ───────────────────────────────────
 
     /**
-     * MAINTAINER claim approved → swap {@code society_config.maintainer_
-     * user_id} and bump the user's role to MAINTAINER. If the building
-     * has no society config yet, refuse — the owner needs to set up
-     * the society first (default per-flat amount, etc.). Users
-     * already at OWNER/MAINTAINER/ADMIN role pass through the auth
-     * call as a no-op.
+     * MAINTAINER claim approved → make sure {@code society_config} exists
+     * for the building, then swap its {@code maintainer_user_id} to the
+     * claimant and bump their auth role to MAINTAINER.
+     *
+     * <p>Previously refused when the building had no {@code SocietyConfig},
+     * demanding the owner run "Set up society" as a prerequisite. That's
+     * redundant friction — the maintainer BEING APPROVED is the person
+     * who'll manage the society; forcing the owner to preconfigure
+     * something the maintainer will re-configure anyway is unnecessary.
+     * Auto-provision with safe defaults (per-flat=0, dueDay=5, display
+     * name = building name); the maintainer refines these later from
+     * their /maintainer dashboard.
+     *
+     * <p>Users already at OWNER/MAINTAINER/ADMIN role pass through the
+     * auth call as a no-op.
      */
     private void applyMaintainerApproval(MembershipClaim claim, Building building) {
+        LocalDateTime now = LocalDateTime.now();
         SocietyConfig cfg = configRepo.findByBuildingId(building.getBuildingId())
-                .orElseThrow(() -> new IllegalStateException(
-                        "Approve refused — set up the society for this "
-                                + "building first (Society → Set up)."));
+                .orElse(null);
 
-        String previous = cfg.getMaintainerUserId();
-        cfg.setMaintainerUserId(claim.getUserId());
-        cfg.setUpdatedAt(LocalDateTime.now());
+        if (cfg == null) {
+            byte[] tokenBytes = new byte[24];
+            new SecureRandom().nextBytes(tokenBytes);
+            String token = Base64.getUrlEncoder().withoutPadding()
+                    .encodeToString(tokenBytes);
+            cfg = SocietyConfig.builder()
+                    .buildingId(building.getBuildingId())
+                    .monthlyDueDay(5)
+                    .defaultPerFlatAmount(BigDecimal.ZERO)
+                    .maintainerUserId(claim.getUserId())
+                    .publicViewToken(token)
+                    .societyDisplayName(building.getBuildingName())
+                    .createdAt(now)
+                    .updatedAt(now)
+                    .build();
+            log.info("Auto-provisioned SocietyConfig for building {} on maintainer approval (new maintainer={})",
+                    building.getBuildingId(), claim.getUserId());
+        } else {
+            String previous = cfg.getMaintainerUserId();
+            cfg.setMaintainerUserId(claim.getUserId());
+            cfg.setUpdatedAt(now);
+            log.info("Maintainer swap on building {}: {} → {}",
+                    building.getBuildingId(), previous, claim.getUserId());
+        }
         configRepo.save(cfg);
-        log.info("Maintainer swap on building {}: {} → {}", building.getBuildingId(), previous, claim.getUserId());
 
         // Auth-service role bump. Wrapped so a transient auth-service
         // outage surfaces as a readable error rather than leaving the
