@@ -1326,10 +1326,20 @@ export interface DecideMembershipClaimRequest {
  */
 export interface EligibleMaintainer {
   tenantUserId: string;
-  flatId: string;
-  flatNumber: string;
+  /** TENANT = existing tenant of this building; owner promotes them via
+   *  the promote-tenant endpoint (sets temp password). SELF_REGISTERED
+   *  = user with a pending MAINTAINER MembershipClaim; owner approves
+   *  via approve-claim endpoint (they already have their own password). */
+  source: "TENANT" | "SELF_REGISTERED";
+  /** Populated only when source == SELF_REGISTERED — the claim to approve. */
+  claimId: string | null;
+  /** Populated only when source == TENANT. */
+  flatId: string | null;
+  flatNumber: string | null;
   tenantName: string;
-  /** Pre-formatted "Flat 101 — Ramesh K." string; render verbatim. */
+  /** Pre-formatted "Flat 101 — Ramesh K." (TENANT) or
+   *  "Ramesh K. · flat 203  (self-registered)" (SELF_REGISTERED).
+   *  Render verbatim. */
   displayName: string;
   email: string | null;
   phone: string | null;

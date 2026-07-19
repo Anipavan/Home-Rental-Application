@@ -30,7 +30,9 @@ import com.spa.home_rental_application.property_service.property_service.reposit
 import com.spa.home_rental_application.property_service.property_service.repository.FlatRepo;
 import com.spa.home_rental_application.property_service.property_service.repository.MaintenanceCollectionRepository;
 import com.spa.home_rental_application.property_service.property_service.repository.MaintenanceExpenseRepository;
+import com.spa.home_rental_application.property_service.property_service.repository.MembershipClaimRepository;
 import com.spa.home_rental_application.property_service.property_service.repository.SocietyConfigRepository;
+import com.spa.home_rental_application.property_service.property_service.Entities.MembershipClaim;
 import com.spa.home_rental_application.property_service.property_service.security.CallerSecurity;
 import com.spa.home_rental_application.property_service.property_service.security.ForbiddenException;
 import com.spa.home_rental_application.property_service.property_service.service.SocietyService;
@@ -80,6 +82,7 @@ public class SocietyServiceImpl implements SocietyService {
     private final MaintenanceCollectionRepository collectionRepo;
     private final BuildingRepo buildingRepo;
     private final FlatRepo flatRepo;
+    private final MembershipClaimRepository claimRepo;
     private final SocietyMapper mapper;
     private final UserClient userClient;
     private final AuthClient authClient;
@@ -90,6 +93,7 @@ public class SocietyServiceImpl implements SocietyService {
                               MaintenanceCollectionRepository collectionRepo,
                               BuildingRepo buildingRepo,
                               FlatRepo flatRepo,
+                              MembershipClaimRepository claimRepo,
                               SocietyMapper mapper,
                               UserClient userClient,
                               AuthClient authClient,
@@ -99,6 +103,7 @@ public class SocietyServiceImpl implements SocietyService {
         this.collectionRepo = collectionRepo;
         this.buildingRepo = buildingRepo;
         this.flatRepo = flatRepo;
+        this.claimRepo = claimRepo;
         this.mapper = mapper;
         this.userClient = userClient;
         this.authClient = authClient;
@@ -609,52 +614,97 @@ public class SocietyServiceImpl implements SocietyService {
     @Transactional(readOnly = true)
     public List<EligibleMaintainerResponse> listEligibleMaintainers(String buildingId) {
         Building b = requireBuilding(buildingId);
-        // Only the owner / admin can see the tenant roster for the
-        // purpose of picking a maintainer. Tenants and other roles do
-        // not get this list — even the existing maintainer can't see
-        // it (they can't reassign themselves anyway).
+        // Only the owner / admin can see the roster for the purpose of
+        // picking a maintainer. Tenants and other roles do not get this
+        // list — even the existing maintainer can't see it (they can't
+        // reassign themselves anyway).
         CallerSecurity.requireOwnerOrAdmin(b.getOwnerId());
 
+        // ── Bucket 1: existing tenants of this building (TENANT source) ──
         List<Flat> flats = flatRepo.findByBuildingId(buildingId);
-        long withTenants = flats.stream()
+        List<EligibleMaintainerResponse> tenantRows = flats.stream()
                 .filter(f -> f.getTenantId() != null && !f.getTenantId().isBlank())
-                .count();
-        log.info("eligible-maintainers buildingId={} flatsTotal={} flatsWithTenant={}",
-                buildingId, flats.size(), withTenants);
-        return flats.stream()
-                // Only consider currently-occupied flats. Vacant flats
-                // have no tenantId, so they trivially fall out of the
-                // filter.
-                .filter(f -> f.getTenantId() != null && !f.getTenantId().isBlank())
-                .map(f -> {
-                    UserClient.UserSummary u;
-                    try {
-                        u = userClient.getUserByAuthId(f.getTenantId());
-                    } catch (Exception ex) {
-                        // user-service unavailable / Feign blip — render
-                        // a "Flat 101 — Tenant abc12345…" entry so the
-                        // owner still has SOMETHING to pick. Worst case
-                        // they don't recognise the placeholder and ask
-                        // the tenant directly.
-                        log.warn("eligible-maintainers user-service blip authUserId={}", f.getTenantId(), ex);
-                        u = UserClient.UserSummary.empty();
-                    }
-                    String fullName = u == null ? null : u.fullName();
-                    String shownName = (fullName == null || fullName.isBlank())
-                            ? ("Tenant " + safeShortId(f.getTenantId()))
-                            : fullName;
-                    String displayName = "Flat " + f.getFlatNumber() + " — " + shownName;
-                    return EligibleMaintainerResponse.builder()
-                            .tenantUserId(f.getTenantId())
-                            .flatId(f.getId())
-                            .flatNumber(f.getFlatNumber())
-                            .tenantName(shownName)
-                            .displayName(displayName)
-                            .email(u == null ? null : u.email())
-                            .phone(u == null ? null : u.phone())
-                            .build();
-                })
+                .map(f -> toTenantRow(f))
                 .toList();
+
+        // ── Bucket 2: self-registered pending MAINTAINER claims for
+        // this building (SELF_REGISTERED source). Dedup against tenants
+        // already covered above — if a person is a tenant of this
+        // building AND submitted a claim, prefer the TENANT row since
+        // the promote-tenant flow needs the flat context.
+        Set<String> tenantUserIds = tenantRows.stream()
+                .map(EligibleMaintainerResponse::tenantUserId)
+                .collect(Collectors.toSet());
+
+        List<MembershipClaim> pending = claimRepo.findByBuildingIdAndStatus(
+                buildingId, MembershipClaim.Status.PENDING).stream()
+                .filter(c -> c.getRequestedRole() == MembershipClaim.RequestedRole.MAINTAINER)
+                .filter(c -> !tenantUserIds.contains(c.getUserId()))
+                .toList();
+
+        List<EligibleMaintainerResponse> claimRows = pending.stream()
+                .map(this::toClaimRow)
+                .toList();
+
+        log.info("eligible-maintainers buildingId={} tenantRows={} claimRows={}",
+                buildingId, tenantRows.size(), claimRows.size());
+        return java.util.stream.Stream.concat(tenantRows.stream(), claimRows.stream())
+                .toList();
+    }
+
+    private EligibleMaintainerResponse toTenantRow(Flat f) {
+        UserClient.UserSummary u;
+        try {
+            u = userClient.getUserByAuthId(f.getTenantId());
+        } catch (Exception ex) {
+            log.warn("eligible-maintainers user-service blip authUserId={}", f.getTenantId(), ex);
+            u = UserClient.UserSummary.empty();
+        }
+        String fullName = u == null ? null : u.fullName();
+        String shownName = (fullName == null || fullName.isBlank())
+                ? ("Tenant " + safeShortId(f.getTenantId()))
+                : fullName;
+        String displayName = "Flat " + f.getFlatNumber() + " — " + shownName;
+        return EligibleMaintainerResponse.builder()
+                .tenantUserId(f.getTenantId())
+                .source(EligibleMaintainerResponse.Source.TENANT)
+                .claimId(null)
+                .flatId(f.getId())
+                .flatNumber(f.getFlatNumber())
+                .tenantName(shownName)
+                .displayName(displayName)
+                .email(u == null ? null : u.email())
+                .phone(u == null ? null : u.phone())
+                .build();
+    }
+
+    private EligibleMaintainerResponse toClaimRow(MembershipClaim c) {
+        UserClient.UserSummary u;
+        try {
+            u = userClient.getUserByAuthId(c.getUserId());
+        } catch (Exception ex) {
+            log.warn("eligible-maintainers user-service blip authUserId={}", c.getUserId(), ex);
+            u = UserClient.UserSummary.empty();
+        }
+        String fullName = u == null ? null : u.fullName();
+        String shownName = (fullName == null || fullName.isBlank())
+                ? ("User " + safeShortId(c.getUserId()))
+                : fullName;
+        String flatSuffix = c.getClaimedFlatNumber() != null && !c.getClaimedFlatNumber().isBlank()
+                ? " · flat " + c.getClaimedFlatNumber()
+                : "";
+        String displayName = shownName + flatSuffix + "  (self-registered)";
+        return EligibleMaintainerResponse.builder()
+                .tenantUserId(c.getUserId())
+                .source(EligibleMaintainerResponse.Source.SELF_REGISTERED)
+                .claimId(c.getId())
+                .flatId(null)
+                .flatNumber(c.getClaimedFlatNumber())
+                .tenantName(shownName)
+                .displayName(displayName)
+                .email(u == null ? null : u.email())
+                .phone(u == null ? null : u.phone())
+                .build();
     }
 
     @Override

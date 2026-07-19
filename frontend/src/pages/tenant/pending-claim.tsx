@@ -100,6 +100,17 @@ export function PendingClaimPage() {
   );
 }
 
+/** Where to route a user who wants to resubmit a rejected/withdrawn
+ *  claim. They're already logged in, so we skip /register and drop
+ *  them straight into the right claim-submission page for the role
+ *  they were applying for. */
+function resubmitPathFor(claim: MembershipClaim): string {
+  if (claim.requestedRole === "MAINTAINER") return "/setup-society";
+  // RESIDENT / FLAT_OWNER — /welcome has the "I'm a maintainee" card
+  // that opens the building-search flow.
+  return "/welcome";
+}
+
 const STATUS_META: Record<
   MembershipClaimStatus,
   { label: string; icon: typeof Clock; tone: string; bg: string }
@@ -229,15 +240,20 @@ function ClaimCard({ claim }: { claim: MembershipClaim }) {
                   the right building.
                 </p>
                 <Button asChild variant="outline" size="sm">
-                  <Link to="/register">Submit a new request</Link>
+                  <Link to={resubmitPathFor(claim)}>Try again</Link>
                 </Button>
               </div>
             )}
             {claim.status === "WITHDRAWN" && (
-              <p className="text-sm mt-3 text-muted-foreground">
-                You cancelled this request. Resubmit from the signup
-                page if you change your mind.
-              </p>
+              <div className="mt-3 space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  You cancelled this request. Change your mind? Submit
+                  a fresh one — no need to re-register.
+                </p>
+                <Button asChild variant="outline" size="sm">
+                  <Link to={resubmitPathFor(claim)}>Try again</Link>
+                </Button>
+              </div>
             )}
           </div>
 

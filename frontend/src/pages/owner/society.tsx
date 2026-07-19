@@ -15,6 +15,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { societyApi } from "@/lib/api/society";
+import { claimsApi } from "@/lib/api/claims";
 import { propertiesApi } from "@/lib/api/properties";
 import { SocietyBankPanel } from "../maintainer/society-bank-panel";
 import { authApi } from "@/lib/api/auth";
@@ -653,16 +654,24 @@ function AssignMaintainerDialog({ buildingId }: { buildingId: string }) {
     () => eligibleQ.data?.find((t) => t.tenantUserId === selectedTenantId),
     [eligibleQ.data, selectedTenantId],
   );
+  const isSelfRegistered = selectedTenant?.source === "SELF_REGISTERED";
 
-  const assignMut = useMutation({
+  const invalidateAll = () => {
+    qc.invalidateQueries({ queryKey: ["society", buildingId] });
+    qc.invalidateQueries({ queryKey: ["my-societies"] });
+    qc.invalidateQueries({ queryKey: ["eligible-maintainers", buildingId] });
+    // Owner's dashboard "Pending requests" panel reads this key.
+    qc.invalidateQueries({ queryKey: ["pending-claims-for-owner"] });
+  };
+
+  const promoteMut = useMutation({
     mutationFn: () =>
       societyApi.promoteTenant(buildingId, {
         tenantUserId: selectedTenantId,
         temporaryPassword: password,
       }),
     onSuccess: (resp) => {
-      qc.invalidateQueries({ queryKey: ["society", buildingId] });
-      qc.invalidateQueries({ queryKey: ["my-societies"] });
+      invalidateAll();
       toast({
         title: "Maintainer assigned",
         description: `${resp.userName} can log in now. Temporary password: ${resp.temporaryPassword}. Share via WhatsApp — they should change it on first login.`,
@@ -679,15 +688,48 @@ function AssignMaintainerDialog({ buildingId }: { buildingId: string }) {
       }),
   });
 
+  const approveMut = useMutation({
+    mutationFn: () => {
+      if (!selectedTenant?.claimId) {
+        throw new Error("Missing claim id for self-registered candidate.");
+      }
+      return claimsApi.approve(selectedTenant.claimId);
+    },
+    onSuccess: () => {
+      invalidateAll();
+      toast({
+        title: "Request approved",
+        description: `${selectedTenant?.tenantName ?? "The applicant"} is now the maintainer — they can log in with their own password.`,
+      });
+      setOpen(false);
+      setSelectedTenantId("");
+      setPassword("");
+    },
+    onError: (err) =>
+      toast({
+        title: "Couldn't approve request",
+        description: extractErrorMessage(err),
+        variant: "destructive",
+      }),
+  });
+
   // Validate against the same regex the backend enforces — keeps the
   // submit button disabled until the password would actually be
-  // accepted. Better than letting the user submit + see a 400.
+  // accepted. Not required for SELF_REGISTERED (they already have
+  // their own password).
   const passwordOk =
     password.length >= 8 &&
     /[A-Z]/.test(password) &&
     /[a-z]/.test(password) &&
     /\d/.test(password);
-  const canSubmit = !!selectedTenantId && passwordOk && !assignMut.isPending;
+  const anyPending = promoteMut.isPending || approveMut.isPending;
+  const canSubmit = !!selectedTenantId
+    && (isSelfRegistered || passwordOk)
+    && !anyPending;
+  const onSubmit = () => {
+    if (isSelfRegistered) approveMut.mutate();
+    else promoteMut.mutate();
+  };
 
   return (
     <Dialog
@@ -711,26 +753,27 @@ function AssignMaintainerDialog({ buildingId }: { buildingId: string }) {
           <DialogTitle>Assign a maintainer</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
-          Pick one of the tenants living in this building — they'll be able
-          to log in with a fresh password and start recording per-flat dues
-          + common-area expenses.
+          Pick someone from the list — a tenant of this building, or a
+          person who self-registered as a maintainer via signup. Tenants
+          get a fresh temporary password; self-registered applicants
+          already have their own.
         </p>
 
         <div className="space-y-4">
           <div>
-            <Label>Tenant</Label>
+            <Label>Person</Label>
             {eligibleQ.isLoading ? (
               <Skeleton className="h-10 mt-1.5" />
             ) : eligibleQ.isError ? (
               <p className="text-sm text-destructive mt-1.5">
-                Couldn't load tenants — try reopening this dialog.
+                Couldn't load candidates — try reopening this dialog.
               </p>
             ) : !eligibleQ.data?.length ? (
               <EmptyState
                 variant="info"
                 icon={Building2}
-                title="No tenants in this building yet"
-                description="Add tenants to the building's flats first, then come back to promote one as the maintainer."
+                title="No candidates yet"
+                description="Either add tenants to this building's flats, or wait for someone to self-register as a maintainer via signup — they'll appear here automatically."
               />
             ) : (
               <>
@@ -739,7 +782,7 @@ function AssignMaintainerDialog({ buildingId }: { buildingId: string }) {
                   onValueChange={(v) => setSelectedTenantId(v)}
                 >
                   <SelectTrigger className="mt-1.5">
-                    <SelectValue placeholder="Pick a tenant" />
+                    <SelectValue placeholder="Pick a person" />
                   </SelectTrigger>
                   <SelectContent>
                     {eligibleQ.data.map((t) => (
@@ -750,9 +793,8 @@ function AssignMaintainerDialog({ buildingId }: { buildingId: string }) {
                   </SelectContent>
                 </Select>
                 <p className="text-[11px] text-muted-foreground mt-1">
-                  Only flats with a tenant currently assigned appear here.
-                  Vacant flats — and tenants of OTHER buildings — are
-                  intentionally excluded.
+                  Shows tenants of this building + anyone with a pending
+                  MAINTAINER signup request for this building.
                 </p>
               </>
             )}
@@ -764,35 +806,46 @@ function AssignMaintainerDialog({ buildingId }: { buildingId: string }) {
             )}
           </div>
 
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <Label>Temporary password</Label>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-7 px-2 text-xs"
-                onClick={() => setPassword(generateTempPassword())}
-              >
-                <Sparkles className="size-3.5" /> Generate
-              </Button>
-            </div>
-            <Input
-              type="text"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="At least 8 chars, 1 upper, 1 lower, 1 digit"
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              Shown in plain text so you can copy it. Ask the tenant to
-              change it after their first login.
-            </p>
-            {password && !passwordOk && (
-              <p className="text-xs text-destructive mt-1">
-                Needs 8+ chars including one uppercase, one lowercase, one digit.
+          {isSelfRegistered ? (
+            <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
+              <p className="text-sm">
+                This person self-registered — no temporary password
+                needed. They'll log in with the password they picked
+                at signup, and their pending request will be marked
+                approved.
               </p>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <Label>Temporary password</Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  onClick={() => setPassword(generateTempPassword())}
+                >
+                  <Sparkles className="size-3.5" /> Generate
+                </Button>
+              </div>
+              <Input
+                type="text"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="At least 8 chars, 1 upper, 1 lower, 1 digit"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Shown in plain text so you can copy it. Ask the tenant to
+                change it after their first login.
+              </p>
+              {password && !passwordOk && (
+                <p className="text-xs text-destructive mt-1">
+                  Needs 8+ chars including one uppercase, one lowercase, one digit.
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         <DialogFooter>
@@ -802,9 +855,11 @@ function AssignMaintainerDialog({ buildingId }: { buildingId: string }) {
           <Button
             variant="gradient"
             disabled={!canSubmit}
-            onClick={() => assignMut.mutate()}
+            onClick={onSubmit}
           >
-            {assignMut.isPending ? "Assigning…" : "Assign maintainer"}
+            {anyPending
+              ? isSelfRegistered ? "Approving…" : "Assigning…"
+              : isSelfRegistered ? "Approve request" : "Assign maintainer"}
           </Button>
         </DialogFooter>
       </DialogContent>
