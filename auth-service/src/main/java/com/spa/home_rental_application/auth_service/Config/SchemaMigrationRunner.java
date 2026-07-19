@@ -132,73 +132,82 @@ public class SchemaMigrationRunner {
         backfillGrandfatherEmailVerified();
         backfillSeedEmailVerificationToggle();
         backfillUserRolesJoinTable();
-        applyV18MaintaineeCheckConstraint();
+        // V18 (user_details_table.user_role) + V19 (user_roles.role) —
+        // both need MAINTAINEE added to their CHECK constraints. Shared
+        // helper does the loop-then-filter dance the right way (the
+        // original V18 helper used DBMS_LOB.INSTR in the WHERE clause,
+        // which Oracle rejects because SEARCH_CONDITION is a LONG —
+        // silently no-op'd on every boot).
+        applyMaintaineeCheckConstraint(
+                "user_details_table", "user_role", "ck_user_details_role");
+        applyMaintaineeCheckConstraint(
+                "user_roles", "role", "ck_user_roles_role");
     }
 
     /**
-     * V18 — extend the {@code user_role} CHECK constraint to allow
-     * {@code MAINTAINEE} alongside the existing role values. Idempotent
-     * via CONSTRAINT_NAME probes: if a constraint permitting
-     * MAINTAINEE already exists we don't touch it, otherwise drop
-     * every non-NOT-NULL CHECK on {@code user_role} and add a fresh
-     * one under a stable name.
+     * Idempotent: drop every auto-generated CHECK constraint on
+     * {@code (table, column)} that DOESN'T permit MAINTAINEE, then
+     * add a fresh named CHECK covering every current {@code Roles}
+     * enum value. Handles both:
      *
-     * <p>Mirror of the V18 Flyway migration for deploys that run
-     * Flyway-disabled (compose.bootstrap.yml).
+     * <ul>
+     *   <li>V18 — the CHECK on {@code user_details_table.user_role}
+     *       first laid down by V2 with the old role list.</li>
+     *   <li>V19 — the CHECK on {@code user_roles.role} that Hibernate
+     *       auto-generated when V17 created the join table.</li>
+     * </ul>
+     *
+     * <p>Uses V2's proven loop-then-filter pattern: SELECT every CHECK
+     * on the target (table, column), coerce SEARCH_CONDITION to a
+     * VARCHAR2 slice INSIDE the loop body (not the WHERE clause), then
+     * skip the NOT-NULL system checks and drop the rest. Filtering on
+     * DBMS_LOB.INSTR(TO_CLOB(...)) at the WHERE-clause level fails
+     * with "expression is of data type LONG" on Oracle 23c because
+     * SEARCH_CONDITION is a LONG.
      */
-    private void applyV18MaintaineeCheckConstraint() {
+    private void applyMaintaineeCheckConstraint(String table, String column,
+                                                String newConstraintName) {
         try {
-            // Skip if any existing CHECK constraint on user_role already
-            // mentions MAINTAINEE — nothing to do.
-            Integer existing = jdbc.queryForObject(
-                    "SELECT COUNT(*) FROM user_cons_columns cc " +
-                    " JOIN user_constraints c ON c.constraint_name = cc.constraint_name " +
-                    " WHERE UPPER(cc.table_name)  = 'USER_DETAILS_TABLE' " +
-                    "   AND UPPER(cc.column_name) = 'USER_ROLE' " +
-                    "   AND c.constraint_type    = 'C' " +
-                    "   AND DBMS_LOB.INSTR(TO_CLOB(c.search_condition), 'MAINTAINEE') > 0",
-                    Integer.class);
-            if (existing != null && existing > 0) {
-                log.debug("V18 CHECK constraint already permits MAINTAINEE — skipping");
-                return;
-            }
-
-            // Drop every non-NOT-NULL CHECK on user_role in a single
-            // anonymous PL/SQL block, then add the replacement.
             jdbc.execute(
                     "DECLARE " +
-                    "  v_count NUMBER; " +
+                    "  v_search VARCHAR2(4000); " +
+                    "  v_count  NUMBER; " +
                     "BEGIN " +
                     "  FOR rec IN ( " +
-                    "    SELECT c.constraint_name " +
+                    "    SELECT c.constraint_name, c.search_condition " +
                     "      FROM user_cons_columns cc " +
                     "      JOIN user_constraints  c ON c.constraint_name = cc.constraint_name " +
-                    "     WHERE UPPER(cc.table_name)  = 'USER_DETAILS_TABLE' " +
-                    "       AND UPPER(cc.column_name) = 'USER_ROLE' " +
+                    "     WHERE UPPER(cc.table_name)  = UPPER('" + table + "') " +
+                    "       AND UPPER(cc.column_name) = UPPER('" + column + "') " +
                     "       AND c.constraint_type     = 'C' " +
-                    "       AND DBMS_LOB.INSTR(TO_CLOB(c.search_condition), 'IS NOT NULL') = 0 " +
+                    "       AND c.constraint_name    <> UPPER('" + newConstraintName + "') " +
                     "  ) LOOP " +
-                    "    BEGIN " +
-                    "      EXECUTE IMMEDIATE 'ALTER TABLE user_details_table DROP CONSTRAINT ' " +
-                    "        || rec.constraint_name; " +
-                    "    EXCEPTION WHEN OTHERS THEN " +
-                    "      IF SQLCODE != -2443 THEN RAISE; END IF; " +
-                    "    END; " +
+                    "    v_search := DBMS_LOB.SUBSTR(TO_CLOB(rec.search_condition), 4000, 1); " +
+                    "    IF v_search IS NULL OR INSTR(UPPER(v_search), 'IS NOT NULL') = 0 THEN " +
+                    "      BEGIN " +
+                    "        EXECUTE IMMEDIATE 'ALTER TABLE " + table
+                                        + " DROP CONSTRAINT ' || rec.constraint_name; " +
+                    "      EXCEPTION WHEN OTHERS THEN " +
+                    "        IF SQLCODE != -2443 THEN RAISE; END IF; " +
+                    "      END; " +
+                    "    END IF; " +
                     "  END LOOP; " +
                     "  SELECT COUNT(*) INTO v_count FROM user_constraints " +
-                    "   WHERE constraint_name = 'CK_USER_DETAILS_ROLE'; " +
+                    "   WHERE constraint_name = UPPER('" + newConstraintName + "'); " +
                     "  IF v_count = 0 THEN " +
                     "    EXECUTE IMMEDIATE " +
-                    "      'ALTER TABLE user_details_table ADD CONSTRAINT ck_user_details_role " +
-                    "       CHECK (user_role IN " +
+                    "      'ALTER TABLE " + table + " ADD CONSTRAINT " + newConstraintName + " " +
+                    "       CHECK (" + column + " IN " +
                     "         (''ADMIN'',''OWNER'',''MAINTAINER'',''MAINTAINEE'',''TENANT'',''TENENT''))'; " +
                     "  END IF; " +
                     "END;");
-            log.info("V18: user_role CHECK constraint updated to permit MAINTAINEE");
+            log.info("CHECK constraint on {}.{} refreshed to permit MAINTAINEE ({})",
+                    table, column, newConstraintName);
         } catch (Exception ex) {
             // Never crash boot over a schema-migration failure — the
             // service still starts; operator can inspect and re-run.
-            log.warn("V18 CHECK constraint update skipped: {}",
+            log.warn("CHECK constraint refresh on {}.{} skipped: {}",
+                    table, column,
                     ex.getMessage() == null ? ex.getClass().getSimpleName()
                             : ex.getMessage().lines().findFirst().orElse(""));
         }
