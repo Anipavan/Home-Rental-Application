@@ -171,6 +171,42 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
             }
         }
 
+        // RESIDENT (maintainee) — same vacancy guard. The owner has to
+        // establish who lives in the flat FIRST (via the Assign-tenant
+        // flow, which sets flat.tenantId), then residents of that flat
+        // can self-register as society members. Without this, a random
+        // user could pick any flat number in the building and — if the
+        // maintainer waves them through — end up as a ghost resident of
+        // a genuinely empty flat.
+        //
+        // We exclude the applicant themselves from the "other members"
+        // count so a user re-submitting after an earlier withdrawal
+        // isn't blocked by their own inactive row.
+        if (req.requestedRole() == RequestedRole.RESIDENT) {
+            List<Flat> matches = flatRepo.findByBuildingIdAndFlatNumber(
+                    building.getBuildingId(), req.claimedFlatNumber().trim());
+            if (matches.isEmpty()) {
+                throw new IllegalArgumentException(
+                        "No flat numbered '" + req.claimedFlatNumber()
+                                + "' exists in " + building.getBuildingName()
+                                + ". Double-check the flat number with the owner.");
+            }
+            Flat targetFlat = matches.get(0);
+            boolean hasRentalTenant = targetFlat.getTenantId() != null
+                    && !targetFlat.getTenantId().isBlank();
+            long otherActiveMembers = membershipRepo
+                    .findByFlatIdAndIsActiveTrue(targetFlat.getId()).stream()
+                    .filter(m -> !userId.equals(m.getUserId()))
+                    .count();
+            if (!hasRentalTenant && otherActiveMembers == 0) {
+                throw new IllegalArgumentException(
+                        "Flat " + req.claimedFlatNumber() + " in "
+                                + building.getBuildingName() + " is currently vacant. "
+                                + "Ask the owner to assign a tenant to this flat first, "
+                                + "then submit your request again.");
+            }
+        }
+
         // Dedup — refuse a second PENDING claim from the same user on
         // the same building. They can withdraw the existing one and
         // resubmit if they got the role wrong.
@@ -793,6 +829,29 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
                             + "' exists in this building.");
         }
         Flat flat = matches.get(0);
+
+        // Vacancy guard — mirrors the CREATE-time check but re-runs at
+        // APPROVE time to close a race: the flat may have been vacated
+        // (rental tenant vacated, other members deactivated) after
+        // the applicant submitted. A truly empty flat shouldn't
+        // acquire residents by way of self-registration — the owner
+        // has to establish who lives there via the assign-tenant flow
+        // first. Applicant themselves is excluded from the "other
+        // members" count so a re-approval doesn't fail because of the
+        // claimant's own pre-existing inactive row.
+        boolean hasRentalTenant = flat.getTenantId() != null
+                && !flat.getTenantId().isBlank();
+        long otherActiveMembers = membershipRepo
+                .findByFlatIdAndIsActiveTrue(flat.getId()).stream()
+                .filter(m -> !claim.getUserId().equals(m.getUserId()))
+                .count();
+        if (!hasRentalTenant && otherActiveMembers == 0) {
+            throw new IllegalStateException(
+                    "Can't approve — flat " + flat.getFlatNumber() + " in "
+                            + building.getBuildingName() + " is currently vacant. "
+                            + "Ask the owner to assign a tenant to this flat first, "
+                            + "then re-approve this request.");
+        }
 
         // Idempotent upsert. A user who moved out (is_active=0) and
         // moves back in re-uses the same row instead of erroring on
