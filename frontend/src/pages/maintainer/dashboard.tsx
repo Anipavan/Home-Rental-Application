@@ -233,11 +233,13 @@ function MaintainerPendingClaimsWidget() {
         <div className="flex items-center justify-between gap-3 mb-3">
           <div>
             <h3 className="font-display font-semibold text-base">
-              Pending resident requests
+              Pending requests
             </h3>
             <p className="text-xs text-muted-foreground mt-0.5">
               People who want to join a society you manage — approve to
               grant them resident access + start billing maintenance.
+              Maintainer-takeover requests need both you and the building
+              owner to approve.
             </p>
           </div>
           {pending.length > 0 && (
@@ -249,66 +251,112 @@ function MaintainerPendingClaimsWidget() {
           <Skeleton className="h-20 rounded-md" />
         ) : (
           <div className="space-y-2">
-            {pending.map((c) => (
-              <div
-                key={c.id}
-                className="flex flex-wrap items-start gap-3 p-3 rounded-lg border border-border/60 bg-secondary/30"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Badge variant="secondary" className="text-[10px]">
-                      {c.requestedRole === "FLAT_OWNER" ? "Flat owner" : "Resident"}
-                    </Badge>
-                    <span className="font-semibold text-sm truncate">
-                      {c.applicantName ?? c.applicantEmail ?? "Applicant"}
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    <span className="font-medium">
-                      {c.buildingName ?? "Building"}
-                    </span>
-                    {c.claimedFlatNumber && ` · flat ${c.claimedFlatNumber}`}
-                    {c.applicantEmail && (
-                      <>
-                        {" · "}
-                        <span className="font-mono">{c.applicantEmail}</span>
-                      </>
-                    )}
-                  </p>
-                  {c.applicantNote && (
-                    <p className="text-xs italic text-muted-foreground mt-1.5">
-                      &ldquo;{c.applicantNote}&rdquo;
+            {pending.map((c) => {
+              const isDualApprovalTakeover =
+                c.requestedRole === "MAINTAINER"
+                && Boolean(c.requiresDualApproval);
+              const alreadyApprovedByMe = isDualApprovalTakeover
+                && Boolean(c.maintainerApproved);
+              const roleLabel =
+                c.requestedRole === "MAINTAINER"
+                  ? "Maintainer takeover"
+                  : c.requestedRole === "FLAT_OWNER"
+                    ? "Flat owner"
+                    : "Resident";
+              return (
+                <div
+                  key={c.id}
+                  className="flex flex-wrap items-start gap-3 p-3 rounded-lg border border-border/60 bg-secondary/30"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge
+                        variant={isDualApprovalTakeover ? "default" : "secondary"}
+                        className="text-[10px]"
+                      >
+                        {roleLabel}
+                      </Badge>
+                      <span className="font-semibold text-sm truncate">
+                        {c.applicantName ?? c.applicantEmail ?? "Applicant"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      <span className="font-medium">
+                        {c.buildingName ?? "Building"}
+                      </span>
+                      {c.claimedFlatNumber && ` · flat ${c.claimedFlatNumber}`}
+                      {c.applicantEmail && (
+                        <>
+                          {" · "}
+                          <span className="font-mono">{c.applicantEmail}</span>
+                        </>
+                      )}
                     </p>
-                  )}
+                    {/* Dual-approval takeover: show who's already voted so
+                        the maintainer knows if their approval will complete
+                        the handover or still needs the owner. */}
+                    {isDualApprovalTakeover && (
+                      <p className="text-[11px] mt-1.5">
+                        <span
+                          className={c.ownerApproved
+                            ? "text-success font-semibold"
+                            : "text-muted-foreground"}
+                        >
+                          Owner: {c.ownerApproved ? "approved" : "pending"}
+                        </span>
+                        {"  ·  "}
+                        <span
+                          className={c.maintainerApproved
+                            ? "text-success font-semibold"
+                            : "text-muted-foreground"}
+                        >
+                          You: {c.maintainerApproved ? "approved" : "pending"}
+                        </span>
+                      </p>
+                    )}
+                    {c.applicantNote && (
+                      <p className="text-xs italic text-muted-foreground mt-1.5">
+                        &ldquo;{c.applicantNote}&rdquo;
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={alreadyApprovedByMe
+                        || (rejectMut.isPending && rejectMut.variables === c.id)}
+                      onClick={() => {
+                        const msg = isDualApprovalTakeover
+                          ? `Reject ${c.applicantName ?? "this person"}'s request to take over as maintainer? This kills the request immediately.`
+                          : `Reject ${c.applicantName ?? "this request"}? They can submit again later.`;
+                        if (confirm(msg)) rejectMut.mutate(c.id);
+                      }}
+                    >
+                      Reject
+                    </Button>
+                    <Button
+                      variant="gradient"
+                      size="sm"
+                      disabled={alreadyApprovedByMe
+                        || (approveMut.isPending && approveMut.variables === c.id)}
+                      onClick={() => {
+                        if (isDualApprovalTakeover) {
+                          const msg = c.ownerApproved
+                            ? `The owner has already approved this. Your approval will complete the handover — ${c.applicantName ?? "this person"} becomes the maintainer immediately.`
+                            : `Approve ${c.applicantName ?? "this person"} as your replacement? The owner still has to approve too before the handover takes effect.`;
+                          if (confirm(msg)) approveMut.mutate(c.id);
+                        } else {
+                          approveMut.mutate(c.id);
+                        }
+                      }}
+                    >
+                      {alreadyApprovedByMe ? "Already approved" : "Approve"}
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex gap-2 shrink-0">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={rejectMut.isPending && rejectMut.variables === c.id}
-                    onClick={() => {
-                      if (
-                        confirm(
-                          `Reject ${c.applicantName ?? "this request"}? They can submit again later.`,
-                        )
-                      ) {
-                        rejectMut.mutate(c.id);
-                      }
-                    }}
-                  >
-                    Reject
-                  </Button>
-                  <Button
-                    variant="gradient"
-                    size="sm"
-                    disabled={approveMut.isPending && approveMut.variables === c.id}
-                    onClick={() => approveMut.mutate(c.id)}
-                  >
-                    Approve
-                  </Button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </CardContent>
@@ -455,12 +503,6 @@ export function MaintainerFlatsPage() {
       {configQ.data?.publicViewUrl && (
         <BuildingExpenseViewerShare url={configQ.data.publicViewUrl} />
       )}
-
-      {/* Dual-approval pending claims — competing maintainers who want
-          to take over this society. The current maintainer's approval
-          is half of the two-party gate (owner approval being the other
-          half). Card hides when nothing's pending. */}
-      <MaintainerPendingClaimsWidget />
 
       {/* KPI strip */}
       <div className="grid gap-4 sm:grid-cols-4 mb-6">
@@ -1541,187 +1583,6 @@ function SetAmountDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-/**
- * Dual-approval pending-requests widget for the maintainer dashboard.
- * Mirrors the existing owner-side PendingClaimsWidget but scoped to
- * the claims where the current maintainer's vote is required (i.e.
- * MAINTAINER reassign claims targeting buildings this user runs).
- * Self-hides when nothing's pending.
- */
-function MaintainerPendingClaimsWidget() {
-  const qc = useQueryClient();
-  const { toast: tst } = useToast();
-  const pendingQ = useQuery({
-    queryKey: ["maintainer-pending-claims"],
-    queryFn: () => claimsApi.pendingForMaintainer(),
-    refetchInterval: 30_000,
-    staleTime: 15_000,
-  });
-
-  const approveMut = useMutation({
-    mutationFn: (claimId: string) => claimsApi.approve(claimId),
-    onSuccess: (claim) => {
-      qc.invalidateQueries({ queryKey: ["maintainer-pending-claims"] });
-      qc.invalidateQueries({ queryKey: ["society"] });
-      // The owner ALSO has to approve for the swap to actually fire.
-      // Tell the maintainer that explicitly so they know it's not
-      // immediately effective.
-      tst({
-        title:
-          claim.status === "APPROVED"
-            ? "Approved — handover complete."
-            : "Your approval recorded.",
-        description:
-          claim.status === "APPROVED"
-            ? `${claim.applicantName ?? "The new maintainer"} now manages this society.`
-            : "Waiting for the owner's approval before the change takes effect.",
-      });
-    },
-    onError: (e) =>
-      tst({
-        title: "Couldn't approve",
-        description: extractErrorMessage(e),
-        variant: "destructive",
-      }),
-  });
-
-  const rejectMut = useMutation({
-    mutationFn: (claimId: string) => claimsApi.reject(claimId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["maintainer-pending-claims"] });
-      tst({ title: "Request rejected." });
-    },
-    onError: (e) =>
-      tst({
-        title: "Couldn't reject",
-        description: extractErrorMessage(e),
-        variant: "destructive",
-      }),
-  });
-
-  const pending = pendingQ.data ?? [];
-  if (!pendingQ.isLoading && pending.length === 0) return null;
-
-  return (
-    <Card className="mb-6 border-warning/40">
-      <CardContent className="p-5">
-        <div className="flex items-center justify-between gap-3 mb-3">
-          <div>
-            <h3 className="font-display font-semibold text-base">
-              Maintainer handover requests
-            </h3>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              People applying to take over as the maintainer. Both you
-              and the building owner must approve before the change
-              takes effect.
-            </p>
-          </div>
-          {pending.length > 0 && (
-            <Badge variant="secondary">{pending.length}</Badge>
-          )}
-        </div>
-
-        {pendingQ.isLoading ? (
-          <Skeleton className="h-20 rounded-md" />
-        ) : (
-          <div className="space-y-2">
-            {pending.map((c) => (
-              <div
-                key={c.id}
-                className="flex flex-wrap items-start gap-3 p-3 rounded-lg border border-border/60 bg-secondary/30"
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm truncate">
-                    {c.applicantName ?? c.applicantEmail ?? "Applicant"}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    For{" "}
-                    <span className="font-medium">
-                      {c.buildingName ?? "your building"}
-                    </span>
-                    {c.applicantEmail && (
-                      <>
-                        {" · "}
-                        <span className="font-mono">{c.applicantEmail}</span>
-                      </>
-                    )}
-                  </p>
-                  {/* Two-party state — show which side has already acted. */}
-                  <p className="text-[11px] mt-1.5">
-                    <span
-                      className={
-                        c.ownerApproved
-                          ? "text-success font-semibold"
-                          : "text-muted-foreground"
-                      }
-                    >
-                      Owner: {c.ownerApproved ? "approved" : "pending"}
-                    </span>
-                    {"  ·  "}
-                    <span
-                      className={
-                        c.maintainerApproved
-                          ? "text-success font-semibold"
-                          : "text-muted-foreground"
-                      }
-                    >
-                      You: {c.maintainerApproved ? "approved" : "pending"}
-                    </span>
-                  </p>
-                  {c.applicantNote && (
-                    <p className="text-xs italic text-muted-foreground mt-1.5">
-                      &ldquo;{c.applicantNote}&rdquo;
-                    </p>
-                  )}
-                </div>
-                <div className="flex gap-2 shrink-0">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={
-                      c.maintainerApproved ||
-                      (rejectMut.isPending && rejectMut.variables === c.id)
-                    }
-                    onClick={() => {
-                      if (
-                        confirm(
-                          `Reject ${c.applicantName ?? "this person"}'s request to take over as maintainer? This kills the request immediately — the owner won't be able to approve it.`,
-                        )
-                      ) {
-                        rejectMut.mutate(c.id);
-                      }
-                    }}
-                  >
-                    Reject
-                  </Button>
-                  <Button
-                    variant="gradient"
-                    size="sm"
-                    disabled={
-                      c.maintainerApproved ||
-                      (approveMut.isPending && approveMut.variables === c.id)
-                    }
-                    onClick={() => {
-                      const msg = c.ownerApproved
-                        ? `The owner has already approved this. Your approval will complete the handover — ${c.applicantName ?? "this person"} becomes the maintainer immediately.`
-                        : `Approve ${c.applicantName ?? "this person"} as your replacement? The owner still has to approve too before the handover takes effect.`;
-                      if (confirm(msg)) {
-                        approveMut.mutate(c.id);
-                      }
-                    }}
-                  >
-                    {c.maintainerApproved ? "Already approved" : "Approve"}
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
   );
 }
 
