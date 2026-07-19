@@ -209,10 +209,13 @@ function ClaimCard({ claim }: { claim: MembershipClaim }) {
                   You're in.{" "}
                   {claim.requestedRole === "MAINTAINER"
                     ? "Sign out and back in to pick up the maintainer dashboard — your current session still has the old role."
-                    : "You're attached to your flat. Head to the society page to see the books."}
+                    : claim.requestedRole === "RESIDENT"
+                      ? "Sign out and back in to switch to the maintainee dashboard — your current session still has the old role."
+                      : "You're attached to your flat. Head to the society page to see the books."}
                 </p>
                 <div className="flex gap-2">
-                  {claim.requestedRole === "MAINTAINER" ? (
+                  {claim.requestedRole === "MAINTAINER"
+                    || claim.requestedRole === "RESIDENT" ? (
                     <Button
                       variant="gradient"
                       size="sm"
