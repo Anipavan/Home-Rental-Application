@@ -36,6 +36,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Membership-claim implementation. Wires the existing services together:
@@ -223,15 +224,30 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
             saved.setDecisionNote("Auto-approved (owner self-claim)");
             saved = claimRepo.save(saved);
         } else {
-            // Ping the building owner so they don't have to discover
-            // the request from the dashboard polling. Best-effort —
-            // notification failure must NEVER fail claim creation
-            // (worst case the owner just sees the chip on next
-            // dashboard refresh).
-            notifyOwnerOfNewClaim(saved, building);
-            // Dual-approval claims ALSO ping the current maintainer
-            // so they know there's a competing claim they need to
-            // weigh in on.
+            // Route the notification to whoever's actually going to
+            // decide the claim (mirrors the listPending* + approve
+            // authorization rules below):
+            //   * MAINTAINER claims → owner (only owner can promote
+            //     a maintainer).
+            //   * RESIDENT / FLAT_OWNER claims where the building has
+            //     a DISTINCT maintainer → that maintainer.
+            //   * RESIDENT / FLAT_OWNER claims where no distinct
+            //     maintainer exists (fresh building, or owner is also
+            //     the maintainer) → owner as fallback.
+            //   * Dual-approval MAINTAINER takeovers → ALSO ping the
+            //     current maintainer so they know about the takeover.
+            // Best-effort — notification failure must NEVER fail
+            // claim creation (worst case the decider sees the chip on
+            // next dashboard refresh).
+            String distinctMaintainer = distinctMaintainerId(building);
+            boolean routeToMaintainer = distinctMaintainer != null
+                    && (saved.getRequestedRole() == RequestedRole.RESIDENT
+                            || saved.getRequestedRole() == RequestedRole.FLAT_OWNER);
+            if (routeToMaintainer) {
+                notifyCurrentMaintainerOfNewClaim(saved, building);
+            } else {
+                notifyOwnerOfNewClaim(saved, building);
+            }
             if (requiresDual) {
                 notifyCurrentMaintainerOfNewClaim(saved, building);
             }
@@ -354,16 +370,41 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
                 claimRepo.findByBuildingIdInAndStatus(buildingIds, Status.PENDING);
         if (pending.isEmpty()) return List.of();
 
-        // Batch-enrich: one user-service lookup per distinct claimant
-        // (not per-claim), and a single in-memory map for building
-        // display fields. Keeps the widget snappy for owners with
-        // many small buildings.
+        // Ownership vs. society-membership split (updated 2026-07):
+        //   * MAINTAINER claims → owner decides (only the owner can
+        //     appoint a new maintainer).
+        //   * RESIDENT / FLAT_OWNER claims where a DISTINCT maintainer
+        //     exists → that maintainer decides; hide from owner's list
+        //     so the queue doesn't clutter with things they can't act
+        //     on cleanly.
+        //   * RESIDENT / FLAT_OWNER claims where no distinct maintainer
+        //     is set (fresh building, or owner-as-maintainer) → still
+        //     shown to owner as fallback so nothing gets stranded.
+        Map<String, String> distinctMaintainerByBuilding = myBuildings.stream()
+                .collect(Collectors.toMap(
+                        Building::getBuildingId,
+                        b -> {
+                            String m = distinctMaintainerId(b);
+                            return m == null ? "" : m;
+                        }));
+
+        List<MembershipClaim> forOwner = pending.stream()
+                .filter(c -> {
+                    if (c.getRequestedRole() == RequestedRole.MAINTAINER) return true;
+                    // RESIDENT / FLAT_OWNER — owner only if no distinct maintainer.
+                    String m = distinctMaintainerByBuilding.getOrDefault(c.getBuildingId(), "");
+                    return m.isEmpty();
+                })
+                .toList();
+        if (forOwner.isEmpty()) return List.of();
+
+        // Batch-enrich: one user-service lookup per distinct claimant.
         Map<String, Building> bMap = myBuildings.stream()
                 .collect(Collectors.toMap(Building::getBuildingId, b -> b));
         Map<String, UserClient.UserSummary> uMap = batchLookupUsers(
-                pending.stream().map(MembershipClaim::getUserId).collect(Collectors.toSet()));
+                forOwner.stream().map(MembershipClaim::getUserId).collect(Collectors.toSet()));
 
-        return pending.stream()
+        return forOwner.stream()
                 .map(c -> toResponse(c, bMap.get(c.getBuildingId()), uMap.get(c.getUserId())))
                 .toList();
     }
@@ -382,12 +423,25 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
         List<String> buildingIds = mySocieties.stream()
                 .map(SocietyConfig::getBuildingId)
                 .toList();
-        // Only dual-approval claims need the current maintainer's
-        // attention — single-party claims (no current maintainer at
-        // create time) go straight to the owner.
-        List<MembershipClaim> pending =
-                claimRepo.findByBuildingIdInAndStatusAndRequiresDualApproval(
+
+        // Two buckets:
+        //   1. RESIDENT / FLAT_OWNER claims for buildings I maintain —
+        //      society-membership decisions, my job.
+        //   2. Dual-approval MAINTAINER takeover claims — the
+        //      incumbent maintainer must weigh in.
+        List<MembershipClaim> residencyClaims = claimRepo
+                .findByBuildingIdInAndStatus(buildingIds, Status.PENDING).stream()
+                .filter(c -> c.getRequestedRole() == RequestedRole.RESIDENT
+                        || c.getRequestedRole() == RequestedRole.FLAT_OWNER)
+                .toList();
+        List<MembershipClaim> dualApproval = claimRepo
+                .findByBuildingIdInAndStatusAndRequiresDualApproval(
                         buildingIds, Status.PENDING, true);
+
+        List<MembershipClaim> pending = Stream.concat(
+                residencyClaims.stream(), dualApproval.stream())
+                .distinct()
+                .toList();
         if (pending.isEmpty()) return List.of();
 
         Map<String, Building> bMap = buildingRepo.findAllById(buildingIds).stream()
@@ -398,6 +452,21 @@ public class MembershipClaimServiceImpl implements MembershipClaimService {
         return pending.stream()
                 .map(c -> toResponse(c, bMap.get(c.getBuildingId()), uMap.get(c.getUserId())))
                 .toList();
+    }
+
+    /**
+     * Returns the authUserId of the building's maintainer IFF a
+     * DISTINCT maintainer is set (i.e. the SocietyConfig exists AND
+     * its maintainerUserId is non-null AND != building.ownerId).
+     * Otherwise null — meaning "no separate maintainer, owner is the
+     * decider by default".
+     */
+    private String distinctMaintainerId(Building b) {
+        return configRepo.findByBuildingId(b.getBuildingId())
+                .map(SocietyConfig::getMaintainerUserId)
+                .filter(mid -> mid != null && !mid.isBlank()
+                        && !mid.equals(b.getOwnerId()))
+                .orElse(null);
     }
 
     @Override

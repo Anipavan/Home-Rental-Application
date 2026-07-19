@@ -881,8 +881,9 @@ function PendingClaimsWidget() {
               Pending requests
             </h3>
             <p className="text-xs text-muted-foreground mt-0.5">
-              People who registered themselves as residents or maintainers
-              for your buildings — approve to grant access.
+              People who want to manage a society for you (or claim a
+              flat) in your buildings. Society-residency requests go
+              to the building's maintainer once you've assigned one.
             </p>
           </div>
           {pending.length > 0 && (

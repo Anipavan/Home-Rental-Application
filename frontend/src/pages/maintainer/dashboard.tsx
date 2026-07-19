@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { societyApi } from "@/lib/api/society";
 import { claimsApi } from "@/lib/api/claims";
+import type { MembershipClaim } from "@/types/api";
 import { SocietyBankPanel } from "./society-bank-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -114,6 +115,12 @@ export function MaintainerHomePage() {
         title="Maintainer dashboard"
         description="Record per-flat dues, mark payments received, log common-area expenses."
       />
+
+      {/* Residency-claim queue — RESIDENT and FLAT_OWNER claims for
+          buildings this user maintains. Owner still handles
+          MAINTAINER claims on their own dashboard. */}
+      <MaintainerPendingClaimsWidget />
+
       {societiesQ.isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2">
           <Skeleton className="h-32 rounded-2xl" />
@@ -155,6 +162,157 @@ export function MaintainerHomePage() {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Maintainer-side pending-claims queue. Mirrors the owner's
+ * PendingClaimsWidget but scoped to RESIDENT / FLAT_OWNER claims for
+ * buildings the caller currently maintains — the society-membership
+ * decisions that are the maintainer's job. MAINTAINER claims stay on
+ * the owner's dashboard (only the owner can appoint a new maintainer).
+ *
+ * <p>Auto-hides when the queue is empty so the maintainer dashboard
+ * stays clean until there's actually something to act on.
+ */
+function MaintainerPendingClaimsWidget() {
+  const qc = useQueryClient();
+  const { toast: tst } = useToast();
+  const pendingQ = useQuery({
+    queryKey: ["maintainer-pending-claims"],
+    queryFn: () => claimsApi.pendingForMaintainer(),
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+    // Zero pending claims is a normal empty state; retry only on
+    // real transport failures so a temporarily blipping backend
+    // doesn't hide a legitimate queue for 30 seconds.
+    retry: 1,
+  });
+
+  const approveMut = useMutation({
+    mutationFn: (claimId: string) => claimsApi.approve(claimId),
+    onSuccess: (claim: MembershipClaim) => {
+      qc.invalidateQueries({ queryKey: ["maintainer-pending-claims"] });
+      qc.invalidateQueries({ queryKey: ["my-societies"] });
+      tst({
+        title: "Approved.",
+        description:
+          claim.requestedRole === "FLAT_OWNER"
+            ? `${claim.applicantName ?? "The applicant"} is now the flat owner of ${claim.claimedFlatNumber ?? "the flat"}.`
+            : `${claim.applicantName ?? "The applicant"} is now a society resident of flat ${claim.claimedFlatNumber ?? "their flat"}.`,
+      });
+    },
+    onError: (e) =>
+      tst({
+        title: "Couldn't approve",
+        description: extractErrorMessage(e),
+        variant: "destructive",
+      }),
+  });
+
+  const rejectMut = useMutation({
+    mutationFn: (claimId: string) => claimsApi.reject(claimId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["maintainer-pending-claims"] });
+      tst({ title: "Request rejected." });
+    },
+    onError: (e) =>
+      tst({
+        title: "Couldn't reject",
+        description: extractErrorMessage(e),
+        variant: "destructive",
+      }),
+  });
+
+  const pending = pendingQ.data ?? [];
+  if (!pendingQ.isLoading && pending.length === 0) return null;
+
+  return (
+    <Card className="mb-6 border-warning/40">
+      <CardContent className="p-5">
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div>
+            <h3 className="font-display font-semibold text-base">
+              Pending resident requests
+            </h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              People who want to join a society you manage — approve to
+              grant them resident access + start billing maintenance.
+            </p>
+          </div>
+          {pending.length > 0 && (
+            <Badge variant="secondary">{pending.length}</Badge>
+          )}
+        </div>
+
+        {pendingQ.isLoading ? (
+          <Skeleton className="h-20 rounded-md" />
+        ) : (
+          <div className="space-y-2">
+            {pending.map((c) => (
+              <div
+                key={c.id}
+                className="flex flex-wrap items-start gap-3 p-3 rounded-lg border border-border/60 bg-secondary/30"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge variant="secondary" className="text-[10px]">
+                      {c.requestedRole === "FLAT_OWNER" ? "Flat owner" : "Resident"}
+                    </Badge>
+                    <span className="font-semibold text-sm truncate">
+                      {c.applicantName ?? c.applicantEmail ?? "Applicant"}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    <span className="font-medium">
+                      {c.buildingName ?? "Building"}
+                    </span>
+                    {c.claimedFlatNumber && ` · flat ${c.claimedFlatNumber}`}
+                    {c.applicantEmail && (
+                      <>
+                        {" · "}
+                        <span className="font-mono">{c.applicantEmail}</span>
+                      </>
+                    )}
+                  </p>
+                  {c.applicantNote && (
+                    <p className="text-xs italic text-muted-foreground mt-1.5">
+                      &ldquo;{c.applicantNote}&rdquo;
+                    </p>
+                  )}
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={rejectMut.isPending && rejectMut.variables === c.id}
+                    onClick={() => {
+                      if (
+                        confirm(
+                          `Reject ${c.applicantName ?? "this request"}? They can submit again later.`,
+                        )
+                      ) {
+                        rejectMut.mutate(c.id);
+                      }
+                    }}
+                  >
+                    Reject
+                  </Button>
+                  <Button
+                    variant="gradient"
+                    size="sm"
+                    disabled={approveMut.isPending && approveMut.variables === c.id}
+                    onClick={() => approveMut.mutate(c.id)}
+                  >
+                    Approve
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -268,6 +426,11 @@ export function MaintainerFlatsPage() {
           </div>
         }
       />
+
+      {/* Residency-claim queue — auto-hides when empty. Placed above
+          the month selector so a pending request never gets lost below
+          the fold on a busy flats month. */}
+      <MaintainerPendingClaimsWidget />
 
       {/* Month selector */}
       <div className="flex items-center gap-3 mb-4">
