@@ -216,6 +216,68 @@ public class SchemaMigrationRunner {
             }
         }
         log.info("property-service SchemaMigrationRunner: complete (added={}, skipped={})", added, skipped);
+
+        // Pass 3 — CHECK-constraint widenings that Flyway migrations
+        // handle but need mirroring for the Flyway-off prod path.
+        applyClaimsRoleCheckConstraint();
+    }
+
+    /**
+     * Mirror of V8's CHECK-constraint widening on
+     * {@code membership_claims.requested_role}. V6 created the table
+     * with {@code CHECK (requested_role IN ('MAINTAINER', 'RESIDENT'))};
+     * V8 dropped that and added a version including {@code FLAT_OWNER}.
+     * Prod runs Flyway-disabled, so without this mirror a new
+     * FLAT_OWNER MembershipClaim trips ORA-02290
+     * "check constraint CHK_CLAIMS_ROLE violated".
+     *
+     * <p>Idempotent — skips when a constraint already permitting
+     * FLAT_OWNER exists.
+     */
+    private void applyClaimsRoleCheckConstraint() {
+        try {
+            jdbc.execute(
+                    "DECLARE " +
+                    "  v_search VARCHAR2(4000); " +
+                    "  v_already_ok NUMBER := 0; " +
+                    "BEGIN " +
+                    "  FOR rec IN ( " +
+                    "    SELECT c.constraint_name, c.search_condition " +
+                    "      FROM user_cons_columns cc " +
+                    "      JOIN user_constraints  c ON c.constraint_name = cc.constraint_name " +
+                    "     WHERE UPPER(cc.table_name)  = 'MEMBERSHIP_CLAIMS' " +
+                    "       AND UPPER(cc.column_name) = 'REQUESTED_ROLE' " +
+                    "       AND c.constraint_type     = 'C' " +
+                    "  ) LOOP " +
+                    "    v_search := DBMS_LOB.SUBSTR(TO_CLOB(rec.search_condition), 4000, 1); " +
+                    "    IF v_search IS NOT NULL AND INSTR(UPPER(v_search), 'FLAT_OWNER') > 0 THEN " +
+                    "      v_already_ok := 1; " +
+                    "    ELSIF v_search IS NULL OR INSTR(UPPER(v_search), 'IS NOT NULL') = 0 THEN " +
+                    "      BEGIN " +
+                    "        EXECUTE IMMEDIATE 'ALTER TABLE membership_claims DROP CONSTRAINT ' " +
+                    "          || rec.constraint_name; " +
+                    "      EXCEPTION WHEN OTHERS THEN " +
+                    "        IF SQLCODE != -2443 THEN RAISE; END IF; " +
+                    "      END; " +
+                    "    END IF; " +
+                    "  END LOOP; " +
+                    "  IF v_already_ok = 0 THEN " +
+                    "    BEGIN " +
+                    "      EXECUTE IMMEDIATE " +
+                    "        'ALTER TABLE membership_claims ADD CONSTRAINT chk_claims_role " +
+                    "         CHECK (requested_role IN " +
+                    "           (''MAINTAINER'',''RESIDENT'',''FLAT_OWNER''))'; " +
+                    "    EXCEPTION WHEN OTHERS THEN " +
+                    "      IF SQLCODE NOT IN (-955, -2264) THEN RAISE; END IF; " +
+                    "    END; " +
+                    "  END IF; " +
+                    "END;");
+            log.info("CHECK constraint on membership_claims.requested_role refreshed to permit FLAT_OWNER (chk_claims_role)");
+        } catch (Exception ex) {
+            log.warn("membership_claims.requested_role CHECK refresh skipped: {}",
+                    ex.getMessage() == null ? ex.getClass().getSimpleName()
+                            : ex.getMessage().lines().findFirst().orElse(""));
+        }
     }
 
     private record Migration(String table, String column, String type) {}
