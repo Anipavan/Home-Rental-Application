@@ -52,6 +52,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Implementation of the society / common-area maintenance ledger.
@@ -648,7 +650,7 @@ public class SocietyServiceImpl implements SocietyService {
 
         log.info("eligible-maintainers buildingId={} tenantRows={} claimRows={}",
                 buildingId, tenantRows.size(), claimRows.size());
-        return java.util.stream.Stream.concat(tenantRows.stream(), claimRows.stream())
+        return Stream.concat(tenantRows.stream(), claimRows.stream())
                 .toList();
     }
 
