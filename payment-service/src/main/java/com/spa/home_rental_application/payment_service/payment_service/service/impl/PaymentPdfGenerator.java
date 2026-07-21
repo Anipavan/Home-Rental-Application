@@ -104,9 +104,13 @@ public class PaymentPdfGenerator {
                     bold, normal));
             doc.add(new Paragraph(" "));
 
-            doc.add(kv("Payment ID", p.getId(), bold, normal));
             // Name (human-readable) instead of raw tenant id — fall back to
             // the id only when the Feign lookup couldn't resolve a profile.
+            // Payment ID + Owner ID were shown here previously but they
+            // read like internal noise to residents (long UUIDs / numeric
+            // ids they don't recognise). Receipt No above + Transaction
+            // Ref below are the identifiers users actually need for a
+            // dispute; drop the internal ones from the printed surface.
             doc.add(kv("Name",
                     tenantName != null && !tenantName.isBlank()
                             ? tenantName
@@ -118,7 +122,6 @@ public class PaymentPdfGenerator {
                             ? flatNumber
                             : safe(p.getFlatId()),
                     bold, normal));
-            doc.add(kv("Owner ID", safe(p.getOwnerId()), bold, normal));
             doc.add(kv("Due Date", p.getDueDate() == null ? "-" : DATE.format(p.getDueDate()), bold, normal));
             doc.add(kv("Paid On",
                     p.getPaymentDate() == null ? "-" : formatInstant(p.getPaymentDate()),
