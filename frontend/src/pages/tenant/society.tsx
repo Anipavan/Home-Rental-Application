@@ -18,6 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { PageHeader } from "@/components/layout/page-header";
+import { AnnouncementsPanel } from "@/components/society/announcements-panel";
 import { formatINR } from "@/lib/utils";
 import type {
   ExpenseCategory,
@@ -127,6 +128,14 @@ export function TenantSocietyPage() {
             · dues ₹{configQ.data.defaultPerFlatAmount}/flat by day{" "}
             {configQ.data.monthlyDueDay} each month.
           </p>
+
+          {/* Notice board (V17) — read-only for residents. Maintainer
+              posts on their /maintainer dashboard; residents see the
+              same list here. */}
+          <AnnouncementsPanel
+            buildingId={configQ.data.buildingId}
+            canPost={false}
+          />
 
           <div className="flex items-center gap-3 mb-4">
             <Calendar className="size-4 text-muted-foreground" />

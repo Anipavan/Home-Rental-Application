@@ -69,6 +69,30 @@ public interface SocietyService {
      *  building has no society config yet. */
     SocietyConfigResponse getMyTenantSociety();
 
+    // ── Announcements (V17) ──────────────────────────────────────
+    /**
+     * Post a new announcement on the building's notice board. Auth:
+     * owner / maintainer of the building / admin.
+     */
+    com.spa.home_rental_application.property_service.property_service.DTO.Response.AnnouncementResponse createAnnouncement(
+            String buildingId,
+            com.spa.home_rental_application.property_service.property_service.DTO.Request.AnnouncementRequest req);
+
+    /**
+     * Newest-first list of announcements for a building. Auth: owner /
+     * maintainer / a tenant of a flat in the building / an active
+     * society member / admin.
+     */
+    List<com.spa.home_rental_application.property_service.property_service.DTO.Response.AnnouncementResponse> listAnnouncements(
+            String buildingId);
+
+    /**
+     * Delete an announcement. Auth: the original author OR the current
+     * owner / maintainer / admin — anyone with authority over the
+     * building's notice board.
+     */
+    void deleteAnnouncement(String buildingId, String announcementId);
+
     // ── Expenses ──────────────────────────────────────────────────
     MaintenanceExpenseResponse addExpense(String buildingId, AddExpenseRequest req);
 

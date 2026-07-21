@@ -1324,6 +1324,26 @@ export interface DecideMembershipClaimRequest {
  * Owners see this list when assigning a maintainer; backend filters
  * to currently-occupied flats only.
  */
+/** V17 — building-scoped notice-board post. Maintainer/owner writes;
+ *  residents of the building read. */
+export interface SocietyAnnouncement {
+  id: string;
+  buildingId: string;
+  authorUserId: string;
+  /** Best-effort human name, falls back to "User abc12345…" when
+   *  user-service can't resolve. Never blank. */
+  authorName: string;
+  title: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateAnnouncementRequest {
+  title: string;
+  body: string;
+}
+
 export interface EligibleMaintainer {
   tenantUserId: string;
   /** TENANT = existing tenant of this building; owner promotes them via

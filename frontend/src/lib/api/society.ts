@@ -1,12 +1,14 @@
 import { api } from "./client";
 import type {
   AddExpenseRequest,
+  CreateAnnouncementRequest,
   EligibleMaintainer,
   FlatMaintenanceRow,
   MaintenanceExpense,
   PromoteTenantRequest,
   PromoteTenantResponse,
   SetupSocietyRequest,
+  SocietyAnnouncement,
   SocietyConfig,
   SocietyLedger,
   UpsertFlatCollectionRequest,
@@ -51,6 +53,26 @@ export const societyApi = {
     api
       .post<SocietyConfig>(`/society/${buildingId}/report-bank-issue/clear`)
       .then((r) => r.data),
+
+  /** V17 — building notice-board. Owner/maintainer post; every
+   *  resident of the building (tenants + society members) reads. */
+  announcements: {
+    list: (buildingId: string) =>
+      api
+        .get<SocietyAnnouncement[]>(`/society/${buildingId}/announcements`)
+        .then((r) => r.data),
+    create: (buildingId: string, body: CreateAnnouncementRequest) =>
+      api
+        .post<SocietyAnnouncement>(
+          `/society/${buildingId}/announcements`,
+          body,
+        )
+        .then((r) => r.data),
+    remove: (buildingId: string, announcementId: string) =>
+      api
+        .delete<void>(`/society/${buildingId}/announcements/${announcementId}`)
+        .then((r) => r.data),
+  },
 
   /** All societies the caller manages (as owner or assigned maintainer). */
   mine: () =>

@@ -150,7 +150,22 @@ public class SchemaMigrationRunner {
             "  CONSTRAINT pk_flat_society_membership PRIMARY KEY (flat_id, user_id)" +
             ")",
             "CREATE INDEX idx_fsm_user ON flat_society_membership (user_id)",
-            "CREATE INDEX idx_fsm_flat_active ON flat_society_membership (flat_id, is_active)"
+            "CREATE INDEX idx_fsm_flat_active ON flat_society_membership (flat_id, is_active)",
+
+            // ── society_announcements (V17) ──
+            // Building-scoped notice board. Maintainer/owner posts,
+            // residents read on /app/society. Simple title + body +
+            // authored-by, no attachments / pinning at MVP.
+            "CREATE TABLE society_announcements (" +
+            "  id             VARCHAR2(36) PRIMARY KEY," +
+            "  building_id    VARCHAR2(64) NOT NULL," +
+            "  author_user_id VARCHAR2(64) NOT NULL," +
+            "  title          VARCHAR2(200) NOT NULL," +
+            "  body           VARCHAR2(4000) NOT NULL," +
+            "  created_at     TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL," +
+            "  updated_at     TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL" +
+            ")",
+            "CREATE INDEX idx_sa_building_created ON society_announcements (building_id, created_at DESC)"
     );
 
     @PostConstruct

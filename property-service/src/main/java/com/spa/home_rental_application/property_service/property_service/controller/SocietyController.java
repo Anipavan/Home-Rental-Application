@@ -109,6 +109,36 @@ public class SocietyController {
         return ResponseEntity.ok(service.clearBankIssueFlag(buildingId));
     }
 
+    /* ── Announcements (V17) ─────────────────────────────────────── */
+
+    @Operation(summary = "Owner/maintainer: post a new building announcement.")
+    @PostMapping("/{buildingId}/announcements")
+    public ResponseEntity<com.spa.home_rental_application.property_service.property_service.DTO.Response.AnnouncementResponse>
+        createAnnouncement(@PathVariable String buildingId,
+                           @jakarta.validation.Valid @org.springframework.web.bind.annotation.RequestBody
+                           com.spa.home_rental_application.property_service.property_service.DTO.Request.AnnouncementRequest req) {
+        log.info("POST /society/{}/announcements", buildingId);
+        return ResponseEntity.ok(service.createAnnouncement(buildingId, req));
+    }
+
+    @Operation(summary = "Residents / owner / maintainer: list building announcements, newest first.")
+    @org.springframework.web.bind.annotation.GetMapping("/{buildingId}/announcements")
+    public ResponseEntity<java.util.List<com.spa.home_rental_application.property_service.property_service.DTO.Response.AnnouncementResponse>>
+        listAnnouncements(@PathVariable String buildingId) {
+        log.debug("GET /society/{}/announcements", buildingId);
+        return ResponseEntity.ok(service.listAnnouncements(buildingId));
+    }
+
+    @Operation(summary = "Author / owner / maintainer: delete a building announcement.")
+    @org.springframework.web.bind.annotation.DeleteMapping("/{buildingId}/announcements/{announcementId}")
+    public ResponseEntity<Void> deleteAnnouncement(
+            @PathVariable String buildingId,
+            @PathVariable String announcementId) {
+        log.info("DELETE /society/{}/announcements/{}", buildingId, announcementId);
+        service.deleteAnnouncement(buildingId, announcementId);
+        return ResponseEntity.noContent().build();
+    }
+
     @Operation(summary = "List all societies the caller manages (as owner or assigned maintainer).")
     @GetMapping("/mine")
     public ResponseEntity<List<SocietyConfigResponse>> mine() {

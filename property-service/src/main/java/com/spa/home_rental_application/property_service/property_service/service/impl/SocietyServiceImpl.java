@@ -31,8 +31,12 @@ import com.spa.home_rental_application.property_service.property_service.reposit
 import com.spa.home_rental_application.property_service.property_service.repository.MaintenanceCollectionRepository;
 import com.spa.home_rental_application.property_service.property_service.repository.MaintenanceExpenseRepository;
 import com.spa.home_rental_application.property_service.property_service.repository.MembershipClaimRepository;
+import com.spa.home_rental_application.property_service.property_service.repository.SocietyAnnouncementRepository;
 import com.spa.home_rental_application.property_service.property_service.repository.SocietyConfigRepository;
 import com.spa.home_rental_application.property_service.property_service.Entities.MembershipClaim;
+import com.spa.home_rental_application.property_service.property_service.Entities.SocietyAnnouncement;
+import com.spa.home_rental_application.property_service.property_service.DTO.Request.AnnouncementRequest;
+import com.spa.home_rental_application.property_service.property_service.DTO.Response.AnnouncementResponse;
 import com.spa.home_rental_application.property_service.property_service.security.CallerSecurity;
 import com.spa.home_rental_application.property_service.property_service.security.ForbiddenException;
 import com.spa.home_rental_application.property_service.property_service.service.SocietyService;
@@ -46,6 +50,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -85,6 +90,7 @@ public class SocietyServiceImpl implements SocietyService {
     private final BuildingRepo buildingRepo;
     private final FlatRepo flatRepo;
     private final MembershipClaimRepository claimRepo;
+    private final SocietyAnnouncementRepository announcementRepo;
     private final SocietyMapper mapper;
     private final UserClient userClient;
     private final AuthClient authClient;
@@ -96,6 +102,7 @@ public class SocietyServiceImpl implements SocietyService {
                               BuildingRepo buildingRepo,
                               FlatRepo flatRepo,
                               MembershipClaimRepository claimRepo,
+                              SocietyAnnouncementRepository announcementRepo,
                               SocietyMapper mapper,
                               UserClient userClient,
                               AuthClient authClient,
@@ -106,6 +113,7 @@ public class SocietyServiceImpl implements SocietyService {
         this.buildingRepo = buildingRepo;
         this.flatRepo = flatRepo;
         this.claimRepo = claimRepo;
+        this.announcementRepo = announcementRepo;
         this.mapper = mapper;
         this.userClient = userClient;
         this.authClient = authClient;
@@ -285,6 +293,127 @@ public class SocietyServiceImpl implements SocietyService {
         cfg = configRepo.save(cfg);
         log.info("Bank-config flag manually cleared on society {}", cfg.getId());
         return mapper.toResponse(cfg);
+    }
+
+    // ── Announcements (V17) ──────────────────────────────────────
+
+    @Override
+    @Transactional
+    public AnnouncementResponse createAnnouncement(String buildingId, AnnouncementRequest req) {
+        // Auto-provision SocietyConfig if it doesn't exist yet — same
+        // rationale as the auto-provision on MAINTAINER-claim approval:
+        // demanding an explicit "Set up society" first is redundant
+        // friction when the maintainer's clearly running the society
+        // (they're posting notices to it).
+        SocietyConfig cfg = configRepo.findByBuildingId(buildingId).orElse(null);
+        Building b = requireBuilding(buildingId);
+        if (cfg == null) {
+            // Delegate to the setupSociety path so the token / defaults
+            // are consistent with the manual-setup wizard. Caller must
+            // still be owner/admin to trigger auto-setup (matches the
+            // setupSociety guard).
+            CallerSecurity.requireOwnerOrAdmin(b.getOwnerId());
+            SetupSocietyRequest bootstrap = new SetupSocietyRequest(
+                    java.math.BigDecimal.ZERO, 5, null, null, null, null, null, null);
+            setupSociety(buildingId, bootstrap);
+            cfg = requireConfig(buildingId);
+        }
+        // Owner / maintainer / admin — same write authority as the
+        // rest of the society mutation surface.
+        requireOwnerOrMaintainerOrAdmin(cfg, b);
+
+        String authorId = CallerSecurity.getCurrentAuthUserId()
+                .orElseThrow(() -> new ForbiddenException(
+                        "You must be logged in to post an announcement."));
+        LocalDateTime now = LocalDateTime.now();
+        SocietyAnnouncement saved = announcementRepo.save(SocietyAnnouncement.builder()
+                .id(java.util.UUID.randomUUID().toString())
+                .buildingId(buildingId)
+                .authorUserId(authorId)
+                .title(req.title().trim())
+                .body(req.body().trim())
+                .createdAt(now)
+                .updatedAt(now)
+                .build());
+        log.info("Society announcement posted: buildingId={} announcementId={} authorId={}",
+                buildingId, saved.getId(), authorId);
+        return toAnnouncementResponse(saved);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AnnouncementResponse> listAnnouncements(String buildingId) {
+        SocietyConfig cfg = requireConfig(buildingId);
+        // Any resident of the building can read — owner / maintainer /
+        // tenants of the building / admin. Same read-authority pattern
+        // as the config read.
+        requireOwnerOrMaintainerOrTenantOrAdmin(buildingId, cfg);
+
+        List<SocietyAnnouncement> rows =
+                announcementRepo.findByBuildingIdOrderByCreatedAtDesc(buildingId);
+        if (rows.isEmpty()) return List.of();
+
+        // Batch user-service lookup so we don't fan out one call per
+        // announcement (buildings with a chatty maintainer could
+        // easily hit dozens).
+        Map<String, UserClient.UserSummary> authorMap = batchLookupUsers(
+                rows.stream().map(SocietyAnnouncement::getAuthorUserId)
+                        .collect(java.util.stream.Collectors.toSet()));
+        return rows.stream()
+                .map(a -> toAnnouncementResponse(a, authorMap.get(a.getAuthorUserId())))
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    public void deleteAnnouncement(String buildingId, String announcementId) {
+        SocietyAnnouncement a = announcementRepo.findById(announcementId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Announcement not found: " + announcementId));
+        if (!buildingId.equals(a.getBuildingId())) {
+            // Guard against cross-building URL tampering — the caller
+            // has to be authorised for the ACTUAL owning building, not
+            // whichever building they passed in the URL.
+            throw new IllegalArgumentException(
+                    "Announcement doesn't belong to the specified building.");
+        }
+        SocietyConfig cfg = requireConfig(buildingId);
+        Building b = requireBuilding(buildingId);
+
+        String callerId = CallerSecurity.getCurrentAuthUserId().orElse(null);
+        boolean callerIsAuthor = callerId != null
+                && callerId.equals(a.getAuthorUserId());
+        if (!callerIsAuthor) {
+            // Non-author deletes require the elevated privilege set —
+            // author can always delete their own; anyone else has to
+            // be one of the building's decision-makers.
+            requireOwnerOrMaintainerOrAdmin(cfg, b);
+        }
+        announcementRepo.delete(a);
+        log.info("Society announcement deleted: buildingId={} announcementId={} deletedBy={}",
+                buildingId, announcementId, callerId);
+    }
+
+    private AnnouncementResponse toAnnouncementResponse(SocietyAnnouncement a) {
+        return toAnnouncementResponse(a, safeLookup(a.getAuthorUserId()));
+    }
+
+    private AnnouncementResponse toAnnouncementResponse(
+            SocietyAnnouncement a, UserClient.UserSummary author) {
+        String authorName = author == null ? null : author.fullName();
+        if (authorName == null || authorName.isBlank()) {
+            authorName = "User " + safeShortId(a.getAuthorUserId());
+        }
+        return AnnouncementResponse.builder()
+                .id(a.getId())
+                .buildingId(a.getBuildingId())
+                .authorUserId(a.getAuthorUserId())
+                .authorName(authorName)
+                .title(a.getTitle())
+                .body(a.getBody())
+                .createdAt(a.getCreatedAt())
+                .updatedAt(a.getUpdatedAt())
+                .build();
     }
 
     /** Cross-field invariant: whenever a UPI ID is on file, the payee
@@ -1101,6 +1230,30 @@ public class SocietyServiceImpl implements SocietyService {
     private static String safeShortId(String id) {
         if (id == null || id.length() < 8) return id == null ? "?" : id;
         return id.substring(0, 8) + "…";
+    }
+
+    /** Best-effort user-service lookup — swallows Feign blips so a
+     *  notification / display call site can render a placeholder
+     *  instead of failing the whole request. Mirrors the same-named
+     *  helper in MembershipClaimServiceImpl. */
+    private UserClient.UserSummary safeLookup(String userId) {
+        try {
+            return userClient.getUserByAuthId(userId);
+        } catch (Exception e) {
+            log.debug("user lookup failed for {}: {}", userId, e.getMessage());
+            return null;
+        }
+    }
+
+    /** One user-service lookup per distinct id — used when a list
+     *  response would otherwise fan out N calls (announcements,
+     *  claim lists, etc.). */
+    private Map<String, UserClient.UserSummary> batchLookupUsers(Set<String> userIds) {
+        Map<String, UserClient.UserSummary> out = new HashMap<>(userIds.size());
+        for (String id : userIds) {
+            out.put(id, safeLookup(id));
+        }
+        return out;
     }
 
     private Building requireBuilding(String buildingId) {

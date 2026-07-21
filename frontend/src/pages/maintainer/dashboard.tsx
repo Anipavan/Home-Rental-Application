@@ -16,6 +16,7 @@ import { societyApi } from "@/lib/api/society";
 import { claimsApi } from "@/lib/api/claims";
 import type { MembershipClaim } from "@/types/api";
 import { SocietyBankPanel } from "./society-bank-panel";
+import { AnnouncementsPanel } from "@/components/society/announcements-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -502,6 +503,12 @@ export function MaintainerFlatsPage() {
           the owner sees on their society page. */}
       {configQ.data?.publicViewUrl && (
         <BuildingExpenseViewerShare url={configQ.data.publicViewUrl} />
+      )}
+
+      {/* Notice board (V17) — write access. Every resident of the
+          building sees the same list on their /app/society page. */}
+      {buildingId && (
+        <AnnouncementsPanel buildingId={buildingId} canPost={true} />
       )}
 
       {/* KPI strip */}
