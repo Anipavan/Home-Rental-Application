@@ -84,6 +84,19 @@ export const paymentsApi = {
         note ? { note } : {})
       .then((r) => r.data),
 
+  /**
+   * Owner reverts a wrongly-marked-PAID payment back to DUE. Used
+   * when a tenant self-reported via {@link #tenantReportPaid} but
+   * the deposit never landed in the owner's bank, or when the
+   * owner marked paid by mistake. Reason is optional but tracked
+   * in the audit event.
+   */
+  revertToDue: (id: number | string, reason?: string) =>
+    api
+      .post<PaymentResponse>(`/payments/${id}/revert-to-due`,
+        reason ? { reason } : {})
+      .then((r) => r.data),
+
   markUpiReceived: (id: number | string, body: PayCashRequest) =>
     api
       .post<PaymentResponse>(`/payments/${id}/mark-upi-received`, body)

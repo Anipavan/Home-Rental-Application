@@ -116,6 +116,30 @@ export function OwnerPaymentsPage() {
       }),
   });
 
+  // Owner reverts a wrongly-marked-PAID payment back to DUE. Common
+  // trigger: tenant self-reported via /tenant-report-paid but the
+  // deposit never landed in the owner's bank. Same invalidation set
+  // as the mark-paid flows.
+  const revertMutation = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
+      paymentsApi.revertToDue(id, reason),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["owner-payments", authUserId] });
+      qc.invalidateQueries({ queryKey: ["payment"] });
+      qc.invalidateQueries({ queryKey: ["my-payments"] });
+      toast({
+        title: "Reverted to unpaid",
+        description: "The payment is back in the DUE list; tenant will see it as unpaid.",
+      });
+    },
+    onError: (e) =>
+      toast({
+        variant: "destructive",
+        title: "Couldn't revert the payment",
+        description: extractErrorMessage(e),
+      }),
+  });
+
   const remindMutation = useMutation({
     mutationFn: (p: PaymentResponse) => {
       const overdue = p.status === "OVERDUE";
@@ -173,6 +197,16 @@ export function OwnerPaymentsPage() {
       onMarkCash={(p) => setCashTarget(p)}
       onMarkUpi={(p) => setUpiTarget(p)}
       onRemind={(p) => remindMutation.mutate(p)}
+      onRevert={(p) => {
+        const reason = window.prompt(
+          "Reverse this payment back to UNPAID?\n\nOptional: why? (e.g. tenant reported but nothing landed in the bank)",
+          "",
+        );
+        // prompt returns null when user hits Cancel — bail without reverting.
+        if (reason === null) return;
+        revertMutation.mutate({ id: p.id, reason: reason.trim() || undefined });
+      }}
+      revertingId={revertMutation.isPending ? revertMutation.variables?.id : undefined}
       remindingId={remindMutation.isPending ? remindMutation.variables?.id : undefined}
       reminderLog={reminderLog}
     />
@@ -271,6 +305,8 @@ function Table({
   onMarkCash,
   onMarkUpi,
   onRemind,
+  onRevert,
+  revertingId,
   remindingId,
   reminderLog,
 }: {
@@ -279,6 +315,8 @@ function Table({
   onMarkCash: (p: PaymentResponse) => void;
   onMarkUpi: (p: PaymentResponse) => void;
   onRemind: (p: PaymentResponse) => void;
+  onRevert: (p: PaymentResponse) => void;
+  revertingId?: string;
   remindingId?: string;
   reminderLog: Record<string, number>;
 }) {
@@ -400,7 +438,20 @@ function Table({
                     <Banknote /> Record cash
                   </Button>
                 )}
-                {p.status === "PAID" && <ReceiptButton paymentId={p.id} />}
+                {p.status === "PAID" && (
+                  <>
+                    <ReceiptButton paymentId={p.id} />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => onRevert(p)}
+                      disabled={revertingId === p.id}
+                      title="Mark this back as UNPAID — use if the money never actually landed in your bank."
+                    >
+                      Reverse
+                    </Button>
+                  </>
+                )}
                 {isUnpaid && <InvoiceButton paymentId={p.id} />}
               </div>
             </div>

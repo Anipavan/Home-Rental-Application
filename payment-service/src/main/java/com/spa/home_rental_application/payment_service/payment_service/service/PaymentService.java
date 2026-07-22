@@ -77,6 +77,29 @@ public interface PaymentService {
     PaymentResponse tenantReportPaid(String paymentId, String note);
 
     /**
+     * Owner (or admin) reverts a wrongly-marked-PAID payment back to
+     * DUE. Used when a tenant self-reported via
+     * {@link #tenantReportPaid} but the money never actually landed
+     * in the owner's bank, or when the owner clicked "Mark paid" on
+     * the wrong row by mistake.
+     *
+     * <p>Clears {@code paymentDate}, {@code transactionId},
+     * {@code gatewayName}, {@code gatewayOrderId} so a subsequent
+     * pay attempt gets a clean slate. The Receipt row for the
+     * cleared payment stays in the DB as a historical breadcrumb
+     * (never overwritten) — new payment attempts generate a fresh
+     * receipt on completion.
+     *
+     * <p>Audit event {@code payment.reverted-to-due} captures actor
+     * (owner), subject (tenant), amount, previous state + reason.
+     * No Kafka {@code payment.reverted} event today — downstream
+     * flows (property-service society-collection sync, etc.) don't
+     * currently need a reversal signal, and adding one is easy when
+     * they do.
+     */
+    PaymentResponse revertPaymentToDue(String paymentId, String reason);
+
+    /**
      * Resolve everything the tenant needs to pay rent directly to
      * the owner's UPI VPA or bank account. Built from the owner's
      * saved bank-account row (via Feign to user-service); returns

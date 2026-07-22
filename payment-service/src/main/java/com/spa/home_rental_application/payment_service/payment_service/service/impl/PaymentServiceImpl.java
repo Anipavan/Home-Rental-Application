@@ -25,6 +25,7 @@ import com.spa.home_rental_application.payment_service.payment_service.repositor
 import com.spa.home_rental_application.payment_service.payment_service.repository.PaymentRepository;
 import com.spa.home_rental_application.payment_service.payment_service.repository.ProcessedWebhookRepository;
 import com.spa.home_rental_application.payment_service.payment_service.repository.ReceiptRepository;
+import com.spa.home_rental_application.payment_service.payment_service.security.CallerSecurity;
 import com.spa.home_rental_application.payment_service.payment_service.service.PaymentService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -477,6 +478,51 @@ public class PaymentServiceImpl implements PaymentService {
                         "flatId", String.valueOf(p.getFlatId()),
                         "reference", body.reference() == null ? "" : body.reference()));
 
+        return PaymentMapper.toResponse(p);
+    }
+
+    @Override
+    @Transactional
+    public PaymentResponse revertPaymentToDue(String paymentId, String reason) {
+        Payment p = mustFind(paymentId);
+        if (p.getStatus() != PaymentStatus.PAID) {
+            throw new IllegalStateException(
+                    "Only PAID payments can be reverted — this one is "
+                            + p.getStatus().name().toLowerCase() + ".");
+        }
+        // Snapshot the pre-revert state for the audit event so the
+        // paper trail carries who was blamed originally (owner-
+        // confirmed vs tenant-reported).
+        String previousGateway = p.getGatewayName();
+        String previousTxn = p.getTransactionId();
+        Instant previousPaidDate = p.getPaymentDate();
+
+        // Wipe payment-completion fields. Status back to PENDING so
+        // the row shows as unpaid + still-collectable; the daily
+        // overdue scheduler will bump it to OVERDUE again if past
+        // due_date on its next pass.
+        p.setStatus(PaymentStatus.PENDING);
+        p.setPaymentDate(null);
+        p.setTransactionId(null);
+        p.setGatewayName(null);
+        p.setGatewayOrderId(null);
+        paymentRepo.save(p);
+
+        audit.publishSuccess("payment.reverted-to-due",
+                CallerSecurity.getCurrentAuthUserId().orElse(p.getOwnerId()),
+                p.getTenantId(),
+                p.getId(),
+                java.util.Map.of(
+                        "amount", String.valueOf(p.getTotalAmount()),
+                        "flatId", String.valueOf(p.getFlatId()),
+                        "previousGateway", previousGateway == null ? "" : previousGateway,
+                        "previousTxnId", previousTxn == null ? "" : previousTxn,
+                        "previousPaidDate", previousPaidDate == null ? "" : previousPaidDate.toString(),
+                        "reason", reason == null ? "" : reason));
+        log.info("Payment {} reverted to DUE by {} (was {} · txn={} · previously PAID at {})",
+                p.getId(),
+                CallerSecurity.getCurrentAuthUserId().orElse("unknown"),
+                previousGateway, previousTxn, previousPaidDate);
         return PaymentMapper.toResponse(p);
     }
 
