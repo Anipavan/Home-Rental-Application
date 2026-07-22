@@ -3,6 +3,7 @@ import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { paymentGateway } from "@/lib/api/payment-gateway";
+import { isRazorpayPaymentsDisabled } from "@/lib/feature-flags";
 import type { VpaValidationResponse } from "@/types/api";
 import { cn } from "@/lib/utils";
 
@@ -124,6 +125,19 @@ export function UpiIdField({
       return;
     }
 
+    // When Razorpay-mediated payments are disabled (RAZORPAY_PAYMENTS_
+    // DISABLED), we can't rely on Razorpay's verifyVpa: test-mode rejects
+    // real VPAs, and in live mode we're no longer routing payments
+    // through Razorpay anyway. Format is enough — tenants scan a QR
+    // that carries this VPA verbatim, and their own UPI app does the
+    // real resolution at pay time. Pretend the check succeeded so
+    // Save unblocks; skip showing a name preview since we don't have
+    // one from the server.
+    if (isRazorpayPaymentsDisabled()) {
+      setState({ kind: "valid", customerName: "" });
+      return;
+    }
+
     // Cache hit? Resolve synchronously — don't fire another server call.
     const cached = cache.get(trimmed);
     if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
@@ -224,9 +238,15 @@ export function UpiIdField({
         <div className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-2.5 py-1.5">
           <CheckCircle2 className="size-3.5 text-emerald-600 shrink-0" />
           <p className="text-xs">
-            <span className="font-medium">Verified</span>{" "}
-            <span className="text-muted-foreground">·</span>{" "}
-            <span className="font-mono">{state.customerName}</span>
+            {state.customerName ? (
+              <>
+                <span className="font-medium">Verified</span>{" "}
+                <span className="text-muted-foreground">·</span>{" "}
+                <span className="font-mono">{state.customerName}</span>
+              </>
+            ) : (
+              <span className="font-medium">Format looks good</span>
+            )}
           </p>
         </div>
       )}
