@@ -59,6 +59,24 @@ public interface PaymentService {
     PaymentResponse markUpiReceived(String paymentId, PayCashRequest body);
 
     /**
+     * Tenant self-reports that they've completed a direct-UPI payment
+     * out-of-band. Marks the Payment PAID with a TENANT-REPORTED
+     * marker so the owner sees it as paid immediately in their
+     * dashboard while still being able to tell the reported-vs-
+     * verified apart by the reference / audit trail.
+     *
+     * <p>This is the "trust-based" path we use post-Razorpay-off:
+     * direct UPI has no server-side confirmation, so the tenant is
+     * the source of truth for "I paid". Owner can reverse via the
+     * existing owner-side vacate/reset flow if the deposit never
+     * shows up in their bank.
+     *
+     * <p>Authz: caller must be the tenant of this payment. Owner
+     * uses {@link #markUpiReceived} instead.
+     */
+    PaymentResponse tenantReportPaid(String paymentId, String note);
+
+    /**
      * Resolve everything the tenant needs to pay rent directly to
      * the owner's UPI VPA or bank account. Built from the owner's
      * saved bank-account row (via Feign to user-service); returns

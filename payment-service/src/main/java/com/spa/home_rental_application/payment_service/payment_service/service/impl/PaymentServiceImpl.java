@@ -480,6 +480,34 @@ public class PaymentServiceImpl implements PaymentService {
         return PaymentMapper.toResponse(p);
     }
 
+    @Override
+    @Transactional
+    public PaymentResponse tenantReportPaid(String paymentId, String note) {
+        Payment p = mustFind(paymentId);
+        guardNotPaid(p);
+
+        // Same money-lands-off-platform flow as markUpiReceived — only
+        // the actor + audit trail differ. Reference carries a
+        // TENANT-REPORTED prefix so the owner can spot self-reported
+        // payments in their dashboard vs the ones they confirmed
+        // themselves after seeing the bank SMS.
+        p.setPaymentMethod(PaymentMethod.UPI);
+        p.setGatewayName("tenant-reported");
+        p.setGatewayOrderId(null);
+        String reference = "TENANT-REPORTED-" + UUID.randomUUID();
+        markPaid(p, reference);
+
+        audit.publishSuccess("payment.tenant-reported-paid",
+                p.getTenantId(), p.getTenantId(), p.getId(),
+                java.util.Map.of(
+                        "amount", String.valueOf(p.getTotalAmount()),
+                        "flatId", String.valueOf(p.getFlatId()),
+                        "ownerId", String.valueOf(p.getOwnerId()),
+                        "note", note == null ? "" : note));
+
+        return PaymentMapper.toResponse(p);
+    }
+
     /**
      * Assemble everything the tenant needs to pay rent directly to
      * the owner — UPI VPA + QR deep link as the preferred path,

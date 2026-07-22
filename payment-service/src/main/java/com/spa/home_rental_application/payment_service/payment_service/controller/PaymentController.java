@@ -203,6 +203,32 @@ public class PaymentController {
     }
 
     /**
+     * Tenant self-reports that they've completed a direct-UPI
+     * payment. Marks the Payment PAID immediately so the pay page
+     * can redirect to the success screen instead of leaving the
+     * tenant staring at a "waiting" state that will never resolve on
+     * its own (direct UPI has no server-side confirmation callback).
+     *
+     * <p>Distinct from {@link #markUpiReceived} which is the owner
+     * confirming what they saw in their bank — same end state, but
+     * the audit trail + gateway_name track "tenant-reported" so the
+     * owner knows to double-check against their bank.
+     */
+    @Operation(summary = "Tenant self-reports a direct-UPI payment as done (tenant of this payment or admin)")
+    @PostMapping(value = "/{id}/tenant-report-paid", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<PaymentResponse> tenantReportPaid(
+            @PathVariable String id,
+            @RequestBody(required = false)
+            com.spa.home_rental_application.payment_service.payment_service.DTO.Request.TenantReportPaidRequest body) {
+        PaymentResponse p = paymentService.getPaymentById(id);
+        // Authz: caller must be the tenant on this payment (they're
+        // the one who actually pushed money to the owner's UPI).
+        CallerSecurity.requireSelfOrAdmin(p.tenantId());
+        String note = body != null ? body.note() : null;
+        return ResponseEntity.ok(paymentService.tenantReportPaid(id, note));
+    }
+
+    /**
      * Returns everything the tenant needs to pay rent directly to
      * the owner — owner's UPI VPA, a fully-formed UPI QR payload,
      * and a bank-transfer fallback (masked account + IFSC). Read

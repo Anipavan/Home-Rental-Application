@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -704,6 +704,7 @@ function SummaryCard({
   payLoading,
   method,
   step,
+  hideActionButton = false,
 }: {
   amount: number;
   baseAmount: number;
@@ -716,6 +717,10 @@ function SummaryCard({
   payLoading: boolean;
   method: MethodOption | null;
   step: Step;
+  /** Hide the "Select a method / Continue" button — used by the
+   *  direct-UPI view where the action lives on the QR card, not
+   *  the summary. */
+  hideActionButton?: boolean;
 }) {
   return (
     <Card className="lg:sticky lg:top-20 self-start">
@@ -749,7 +754,7 @@ function SummaryCard({
           </div>
         </div>
 
-        {step === "select" && (
+        {step === "select" && !hideActionButton && (
           <Button
             type="button"
             size="lg"
@@ -903,12 +908,39 @@ function DirectUpiRentView({
   payment: import("@/types/api").PaymentResponse;
   flatLabel: string;
 }) {
+  const navigate = useNavigate();
+  const qc = useQueryClient();
   const total = payment.totalAmount ?? payment.amount;
   const payoutQ = useQuery({
     queryKey: ["owner-payout", payment.ownerId],
     queryFn: () => bankAccountsApi.getPayoutByUserId(payment.ownerId),
     enabled: !!payment.ownerId,
     staleTime: 60_000,
+  });
+
+  // Tenant self-report → server marks Payment PAID + fires an audit
+  // event tagged "tenant-reported" so the owner can spot self-
+  // reported vs owner-confirmed rows in their dashboard. On success
+  // we invalidate the tenant's payment caches and route straight to
+  // the overview with a success toast.
+  const reportPaidMut = useMutation({
+    mutationFn: () => paymentsApi.tenantReportPaid(payment.id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["payment", payment.id] });
+      qc.invalidateQueries({ queryKey: ["my-payments"] });
+      toast({
+        title: "Payment recorded",
+        description:
+          "Marked as paid — your owner will double-check against their bank statement.",
+      });
+      navigate("/app", { replace: true });
+    },
+    onError: (err) =>
+      toast({
+        variant: "destructive",
+        title: "Couldn't record the payment",
+        description: extractErrorMessage(err),
+      }),
   });
 
   return (
@@ -948,6 +980,8 @@ function DirectUpiRentView({
               amount={total}
               payout={payoutQ.data}
               note={`Rent ${flatLabel} · Due ${formatDate(payment.dueDate)}`}
+              onReportPaid={() => reportPaidMut.mutate()}
+              reportPending={reportPaidMut.isPending}
             />
           ) : (
             <DirectUpiPayCard
@@ -956,6 +990,8 @@ function DirectUpiRentView({
               payeeName={payoutQ.data.accountHolderName}
               payout={payoutQ.data}
               note={`Rent ${flatLabel} · Due ${formatDate(payment.dueDate)}`}
+              onReportPaid={() => reportPaidMut.mutate()}
+              reportPending={reportPaidMut.isPending}
             />
           )}
         </div>
@@ -970,6 +1006,7 @@ function DirectUpiRentView({
           payLoading={false}
           method={null}
           step="select"
+          hideActionButton={true}
         />
       </div>
     </div>
@@ -982,12 +1019,16 @@ function DirectUpiPayCard({
   payeeName,
   payout,
   note,
+  onReportPaid,
+  reportPending,
 }: {
   amount: number;
   upiId: string;
   payeeName: string;
   payout: import("@/lib/api/bank-accounts").BankAccountPayoutResponse;
   note: string;
+  onReportPaid: () => void;
+  reportPending: boolean;
 }) {
   const upiUri =
     `upi://pay?pa=${encodeURIComponent(upiId)}` +
@@ -1072,6 +1113,35 @@ function DirectUpiPayCard({
           Prefer bank transfer? Use the account details above for
           NEFT / IMPS from your banking app.
         </p>
+
+        {/* Tenant self-attest button — flips the Payment to PAID
+            immediately + redirects to the overview. Owner sees it as
+            paid with a "tenant-reported" audit trail so they can
+            double-check against their bank. Deliberately worded to
+            make it clear this is the tenant confirming, not the app
+            detecting. */}
+        <div className="pt-3 border-t border-border/40">
+          <Button
+            variant="gradient"
+            size="lg"
+            className="w-full"
+            onClick={onReportPaid}
+            disabled={reportPending}
+          >
+            {reportPending ? (
+              <>
+                <Loader2 className="size-4 animate-spin" /> Recording…
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="size-4" /> I've completed the payment
+              </>
+            )}
+          </Button>
+          <p className="text-[11px] text-muted-foreground text-center mt-2">
+            Only tap this after the money has actually left your account.
+          </p>
+        </div>
       </CardContent>
     </Card>
   );
@@ -1081,10 +1151,14 @@ function FallbackBankOnly({
   amount,
   payout,
   note,
+  onReportPaid,
+  reportPending,
 }: {
   amount: number;
   payout: import("@/lib/api/bank-accounts").BankAccountPayoutResponse;
   note: string;
+  onReportPaid: () => void;
+  reportPending: boolean;
 }) {
   return (
     <Card>
@@ -1111,6 +1185,29 @@ function FallbackBankOnly({
           <BankRow label="Account no." value={payout.accountNumberMasked} mono />
           <BankRow label="IFSC" value={payout.ifscCode} mono />
           <BankRow label="Reference" value={note} />
+        </div>
+
+        <div className="pt-3 border-t border-border/40">
+          <Button
+            variant="gradient"
+            size="lg"
+            className="w-full"
+            onClick={onReportPaid}
+            disabled={reportPending}
+          >
+            {reportPending ? (
+              <>
+                <Loader2 className="size-4 animate-spin" /> Recording…
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="size-4" /> I've completed the transfer
+              </>
+            )}
+          </Button>
+          <p className="text-[11px] text-muted-foreground text-center mt-2">
+            Only tap this after the {formatINR(amount)} has actually left your account.
+          </p>
         </div>
       </CardContent>
     </Card>

@@ -72,6 +72,18 @@ export const paymentsApi = {
    * platform. Reference is typically the UPI reference number the
    * owner copies from their bank SMS / app.
    */
+  /**
+   * Tenant self-reports a direct-UPI payment as done. Marks the
+   * Payment PAID immediately + tags the audit trail as tenant-
+   * reported so the owner can double-check against their bank
+   * statement. Only the tenant on the payment (or admin) can call it.
+   */
+  tenantReportPaid: (id: number | string, note?: string) =>
+    api
+      .post<PaymentResponse>(`/payments/${id}/tenant-report-paid`,
+        note ? { note } : {})
+      .then((r) => r.data),
+
   markUpiReceived: (id: number | string, body: PayCashRequest) =>
     api
       .post<PaymentResponse>(`/payments/${id}/mark-upi-received`, body)
