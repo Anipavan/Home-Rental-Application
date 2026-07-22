@@ -4,15 +4,20 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   CheckCircle2,
+  Copy,
   Loader2,
   ShieldCheck,
   Smartphone,
   Wallet,
   Lock,
 } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { paymentsApi } from "@/lib/api/payments";
 import { paymentGateway } from "@/lib/api/payment-gateway";
+import { bankAccountsApi } from "@/lib/api/bank-accounts";
 import { useFlatLookup } from "@/hooks/use-flat-lookup";
+import { isRazorpayPaymentsDisabled } from "@/lib/feature-flags";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   UpiIdField,
   isVpaUsable,
@@ -130,6 +135,19 @@ export function PayPage() {
         dueDate={p.dueDate}
         transactionId={p.transactionId}
         sourceType={p.sourceType}
+      />
+    );
+  }
+
+  // Razorpay-off path: skip the whole method-picker + gateway flow
+  // and render the direct-UPI QR (owner's UPI from their bank details)
+  // as the only option. Owner marks PAID via their /owner/payments
+  // dashboard once they see the deposit in their bank app.
+  if (isRazorpayPaymentsDisabled()) {
+    return (
+      <DirectUpiRentView
+        payment={p}
+        flatLabel={flatLookup.nameOf(p.flatId)}
       />
     );
   }
@@ -861,6 +879,266 @@ function SuccessView({
           Download receipt
         </Button>
       </div>
+    </div>
+  );
+}
+
+/* ─── Direct-UPI rent path (RAZORPAY_PAYMENTS_DISABLED=true) ──── */
+
+/**
+ * Alternative pay UI that replaces the Razorpay method picker when
+ * the payment gateway is turned off. Renders a UPI QR pointing at
+ * the OWNER's UPI ID (fetched via /users/bank-accounts/payout/{ownerId})
+ * for the exact rent amount, with the owner's bank details below for
+ * NEFT / IMPS fallback.
+ *
+ * <p>No auto-mark-PAID here — the owner sees the deposit in their bank
+ * app + clicks "Mark as paid" on their /owner/payments dashboard.
+ * The success page still fires once the Payment row flips PAID.
+ */
+function DirectUpiRentView({
+  payment,
+  flatLabel,
+}: {
+  payment: import("@/types/api").PaymentResponse;
+  flatLabel: string;
+}) {
+  const total = payment.totalAmount ?? payment.amount;
+  const payoutQ = useQuery({
+    queryKey: ["owner-payout", payment.ownerId],
+    queryFn: () => bankAccountsApi.getPayoutByUserId(payment.ownerId),
+    enabled: !!payment.ownerId,
+    staleTime: 60_000,
+  });
+
+  return (
+    <div className="animate-fade-in max-w-4xl mx-auto">
+      <Button asChild variant="ghost" size="sm" className="mb-3">
+        <Link to="/app/payments">
+          <ArrowLeft /> Back to payments
+        </Link>
+      </Button>
+      <PageHeader
+        title={payment.sourceType === "SOCIETY_CHARGE" ? "Pay society charge" : "Pay rent"}
+        description={
+          payment.sourceType === "SOCIETY_CHARGE"
+            ? "Scan the QR from any UPI app — money goes directly to your society's account."
+            : "Scan the QR from any UPI app — money goes directly to your owner's account."
+        }
+      />
+
+      <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
+        <div>
+          {payoutQ.isLoading ? (
+            <Skeleton className="h-64 rounded-2xl" />
+          ) : !payoutQ.data ? (
+            <EmptyState
+              variant="info"
+              icon={Smartphone}
+              title="Your owner hasn't added bank details yet"
+              description="Ask them to add a UPI ID from their profile page. Once they do, this page will show a QR you can scan."
+              action={
+                <Button asChild variant="outline">
+                  <Link to="/app/payments">Back to payments</Link>
+                </Button>
+              }
+            />
+          ) : !payoutQ.data.upiId ? (
+            <FallbackBankOnly
+              amount={total}
+              payout={payoutQ.data}
+              note={`Rent ${flatLabel} · Due ${formatDate(payment.dueDate)}`}
+            />
+          ) : (
+            <DirectUpiPayCard
+              amount={total}
+              upiId={payoutQ.data.upiId}
+              payeeName={payoutQ.data.accountHolderName}
+              payout={payoutQ.data}
+              note={`Rent ${flatLabel} · Due ${formatDate(payment.dueDate)}`}
+            />
+          )}
+        </div>
+        <SummaryCard
+          amount={total}
+          baseAmount={payment.amount}
+          lateFee={payment.lateFee}
+          dueDate={payment.dueDate}
+          flatLabel={flatLabel}
+          onPay={() => {}}
+          payDisabled={true}
+          payLoading={false}
+          method={null}
+          step="select"
+        />
+      </div>
+    </div>
+  );
+}
+
+function DirectUpiPayCard({
+  amount,
+  upiId,
+  payeeName,
+  payout,
+  note,
+}: {
+  amount: number;
+  upiId: string;
+  payeeName: string;
+  payout: import("@/lib/api/bank-accounts").BankAccountPayoutResponse;
+  note: string;
+}) {
+  const upiUri =
+    `upi://pay?pa=${encodeURIComponent(upiId)}` +
+    `&pn=${encodeURIComponent(payeeName ?? "Owner")}` +
+    `&am=${encodeURIComponent(String(amount))}` +
+    `&cu=INR` +
+    `&tn=${encodeURIComponent(note)}`;
+
+  const copyUpi = () => {
+    navigator.clipboard.writeText(upiId);
+    toast({ title: "UPI ID copied" });
+  };
+
+  return (
+    <Card>
+      <CardContent className="p-6 space-y-5">
+        <div className="flex items-start gap-4">
+          <div className="size-12 rounded-2xl bg-primary/10 grid place-items-center shrink-0">
+            <Smartphone className="size-6 text-primary" />
+          </div>
+          <div>
+            <h3 className="font-display text-lg font-semibold">
+              Pay {payeeName ?? "your owner"} via UPI
+            </h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              Money goes directly to their bank — no gateway. Your owner
+              will mark this rent PAID once they see the deposit.
+            </p>
+          </div>
+        </div>
+
+        <div className="text-center">
+          <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-3">
+            Scan to pay {formatINR(amount)}
+          </p>
+          <div className="inline-block rounded-xl border-2 border-border/60 bg-white p-4">
+            <QRCodeSVG value={upiUri} size={200} includeMargin={false} />
+          </div>
+          <a
+            href={upiUri}
+            className="block mt-3 text-sm text-primary underline underline-offset-2"
+          >
+            Or tap here to open your UPI app
+          </a>
+        </div>
+
+        <div className="rounded-lg border border-border/60 p-3 space-y-1.5 text-sm">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+              UPI ID
+            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="font-mono text-xs">{upiId}</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-6 px-1.5"
+                onClick={copyUpi}
+              >
+                <Copy className="size-3" />
+              </Button>
+            </div>
+          </div>
+          {payout.accountNumberMasked && (
+            <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-border/40">
+              <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                Bank
+              </span>
+              <span className="text-xs">
+                {payout.bankName} · {payout.accountNumberMasked}
+              </span>
+            </div>
+          )}
+          {payout.ifscCode && (
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                IFSC
+              </span>
+              <span className="font-mono text-xs">{payout.ifscCode}</span>
+            </div>
+          )}
+        </div>
+
+        <p className="text-[11px] text-muted-foreground text-center">
+          Prefer bank transfer? Use the account details above for
+          NEFT / IMPS from your banking app.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function FallbackBankOnly({
+  amount,
+  payout,
+  note,
+}: {
+  amount: number;
+  payout: import("@/lib/api/bank-accounts").BankAccountPayoutResponse;
+  note: string;
+}) {
+  return (
+    <Card>
+      <CardContent className="p-6 space-y-4">
+        <div className="flex items-start gap-4">
+          <div className="size-12 rounded-2xl bg-warning/10 grid place-items-center shrink-0">
+            <Wallet className="size-6 text-warning" />
+          </div>
+          <div>
+            <h3 className="font-display text-lg font-semibold">
+              Pay via NEFT / IMPS
+            </h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              Your owner hasn't added a UPI ID yet — use the bank
+              details below to transfer {formatINR(amount)} directly.
+              They'll mark this rent PAID once the deposit lands.
+            </p>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-border/60 p-3 space-y-2 text-sm">
+          <BankRow label="Account name" value={payout.accountHolderName} />
+          <BankRow label="Bank" value={payout.bankName} />
+          <BankRow label="Account no." value={payout.accountNumberMasked} mono />
+          <BankRow label="IFSC" value={payout.ifscCode} mono />
+          <BankRow label="Reference" value={note} />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Local row helper used inside {@link FallbackBankOnly}. Kept
+ *  separate from the existing {@code Row} above (which is a
+ *  differently-styled label/value pair used inside SummaryCard). */
+function BankRow({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-[11px] uppercase tracking-wider text-muted-foreground w-24 shrink-0">
+        {label}
+      </span>
+      <span className={mono ? "font-mono text-xs" : "text-sm"}>{value}</span>
     </div>
   );
 }

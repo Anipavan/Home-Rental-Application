@@ -31,6 +31,23 @@ export interface BankAccountResponse {
   updatedAt?: string;
 }
 
+/** Payable subset — what a payer needs to actually pay another user.
+ *  Backed by GET /users/bank-accounts/payout/{userId} which is open
+ *  to any authenticated caller (the full-detail endpoint stays
+ *  self-or-admin gated). Full account number is NEVER included — only
+ *  the masked form. */
+export interface BankAccountPayoutResponse {
+  accountHolderName: string;
+  bankName: string;
+  accountNumberMasked: string;
+  ifscCode: string;
+  branch?: string | null;
+  accountType?: string | null;
+  /** UPI VPA. Empty when the recipient hasn't added one — payer has
+   *  to fall back to NEFT with the bank details. */
+  upiId?: string | null;
+}
+
 export const bankAccountsApi = {
   /**
    * Fetch the bank account on file. Resolves to {@code null} when the
@@ -58,4 +75,17 @@ export const bankAccountsApi = {
     api
       .delete<void>(`/users/bank-accounts/user/${userId}`)
       .then((r) => r.data),
+
+  /** Payable subset for ANY authenticated caller — used by the tenant
+   *  pay page to fetch the owner's UPI ID + bank details so it can
+   *  render a direct-pay QR. Resolves to null on 404 (owner hasn't
+   *  saved a bank account yet). */
+  getPayoutByUserId: (userId: string) =>
+    api
+      .get<BankAccountPayoutResponse>(`/users/bank-accounts/payout/${userId}`)
+      .then((r) => r.data)
+      .catch((err) => {
+        if (err?.response?.status === 404) return null;
+        throw err;
+      }),
 };

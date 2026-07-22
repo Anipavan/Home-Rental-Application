@@ -1,7 +1,7 @@
 import { useMemo, useRef } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { AlertTriangle, ArrowLeft, Loader2, Receipt } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Loader2, Receipt, Smartphone } from "lucide-react";
 import { societyApi } from "@/lib/api/society";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,6 +12,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { formatINR } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { extractErrorMessage } from "@/lib/api/client";
+import { isRazorpayPaymentsDisabled } from "@/lib/feature-flags";
 import type { FlatChargeCategory, FlatMaintenanceRow } from "@/types/api";
 
 /**
@@ -202,13 +203,11 @@ export function SocietyPayAllPage() {
         />
       ) : (
         <>
-          {/* Over-the-cap warning. Razorpay test-mode bank simulators
-            * reject single transactions over a per-bank ceiling with
-            * BAD_REQUEST_ERROR. Catching it here means the user never
-            * has to click → fail → "Payment didn't go through" with
-            * no clue what happened — they're routed to per-charge
-            * buttons that work. */}
-          {exceedsBulkCap && (
+          {/* Over-the-cap warning. Only surfaces on the Razorpay path
+            * — the cap comes from Razorpay's test-bank simulator, not
+            * the app itself. When Razorpay is disabled, this warning
+            * disappears because there's no cap on direct UPI. */}
+          {!isRazorpayPaymentsDisabled() && exceedsBulkCap && (
             <Card className="mb-4 border-warning/40 bg-warning/5">
               <CardContent className="p-4 flex items-start gap-3">
                 <AlertTriangle className="size-5 text-warning shrink-0 mt-0.5" />
@@ -223,6 +222,25 @@ export function SocietyPayAllPage() {
                     individual <strong>Pay</strong> buttons on each row
                     below — those work for any amount. The cap goes
                     away once we switch to Razorpay live mode (post-KYC).
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          {isRazorpayPaymentsDisabled() && (
+            <Card className="mb-4 border-primary/30 bg-primary/5">
+              <CardContent className="p-4 flex items-start gap-3">
+                <Smartphone className="size-5 text-primary shrink-0 mt-0.5" />
+                <div className="text-sm">
+                  <p className="font-semibold">
+                    Bulk pay isn't available on direct UPI
+                  </p>
+                  <p className="text-muted-foreground mt-0.5">
+                    A single UPI QR can only carry one charge at a time,
+                    and the maintainer needs to mark each charge PAID
+                    individually after seeing the deposit. Use the{" "}
+                    <strong>Pay</strong> button on each row below — each
+                    opens a QR pointing at the society's UPI ID.
                   </p>
                 </div>
               </CardContent>
@@ -259,20 +277,22 @@ export function SocietyPayAllPage() {
                   * surface on payment-return shows Razorpay's actual
                   * message if it does fail. Disabling would block
                   * legitimate live-mode use cases. */}
-                <Button
-                  variant="gradient"
-                  size="lg"
-                  onClick={() => payAllMut.mutate()}
-                  disabled={payAllMut.isPending || !dueRows.length}
-                >
-                  {payAllMut.isPending ? (
-                    <>
-                      <Loader2 className="size-4 animate-spin" /> Starting…
-                    </>
-                  ) : (
-                    `Pay all via Razorpay · ${formatINR(total)}`
-                  )}
-                </Button>
+                {!isRazorpayPaymentsDisabled() && (
+                  <Button
+                    variant="gradient"
+                    size="lg"
+                    onClick={() => payAllMut.mutate()}
+                    disabled={payAllMut.isPending || !dueRows.length}
+                  >
+                    {payAllMut.isPending ? (
+                      <>
+                        <Loader2 className="size-4 animate-spin" /> Starting…
+                      </>
+                    ) : (
+                      `Pay all via Razorpay · ${formatINR(total)}`
+                    )}
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>

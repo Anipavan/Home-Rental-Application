@@ -46,6 +46,28 @@ export const FEATURE_FLAGS = {
    * is being swapped from MOCK to live. Re-enable by setting to false.
    */
   COMPLIANCE_DISABLED: true as const,
+
+  /**
+   * Razorpay-mediated payment paths (rent + society charge) disabled
+   * platform-wide. When true, tenant Pay pages surface ONLY the
+   * direct-UPI QR path — tenant scans a QR pointing at the recipient's
+   * own UPI (owner for rent, maintainer for society charges), money
+   * moves directly to the recipient's bank, recipient marks the
+   * charge PAID from their dashboard.
+   *
+   * <p>Why paused: Razorpay Standard sends every payment into the
+   * PLATFORM's linked bank account, then relies on manual
+   * distribution to individual owners/maintainers. That's an RBI
+   * Payment Aggregator model that needs a PA license (not
+   * appropriate for MVP), plus doesn't match the product intent
+   * that "owner adds bank details, tenant pays owner directly".
+   *
+   * <p>Turn back on when Razorpay Route (split-settlement to per-
+   * owner linked accounts) is wired up. All the Razorpay-side
+   * frontend and payment-service code stays intact behind this
+   * flag — flipping to false restores the two-option UI.
+   */
+  RAZORPAY_PAYMENTS_DISABLED: true as const,
 } as const;
 
 /** True when the KYC feature is currently turned off platform-wide. */
@@ -61,4 +83,11 @@ export function isAlertsDisabled(): boolean {
 /** True when the owner Compliance tools are paused. */
 export function isComplianceDisabled(): boolean {
   return FEATURE_FLAGS.COMPLIANCE_DISABLED;
+}
+
+/** True when Razorpay-mediated payments are paused platform-wide.
+ *  When true, tenant Pay pages route through the direct-UPI-only
+ *  flow instead of showing the Razorpay method picker. */
+export function isRazorpayPaymentsDisabled(): boolean {
+  return FEATURE_FLAGS.RAZORPAY_PAYMENTS_DISABLED;
 }

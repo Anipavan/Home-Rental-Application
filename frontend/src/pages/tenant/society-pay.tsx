@@ -23,6 +23,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { formatINR } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { extractErrorMessage } from "@/lib/api/client";
+import { isRazorpayPaymentsDisabled } from "@/lib/feature-flags";
 import type {
   FlatChargeCategory,
   FlatMaintenanceRow,
@@ -264,7 +265,12 @@ function RazorpayLaunchSection({
 }) {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [upiDirectOpen, setUpiDirectOpen] = useState(false);
+  const razorpayDisabled = isRazorpayPaymentsDisabled();
+  // Direct-UPI is normally collapsed behind a disclosure so the
+  // Razorpay button is primary. When Razorpay is disabled we open it
+  // by default and hide the Razorpay tile entirely — direct UPI
+  // becomes the ONLY path.
+  const [upiDirectOpen, setUpiDirectOpen] = useState(razorpayDisabled);
 
   // Stable idempotency key for this render — two clicks of the Pay
   // button send the SAME key, so payment-service collides on the
@@ -295,6 +301,47 @@ function RazorpayLaunchSection({
         description: extractErrorMessage(err),
       }),
   });
+
+  // Razorpay-off path: the ONLY option is direct UPI. Render the
+  // block as a primary card with no disclosure wrapper, and a
+  // clear "the maintainer will mark this PAID after they see the
+  // deposit" affordance so users don't expect auto-confirmation.
+  if (razorpayDisabled) {
+    return (
+      <Card>
+        <CardContent className="p-6 space-y-4">
+          <div className="flex items-start gap-4">
+            <div className="size-12 rounded-2xl bg-primary/10 grid place-items-center shrink-0">
+              <Smartphone className="size-6 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-display text-lg font-semibold">
+                Pay {cfg.payeeName ?? "the society"} via UPI
+              </h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Scan the QR from any UPI app — money goes directly to
+                the society's account. The maintainer will mark your
+                charge PAID once the deposit lands.
+              </p>
+            </div>
+          </div>
+          {canPayUpiDirect ? (
+            <DirectUpiBlock row={row} cfg={cfg} buildingId={buildingId} />
+          ) : (
+            <EmptyState
+              variant="info"
+              icon={Smartphone}
+              title="UPI not set up yet"
+              description="Your maintainer hasn't added a UPI ID for this society. Ask them to add one from their dashboard, then reload this page."
+            />
+          )}
+          <Button variant="ghost" size="sm" className="w-full" onClick={onCancel}>
+            <ArrowLeft className="size-4" /> Back to society
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <>
