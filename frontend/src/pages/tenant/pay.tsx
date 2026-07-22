@@ -1012,10 +1012,6 @@ function DirectUpiPayCard({
             <h3 className="font-display text-lg font-semibold">
               Pay {payeeName ?? "your owner"} via UPI
             </h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              Money goes directly to their bank — no gateway. Your owner
-              will mark this rent PAID once they see the deposit.
-            </p>
           </div>
         </div>
 
