@@ -203,6 +203,23 @@ public class TemplateSeeder {
                         + "Sign in here 👉 {{signInUrl}}",
                 List.of("userName", "email", "role", "signInUrl"));
 
+        // Fix for the "Hi [userName]" literal in the owner-facing rent
+        // WhatsApp — PaymentEventListener.onCaptured doesn't provide
+        // userName in the payload, so the renderer emits the raw
+        // placeholder in brackets. Drop the personalization from the
+        // template body + variables list on any DB row that still
+        // carries the stale copy. Admin-edited templates that no
+        // longer contain "{{userName}}" are left alone.
+        refreshTemplateIfContains(NotificationCategory.PAYMENT_RECEIVED_FOR_OWNER,
+                NotificationType.WHATSAPP,
+                "payment-received-owner-whatsapp",
+                null,
+                "💰 Rent of *₹{{amount}}* received via {{method}}.\n\n"
+                        + "Transaction id: `{{transactionId}}`\nDate: {{paidDate}}\n\n"
+                        + "Open the Anirudh Homes app for the full payment view.",
+                List.of("amount", "method", "transactionId", "paidDate"),
+                "{{userName}}");
+
         seedIfAbsent("welcome-email", NotificationCategory.USER_REGISTRATION, NotificationType.EMAIL,
                 "Welcome to Home Rental, {{userName}}",
                 "Hi {{userName}},\n\nYour Home Rental account ({{email}}, role: {{role}}) is ready. Log in to get started.\n\n— Home Rental Team",
@@ -369,10 +386,10 @@ public class TemplateSeeder {
 
         seedIfAbsent("payment-received-owner-whatsapp",
                 NotificationCategory.PAYMENT_RECEIVED_FOR_OWNER, NotificationType.WHATSAPP, null,
-                "Hi {{userName}} 💰\n\nRent of *₹{{amount}}* received via {{method}}.\n\n"
+                "💰 Rent of *₹{{amount}}* received via {{method}}.\n\n"
                         + "Transaction id: `{{transactionId}}`\nDate: {{paidDate}}\n\n"
                         + "Open the Anirudh Homes app for the full payment view.",
-                List.of("userName", "amount", "method", "transactionId", "paidDate"));
+                List.of("amount", "method", "transactionId", "paidDate"));
 
         seedIfAbsent("maintenance-created-whatsapp", NotificationCategory.MAINTENANCE_CREATED,
                 NotificationType.WHATSAPP, null,
@@ -878,6 +895,50 @@ public class TemplateSeeder {
                 .variables(variables)
                 .build());
         log.info("Seeded notification template: {} ({} / {})", name, category, type);
+    }
+
+    /**
+     * In-place refresh of a template when the existing DB row still
+     * carries a specific stale substring — used to hot-patch seeded
+     * templates whose original body had a bug (e.g. a Mustache
+     * placeholder that never got a payload value, rendering as the
+     * literal {@code [key]} in the delivered message).
+     *
+     * <p>Detection is by substring match on the body — admin-edited
+     * templates that no longer contain the marker are considered
+     * healed and left alone. If no row exists yet, a fresh one is
+     * inserted with the corrected body (same shape as
+     * {@link #refreshUserRegistrationIfStale}).
+     */
+    private void refreshTemplateIfContains(NotificationCategory category,
+                                            NotificationType type,
+                                            String name,
+                                            String subject,
+                                            String bodyTemplate,
+                                            List<String> variables,
+                                            String staleMarker) {
+        repo.findByCategoryAndType(category, type)
+                .ifPresentOrElse(existing -> {
+                    String body = existing.getBodyTemplate();
+                    if (body != null && body.contains(staleMarker)) {
+                        log.info("Refreshing {} / {} template in place — removing stale marker \"{}\"",
+                                category, type, staleMarker);
+                        existing.setSubject(subject);
+                        existing.setBodyTemplate(bodyTemplate);
+                        existing.setVariables(variables);
+                        repo.save(existing);
+                    }
+                }, () -> {
+                    log.info("Creating fresh {} / {} template (none existed)", category, type);
+                    repo.save(NotificationTemplate.builder()
+                            .name(name)
+                            .category(category)
+                            .type(type)
+                            .subject(subject)
+                            .bodyTemplate(bodyTemplate)
+                            .variables(variables)
+                            .build());
+                });
     }
 
     /* ──────────────────────────────────────────────────────────────
