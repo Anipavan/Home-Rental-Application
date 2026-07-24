@@ -19,6 +19,8 @@ import {
   Settings,
   LogOut,
   CreditCard,
+  ChevronLeft,
+  ChevronRight,
   ShieldCheck,
   LayoutGrid,
   ScrollText,
@@ -30,8 +32,6 @@ import {
   Inbox,
   Megaphone,
   MessageSquareWarning,
-  PanelLeftClose,
-  PanelLeft,
   Search,
   Heart,
   BellRing,
@@ -313,6 +313,35 @@ export function AppShell() {
         is wrapped in <ProtectedRoute>), so we don't need to check auth here.
       */}
       <IdleTimer />
+
+      {/* Sidebar rail toggle — small circular chip that sits on the
+          seam between the sidebar and the main content, vertically
+          centred. Expanded → hangs off the right edge of the sidebar
+          with a ChevronLeft (click to hide). Collapsed → floats on
+          the left edge of the viewport with a ChevronRight (click to
+          bring the sidebar back). Fixed positioning so it stays in
+          place on scroll. Desktop-only — mobile uses the bottom nav. */}
+      <button
+        type="button"
+        onClick={() => setSidebarCollapsed((v) => !v)}
+        className={cn(
+          "hidden lg:flex fixed top-1/2 z-40 -translate-y-1/2 size-7",
+          "items-center justify-center rounded-full",
+          "bg-background border border-border/60 shadow-sm",
+          "text-muted-foreground hover:text-foreground hover:border-primary/40",
+          "transition-all",
+          sidebarCollapsed
+            ? "left-2"
+            : "left-[calc(16rem-14px)]",
+        )}
+        aria-label={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+        title={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+      >
+        {sidebarCollapsed
+          ? <ChevronRight className="size-4" />
+          : <ChevronLeft className="size-4" />}
+      </button>
+
       <aside
         className={cn(
           "shrink-0 flex-col border-r border-border/60 bg-background",
@@ -377,20 +406,6 @@ export function AppShell() {
         <header className="sticky top-0 z-30 h-16 border-b border-border/60 bg-background/85 backdrop-blur-xl">
           <div className="h-full px-4 sm:px-6 flex items-center justify-between gap-4">
             <div className="flex items-center gap-3 flex-1 max-w-md">
-              {/* Desktop-only sidebar toggle. Hidden on mobile since
-                  the sidebar is already off-screen there and the
-                  bottom nav is the primary surface. */}
-              <button
-                type="button"
-                onClick={() => setSidebarCollapsed((v) => !v)}
-                className="hidden lg:inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
-                aria-label={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
-                title={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
-              >
-                {sidebarCollapsed
-                  ? <PanelLeft className="size-4" />
-                  : <PanelLeftClose className="size-4" />}
-              </button>
               <div className="w-full hidden sm:block">
                 <GlobalSearch />
               </div>
