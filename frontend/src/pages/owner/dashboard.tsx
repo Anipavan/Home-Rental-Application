@@ -17,7 +17,10 @@ import {
   LayoutGrid,
   Users,
   MessageSquareWarning,
+  BadgeCheck,
+  HandCoins,
 } from "lucide-react";
+import { isKycDisabled } from "@/lib/feature-flags";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -286,8 +289,10 @@ export function OwnerDashboard() {
       {/* Colour-coded shortcut tiles — one tap into the section an
           owner reaches for most. Same visual language as the tenant
           dashboard tiles, different destinations. Sits between the
-          KPIs and the trend chart so it's in the natural eye-path. */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+          KPIs and the trend chart so it's in the natural eye-path.
+          KYC tile is hidden when the feature flag is off so the
+          grid doesn't advertise a section that returns a 404. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
         <QuickTile
           to="/owner/flats"
           icon={LayoutGrid}
@@ -316,6 +321,22 @@ export function OwnerDashboard() {
           sub="Resolve issues"
           gradient="from-rose-500 to-pink-600"
         />
+        <QuickTile
+          to="/owner/society"
+          icon={HandCoins}
+          label="Society"
+          sub="Common-area ledger"
+          gradient="from-amber-500 to-orange-600"
+        />
+        {!isKycDisabled() && (
+          <QuickTile
+            to="/owner/kyc"
+            icon={BadgeCheck}
+            label="KYC"
+            sub="Verify ID"
+            gradient="from-cyan-500 to-teal-600"
+          />
+        )}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import {
   ArrowRight,
+  BadgeCheck,
   ChevronDown,
   ChevronUp,
   CreditCard,
@@ -18,6 +19,7 @@ import { useAuthStore } from "@/stores/auth-store";
 import { propertiesApi } from "@/lib/api/properties";
 import { paymentsApi } from "@/lib/api/payments";
 import { complaintsApi, maintenanceApi } from "@/lib/api/maintenance";
+import { isKycDisabled } from "@/lib/feature-flags";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -156,8 +158,10 @@ export function TenantDashboard() {
           tenant actually reaches for. Sits between the stat row and
           the detail cards because that's where the eye lands next
           after scanning the summary tiles.
-          "Maintenance" tile retired — complaints now covers both. */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-7">
+          "Maintenance" tile retired — complaints now covers both.
+          KYC tile is hidden when the feature flag is off so the
+          grid doesn't advertise a section that returns a 404. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-7">
         <QuickTile
           to="/app/payments"
           icon={IndianRupee}
@@ -186,6 +190,15 @@ export function TenantDashboard() {
           sub="Notices & bills"
           gradient="from-violet-500 to-purple-600"
         />
+        {!isKycDisabled() && (
+          <QuickTile
+            to="/app/kyc"
+            icon={BadgeCheck}
+            label="KYC"
+            sub="Verify ID"
+            gradient="from-cyan-500 to-teal-600"
+          />
+        )}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
