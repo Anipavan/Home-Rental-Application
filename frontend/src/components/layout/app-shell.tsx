@@ -30,6 +30,8 @@ import {
   Inbox,
   Megaphone,
   MessageSquareWarning,
+  PanelLeftClose,
+  PanelLeft,
   Search,
   Heart,
   BellRing,
@@ -208,6 +210,25 @@ export function AppShell() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // Desktop sidebar collapse state — persisted so the choice
+  // survives navigation + refresh. Mobile keeps the bottom nav
+  // regardless, so this only affects lg+ screens. localStorage
+  // read is defensive against SSR / privacy-mode contexts.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("sidebar-collapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("sidebar-collapsed", String(sidebarCollapsed));
+    } catch {
+      /* ignore — Safari private mode etc. */
+    }
+  }, [sidebarCollapsed]);
+
   // Pending-claim gate. Users who registered via the SOCIETY path
   // sit at role=TENANT with a PENDING MAINTAINER claim until the
   // building owner approves. While they're in that limbo state we
@@ -292,7 +313,15 @@ export function AppShell() {
         is wrapped in <ProtectedRoute>), so we don't need to check auth here.
       */}
       <IdleTimer />
-      <aside className="hidden lg:flex w-64 shrink-0 flex-col border-r border-border/60 bg-background">
+      <aside
+        className={cn(
+          "shrink-0 flex-col border-r border-border/60 bg-background",
+          // Collapsed → fully hidden even on desktop; expanded →
+          // visible from lg breakpoint up. Mobile keeps the bottom
+          // nav either way.
+          sidebarCollapsed ? "hidden" : "hidden lg:flex w-64",
+        )}
+      >
         <div className="h-16 px-5 flex items-center border-b border-border/60">
           <Logo />
         </div>
@@ -348,6 +377,20 @@ export function AppShell() {
         <header className="sticky top-0 z-30 h-16 border-b border-border/60 bg-background/85 backdrop-blur-xl">
           <div className="h-full px-4 sm:px-6 flex items-center justify-between gap-4">
             <div className="flex items-center gap-3 flex-1 max-w-md">
+              {/* Desktop-only sidebar toggle. Hidden on mobile since
+                  the sidebar is already off-screen there and the
+                  bottom nav is the primary surface. */}
+              <button
+                type="button"
+                onClick={() => setSidebarCollapsed((v) => !v)}
+                className="hidden lg:inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                aria-label={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+                title={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+              >
+                {sidebarCollapsed
+                  ? <PanelLeft className="size-4" />
+                  : <PanelLeftClose className="size-4" />}
+              </button>
               <div className="w-full hidden sm:block">
                 <GlobalSearch />
               </div>
