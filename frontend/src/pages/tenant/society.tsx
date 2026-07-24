@@ -113,14 +113,39 @@ function ResidentSociety({ config }: { config: SocietyConfig }) {
       {/* Notice board — same for both tabs. */}
       <AnnouncementsPanel buildingId={config.buildingId} canPost={false} />
 
+      {/* Distinct per-tab active colours so a resident sees at a
+          glance which view they're on — green for "your money in",
+          violet for "the shared transparency dashboard". The
+          overrides are local (no changes to the shared Tabs
+          primitive that other pages rely on). */}
       <Tabs defaultValue="mine" className="mt-2">
-        <TabsList className="w-full sm:w-auto">
-          <TabsTrigger value="mine" className="gap-2 flex-1 sm:flex-none">
-            <Receipt className="size-4" />
+        <TabsList className="w-full sm:w-auto h-auto gap-2 p-1.5 rounded-2xl">
+          <TabsTrigger
+            value="mine"
+            className={
+              "gap-2.5 flex-1 sm:flex-none px-5 py-3 text-base rounded-xl " +
+              "data-[state=active]:bg-gradient-to-br " +
+              "data-[state=active]:from-emerald-500 " +
+              "data-[state=active]:to-emerald-600 " +
+              "data-[state=active]:text-white " +
+              "data-[state=active]:shadow-lift"
+            }
+          >
+            <Receipt className="size-5" />
             Your maintenance
           </TabsTrigger>
-          <TabsTrigger value="details" className="gap-2 flex-1 sm:flex-none">
-            <FileText className="size-4" />
+          <TabsTrigger
+            value="details"
+            className={
+              "gap-2.5 flex-1 sm:flex-none px-5 py-3 text-base rounded-xl " +
+              "data-[state=active]:bg-gradient-to-br " +
+              "data-[state=active]:from-violet-500 " +
+              "data-[state=active]:to-purple-600 " +
+              "data-[state=active]:text-white " +
+              "data-[state=active]:shadow-lift"
+            }
+          >
+            <FileText className="size-5" />
             Maintenance details
           </TabsTrigger>
         </TabsList>
