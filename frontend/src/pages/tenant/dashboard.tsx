@@ -144,7 +144,7 @@ export function TenantDashboard() {
               <button
                 type="button"
                 onClick={() => setPaymentsOpen((v) => !v)}
-                className="size-8 shrink-0 grid place-items-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                className="size-8 shrink-0 grid place-items-center rounded-full bg-primary/10 text-primary border border-primary/30 hover:bg-primary hover:text-primary-foreground transition-colors"
                 aria-label={paymentsOpen ? "Collapse recent payments" : "Expand recent payments"}
                 aria-expanded={paymentsOpen}
                 title={paymentsOpen ? "Collapse" : "Expand"}
@@ -196,7 +196,7 @@ export function TenantDashboard() {
               <button
                 type="button"
                 onClick={() => setMaintenanceOpen((v) => !v)}
-                className="size-8 shrink-0 grid place-items-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                className="size-8 shrink-0 grid place-items-center rounded-full bg-primary/10 text-primary border border-primary/30 hover:bg-primary hover:text-primary-foreground transition-colors"
                 aria-label={maintenanceOpen ? "Collapse maintenance" : "Expand maintenance"}
                 aria-expanded={maintenanceOpen}
                 title={maintenanceOpen ? "Collapse" : "Expand"}

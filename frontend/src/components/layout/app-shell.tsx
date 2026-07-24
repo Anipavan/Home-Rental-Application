@@ -331,8 +331,11 @@ export function AppShell() {
           // felt too high visually.
           "hidden lg:flex fixed top-[calc(50%+7rem)] z-40 -translate-y-1/2 size-7",
           "items-center justify-center rounded-full",
-          "bg-background border border-border/60 shadow-sm",
-          "text-muted-foreground hover:text-foreground hover:border-primary/40",
+          // Brand-green chip so it's obviously interactive against
+          // the white sidebar seam. Matches the Pay Rent CTA + Paid
+          // badge palette users already recognize.
+          "bg-primary text-primary-foreground border border-primary/60 shadow-sm",
+          "hover:bg-primary/90 hover:shadow-md",
           "transition-all",
           sidebarCollapsed
             ? "left-2"
