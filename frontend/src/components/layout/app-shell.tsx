@@ -325,7 +325,11 @@ export function AppShell() {
         type="button"
         onClick={() => setSidebarCollapsed((v) => !v)}
         className={cn(
-          "hidden lg:flex fixed top-1/2 z-40 -translate-y-1/2 size-7",
+          // top-[calc(50%+7rem)] pushes the chip ~112px (~3cm) below
+          // the viewport's vertical centre — sits comfortably alongside
+          // the middle nav items instead of the exact centre where it
+          // felt too high visually.
+          "hidden lg:flex fixed top-[calc(50%+7rem)] z-40 -translate-y-1/2 size-7",
           "items-center justify-center rounded-full",
           "bg-background border border-border/60 shadow-sm",
           "text-muted-foreground hover:text-foreground hover:border-primary/40",
