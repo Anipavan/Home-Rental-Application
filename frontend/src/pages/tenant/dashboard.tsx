@@ -1,7 +1,10 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowRight,
+  ChevronDown,
+  ChevronUp,
   CreditCard,
   Wrench,
   Home,
@@ -20,6 +23,12 @@ import { formatINR, formatDate } from "@/lib/utils";
 
 export function TenantDashboard() {
   const { authUserId, userName } = useAuthStore();
+
+  // Per-card collapse toggles — start expanded. Local component
+  // state (not persisted) since these cards are on the landing page
+  // and users generally want the same view every visit.
+  const [paymentsOpen, setPaymentsOpen] = useState(true);
+  const [maintenanceOpen, setMaintenanceOpen] = useState(true);
 
   const flatsQ = useQuery({
     queryKey: ["my-flats", authUserId],
@@ -124,80 +133,108 @@ export function TenantDashboard() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
-          <div className="p-6 flex items-center justify-between">
+          <div className="p-6 flex items-center justify-between gap-2">
             <h2 className="font-display font-semibold text-lg">Recent payments</h2>
-            <Button asChild variant="ghost" size="sm">
-              <Link to="/app/payments">
-                See all <ArrowRight />
-              </Link>
-            </Button>
-          </div>
-          <div className="px-6 pb-6 space-y-2">
-            {paymentsQ.isLoading &&
-              Array.from({ length: 3 }).map((_, i) => (
-                <Skeleton key={i} className="h-14 rounded-lg" />
-              ))}
-            {!paymentsQ.isLoading && payments.length === 0 && (
-              <p className="text-sm text-muted-foreground py-6 text-center">
-                No payments yet.
-              </p>
-            )}
-            {payments.slice(0, 5).map((p) => (
-              <div
-                key={p.id}
-                className="flex items-center justify-between rounded-lg p-3 hover:bg-secondary/50 transition-colors"
+            <div className="flex items-center gap-1">
+              <Button asChild variant="ghost" size="sm">
+                <Link to="/app/payments">
+                  See all <ArrowRight />
+                </Link>
+              </Button>
+              <button
+                type="button"
+                onClick={() => setPaymentsOpen((v) => !v)}
+                className="size-8 shrink-0 grid place-items-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                aria-label={paymentsOpen ? "Collapse recent payments" : "Expand recent payments"}
+                aria-expanded={paymentsOpen}
+                title={paymentsOpen ? "Collapse" : "Expand"}
               >
-                <div>
-                  <p className="font-medium text-sm">
-                    {formatINR(p.totalAmount ?? p.amount)}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Due {formatDate(p.dueDate)}
-                  </p>
-                </div>
-                <PaymentStatusBadge status={p.status} />
-              </div>
-            ))}
+                {paymentsOpen ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
+              </button>
+            </div>
           </div>
+          {paymentsOpen && (
+            <div className="px-6 pb-6 space-y-2">
+              {paymentsQ.isLoading &&
+                Array.from({ length: 3 }).map((_, i) => (
+                  <Skeleton key={i} className="h-14 rounded-lg" />
+                ))}
+              {!paymentsQ.isLoading && payments.length === 0 && (
+                <p className="text-sm text-muted-foreground py-6 text-center">
+                  No payments yet.
+                </p>
+              )}
+              {payments.slice(0, 5).map((p) => (
+                <div
+                  key={p.id}
+                  className="flex items-center justify-between rounded-lg p-3 hover:bg-secondary/50 transition-colors"
+                >
+                  <div>
+                    <p className="font-medium text-sm">
+                      {formatINR(p.totalAmount ?? p.amount)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Due {formatDate(p.dueDate)}
+                    </p>
+                  </div>
+                  <PaymentStatusBadge status={p.status} />
+                </div>
+              ))}
+            </div>
+          )}
         </Card>
 
         <Card>
-          <div className="p-6 flex items-center justify-between">
+          <div className="p-6 flex items-center justify-between gap-2">
             <h2 className="font-display font-semibold text-lg">Maintenance</h2>
-            <Button asChild variant="ghost" size="sm">
-              <Link to="/app/maintenance">
-                See all <ArrowRight />
-              </Link>
-            </Button>
-          </div>
-          <div className="px-6 pb-6 space-y-2">
-            {requestsQ.isLoading &&
-              Array.from({ length: 3 }).map((_, i) => (
-                <Skeleton key={i} className="h-14 rounded-lg" />
-              ))}
-            {!requestsQ.isLoading && (requestsQ.data?.length ?? 0) === 0 && (
-              <p className="text-sm text-muted-foreground py-6 text-center">
-                No requests open.
-              </p>
-            )}
-            {(requestsQ.data ?? []).slice(0, 5).map((r) => (
-              <div
-                key={r.id}
-                className="flex items-center justify-between rounded-lg p-3 hover:bg-secondary/50 transition-colors"
+            <div className="flex items-center gap-1">
+              <Button asChild variant="ghost" size="sm">
+                <Link to="/app/maintenance">
+                  See all <ArrowRight />
+                </Link>
+              </Button>
+              <button
+                type="button"
+                onClick={() => setMaintenanceOpen((v) => !v)}
+                className="size-8 shrink-0 grid place-items-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                aria-label={maintenanceOpen ? "Collapse maintenance" : "Expand maintenance"}
+                aria-expanded={maintenanceOpen}
+                title={maintenanceOpen ? "Collapse" : "Expand"}
               >
-                <div className="min-w-0">
-                  <p className="font-medium text-sm truncate">{r.title}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {r.category ?? r.complaintCategory ?? "—"}
-                  </p>
-                </div>
-                <Badge variant={statusVariant(r.status)}>{r.status}</Badge>
-              </div>
-            ))}
-            <Button asChild variant="outline" className="w-full mt-2">
-              <Link to="/app/maintenance/new">+ Raise a request</Link>
-            </Button>
+                {maintenanceOpen ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
+              </button>
+            </div>
           </div>
+          {maintenanceOpen && (
+            <div className="px-6 pb-6 space-y-2">
+              {requestsQ.isLoading &&
+                Array.from({ length: 3 }).map((_, i) => (
+                  <Skeleton key={i} className="h-14 rounded-lg" />
+                ))}
+              {!requestsQ.isLoading && (requestsQ.data?.length ?? 0) === 0 && (
+                <p className="text-sm text-muted-foreground py-6 text-center">
+                  No requests open.
+                </p>
+              )}
+              {(requestsQ.data ?? []).slice(0, 5).map((r) => (
+                <div
+                  key={r.id}
+                  className="flex items-center justify-between rounded-lg p-3 hover:bg-secondary/50 transition-colors"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium text-sm truncate">{r.title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {r.category ?? r.complaintCategory ?? "—"}
+                    </p>
+                  </div>
+                  <Badge variant={statusVariant(r.status)}>{r.status}</Badge>
+                </div>
+              ))}
+              <Button asChild variant="outline" className="w-full mt-2">
+                <Link to="/app/maintenance/new">+ Raise a request</Link>
+              </Button>
+            </div>
+          )}
         </Card>
       </div>
     </div>
