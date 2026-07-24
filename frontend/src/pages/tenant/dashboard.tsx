@@ -10,6 +10,9 @@ import {
   Home,
   Calendar,
   TrendingUp,
+  IndianRupee,
+  MessageSquareWarning,
+  Users,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { propertiesApi } from "@/lib/api/properties";
@@ -128,6 +131,41 @@ export function TenantDashboard() {
           label="Open requests"
           value={requestsQ.isLoading ? "…" : String(openRequests)}
           hint={openRequests > 0 ? "Track progress →" : "Everything looks great"}
+        />
+      </div>
+
+      {/* Colour-coded shortcut tiles — one tap into the section a
+          tenant actually reaches for. Sits between the stat row and
+          the detail cards because that's where the eye lands next
+          after scanning the summary tiles. */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-7">
+        <QuickTile
+          to="/app/payments"
+          icon={IndianRupee}
+          label="Payments"
+          sub="View & pay"
+          gradient="from-emerald-500 to-emerald-600"
+        />
+        <QuickTile
+          to="/app/maintenance"
+          icon={Wrench}
+          label="Maintenance"
+          sub="Raise a request"
+          gradient="from-amber-500 to-orange-600"
+        />
+        <QuickTile
+          to="/app/complaints"
+          icon={MessageSquareWarning}
+          label="Complaints"
+          sub="File an issue"
+          gradient="from-rose-500 to-pink-600"
+        />
+        <QuickTile
+          to="/app/society"
+          icon={Users}
+          label="Society"
+          sub="Notices & bills"
+          gradient="from-violet-500 to-purple-600"
         />
       </div>
 
@@ -282,4 +320,44 @@ function statusVariant(s: string) {
   if (s === "RESOLVED" || s === "CLOSED") return "success" as const;
   if (s === "IN_PROGRESS") return "warning" as const;
   return "default" as const;
+}
+
+/**
+ * Coloured shortcut tile — icon in a translucent chip on the left,
+ * label + one-line sub on the right. Each tile picks its own gradient
+ * so the row scans quickly ("green = money, amber = wrench, red =
+ * shout, purple = building").
+ */
+function QuickTile({
+  to,
+  icon: Icon,
+  label,
+  sub,
+  gradient,
+}: {
+  to: string;
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  sub: string;
+  gradient: string;
+}) {
+  return (
+    <Link
+      to={to}
+      className={`group relative overflow-hidden rounded-xl p-4 text-white shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg bg-gradient-to-br ${gradient}`}
+    >
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.22),transparent_60%)] pointer-events-none" />
+      <div className="relative flex items-center gap-3">
+        <div className="size-10 shrink-0 rounded-lg bg-white/25 grid place-items-center backdrop-blur-sm">
+          <Icon className="size-5" />
+        </div>
+        <div className="min-w-0">
+          <p className="font-semibold text-sm leading-tight">{label}</p>
+          <p className="text-[11px] text-white/85 leading-tight mt-0.5 truncate">
+            {sub}
+          </p>
+        </div>
+      </div>
+    </Link>
+  );
 }

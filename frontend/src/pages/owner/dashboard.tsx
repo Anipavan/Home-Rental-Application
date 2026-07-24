@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -13,6 +13,11 @@ import {
   AlertCircle,
   Trophy,
   PieChart as PieChartIcon,
+  ChevronDown,
+  ChevronUp,
+  LayoutGrid,
+  Users,
+  MessageSquareWarning,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -42,6 +47,13 @@ import type { PaymentResponse } from "@/types/api";
 
 export function OwnerDashboard() {
   const { authUserId, userName } = useAuthStore();
+
+  // Per-card collapse toggles — starts expanded on every visit so
+  // owners always see their headline chart on load. Matches the
+  // same pattern the tenant dashboard uses for Recent payments /
+  // Maintenance cards.
+  const [monthlyOpen, setMonthlyOpen] = useState(true);
+  const [activityOpen, setActivityOpen] = useState(true);
 
   // refetchOnWindowFocus + short staleTime so the KPIs stay live —
   // an owner who flips between Tenants / Payments / Overview tabs
@@ -258,9 +270,44 @@ export function OwnerDashboard() {
           natural eye-path. */}
       <PendingClaimsWidget />
 
+      {/* Colour-coded shortcut tiles — one tap into the section an
+          owner reaches for most. Same visual language as the tenant
+          dashboard tiles, different destinations. Sits between the
+          KPIs and the trend chart so it's in the natural eye-path. */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+        <QuickTile
+          to="/owner/flats"
+          icon={LayoutGrid}
+          label="Flats"
+          sub="Assign & vacate"
+          gradient="from-sky-500 to-blue-600"
+        />
+        <QuickTile
+          to="/owner/tenants"
+          icon={Users}
+          label="Tenants"
+          sub="See everyone"
+          gradient="from-violet-500 to-purple-600"
+        />
+        <QuickTile
+          to="/owner/payments"
+          icon={IndianRupee}
+          label="Payments"
+          sub="Collect & track"
+          gradient="from-emerald-500 to-emerald-600"
+        />
+        <QuickTile
+          to="/owner/complaints"
+          icon={MessageSquareWarning}
+          label="Complaints"
+          sub="Resolve issues"
+          gradient="from-rose-500 to-pink-600"
+        />
+      </div>
+
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
-          <div className="p-6 flex items-center justify-between">
+          <div className="p-6 flex items-center justify-between gap-2">
             <div>
               <h2 className="font-display font-semibold text-lg">
                 Monthly collection
@@ -269,88 +316,116 @@ export function OwnerDashboard() {
                 Last 6 months · Paid vs. Pending
               </p>
             </div>
-            <Button asChild variant="ghost" size="sm">
-              <Link to="/owner/analytics">
-                Details <ArrowRight />
-              </Link>
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button asChild variant="ghost" size="sm">
+                <Link to="/owner/analytics">
+                  Details <ArrowRight />
+                </Link>
+              </Button>
+              <button
+                type="button"
+                onClick={() => setMonthlyOpen((v) => !v)}
+                className="size-8 shrink-0 grid place-items-center rounded-full bg-primary/10 text-primary border border-primary/30 hover:bg-primary hover:text-primary-foreground transition-colors"
+                aria-label={monthlyOpen ? "Collapse monthly collection" : "Expand monthly collection"}
+                aria-expanded={monthlyOpen}
+                title={monthlyOpen ? "Collapse" : "Expand"}
+              >
+                {monthlyOpen ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
+              </button>
+            </div>
           </div>
-          <div className="px-2 pb-4 h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={trend} margin={{ left: 10, right: 20, top: 10 }}>
-                <defs>
-                  <linearGradient id="grad-paid" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="hsl(244 75% 59%)" stopOpacity={0.4} />
-                    <stop offset="100%" stopColor="hsl(244 75% 59%)" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="grad-pending" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="hsl(38 92% 50%)" stopOpacity={0.3} />
-                    <stop offset="100%" stopColor="hsl(38 92% 50%)" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(220 13% 91%)" />
-                <XAxis dataKey="m" tickLine={false} axisLine={false} fontSize={12} />
-                <YAxis tickLine={false} axisLine={false} fontSize={12} tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}K`} />
-                <Tooltip
-                  formatter={(v: number) => formatINR(v)}
-                  contentStyle={{
-                    borderRadius: 12,
-                    border: "1px solid hsl(220 13% 91%)",
-                    boxShadow: "0 10px 30px -10px rgb(15 23 42 / 0.18)",
-                  }}
-                />
-                <Area type="monotone" dataKey="paid" stroke="hsl(244 75% 59%)" strokeWidth={2.5} fill="url(#grad-paid)" />
-                <Area type="monotone" dataKey="pending" stroke="hsl(38 92% 50%)" strokeWidth={2.5} fill="url(#grad-pending)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+          {monthlyOpen && (
+            <div className="px-2 pb-4 h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={trend} margin={{ left: 10, right: 20, top: 10 }}>
+                  <defs>
+                    <linearGradient id="grad-paid" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="hsl(244 75% 59%)" stopOpacity={0.4} />
+                      <stop offset="100%" stopColor="hsl(244 75% 59%)" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="grad-pending" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="hsl(38 92% 50%)" stopOpacity={0.3} />
+                      <stop offset="100%" stopColor="hsl(38 92% 50%)" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(220 13% 91%)" />
+                  <XAxis dataKey="m" tickLine={false} axisLine={false} fontSize={12} />
+                  <YAxis tickLine={false} axisLine={false} fontSize={12} tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}K`} />
+                  <Tooltip
+                    formatter={(v: number) => formatINR(v)}
+                    contentStyle={{
+                      borderRadius: 12,
+                      border: "1px solid hsl(220 13% 91%)",
+                      boxShadow: "0 10px 30px -10px rgb(15 23 42 / 0.18)",
+                    }}
+                  />
+                  <Area type="monotone" dataKey="paid" stroke="hsl(244 75% 59%)" strokeWidth={2.5} fill="url(#grad-paid)" />
+                  <Area type="monotone" dataKey="pending" stroke="hsl(38 92% 50%)" strokeWidth={2.5} fill="url(#grad-pending)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </Card>
 
         <Card>
-          <div className="p-6 flex items-center justify-between">
+          <div className="p-6 flex items-center justify-between gap-2">
             <h2 className="font-display font-semibold text-lg">Recent activity</h2>
-            <Button asChild variant="ghost" size="sm">
-              <Link to="/owner/payments">All</Link>
-            </Button>
-          </div>
-          <div className="px-6 pb-6 space-y-3">
-            {paymentsQ.isLoading &&
-              Array.from({ length: 4 }).map((_, i) => (
-                <Skeleton key={i} className="h-12" />
-              ))}
-            {recentPayments.map((p) => (
-              <div
-                key={p.id}
-                className="flex items-center justify-between text-sm"
+            <div className="flex items-center gap-1">
+              <Button asChild variant="ghost" size="sm">
+                <Link to="/owner/payments">All</Link>
+              </Button>
+              <button
+                type="button"
+                onClick={() => setActivityOpen((v) => !v)}
+                className="size-8 shrink-0 grid place-items-center rounded-full bg-primary/10 text-primary border border-primary/30 hover:bg-primary hover:text-primary-foreground transition-colors"
+                aria-label={activityOpen ? "Collapse recent activity" : "Expand recent activity"}
+                aria-expanded={activityOpen}
+                title={activityOpen ? "Collapse" : "Expand"}
               >
-                <div className="min-w-0">
-                  <p className="font-medium truncate">
-                    Flat {flatLookup.nameOf(p.flatId)}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {p.paymentDate ? formatDate(p.paymentDate) : `Due ${formatDate(p.dueDate)}`}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="font-semibold">
-                    {formatINR(p.totalAmount ?? p.amount)}
-                  </p>
-                  {p.status === "PAID" ? (
-                    <Badge variant="success">Paid</Badge>
-                  ) : p.status === "OVERDUE" ? (
-                    <Badge variant="destructive">Overdue</Badge>
-                  ) : (
-                    <Badge variant="warning">Pending</Badge>
-                  )}
-                </div>
-              </div>
-            ))}
-            {!paymentsQ.isLoading && (paymentsQ.data?.length ?? 0) === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                No activity yet.
-              </p>
-            )}
+                {activityOpen ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
+              </button>
+            </div>
           </div>
+          {activityOpen && (
+            <div className="px-6 pb-6 space-y-3">
+              {paymentsQ.isLoading &&
+                Array.from({ length: 4 }).map((_, i) => (
+                  <Skeleton key={i} className="h-12" />
+                ))}
+              {recentPayments.map((p) => (
+                <div
+                  key={p.id}
+                  className="flex items-center justify-between text-sm"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">
+                      Flat {flatLookup.nameOf(p.flatId)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {p.paymentDate ? formatDate(p.paymentDate) : `Due ${formatDate(p.dueDate)}`}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-semibold">
+                      {formatINR(p.totalAmount ?? p.amount)}
+                    </p>
+                    {p.status === "PAID" ? (
+                      <Badge variant="success">Paid</Badge>
+                    ) : p.status === "OVERDUE" ? (
+                      <Badge variant="destructive">Overdue</Badge>
+                    ) : (
+                      <Badge variant="warning">Pending</Badge>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {!paymentsQ.isLoading && (paymentsQ.data?.length ?? 0) === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  No activity yet.
+                </p>
+              )}
+            </div>
+          )}
         </Card>
       </div>
 
@@ -651,6 +726,46 @@ export function OwnerDashboard() {
         </Card>
       </div>
     </div>
+  );
+}
+
+/**
+ * Coloured shortcut tile — icon in a translucent chip on the left,
+ * label + one-line sub on the right. Each tile picks its own gradient
+ * so the row scans quickly and owners can spot the section they want
+ * without reading every label.
+ */
+function QuickTile({
+  to,
+  icon: Icon,
+  label,
+  sub,
+  gradient,
+}: {
+  to: string;
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  sub: string;
+  gradient: string;
+}) {
+  return (
+    <Link
+      to={to}
+      className={`group relative overflow-hidden rounded-xl p-4 text-white shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg bg-gradient-to-br ${gradient}`}
+    >
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.22),transparent_60%)] pointer-events-none" />
+      <div className="relative flex items-center gap-3">
+        <div className="size-10 shrink-0 rounded-lg bg-white/25 grid place-items-center backdrop-blur-sm">
+          <Icon className="size-5" />
+        </div>
+        <div className="min-w-0">
+          <p className="font-semibold text-sm leading-tight">{label}</p>
+          <p className="text-[11px] text-white/85 leading-tight mt-0.5 truncate">
+            {sub}
+          </p>
+        </div>
+      </div>
+    </Link>
   );
 }
 
