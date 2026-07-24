@@ -104,7 +104,9 @@ const tenantNav: NavItem[] = [
   { to: "/app/browse", label: "Browse Homes", icon: Search },
   { to: "/app/lease", label: "Lease", icon: ScrollText },
   { to: "/app/payments", label: "Payments", icon: Receipt },
-  { to: "/app/maintenance", label: "Maintenance", icon: Wrench },
+  // Maintenance nav retired — /app/complaints now covers both
+  // physical repairs and grievances, discriminated by Kind on the
+  // backend. Old link redirects live in router.tsx.
   { to: "/app/complaints", label: "Complaints", icon: MessageSquareWarning },
   // KYC pill mirrors the feature flag — single source of truth in
   // lib/feature-flags.ts. Flipping that flag back to false removes
@@ -126,7 +128,8 @@ const ownerNav: NavItem[] = [
   { to: "/owner/flats", label: "Flats", icon: LayoutGrid },
   { to: "/owner/tenants", label: "Tenants", icon: Users },
   { to: "/owner/payments", label: "Payments", icon: Receipt },
-  { to: "/owner/maintenance", label: "Maintenance", icon: Wrench },
+  // Maintenance nav retired — /owner/complaints is now the unified
+  // ticket queue for both physical repairs and grievances.
   { to: "/owner/complaints", label: "Complaints", icon: MessageSquareWarning },
   { to: "/owner/agreements", label: "Agreements", icon: ScrollText },
   { to: "/owner/leases", label: "Leases", icon: FileText },

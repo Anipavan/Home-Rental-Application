@@ -29,8 +29,9 @@ import { PendingClaimPage } from "@/pages/tenant/pending-claim";
 import { PaymentsListPage } from "@/pages/tenant/payments";
 import { PayPage } from "@/pages/tenant/pay";
 import { PaymentReturnPage } from "@/pages/tenant/payment-return";
-import { MaintenancePage } from "@/pages/tenant/maintenance";
-import { MaintenanceNewPage } from "@/pages/tenant/maintenance-new";
+// MaintenancePage + MaintenanceNewPage retired — the tenant queue
+// now lives under Complaints, discriminated by Kind. Old bookmarks
+// hit the Navigate redirect below.
 import { ComplaintsPage } from "@/pages/tenant/complaints";
 import { ComplaintsNewPage } from "@/pages/tenant/complaints-new";
 import { ComplaintDetailPage } from "@/pages/tenant/complaint-detail";
@@ -50,7 +51,8 @@ import { FlatNewPage } from "@/pages/owner/flat-new";
 import { TenantsPage } from "@/pages/owner/tenants";
 import { TenantDetailPage } from "@/pages/owner/tenant-detail";
 import { OwnerPaymentsPage } from "@/pages/owner/payments";
-import { OwnerMaintenancePage } from "@/pages/owner/maintenance";
+// OwnerMaintenancePage retired — Complaints is now the unified
+// queue for both maintenance + grievance tickets.
 import { OwnerComplaintsPage } from "@/pages/owner/complaints";
 import { OwnerAnalyticsPage } from "@/pages/owner/analytics";
 import { OwnerAgreementsPage } from "@/pages/owner/agreements";
@@ -207,8 +209,17 @@ export const router = createBrowserRouter([
           { path: "payments", element: <PaymentsListPage /> },
           { path: "payments/:id/pay", element: <PayPage /> },
           { path: "payments/:id/return", element: <PaymentReturnPage /> },
-          { path: "maintenance", element: <MaintenancePage /> },
-          { path: "maintenance/new", element: <MaintenanceNewPage /> },
+          // Legacy paths — /app/maintenance is now folded into
+          // Complaints. Old links from notifications, bookmarks, and
+          // WhatsApp templates keep working via the redirect.
+          {
+            path: "maintenance",
+            element: <Navigate to="/app/complaints" replace />,
+          },
+          {
+            path: "maintenance/new",
+            element: <Navigate to="/app/complaints/new" replace />,
+          },
           { path: "complaints", element: <ComplaintsPage /> },
           { path: "complaints/new", element: <ComplaintsNewPage /> },
           { path: "complaints/:id", element: <ComplaintDetailPage /> },
@@ -277,7 +288,12 @@ export const router = createBrowserRouter([
       { path: "tenants", element: <TenantsPage /> },
       { path: "tenants/:tenantId", element: <TenantDetailPage /> },
       { path: "payments", element: <OwnerPaymentsPage /> },
-      { path: "maintenance", element: <OwnerMaintenancePage /> },
+      // Legacy path — /owner/maintenance is now folded into
+      // Complaints. Redirect keeps old bookmarks working.
+      {
+        path: "maintenance",
+        element: <Navigate to="/owner/complaints" replace />,
+      },
       { path: "complaints", element: <OwnerComplaintsPage /> },
       { path: "agreements", element: <OwnerAgreementsPage /> },
       { path: "leases", element: <OwnerLeasesPage /> },

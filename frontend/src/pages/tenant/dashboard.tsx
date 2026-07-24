@@ -1,28 +1,29 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import {
   ArrowRight,
   ChevronDown,
   ChevronUp,
   CreditCard,
-  Wrench,
   Home,
   Calendar,
   TrendingUp,
   IndianRupee,
   MessageSquareWarning,
+  ScrollText,
   Users,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { propertiesApi } from "@/lib/api/properties";
 import { paymentsApi } from "@/lib/api/payments";
-import { maintenanceApi } from "@/lib/api/maintenance";
+import { complaintsApi, maintenanceApi } from "@/lib/api/maintenance";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatINR, formatDate } from "@/lib/utils";
+import type { MaintenanceRequestResponse } from "@/types/api";
 
 export function TenantDashboard() {
   const { authUserId, userName } = useAuthStore();
@@ -31,7 +32,7 @@ export function TenantDashboard() {
   // state (not persisted) since these cards are on the landing page
   // and users generally want the same view every visit.
   const [paymentsOpen, setPaymentsOpen] = useState(true);
-  const [maintenanceOpen, setMaintenanceOpen] = useState(true);
+  const [complaintsOpen, setComplaintsOpen] = useState(true);
 
   const flatsQ = useQuery({
     queryKey: ["my-flats", authUserId],
@@ -43,16 +44,33 @@ export function TenantDashboard() {
     queryFn: () => paymentsApi.byTenant(authUserId!),
     enabled: !!authUserId,
   });
-  const requestsQ = useQuery({
-    queryKey: ["my-maintenance", authUserId],
-    queryFn: () => maintenanceApi.byTenant(authUserId!),
-    enabled: !!authUserId,
+  // Merged Complaints queue reads both backend Kinds and shows them
+  // as one list. Cache keys match what the /app/complaints page uses,
+  // so switching between pages hits warm caches.
+  const [maintQ, complaintQ] = useQueries({
+    queries: [
+      {
+        queryKey: ["my-maintenance", authUserId],
+        queryFn: () => maintenanceApi.byTenant(authUserId!),
+        enabled: !!authUserId,
+      },
+      {
+        queryKey: ["my-complaints", authUserId],
+        queryFn: () => complaintsApi.byTenant(authUserId!),
+        enabled: !!authUserId,
+      },
+    ],
   });
+  const requests: MaintenanceRequestResponse[] = [
+    ...(maintQ.data ?? []),
+    ...(complaintQ.data ?? []),
+  ];
+  const requestsLoading = maintQ.isLoading || complaintQ.isLoading;
 
   const flat = flatsQ.data?.[0];
   const payments = paymentsQ.data ?? [];
   const pending = payments.find((p) => p.status === "PENDING" || p.status === "OVERDUE");
-  const openRequests = (requestsQ.data ?? []).filter(
+  const openRequests = requests.filter(
     (r) => r.status === "OPEN" || r.status === "IN_PROGRESS",
   ).length;
 
@@ -127,9 +145,9 @@ export function TenantDashboard() {
           value={flat ? formatDate(flat.leaseEndDate) : "—"}
         />
         <StatCard
-          icon={Wrench}
-          label="Open requests"
-          value={requestsQ.isLoading ? "…" : String(openRequests)}
+          icon={MessageSquareWarning}
+          label="Open complaints"
+          value={requestsLoading ? "…" : String(openRequests)}
           hint={openRequests > 0 ? "Track progress →" : "Everything looks great"}
         />
       </div>
@@ -137,7 +155,8 @@ export function TenantDashboard() {
       {/* Colour-coded shortcut tiles — one tap into the section a
           tenant actually reaches for. Sits between the stat row and
           the detail cards because that's where the eye lands next
-          after scanning the summary tiles. */}
+          after scanning the summary tiles.
+          "Maintenance" tile retired — complaints now covers both. */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-7">
         <QuickTile
           to="/app/payments"
@@ -147,18 +166,18 @@ export function TenantDashboard() {
           gradient="from-emerald-500 to-emerald-600"
         />
         <QuickTile
-          to="/app/maintenance"
-          icon={Wrench}
-          label="Maintenance"
-          sub="Raise a request"
-          gradient="from-amber-500 to-orange-600"
-        />
-        <QuickTile
           to="/app/complaints"
           icon={MessageSquareWarning}
           label="Complaints"
-          sub="File an issue"
+          sub="Repairs & issues"
           gradient="from-rose-500 to-pink-600"
+        />
+        <QuickTile
+          to="/app/lease"
+          icon={ScrollText}
+          label="Lease"
+          sub="Terms & renewal"
+          gradient="from-amber-500 to-orange-600"
         />
         <QuickTile
           to="/app/society"
@@ -224,52 +243,59 @@ export function TenantDashboard() {
 
         <Card>
           <div className="p-6 flex items-center justify-between gap-2">
-            <h2 className="font-display font-semibold text-lg">Maintenance</h2>
+            <h2 className="font-display font-semibold text-lg">Recent complaints</h2>
             <div className="flex items-center gap-1">
               <Button asChild variant="ghost" size="sm">
-                <Link to="/app/maintenance">
+                <Link to="/app/complaints">
                   See all <ArrowRight />
                 </Link>
               </Button>
               <button
                 type="button"
-                onClick={() => setMaintenanceOpen((v) => !v)}
+                onClick={() => setComplaintsOpen((v) => !v)}
                 className="size-8 shrink-0 grid place-items-center rounded-full bg-primary/10 text-primary border border-primary/30 hover:bg-primary hover:text-primary-foreground transition-colors"
-                aria-label={maintenanceOpen ? "Collapse maintenance" : "Expand maintenance"}
-                aria-expanded={maintenanceOpen}
-                title={maintenanceOpen ? "Collapse" : "Expand"}
+                aria-label={complaintsOpen ? "Collapse complaints" : "Expand complaints"}
+                aria-expanded={complaintsOpen}
+                title={complaintsOpen ? "Collapse" : "Expand"}
               >
-                {maintenanceOpen ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
+                {complaintsOpen ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
               </button>
             </div>
           </div>
-          {maintenanceOpen && (
+          {complaintsOpen && (
             <div className="px-6 pb-6 space-y-2">
-              {requestsQ.isLoading &&
+              {requestsLoading &&
                 Array.from({ length: 3 }).map((_, i) => (
                   <Skeleton key={i} className="h-14 rounded-lg" />
                 ))}
-              {!requestsQ.isLoading && (requestsQ.data?.length ?? 0) === 0 && (
+              {!requestsLoading && requests.length === 0 && (
                 <p className="text-sm text-muted-foreground py-6 text-center">
-                  No requests open.
+                  Nothing open. Long may it last.
                 </p>
               )}
-              {(requestsQ.data ?? []).slice(0, 5).map((r) => (
-                <div
-                  key={r.id}
-                  className="flex items-center justify-between rounded-lg p-3 hover:bg-secondary/50 transition-colors"
-                >
-                  <div className="min-w-0">
-                    <p className="font-medium text-sm truncate">{r.title}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {r.category ?? r.complaintCategory ?? "—"}
-                    </p>
+              {requests
+                .slice()
+                .sort((a, b) =>
+                  (b.createdAt ?? "").localeCompare(a.createdAt ?? ""),
+                )
+                .slice(0, 5)
+                .map((r) => (
+                  <div
+                    key={r.id}
+                    className="flex items-center justify-between rounded-lg p-3 hover:bg-secondary/50 transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-medium text-sm truncate">{r.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {r.kind === "MAINTENANCE" ? "Repair" : "Complaint"} ·{" "}
+                        {r.category ?? r.complaintCategory ?? "—"}
+                      </p>
+                    </div>
+                    <Badge variant={statusVariant(r.status)}>{r.status}</Badge>
                   </div>
-                  <Badge variant={statusVariant(r.status)}>{r.status}</Badge>
-                </div>
-              ))}
+                ))}
               <Button asChild variant="outline" className="w-full mt-2">
-                <Link to="/app/maintenance/new">+ Raise a request</Link>
+                <Link to="/app/complaints/new">+ New complaint</Link>
               </Button>
             </div>
           )}

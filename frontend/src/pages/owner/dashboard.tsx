@@ -7,7 +7,6 @@ import {
   Building2,
   Home,
   TrendingUp,
-  Wrench,
   IndianRupee,
   ArrowRight,
   AlertCircle,
@@ -34,7 +33,7 @@ import {
 import { useAuthStore } from "@/stores/auth-store";
 import { propertiesApi } from "@/lib/api/properties";
 import { paymentsApi } from "@/lib/api/payments";
-import { maintenanceApi } from "@/lib/api/maintenance";
+import { complaintsApi, maintenanceApi } from "@/lib/api/maintenance";
 import { authApi } from "@/lib/api/auth";
 import { claimsApi } from "@/lib/api/claims";
 import { useFlatLookup } from "@/hooks/use-flat-lookup";
@@ -87,9 +86,18 @@ export function OwnerDashboard() {
     ...FRESH,
   });
 
+  // Merged owner ticket queue reads both backend Kinds. Cache keys
+  // match what /owner/complaints uses so switching pages hits the
+  // warm caches.
   const maintQ = useQuery({
     queryKey: ["owner-maintenance", authUserId],
     queryFn: () => maintenanceApi.byOwner(authUserId!),
+    enabled: !!authUserId,
+    ...FRESH,
+  });
+  const complaintQ = useQuery({
+    queryKey: ["owner-complaints", authUserId],
+    queryFn: () => complaintsApi.byOwner(authUserId!),
     enabled: !!authUserId,
     ...FRESH,
   });
@@ -135,7 +143,9 @@ export function OwnerDashboard() {
     .reduce((s, p) => s + Number(p.totalAmount ?? p.amount), 0);
   const outstandingAmount = overdueAmount + upcomingAmount;
 
-  const openMaint = (maintQ.data ?? []).filter(
+  // Merged ticket set — both Kinds combined for the KPI + queue card.
+  const allTickets = [...(maintQ.data ?? []), ...(complaintQ.data ?? [])];
+  const openMaint = allTickets.filter(
     (r) => r.status === "OPEN" || r.status === "IN_PROGRESS",
   ).length;
 
@@ -178,8 +188,11 @@ export function OwnerDashboard() {
   // Resolve flatId UUIDs to readable flat numbers for the Recent activity
   // strip + the maintenance queue. 60 s cache — single batched fetch.
   const recentPayments = (paymentsQ.data ?? []).slice(0, 5);
-  const openMaintTickets = (maintQ.data ?? [])
+  // Queue card pulls from BOTH kinds so a busy owner sees every
+  // active ticket, not just physical maintenance.
+  const openMaintTickets = allTickets
     .filter((r) => r.status !== "CLOSED" && r.status !== "RESOLVED")
+    .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""))
     .slice(0, 4);
   const flatLookup = useFlatLookup([
     ...recentPayments.map((p) => p.flatId),
@@ -255,8 +268,8 @@ export function OwnerDashboard() {
           tone="muted"
         />
         <KpiCard
-          icon={Wrench}
-          label="Open maintenance"
+          icon={MessageSquareWarning}
+          label="Open complaints"
           value={String(openMaint)}
           tone="warning"
         />
@@ -684,19 +697,19 @@ export function OwnerDashboard() {
         <Card>
           <div className="p-6 flex items-center justify-between">
             <div>
-              <h2 className="font-display font-semibold text-lg">Maintenance queue</h2>
+              <h2 className="font-display font-semibold text-lg">Complaint queue</h2>
               <p className="text-xs text-muted-foreground">
-                {openMaint} active requests
+                {openMaint} active {openMaint === 1 ? "ticket" : "tickets"}
               </p>
             </div>
             <Button asChild variant="ghost" size="sm">
-              <Link to="/owner/maintenance">
+              <Link to="/owner/complaints">
                 Manage <ArrowRight />
               </Link>
             </Button>
           </div>
           <div className="px-6 pb-6 space-y-2">
-            {maintQ.isLoading &&
+            {(maintQ.isLoading || complaintQ.isLoading) &&
               Array.from({ length: 3 }).map((_, i) => (
                 <Skeleton key={i} className="h-14" />
               ))}
@@ -708,7 +721,8 @@ export function OwnerDashboard() {
                   <div className="min-w-0">
                     <p className="font-medium text-sm truncate">{r.title}</p>
                     <p className="text-xs text-muted-foreground">
-                      Flat {flatLookup.nameOf(r.flatId)} ·{" "}
+                      {r.kind === "MAINTENANCE" ? "Repair" : "Complaint"} · Flat{" "}
+                      {flatLookup.nameOf(r.flatId)} ·{" "}
                       {r.category ?? r.complaintCategory ?? "—"}
                     </p>
                   </div>
@@ -717,7 +731,7 @@ export function OwnerDashboard() {
                   </Badge>
                 </div>
               ))}
-            {openMaint === 0 && !maintQ.isLoading && (
+            {openMaint === 0 && !(maintQ.isLoading || complaintQ.isLoading) && (
               <p className="text-sm text-muted-foreground text-center py-6">
                 Nothing open. Excellent.
               </p>

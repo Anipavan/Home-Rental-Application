@@ -1,13 +1,14 @@
 import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   Loader2,
   MessageSquareWarning,
   Send,
+  Wrench,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
-import { complaintsApi } from "@/lib/api/maintenance";
+import { complaintsApi, maintenanceApi } from "@/lib/api/maintenance";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,7 +18,9 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -27,51 +30,72 @@ import { extractErrorMessage } from "@/lib/api/client";
 import { toast } from "@/hooks/use-toast";
 import { relativeFromNow, formatDate } from "@/lib/utils";
 import type {
-  ComplaintCategory,
   MaintenancePriority,
   MaintenanceRequestResponse,
   MaintenanceStatus,
+  TicketKind,
 } from "@/types/api";
 
 /**
- * Owner complaints inbox.
+ * Owner Complaints — unified queue.
  *
- * Lists every complaint filed against any flat the owner has. Mirrors
- * the maintenance queue UX (open / in-progress / resolved tabs) and
- * adds:
- *   - category + priority filters (so a busy owner can triage)
- *   - inline expand + reply (no separate detail page round-trip)
- *   - status-change buttons that move through OPEN → IN_PROGRESS → RESOLVED
+ * Merged view over the two backend Kinds (MAINTENANCE + COMPLAINT).
+ * Same collection, same status machine — the split was UX-only and
+ * routinely confused everyone ("is a leaky tap a complaint or a
+ * maintenance ticket?"). This page pulls both endpoints, tags every
+ * row with a Kind icon + label, and offers a Kind filter for owners
+ * who want to triage one flavour at a time.
  *
- * Owner-behaviour complaints are filtered out — those are routed to
- * admin and the owner is deliberately excluded from the loop. Backend
- * notification skips the owner ping for that category; we exclude
- * them from this list for the same reason.
+ * OWNER_BEHAVIOR complaints are dropped — they route to admin and
+ * the owner is deliberately excluded from that loop.
  */
 export function OwnerComplaintsPage() {
   const { authUserId } = useAuthStore();
-  const q = useQuery({
-    queryKey: ["owner-complaints", authUserId],
-    queryFn: () => complaintsApi.byOwner(authUserId!),
-    enabled: !!authUserId,
+
+  // Two independent queries — parallel fetch, both cheap. Kept
+  // separate so cache keys keep matching what the owner dashboard
+  // widgets already use (owner-maintenance / owner-complaints).
+  const [maintQ, complaintQ] = useQueries({
+    queries: [
+      {
+        queryKey: ["owner-maintenance", authUserId],
+        queryFn: () => maintenanceApi.byOwner(authUserId!),
+        enabled: !!authUserId,
+      },
+      {
+        queryKey: ["owner-complaints", authUserId],
+        queryFn: () => complaintsApi.byOwner(authUserId!),
+        enabled: !!authUserId,
+      },
+    ],
   });
 
-  const [categoryFilter, setCategoryFilter] = useState<"ALL" | ComplaintCategory>(
-    "ALL",
-  );
+  const [kindFilter, setKindFilter] = useState<"ALL" | TicketKind>("ALL");
+  const [categoryFilter, setCategoryFilter] = useState<string>("ALL");
   const [priorityFilter, setPriorityFilter] = useState<
     "ALL" | MaintenancePriority
   >("ALL");
 
+  const loading = maintQ.isLoading || complaintQ.isLoading;
+
   const all = useMemo(() => {
-    const items = q.data ?? [];
+    const items: MaintenanceRequestResponse[] = [
+      ...(maintQ.data ?? []),
+      ...(complaintQ.data ?? []),
+    ];
     return items
+      // OWNER_BEHAVIOR is intentionally invisible to the owner — the
+      // backend routes those to admin and skips the owner
+      // notification.
       .filter((r) => r.complaintCategory !== "OWNER_BEHAVIOR")
-      .filter((r) =>
-        categoryFilter === "ALL"
-          ? true
-          : r.complaintCategory === categoryFilter,
-      )
+      .filter((r) => (kindFilter === "ALL" ? true : r.kind === kindFilter))
+      .filter((r) => {
+        if (categoryFilter === "ALL") return true;
+        return (
+          r.category === categoryFilter ||
+          r.complaintCategory === categoryFilter
+        );
+      })
       .filter((r) =>
         priorityFilter === "ALL" ? true : r.priority === priorityFilter,
       )
@@ -83,7 +107,7 @@ export function OwnerComplaintsPage() {
         if (d !== 0) return d;
         return (b.createdAt ?? "").localeCompare(a.createdAt ?? "");
       });
-  }, [q.data, categoryFilter, priorityFilter]);
+  }, [maintQ.data, complaintQ.data, kindFilter, categoryFilter, priorityFilter]);
 
   const open = all.filter((r) => r.status === "OPEN");
   const inProgress = all.filter((r) => r.status === "IN_PROGRESS");
@@ -92,7 +116,7 @@ export function OwnerComplaintsPage() {
   );
 
   const grid = (items: MaintenanceRequestResponse[]) => {
-    if (q.isLoading)
+    if (loading)
       return (
         <div className="space-y-3">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -119,7 +143,7 @@ export function OwnerComplaintsPage() {
     <div className="animate-fade-in">
       <PageHeader
         title="Complaints"
-        description="Grievances from your tenants. Triage, reply, and close them out."
+        description="Repairs, noise, safety — every ticket from every flat you own, one queue."
       />
 
       <Card className="mb-5">
@@ -128,24 +152,52 @@ export function OwnerComplaintsPage() {
             Filters:
           </span>
           <Select
+            value={kindFilter}
+            onValueChange={(v) => setKindFilter(v as "ALL" | TicketKind)}
+          >
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="Type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">All types</SelectItem>
+              <SelectItem value="MAINTENANCE">Repairs</SelectItem>
+              <SelectItem value="COMPLAINT">Complaints</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select
             value={categoryFilter}
-            onValueChange={(v) =>
-              setCategoryFilter(v as "ALL" | ComplaintCategory)
-            }
+            onValueChange={(v) => setCategoryFilter(v)}
           >
             <SelectTrigger className="w-56">
               <SelectValue placeholder="Category" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">All categories</SelectItem>
-              <SelectItem value="NOISE">Noise</SelectItem>
-              <SelectItem value="NEIGHBOR_DISPUTE">Neighbour dispute</SelectItem>
-              <SelectItem value="SECURITY_CONCERN">Security concern</SelectItem>
-              <SelectItem value="BILLING_DISPUTE">Billing dispute</SelectItem>
-              <SelectItem value="SAFETY_HAZARD">Safety hazard</SelectItem>
-              <SelectItem value="COMMON_AREA">Common area</SelectItem>
-              <SelectItem value="LEASE_VIOLATION">Lease violation</SelectItem>
-              <SelectItem value="OTHER">Other</SelectItem>
+              <SelectGroup>
+                <SelectLabel>Repairs</SelectLabel>
+                <SelectItem value="PLUMBING">Plumbing</SelectItem>
+                <SelectItem value="ELECTRICAL">Electrical</SelectItem>
+                <SelectItem value="APPLIANCE">Appliance</SelectItem>
+                <SelectItem value="PAINTING">Painting</SelectItem>
+                <SelectItem value="CLEANING">Cleaning</SelectItem>
+                <SelectItem value="PEST_CONTROL">Pest control</SelectItem>
+                <SelectItem value="GENERAL">General repair</SelectItem>
+              </SelectGroup>
+              <SelectGroup>
+                <SelectLabel>Complaints</SelectLabel>
+                <SelectItem value="NOISE">Noise</SelectItem>
+                <SelectItem value="NEIGHBOR_DISPUTE">
+                  Neighbour dispute
+                </SelectItem>
+                <SelectItem value="SECURITY_CONCERN">
+                  Security concern
+                </SelectItem>
+                <SelectItem value="BILLING_DISPUTE">Billing dispute</SelectItem>
+                <SelectItem value="SAFETY_HAZARD">Safety hazard</SelectItem>
+                <SelectItem value="COMMON_AREA">Common area</SelectItem>
+                <SelectItem value="LEASE_VIOLATION">Lease violation</SelectItem>
+                <SelectItem value="OTHER">Other</SelectItem>
+              </SelectGroup>
             </SelectContent>
           </Select>
           <Select
@@ -189,17 +241,29 @@ export function OwnerComplaintsPage() {
   );
 }
 
+/**
+ * One inline-expandable ticket row. Picks the right API + cache key
+ * off {@code request.kind} so a maintenance ticket updates the
+ * maintenance cache and a complaint updates the complaints cache.
+ * Everything else — expand, reply, status-change, contact-tenant —
+ * is Kind-agnostic.
+ */
 function ComplaintCard({ request }: { request: MaintenanceRequestResponse }) {
   const { authUserId } = useAuthStore();
   const qc = useQueryClient();
   const [expanded, setExpanded] = useState(false);
   const [reply, setReply] = useState("");
 
+  const isMaintenance = request.kind === "MAINTENANCE";
+  const api = isMaintenance ? maintenanceApi : complaintsApi;
+  const cacheKey = isMaintenance ? "owner-maintenance" : "owner-complaints";
+  const KindIcon = isMaintenance ? Wrench : MessageSquareWarning;
+
   const setStatus = useMutation({
     mutationFn: (next: MaintenanceStatus) =>
-      complaintsApi.setStatus(request.id, next, authUserId!),
+      api.setStatus(request.id, next, authUserId!),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["owner-complaints"] });
+      qc.invalidateQueries({ queryKey: [cacheKey] });
       toast({ title: "Status updated" });
     },
     onError: (e) =>
@@ -211,10 +275,9 @@ function ComplaintCard({ request }: { request: MaintenanceRequestResponse }) {
   });
 
   const sendReply = useMutation({
-    mutationFn: () =>
-      complaintsApi.comment(request.id, authUserId!, reply.trim()),
+    mutationFn: () => api.comment(request.id, authUserId!, reply.trim()),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["owner-complaints"] });
+      qc.invalidateQueries({ queryKey: [cacheKey] });
       setReply("");
       toast({ title: "Reply sent" });
     },
@@ -231,6 +294,7 @@ function ComplaintCard({ request }: { request: MaintenanceRequestResponse }) {
   const comments = [...(request.comments ?? [])].sort((a, b) =>
     (a.timestamp ?? "").localeCompare(b.timestamp ?? ""),
   );
+  const category = request.category ?? request.complaintCategory ?? "OTHER";
 
   return (
     <Card>
@@ -246,24 +310,26 @@ function ComplaintCard({ request }: { request: MaintenanceRequestResponse }) {
                 className={`size-10 rounded-lg grid place-items-center shrink-0 ${
                   isCritical
                     ? "bg-destructive/10 text-destructive"
-                    : "bg-primary/10 text-primary"
+                    : isMaintenance
+                      ? "bg-amber-500/15 text-amber-600"
+                      : "bg-rose-500/15 text-rose-600"
                 }`}
               >
                 {isCritical ? (
                   <AlertTriangle className="size-4" />
                 ) : (
-                  <MessageSquareWarning className="size-4" />
+                  <KindIcon className="size-4" />
                 )}
               </div>
               <div className="min-w-0">
                 <p className="font-medium truncate">{request.title}</p>
                 <p className="text-xs text-muted-foreground">
-                  {prettyCategory(request.complaintCategory ?? "OTHER")} · Flat #
-                  {request.flatId} · Filed{" "}
+                  <span className="font-medium text-foreground/70">
+                    {isMaintenance ? "Repair" : "Complaint"}
+                  </span>{" "}
+                  · {prettyCategory(category)} · Flat #{request.flatId} · Filed{" "}
                   {relativeFromNow(request.createdAt)}
-                  {request.requestNumber && (
-                    <> · {request.requestNumber}</>
-                  )}
+                  {request.requestNumber && <> · {request.requestNumber}</>}
                 </p>
               </div>
             </div>
