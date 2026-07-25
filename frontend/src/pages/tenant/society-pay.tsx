@@ -13,6 +13,7 @@ import {
   Smartphone,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
+import { UpiAppLaunchers } from "@/components/payment/upi-app-launchers";
 import { societyApi } from "@/lib/api/society";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -483,25 +484,15 @@ function DirectUpiBlock({
 
   return (
     <>
-      <div className="text-center">
-        <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-3">
-          Scan to pay {formatINR(row.monthAmount)}
-        </p>
-        <div className="inline-block rounded-xl border-2 border-border/60 bg-white p-4">
-          <QRCodeSVG value={upiUri} size={180} includeMargin={false} />
-        </div>
-        <a
-          href={upiUri}
-          className="block mt-2 text-sm text-primary underline underline-offset-2"
-        >
-          Or tap here to open your UPI app
-        </a>
-      </div>
+      {/* Primary path — tap-to-open app launchers with amount + payee
+          pre-filled. Same visual treatment as the rent-pay flow. */}
+      <UpiAppLaunchers upiUri={upiUri} />
 
-      <div className="space-y-2 text-sm">
+      <div className="rounded-lg border border-border/60 p-3 space-y-2 text-sm">
         <h5 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Bank transfer details
+          Receiver details
         </h5>
+        <Row label="Payee" value={cfg.payeeName ?? "—"} />
         <Row label="UPI ID" value={cfg.upiId!} mono>
           <Button
             type="button"
@@ -513,7 +504,7 @@ function DirectUpiBlock({
             <Copy className="size-3.5" />
           </Button>
         </Row>
-        <Row label="Payee" value={cfg.payeeName ?? "—"} />
+        <Row label="Amount" value={formatINR(row.monthAmount)} />
         {cfg.accountNumber && (
           <Row label="A/c no." value={cfg.accountNumber} mono />
         )}
@@ -524,6 +515,26 @@ function DirectUpiBlock({
           note="Use this in your payment note so the maintainer can match the transfer."
         />
       </div>
+
+      {/* QR demoted behind a disclosure — kept for wall-scanner /
+          other-phone edge cases but no longer leads the flow. */}
+      <details className="rounded-lg border border-border/60 group">
+        <summary className="cursor-pointer list-none p-3 flex items-center justify-between text-sm font-medium hover:bg-secondary/30 transition-colors">
+          <span>Or show a QR code</span>
+          <span className="text-[11px] text-muted-foreground group-open:hidden">
+            Tap to expand
+          </span>
+        </summary>
+        <div className="p-4 pt-0 text-center">
+          <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-3">
+            Scan with any UPI app
+          </p>
+          <div className="inline-block rounded-xl border-2 border-border/60 bg-white p-4">
+            <QRCodeSVG value={upiUri} size={160} includeMargin={false} />
+          </div>
+        </div>
+      </details>
+
       <p className="text-[11px] text-muted-foreground">
         After paying, ping the maintainer with your UPI reference — they
         verify the deposit in their bank app and flip the charge to PAID.

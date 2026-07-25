@@ -23,6 +23,7 @@ import {
   isVpaUsable,
   type VpaState,
 } from "@/components/payment/upi-id-field";
+import { UpiAppLaunchers } from "@/components/payment/upi-app-launchers";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -1056,41 +1057,52 @@ function DirectUpiPayCard({
           </div>
         </div>
 
-        <div className="text-center">
-          <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-3">
-            Scan to pay {formatINR(amount)}
-          </p>
-          <div className="inline-block rounded-xl border-2 border-border/60 bg-white p-4">
-            <QRCodeSVG value={upiUri} size={200} includeMargin={false} />
-          </div>
-          <a
-            href={upiUri}
-            className="block mt-3 text-sm text-primary underline underline-offset-2"
-          >
-            Or tap here to open your UPI app
-          </a>
-        </div>
+        {/* Primary path — tap-to-open app launchers. Way more
+            convenient than scanning a QR when the tenant is already
+            on their phone. Each button deep-links into the specific
+            UPI app with amount + payee pre-filled; the "Any other"
+            tile uses the standard upi:// scheme + OS chooser. */}
+        <UpiAppLaunchers upiUri={upiUri} />
 
-        <div className="rounded-lg border border-border/60 p-3 space-y-1.5 text-sm">
+        {/* Receiver details — prominent so anyone on desktop / iOS /
+            an unsupported app can copy-paste the VPA into their own
+            UPI or banking app. */}
+        <div className="rounded-lg border border-border/60 p-3 space-y-2 text-sm">
           <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+              Pay to
+            </span>
+            <span className="text-xs font-semibold truncate max-w-[60%] text-right">
+              {payeeName ?? "Owner"}
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/40">
             <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
               UPI ID
             </span>
-            <div className="flex items-center gap-1.5">
-              <span className="font-mono text-xs">{upiId}</span>
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="font-mono text-xs truncate">{upiId}</span>
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-6 px-1.5"
+                className="h-6 px-1.5 shrink-0"
                 onClick={copyUpi}
               >
                 <Copy className="size-3" />
               </Button>
             </div>
           </div>
+          <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/40">
+            <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+              Amount
+            </span>
+            <span className="font-display font-semibold text-sm">
+              {formatINR(amount)}
+            </span>
+          </div>
           {payout.accountNumberMasked && (
-            <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-border/40">
+            <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/40">
               <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
                 Bank
               </span>
@@ -1100,7 +1112,7 @@ function DirectUpiPayCard({
             </div>
           )}
           {payout.ifscCode && (
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/40">
               <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
                 IFSC
               </span>
@@ -1108,6 +1120,27 @@ function DirectUpiPayCard({
             </div>
           )}
         </div>
+
+        {/* QR code — demoted behind a disclosure so it stays
+            available for wall-scanner / other-phone cases but
+            doesn't lead the flow. Most payers will tap a launcher
+            above without ever opening this. */}
+        <details className="rounded-lg border border-border/60 group">
+          <summary className="cursor-pointer list-none p-3 flex items-center justify-between text-sm font-medium hover:bg-secondary/30 transition-colors">
+            <span>Or show a QR code</span>
+            <span className="text-[11px] text-muted-foreground group-open:hidden">
+              Tap to expand
+            </span>
+          </summary>
+          <div className="p-4 pt-0 text-center">
+            <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-3">
+              Scan with any UPI app
+            </p>
+            <div className="inline-block rounded-xl border-2 border-border/60 bg-white p-4">
+              <QRCodeSVG value={upiUri} size={180} includeMargin={false} />
+            </div>
+          </div>
+        </details>
 
         <p className="text-[11px] text-muted-foreground text-center">
           Prefer bank transfer? Use the account details above for

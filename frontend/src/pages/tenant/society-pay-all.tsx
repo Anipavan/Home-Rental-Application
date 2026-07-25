@@ -233,14 +233,15 @@ export function SocietyPayAllPage() {
                 <Smartphone className="size-5 text-primary shrink-0 mt-0.5" />
                 <div className="text-sm">
                   <p className="font-semibold">
-                    Bulk pay isn't available on direct UPI
+                    One tap to pay every outstanding charge
                   </p>
                   <p className="text-muted-foreground mt-0.5">
-                    A single UPI QR can only carry one charge at a time,
-                    and the maintainer needs to mark each charge PAID
-                    individually after seeing the deposit. Use the{" "}
-                    <strong>Pay</strong> button on each row below — each
-                    opens a QR pointing at the society's UPI ID.
+                    We'll build a single UPI transaction for the total
+                    and hand you off to Google Pay / PhonePe / any UPI
+                    app. After you pay, tap{" "}
+                    <strong>I've completed the payment</strong> — the
+                    maintainer sees them all marked as tenant-reported
+                    for verification against their bank statement.
                   </p>
                 </div>
               </CardContent>
@@ -264,35 +265,34 @@ export function SocietyPayAllPage() {
                     · {month}
                   </p>
                 </div>
-                {/* Bulk-pay launcher. Disabled state is gated on the
-                  * mutation phase + having at least one DUE row + a
-                  * known buildingId. On click → backend mints a
-                  * Payment + we forward to the existing
-                  * /app/payments/{id}/pay page (UPI / Card / Net
-                  * Banking method picker, same as rent). */}
-                {/* Bulk-pay button stays enabled even when over the
-                  * test-mode cap — the user might be on live mode now,
-                  * or just willing to try. The warning banner above
-                  * tells them what's likely to happen; the error
-                  * surface on payment-return shows Razorpay's actual
-                  * message if it does fail. Disabling would block
-                  * legitimate live-mode use cases. */}
-                {!isRazorpayPaymentsDisabled() && (
-                  <Button
-                    variant="gradient"
-                    size="lg"
-                    onClick={() => payAllMut.mutate()}
-                    disabled={payAllMut.isPending || !dueRows.length}
-                  >
-                    {payAllMut.isPending ? (
-                      <>
-                        <Loader2 className="size-4 animate-spin" /> Starting…
-                      </>
-                    ) : (
-                      `Pay all via Razorpay · ${formatINR(total)}`
-                    )}
-                  </Button>
-                )}
+                {/* Bulk-pay launcher. Works on BOTH paths:
+                  * - Razorpay on: forward to /app/payments/{id}/pay
+                  *   → user picks method → gateway takes over.
+                  * - Razorpay off (direct UPI): same forward, and
+                  *   /app/payments/{id}/pay renders DirectUpiPayCard
+                  *   which shows app launchers for the SUM + a single
+                  *   "I've completed the payment" button that flips
+                  *   every linked collection row PAID atomically
+                  *   (via property-service's Kafka listener on the
+                  *   PaymentCompleted event).
+                  * Kept enabled even over the Razorpay test-cap so
+                  * live-mode users aren't blocked. */}
+                <Button
+                  variant="gradient"
+                  size="lg"
+                  onClick={() => payAllMut.mutate()}
+                  disabled={payAllMut.isPending || !dueRows.length}
+                >
+                  {payAllMut.isPending ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" /> Starting…
+                    </>
+                  ) : isRazorpayPaymentsDisabled() ? (
+                    `Pay ${formatINR(total)} via UPI`
+                  ) : (
+                    `Pay all via Razorpay · ${formatINR(total)}`
+                  )}
+                </Button>
               </div>
             </CardContent>
           </Card>
