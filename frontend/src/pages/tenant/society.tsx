@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useMemo, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
 import {
   Bar,
   BarChart,
@@ -18,12 +18,15 @@ import {
   CheckCircle2,
   ChevronDown,
   FileText,
+  Loader2,
   Receipt,
   TrendingUp,
   Wallet,
   X,
 } from "lucide-react";
 import { societyApi } from "@/lib/api/society";
+import { toast } from "@/hooks/use-toast";
+import { extractErrorMessage } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -192,12 +195,23 @@ function ResidentSociety({ config }: { config: SocietyConfig }) {
  * a month off in the picker doesn't refetch the survivors.
  */
 function YourMaintenanceTab({ config }: { config: SocietyConfig }) {
+  const navigate = useNavigate();
   // Default = just the current month so first-paint matches the
   // pre-multi-select behaviour. Empty array is guarded against in
   // the MonthFilter component (it enforces min 1 selection).
   const [selectedMonths, setSelectedMonths] = useState<string[]>([
     currentMonth(),
   ]);
+
+  // Stable idempotency key for this page-render. Two clicks of the
+  // Pay-all button send the SAME key, so payment-service returns
+  // the existing paymentId instead of minting a second order. Reset
+  // between mounts (a fresh visit gets a fresh key).
+  const idempotencyKeyRef = useRef<string>(
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
 
   // Newest first — keeps table rows in a stable descending order.
   const orderedMonths = useMemo(
@@ -235,11 +249,45 @@ function YourMaintenanceTab({ config }: { config: SocietyConfig }) {
   );
 
   const showMonthColumn = orderedMonths.length > 1;
-  // Pay-all footer keeps its single-month deep-link semantics —
-  // one URL, one month. On multi-select we hide the footer button
-  // and let the tenant use the per-row Pay buttons instead.
-  const singleMonthForPayAll =
-    orderedMonths.length === 1 ? orderedMonths[0]! : null;
+
+  // Collect every DUE / OVERDUE collectionId across the selected
+  // months. Backend bridge accepts a flat list; the ordering doesn't
+  // matter because payment-service treats them as an atomic set.
+  const dueCollectionIds = useMemo(
+    () =>
+      allBills
+        .filter((r) => r.status === "DUE" || r.status === "OVERDUE")
+        .map((r) => r.collectionId)
+        .filter((id): id is string => !!id),
+    [allBills],
+  );
+
+  // Bulk-pay mutation. Works for single-month AND multi-month
+  // selections — the bridge already accepts an arbitrary list of
+  // collectionIds, and the tenant's own bills are always on the
+  // same flat so the backend's "single flat per order" constraint
+  // is satisfied automatically. Skipping the intermediate
+  // /app/society/pay-all/{buildingId}/{month} URL entirely means
+  // the multi-month case now works — that URL only carried one
+  // month at a time, which was the reason the button used to
+  // disappear on multi-select.
+  const payAllMut = useMutation({
+    mutationFn: () =>
+      societyApi.initiateSocietyChargePayment(
+        config.buildingId,
+        dueCollectionIds,
+        idempotencyKeyRef.current,
+      ),
+    onSuccess: (res) => {
+      navigate(`/app/payments/${res.paymentId}/pay`, { replace: true });
+    },
+    onError: (err) =>
+      toast({
+        variant: "destructive",
+        title: "Couldn't start the payment",
+        description: extractErrorMessage(err),
+      }),
+  });
 
   return (
     <>
@@ -351,7 +399,7 @@ function YourMaintenanceTab({ config }: { config: SocietyConfig }) {
                   />
                 ))}
               </tbody>
-              {totalDue > 0 && singleMonthForPayAll && (
+              {totalDue > 0 && dueCollectionIds.length > 0 && (
                 <tfoot>
                   <tr className="bg-primary/5 border-t-2 border-border/60 font-semibold">
                     <td
@@ -366,25 +414,34 @@ function YourMaintenanceTab({ config }: { config: SocietyConfig }) {
                       </span>
                     </td>
                     <td className="px-3 py-3 text-right whitespace-nowrap">
-                      <Button asChild variant="gradient" size="sm">
-                        <Link
-                          to={`/app/society/pay-all/${config.buildingId}/${singleMonthForPayAll}`}
-                        >
-                          Pay all · {formatINR(totalDue)}
-                        </Link>
+                      {/* Direct mutation instead of a Link — the
+                        * old /pay-all/{buildingId}/{month} URL only
+                        * carried a single month. Calling the bridge
+                        * directly lets multi-month selections work
+                        * too; the backend accepts any number of
+                        * collectionIds as long as they're on one
+                        * flat (a tenant's own bills always are). */}
+                      <Button
+                        variant="gradient"
+                        size="sm"
+                        onClick={() => payAllMut.mutate()}
+                        disabled={
+                          payAllMut.isPending || dueCollectionIds.length === 0
+                        }
+                      >
+                        {payAllMut.isPending ? (
+                          <>
+                            <Loader2 className="size-4 animate-spin" /> Starting…
+                          </>
+                        ) : (
+                          <>Pay all · {formatINR(totalDue)}</>
+                        )}
                       </Button>
                     </td>
                   </tr>
                 </tfoot>
               )}
             </table>
-            {totalDue > 0 && !singleMonthForPayAll && (
-              <p className="px-3 py-2 text-[11px] text-muted-foreground bg-secondary/20 border-t border-border/60">
-                Pay-all covers one month at a time. Pick a single
-                month to enable the Pay all button, or use the Pay
-                button on each row.
-              </p>
-            )}
           </div>
         )}
       </CollapsibleSection>
