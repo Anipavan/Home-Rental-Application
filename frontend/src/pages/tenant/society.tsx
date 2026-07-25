@@ -222,15 +222,6 @@ function YourMaintenanceTab({
         />
       </div>
 
-      {/* Personal history strip — six-month bar chart of what the
-          tenant has actually paid to the society, month-over-month.
-          Gives a quick "am I keeping up?" answer above the bills
-          table without touching the transparency dashboard on the
-          Maintenance details tab. Hides itself on brand-new
-          residents (nothing paid yet) so it doesn't render an
-          empty axis. */}
-      <MyMonthlySpendChart buildingId={config.buildingId} />
-
       {!config.upiId && (
         <Card className="mb-4 border-warning/40 bg-warning/5">
           <CardContent className="p-4 flex items-start gap-3">
@@ -248,6 +239,15 @@ function YourMaintenanceTab({
           </CardContent>
         </Card>
       )}
+
+      {/* Personal history strip — six-month bar chart of what the
+          tenant has actually paid to the society, month-over-month.
+          Sits BELOW the "UPI not set up" banner (so a resident sees
+          the alert first) and ABOVE the bills table (so they can
+          eyeball the trend before drilling into the line items).
+          Auto-hides on brand-new residents (nothing paid yet) so
+          we never render an empty axis. */}
+      <MyMonthlySpendChart buildingId={config.buildingId} />
 
       <CollapsibleSection
         className="mb-4"
@@ -453,69 +453,62 @@ function MyMonthlySpendChart({ buildingId }: { buildingId: string }) {
   if (!isLoading && totalPaid === 0) return null;
 
   return (
-    <Card className="mb-4">
-      <CardContent className="p-5">
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h3 className="text-sm font-semibold">Your payment history</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Last 6 months · what you've settled to the society
-            </p>
-          </div>
-          <div className="size-9 rounded-lg bg-emerald-500/10 text-emerald-600 grid place-items-center">
-            <TrendingUp className="size-4" />
-          </div>
+    <CollapsibleSection
+      className="mb-4"
+      title="Your payment history"
+      icon={TrendingUp}
+      summary={
+        isLoading
+          ? "Last 6 months"
+          : `${formatINR(totalPaid)} · last 6 months`
+      }
+      defaultOpen
+    >
+      {isLoading ? (
+        <Skeleton className="h-40" />
+      ) : (
+        <div className="h-40">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart
+              data={chartData}
+              margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+              maxBarSize={44}
+            >
+              <CartesianGrid
+                strokeDasharray="3 3"
+                stroke="hsl(var(--border))"
+              />
+              <XAxis
+                dataKey="month"
+                tickLine={false}
+                axisLine={false}
+                fontSize={11}
+              />
+              <YAxis
+                tickLine={false}
+                axisLine={false}
+                fontSize={11}
+                tickFormatter={(v) =>
+                  Number(v) >= 1000
+                    ? `₹${(Number(v) / 1000).toFixed(0)}K`
+                    : `₹${v}`
+                }
+              />
+              <Tooltip
+                cursor={false}
+                formatter={(v: number) => [formatINR(v), "Paid"]}
+                contentStyle={{
+                  borderRadius: 10,
+                  border: "1px solid hsl(var(--border))",
+                  fontSize: 12,
+                }}
+              />
+              <Bar dataKey="paid" fill="#10b981" radius={[6, 6, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
         </div>
-        {isLoading ? (
-          <Skeleton className="h-40" />
-        ) : (
-          <div className="h-40">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={chartData}
-                margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
-                maxBarSize={44}
-              >
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke="hsl(var(--border))"
-                />
-                <XAxis
-                  dataKey="month"
-                  tickLine={false}
-                  axisLine={false}
-                  fontSize={11}
-                />
-                <YAxis
-                  tickLine={false}
-                  axisLine={false}
-                  fontSize={11}
-                  tickFormatter={(v) =>
-                    Number(v) >= 1000
-                      ? `₹${(Number(v) / 1000).toFixed(0)}K`
-                      : `₹${v}`
-                  }
-                />
-                <Tooltip
-                  cursor={false}
-                  formatter={(v: number) => [formatINR(v), "Paid"]}
-                  contentStyle={{
-                    borderRadius: 10,
-                    border: "1px solid hsl(var(--border))",
-                    fontSize: 12,
-                  }}
-                />
-                <Bar
-                  dataKey="paid"
-                  fill="#10b981"
-                  radius={[6, 6, 0, 0]}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      )}
+    </CollapsibleSection>
   );
 }
 
