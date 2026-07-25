@@ -242,12 +242,15 @@ function YourMaintenanceTab({
 
       {/* Personal history strip — six-month bar chart of what the
           tenant has actually paid to the society, month-over-month.
-          Sits BELOW the "UPI not set up" banner (so a resident sees
-          the alert first) and ABOVE the bills table (so they can
-          eyeball the trend before drilling into the line items).
-          Auto-hides on brand-new residents (nothing paid yet) so
-          we never render an empty axis. */}
-      <MyMonthlySpendChart buildingId={config.buildingId} />
+          The window is anchored to the month picked above (Jan
+          2026 selected → chart spans Aug 2025 → Jan 2026), so the
+          chart and the bills table always describe the same
+          period. Auto-hides on brand-new residents (nothing paid
+          yet) so we never render an empty axis. */}
+      <MyMonthlySpendChart
+        buildingId={config.buildingId}
+        anchorMonth={month}
+      />
 
       <CollapsibleSection
         className="mb-4"
@@ -417,9 +420,18 @@ function ChargeRow({
  * <p>Hides itself when the six-month window carries zero paid
  * amounts — a brand-new resident shouldn't see an empty axis.
  */
-function MyMonthlySpendChart({ buildingId }: { buildingId: string }) {
-  // Six months, newest first (matching lastNMonths' return).
-  const months = useMemo(() => lastNMonths(6), []);
+function MyMonthlySpendChart({
+  buildingId,
+  anchorMonth,
+}: {
+  buildingId: string;
+  /** Right-most month on the X-axis, "YYYY-MM". Chart spans the
+   *  six months up-to-and-including this one so the picker above
+   *  and the chart always describe the same window. */
+  anchorMonth: string;
+}) {
+  // Six months ending at anchorMonth (inclusive), newest first.
+  const months = useMemo(() => lastNMonths(6, anchorMonth), [anchorMonth]);
   const queries = useQueries({
     queries: months.map((m) => ({
       queryKey: ["tenant-society-bills", buildingId, m],
@@ -452,15 +464,20 @@ function MyMonthlySpendChart({ buildingId }: { buildingId: string }) {
   // empty chart rather than render six empty bars.
   if (!isLoading && totalPaid === 0) return null;
 
+  // "Last 6 months" if the picker sits on the current month;
+  // otherwise "6 months to Jul 2026" so the collapsed header
+  // never lies about which window it represents.
+  const nowMonth = currentMonth();
+  const windowLabel =
+    anchorMonth === nowMonth ? "last 6 months" : `6 months to ${fmtMonth(anchorMonth)}`;
+
   return (
     <CollapsibleSection
       className="mb-4"
       title="Your payment history"
       icon={TrendingUp}
       summary={
-        isLoading
-          ? "Last 6 months"
-          : `${formatINR(totalPaid)} · last 6 months`
+        isLoading ? windowLabel : `${formatINR(totalPaid)} · ${windowLabel}`
       }
       defaultOpen
     >
@@ -512,10 +529,24 @@ function MyMonthlySpendChart({ buildingId }: { buildingId: string }) {
   );
 }
 
-/** Six most recent "YYYY-MM" strings, newest first. */
-function lastNMonths(n: number): string[] {
-  const out: string[] = [];
+/**
+ * N most recent "YYYY-MM" strings ending at {@code anchor} (inclusive),
+ * newest first. Anchor defaults to the current month. Robust to
+ * malformed anchor input — falls back to "today" so a bad picker
+ * value never blows up the chart.
+ */
+function lastNMonths(n: number, anchor?: string): string[] {
   const d = new Date();
+  if (anchor) {
+    const [ys, ms] = anchor.split("-");
+    const year = Number(ys);
+    const month = Number(ms);
+    if (Number.isFinite(year) && Number.isFinite(month) && month >= 1) {
+      // JS month is 0-indexed; "2026-01" → January → month=0.
+      d.setFullYear(year, month - 1, 1);
+    }
+  }
+  const out: string[] = [];
   for (let i = 0; i < n; i += 1) {
     out.push(
       `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
