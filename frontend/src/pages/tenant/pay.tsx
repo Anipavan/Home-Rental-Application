@@ -16,6 +16,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { paymentsApi } from "@/lib/api/payments";
 import { paymentGateway } from "@/lib/api/payment-gateway";
 import { bankAccountsApi } from "@/lib/api/bank-accounts";
+import { societyApi } from "@/lib/api/society";
 import { useFlatLookup } from "@/hooks/use-flat-lookup";
 import { isRazorpayPaymentsDisabled } from "@/lib/feature-flags";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -928,12 +929,50 @@ function DirectUpiRentView({
   const txnNote = isSociety
     ? `Society maintenance for ${monthLabel}, Flat ${flatLabel}`
     : `Rent for ${monthLabel}, Flat ${flatLabel}`;
-  const payoutQ = useQuery({
+
+  // Rent → owner's personal payout. Society charge → the society's
+  // collection account (set up by the maintainer, NOT the owner).
+  // Both queries stay declared so React's rules of hooks are
+  // respected; `enabled` gates which actually fires.
+  const ownerPayoutQ = useQuery({
     queryKey: ["owner-payout", payment.ownerId],
     queryFn: () => bankAccountsApi.getPayoutByUserId(payment.ownerId),
-    enabled: !!payment.ownerId,
+    enabled: !isSociety && !!payment.ownerId,
     staleTime: 60_000,
   });
+  const societyQ = useQuery({
+    queryKey: ["tenant-society"],
+    queryFn: () => societyApi.myTenant(),
+    enabled: isSociety,
+    staleTime: 60_000,
+  });
+
+  // Normalize both sources into the same BankAccountPayoutResponse
+  // shape so DirectUpiPayCard / FallbackBankOnly stay unchanged.
+  // Society charges pay the maintainer-managed collection account,
+  // not the owner's personal UPI — that was the bug: the pay page
+  // for a society charge was showing the owner's QR because it
+  // only ever fetched ownerPayoutQ.
+  const payoutData: import("@/lib/api/bank-accounts").BankAccountPayoutResponse | null | undefined =
+    isSociety
+      ? societyQ.data && societyQ.data.upiId
+        ? {
+            accountHolderName:
+              societyQ.data.payeeName ??
+              societyQ.data.societyDisplayName ??
+              "Society",
+            bankName: "",
+            accountNumberMasked: societyQ.data.accountNumber ?? "",
+            ifscCode: societyQ.data.ifscCode ?? "",
+            upiId: societyQ.data.upiId,
+          }
+        : societyQ.data // config exists but no UPI yet
+          ? null
+          : undefined // still loading
+      : ownerPayoutQ.data;
+  const payoutIsLoading = isSociety
+    ? societyQ.isLoading
+    : ownerPayoutQ.isLoading;
 
   // Tenant self-report → server marks Payment PAID + fires an audit
   // event tagged "tenant-reported" so the owner can spot self-
@@ -978,24 +1017,38 @@ function DirectUpiRentView({
 
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <div>
-          {payoutQ.isLoading ? (
+          {payoutIsLoading ? (
             <Skeleton className="h-64 rounded-2xl" />
-          ) : !payoutQ.data ? (
+          ) : payoutData === null ? (
+            /* Society config exists but no UPI yet — the maintainer
+             * hasn't wired up the collection account. */
             <EmptyState
               variant="info"
               icon={Smartphone}
-              title="Your owner hasn't added bank details yet"
-              description="Ask them to add a UPI ID from their profile page. Once they do, this page will show a QR you can scan."
+              title={
+                isSociety
+                  ? "Society hasn't added a UPI ID yet"
+                  : "Your owner hasn't added bank details yet"
+              }
+              description={
+                isSociety
+                  ? "Ask your building's maintainer to add a UPI ID from the Society Bank Account panel. Once they do, this page will show a QR you can scan."
+                  : "Ask them to add a UPI ID from their profile page. Once they do, this page will show a QR you can scan."
+              }
               action={
                 <Button asChild variant="outline">
                   <Link to="/app/payments">Back to payments</Link>
                 </Button>
               }
             />
-          ) : !payoutQ.data.upiId ? (
+          ) : !payoutData ? (
+            /* Undefined = still loading (queries have already
+             * short-circuited via `enabled`); treat as loading. */
+            <Skeleton className="h-64 rounded-2xl" />
+          ) : !payoutData.upiId ? (
             <FallbackBankOnly
               amount={total}
-              payout={payoutQ.data}
+              payout={payoutData}
               note={txnNote}
               onReportPaid={() => reportPaidMut.mutate()}
               reportPending={reportPaidMut.isPending}
@@ -1003,9 +1056,9 @@ function DirectUpiRentView({
           ) : (
             <DirectUpiPayCard
               amount={total}
-              upiId={payoutQ.data.upiId}
-              payeeName={payoutQ.data.accountHolderName}
-              payout={payoutQ.data}
+              upiId={payoutData.upiId}
+              payeeName={payoutData.accountHolderName}
+              payout={payoutData}
               note={txnNote}
               onReportPaid={() => reportPaidMut.mutate()}
               reportPending={reportPaidMut.isPending}
