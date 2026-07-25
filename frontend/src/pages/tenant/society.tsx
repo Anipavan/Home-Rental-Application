@@ -1,12 +1,22 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import {
   Building2,
   Calendar,
   CheckCircle2,
   FileText,
   Receipt,
+  TrendingUp,
   Wallet,
 } from "lucide-react";
 import { societyApi } from "@/lib/api/society";
@@ -212,6 +222,15 @@ function YourMaintenanceTab({
         />
       </div>
 
+      {/* Personal history strip — six-month bar chart of what the
+          tenant has actually paid to the society, month-over-month.
+          Gives a quick "am I keeping up?" answer above the bills
+          table without touching the transparency dashboard on the
+          Maintenance details tab. Hides itself on brand-new
+          residents (nothing paid yet) so it doesn't render an
+          empty axis. */}
+      <MyMonthlySpendChart buildingId={config.buildingId} />
+
       {!config.upiId && (
         <Card className="mb-4 border-warning/40 bg-warning/5">
           <CardContent className="p-4 flex items-start gap-3">
@@ -385,4 +404,142 @@ function ChargeRow({
       </td>
     </tr>
   );
+}
+
+/**
+ * Six-month bar chart of what THIS tenant has actually paid to
+ * the society. Fetches per-month bills in parallel via
+ * {@link useQueries} — cache keys match the ones the main table
+ * uses so the current-month fetch dedupes for free. Sums PAID
+ * rows only (ignoring DUE / WAIVED) so the chart answers "what
+ * did I actually settle" not "what was billed".
+ *
+ * <p>Hides itself when the six-month window carries zero paid
+ * amounts — a brand-new resident shouldn't see an empty axis.
+ */
+function MyMonthlySpendChart({ buildingId }: { buildingId: string }) {
+  // Six months, newest first (matching lastNMonths' return).
+  const months = useMemo(() => lastNMonths(6), []);
+  const queries = useQueries({
+    queries: months.map((m) => ({
+      queryKey: ["tenant-society-bills", buildingId, m],
+      queryFn: () => societyApi.myBills(buildingId, m),
+      staleTime: 30_000,
+    })),
+  });
+
+  const isLoading = queries.some((q) => q.isLoading);
+
+  // Build chart data oldest → newest so the X-axis reads left-to-right.
+  const chartData = useMemo(() => {
+    return months
+      .slice()
+      .reverse()
+      .map((m) => {
+        const idx = months.indexOf(m);
+        const rows = queries[idx]?.data ?? [];
+        const paid = rows
+          .filter((r) => r.status === "PAID")
+          .reduce((s, r) => s + r.monthAmount, 0);
+        return { month: fmtMonth(m), paid };
+      });
+  }, [months, queries]);
+
+  const totalPaid = chartData.reduce((s, r) => s + r.paid, 0);
+
+  // Nothing paid across the whole window — brand-new resident,
+  // or one whose maintainer hasn't billed anything yet. Skip the
+  // empty chart rather than render six empty bars.
+  if (!isLoading && totalPaid === 0) return null;
+
+  return (
+    <Card className="mb-4">
+      <CardContent className="p-5">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h3 className="text-sm font-semibold">Your payment history</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Last 6 months · what you've settled to the society
+            </p>
+          </div>
+          <div className="size-9 rounded-lg bg-emerald-500/10 text-emerald-600 grid place-items-center">
+            <TrendingUp className="size-4" />
+          </div>
+        </div>
+        {isLoading ? (
+          <Skeleton className="h-40" />
+        ) : (
+          <div className="h-40">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={chartData}
+                margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                maxBarSize={44}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="hsl(var(--border))"
+                />
+                <XAxis
+                  dataKey="month"
+                  tickLine={false}
+                  axisLine={false}
+                  fontSize={11}
+                />
+                <YAxis
+                  tickLine={false}
+                  axisLine={false}
+                  fontSize={11}
+                  tickFormatter={(v) =>
+                    Number(v) >= 1000
+                      ? `₹${(Number(v) / 1000).toFixed(0)}K`
+                      : `₹${v}`
+                  }
+                />
+                <Tooltip
+                  cursor={false}
+                  formatter={(v: number) => [formatINR(v), "Paid"]}
+                  contentStyle={{
+                    borderRadius: 10,
+                    border: "1px solid hsl(var(--border))",
+                    fontSize: 12,
+                  }}
+                />
+                <Bar
+                  dataKey="paid"
+                  fill="#10b981"
+                  radius={[6, 6, 0, 0]}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Six most recent "YYYY-MM" strings, newest first. */
+function lastNMonths(n: number): string[] {
+  const out: string[] = [];
+  const d = new Date();
+  for (let i = 0; i < n; i += 1) {
+    out.push(
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
+    );
+    d.setMonth(d.getMonth() - 1);
+  }
+  return out;
+}
+
+/** "2026-07" → "Jul 2026". Mirrors the same helper in ledger-view. */
+function fmtMonth(ym: string): string {
+  const [y, m] = ym.split("-");
+  if (!y || !m) return ym;
+  const idx = Number(m) - 1;
+  const names = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+  ];
+  return `${names[idx] ?? m} ${y}`;
 }

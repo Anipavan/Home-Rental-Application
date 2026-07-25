@@ -740,7 +740,14 @@ function CategoryBarChart({
   return (
     <div className="h-80 w-full">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+        {/* maxBarSize caps bar thickness so a single-month view
+            doesn't render one giant bar — the previous 50%+ chart-
+            width bar looked more like a block than a data point. */}
+        <BarChart
+          data={data}
+          margin={{ top: 8, right: 8, left: 8, bottom: 0 }}
+          maxBarSize={56}
+        >
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
           <XAxis
             dataKey="month"
@@ -759,6 +766,10 @@ function CategoryBarChart({
             }
           />
           <Tooltip
+            /* cursor={false} removes Recharts' default grey column
+             * highlight on hover — it was crowding out the bars
+             * themselves on single-month views. */
+            cursor={false}
             formatter={(v: number, name: string) => [
               formatINR(v),
               chartLabelFor(name),
