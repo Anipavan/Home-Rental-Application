@@ -94,6 +94,16 @@ public record FlatMaintenanceRowResponse(
          * up the tenant-uploaded payment-proof screenshot for
          * inline preview on the maintainer's dashboard.
          */
-        String paymentId
+        String paymentId,
+
+        /**
+         * Filename of the tenant-uploaded payment-proof screenshot,
+         * resolved via a Feign call to payment-service at DTO build
+         * time. Null when no proof is attached (or when the Feign
+         * call soft-failed). Frontend uses presence of this field
+         * to decide whether to render the camera pill on the PAID
+         * chip + the thumbnail in REMARKS.
+         */
+        String paymentProofUrl
 ) {
 }

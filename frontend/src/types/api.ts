@@ -1425,11 +1425,17 @@ export interface FlatMaintenanceRow {
    * Payment-service Payment.id this collection row is linked to,
    * when settlement went through the direct-UPI bridge. Null on
    * rows that were marked PAID manually by the maintainer (those
-   * skip payment-service entirely). Frontend uses this to fetch
-   * the tenant-uploaded payment-proof screenshot for inline
-   * preview via {@code paymentsApi.get} + {@code paymentsApi.proofBlob}.
+   * skip payment-service entirely).
    */
   paymentId?: string | null;
+  /**
+   * Filename of the tenant-uploaded payment-proof screenshot,
+   * enriched server-side by property-service via a Feign lookup
+   * to payment-service. Non-null → maintainer sees a camera pill
+   * on the PAID chip + a thumbnail in REMARKS; clicking either
+   * fetches the blob via {@code paymentsApi.proofBlob(paymentId)}.
+   */
+  paymentProofUrl?: string | null;
 }
 
 /** Body for {@code POST /society/{buildingId}/flats/{flatId}/collection}. */

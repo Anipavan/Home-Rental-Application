@@ -943,12 +943,40 @@ public class SocietyServiceImpl implements SocietyService {
         //   * one "NEW_FLAT" row when a flat has no charges at all
         //     (placeholder + Add-charge CTA on the UI), OR
         //   * one row per (flat, category) when charges exist
+        List<MaintenanceCollection> monthCharges =
+                collectionRepo.findByBuildingIdAndForMonth(buildingId, resolvedMonth);
         java.util.Map<String, List<MaintenanceCollection>> chargesByFlat =
-                collectionRepo
-                        .findByBuildingIdAndForMonth(buildingId, resolvedMonth)
-                        .stream()
+                monthCharges.stream()
                         .collect(java.util.stream.Collectors.groupingBy(
                                 MaintenanceCollection::getFlatId));
+
+        // Pre-fetch payment-proof URLs so the maintainer's Flat
+        // charges table gets paymentProofUrl inline on each row —
+        // avoids the frontend having to hit /payments/{id} per row
+        // (which required a maintainer-authz bypass on payment-
+        // service and doesn't scale as row count grows). One Feign
+        // call per unique paymentId; falls back to null on any
+        // per-row failure so the whole endpoint doesn't fail closed
+        // just because payment-service is having a bad day.
+        java.util.Map<String, String> proofByPaymentId = new java.util.HashMap<>();
+        for (MaintenanceCollection r : monthCharges) {
+            String pid = r.getPaymentId();
+            if (pid == null || pid.isBlank()) continue;
+            if (proofByPaymentId.containsKey(pid)) continue;
+            try {
+                PaymentClient.SocietyChargePaymentResponse payment =
+                        paymentClient.getPayment(pid);
+                if (payment != null && payment.paymentProofUrl() != null) {
+                    proofByPaymentId.put(pid, payment.paymentProofUrl());
+                } else {
+                    proofByPaymentId.put(pid, null);
+                }
+            } catch (Exception ex) {
+                log.debug("Proof lookup failed for paymentId={} ({}); leaving null",
+                        pid, ex.getMessage());
+                proofByPaymentId.put(pid, null);
+            }
+        }
 
         List<FlatMaintenanceRowResponse> out = new java.util.ArrayList<>();
         for (Flat f : flats) {
@@ -1014,6 +1042,13 @@ public class SocietyServiceImpl implements SocietyService {
                             // uses this to look up the tenant-uploaded
                             // payment proof screenshot for inline preview.
                             .paymentId(r.getPaymentId())
+                            // Enriched from the payment-service lookup
+                            // above. Null when no proof is attached or
+                            // when the Feign call soft-failed.
+                            .paymentProofUrl(
+                                    r.getPaymentId() == null
+                                            ? null
+                                            : proofByPaymentId.get(r.getPaymentId()))
                             .build());
                 }
             }

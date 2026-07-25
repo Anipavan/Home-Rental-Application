@@ -86,7 +86,15 @@ public interface PaymentClient {
     record SocietyChargePaymentResponse(
             String id,
             String status,
-            BigDecimal totalAmount
+            BigDecimal totalAmount,
+            /**
+             * Non-null when the tenant uploaded a payment-proof
+             * screenshot from the direct-UPI pay page. Consumed by
+             * the maintainer Flat-charges enrichment so the row
+             * carries the URL and the frontend doesn't need to hit
+             * payment-service directly for each row.
+             */
+            String paymentProofUrl
     ) {}
 
     /**

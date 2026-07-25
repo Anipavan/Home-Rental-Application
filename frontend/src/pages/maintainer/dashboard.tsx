@@ -45,7 +45,6 @@ import { PageHeader } from "@/components/layout/page-header";
 import {
   PaymentProofChip,
   PaymentProofThumbnail,
-  usePaymentProofsByPaymentId,
 } from "@/components/payment/payment-proof-preview";
 import { useToast } from "@/hooks/use-toast";
 import { formatINR } from "@/lib/utils";
@@ -741,16 +740,11 @@ function FlatsTable({
   buildingId: string;
   month: string;
 }) {
-  // Collect every paymentId across the visible rows and fetch each
-  // Payment in one useQueries batch. React Query dedupes shared ids
-  // (bulk-pay collections all point at the same Payment). Result:
-  // proofsByPaymentId maps id → paymentProofUrl (or null) which the
-  // per-row camera chip + thumbnail read to know whether to render.
-  const allPaymentIds = groups.flatMap((g) =>
-    g.rows.map((r) => r.paymentId ?? null),
-  );
-  const proofsByPaymentId = usePaymentProofsByPaymentId(allPaymentIds);
-
+  // paymentProofUrl now arrives inline on each row (property-service
+  // enriches via a Feign call to payment-service at DTO build time).
+  // No frontend useQueries needed — the row already knows whether a
+  // proof is attached, so the per-row derivation in FlatRow just
+  // reads r.paymentProofUrl directly.
   return (
     <div className="rounded-xl border border-border/60 overflow-x-auto">
       <table className="w-full text-sm border-collapse">
@@ -801,7 +795,6 @@ function FlatsTable({
               group={group}
               buildingId={buildingId}
               month={month}
-              proofsByPaymentId={proofsByPaymentId}
             />
           ))}
         </tbody>
@@ -819,14 +812,10 @@ function FlatRow({
   group,
   buildingId,
   month,
-  proofsByPaymentId,
 }: {
   group: FlatGroup;
   buildingId: string;
   month: string;
-  /** paymentId → proofUrl (or null when nothing uploaded).
-   *  Built once at the FlatsTable level via useQueries. */
-  proofsByPaymentId: Map<string, string | null>;
 }) {
   // Index the flat's charges by category for O(1) lookup per cell.
   // Legacy OTHER rows are surfaced in the COMMON_AREA_SHARE cell
@@ -881,16 +870,17 @@ function FlatRow({
   const remarkText = remarkRow?.notes ?? "";
 
   // Find the first PAID row for this flat that has a payment-proof
-  // attached (checked via the pre-fetched proofsByPaymentId map).
-  // For most tenants this is either "the bulk-pay Payment covering
-  // all their July charges" or "one of a few single-charge Payments" —
-  // rendering the chip / thumbnail against the first-matching id is
-  // enough for the maintainer's "did they attach evidence?" glance.
+  // attached. paymentProofUrl comes inline on each row (property-
+  // service enriches it via a Feign call to payment-service at
+  // response-build time). For most tenants this is either "the
+  // bulk-pay Payment covering all their July charges" or "one of a
+  // few single-charge Payments" — rendering the chip / thumbnail
+  // against the first-matching id is enough for the maintainer's
+  // "did they attach evidence?" glance.
   const proofPaymentId: string | null = (() => {
     for (const r of group.rows) {
       if (r.status !== "PAID" || !r.paymentId) continue;
-      const url = proofsByPaymentId.get(r.paymentId);
-      if (url) return r.paymentId;
+      if (r.paymentProofUrl) return r.paymentId;
     }
     return null;
   })();
