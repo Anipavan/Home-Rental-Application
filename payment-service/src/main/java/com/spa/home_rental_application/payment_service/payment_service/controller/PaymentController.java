@@ -20,9 +20,12 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.core.io.Resource;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.List;
 
 @RestController
@@ -226,6 +229,51 @@ public class PaymentController {
         CallerSecurity.requireSelfOrAdmin(p.tenantId());
         String note = body != null ? body.note() : null;
         return ResponseEntity.ok(paymentService.tenantReportPaid(id, note));
+    }
+
+    /**
+     * Tenant uploads a screenshot proving they completed the direct-
+     * UPI payment (typically a PhonePe / GPay / Paytm success screen).
+     * Stored on disk under the configured upload dir; the resulting
+     * URL is stamped on Payment.paymentProofUrl so the maintainer's
+     * dashboard can preview it inline.
+     *
+     * <p>This does NOT mark the payment as PAID by itself — the
+     * tenant still needs to hit {@code /tenant-report-paid} (or the
+     * frontend chains the two calls together). Kept separate so a
+     * tenant who uploaded the wrong screenshot can re-upload without
+     * re-triggering the mark-paid side effects.
+     *
+     * <p>Content-type + size limits enforced by the service layer:
+     * JPEG / PNG / WebP up to 5 MB. See {@code uploadProof}.
+     */
+    @Operation(summary = "Tenant uploads payment-proof screenshot (tenant of this payment or admin)")
+    @PostMapping(value = "/{id}/upload-proof", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<PaymentResponse> uploadProof(
+            @PathVariable String id,
+            @RequestParam("file") MultipartFile file) throws IOException {
+        PaymentResponse p = paymentService.getPaymentById(id);
+        CallerSecurity.requireSelfOrAdmin(p.tenantId());
+        return ResponseEntity.ok(paymentService.uploadPaymentProof(id, file));
+    }
+
+    /**
+     * Streams the tenant-uploaded payment-proof screenshot back.
+     * Gated to the tenant on this payment, the owner, or admin —
+     * matches the /invoice + /receipt access model. Returns 404 when
+     * no proof has been uploaded.
+     */
+    @Operation(summary = "Download the payment-proof screenshot (tenant/owner/admin)")
+    @GetMapping("/{id}/proof")
+    public ResponseEntity<Resource> proof(@PathVariable String id) throws IOException {
+        PaymentResponse p = paymentService.getPaymentById(id);
+        CallerSecurity.requireTenantOwnerOrAdmin(p.tenantId(), p.ownerId());
+        PaymentService.ProofDownload dl = paymentService.getPaymentProof(id);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_TYPE, dl.contentType())
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"" + dl.filename() + "\"")
+                .body(dl.resource());
     }
 
     /**

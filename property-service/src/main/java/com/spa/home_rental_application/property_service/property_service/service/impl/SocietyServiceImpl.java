@@ -1008,6 +1008,12 @@ public class SocietyServiceImpl implements SocietyService {
                             .prevUsageReading(r.getPrevUsageReading())
                             .currUsageReading(r.getCurrUsageReading())
                             .collectionId(r.getId())
+                            // Payment id (nullable — null on maintainer-
+                            // manually-marked-PAID rows, non-null on
+                            // rows the direct-UPI bridge minted). The FE
+                            // uses this to look up the tenant-uploaded
+                            // payment proof screenshot for inline preview.
+                            .paymentId(r.getPaymentId())
                             .build());
                 }
             }

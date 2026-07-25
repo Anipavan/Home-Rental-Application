@@ -42,6 +42,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PageHeader } from "@/components/layout/page-header";
+import {
+  PaymentProofChip,
+  PaymentProofThumbnail,
+  usePaymentProofsByPaymentId,
+} from "@/components/payment/payment-proof-preview";
 import { useToast } from "@/hooks/use-toast";
 import { formatINR } from "@/lib/utils";
 import { extractErrorMessage } from "@/lib/api/client";
@@ -736,6 +741,16 @@ function FlatsTable({
   buildingId: string;
   month: string;
 }) {
+  // Collect every paymentId across the visible rows and fetch each
+  // Payment in one useQueries batch. React Query dedupes shared ids
+  // (bulk-pay collections all point at the same Payment). Result:
+  // proofsByPaymentId maps id → paymentProofUrl (or null) which the
+  // per-row camera chip + thumbnail read to know whether to render.
+  const allPaymentIds = groups.flatMap((g) =>
+    g.rows.map((r) => r.paymentId ?? null),
+  );
+  const proofsByPaymentId = usePaymentProofsByPaymentId(allPaymentIds);
+
   return (
     <div className="rounded-xl border border-border/60 overflow-x-auto">
       <table className="w-full text-sm border-collapse">
@@ -786,6 +801,7 @@ function FlatsTable({
               group={group}
               buildingId={buildingId}
               month={month}
+              proofsByPaymentId={proofsByPaymentId}
             />
           ))}
         </tbody>
@@ -803,10 +819,14 @@ function FlatRow({
   group,
   buildingId,
   month,
+  proofsByPaymentId,
 }: {
   group: FlatGroup;
   buildingId: string;
   month: string;
+  /** paymentId → proofUrl (or null when nothing uploaded).
+   *  Built once at the FlatsTable level via useQueries. */
+  proofsByPaymentId: Map<string, string | null>;
 }) {
   // Index the flat's charges by category for O(1) lookup per cell.
   // Legacy OTHER rows are surfaced in the COMMON_AREA_SHARE cell
@@ -859,6 +879,22 @@ function FlatRow({
   // is fine; an explicit edit overwrites just that row's notes.
   const remarkRow = group.rows.find((r) => r.notes) ?? group.rows[0];
   const remarkText = remarkRow?.notes ?? "";
+
+  // Find the first PAID row for this flat that has a payment-proof
+  // attached (checked via the pre-fetched proofsByPaymentId map).
+  // For most tenants this is either "the bulk-pay Payment covering
+  // all their July charges" or "one of a few single-charge Payments" —
+  // rendering the chip / thumbnail against the first-matching id is
+  // enough for the maintainer's "did they attach evidence?" glance.
+  const proofPaymentId: string | null = (() => {
+    for (const r of group.rows) {
+      if (r.status !== "PAID" || !r.paymentId) continue;
+      const url = proofsByPaymentId.get(r.paymentId);
+      if (url) return r.paymentId;
+    }
+    return null;
+  })();
+  const hasProof = proofPaymentId !== null;
 
   return (
     <tr className="border-b border-border/60 last:border-b-0 hover:bg-secondary/20">
@@ -926,16 +962,26 @@ function FlatRow({
         )}
       </td>
 
-      {/* Paid — Yes/No clickable toggle */}
+      {/* Paid — Yes/No clickable toggle. Camera pill overlays
+          next to the chip when a payment-proof screenshot is
+          attached; clicking it opens the full-size lightbox. */}
       <td className="px-3 py-2 align-top text-center">
         {hasAny ? (
-          <PaidToggle
-            buildingId={buildingId}
-            flatId={group.flatId}
-            month={month}
-            rows={billedRows}
-            allPaid={allPaid}
-          />
+          <div className="inline-flex items-center">
+            <PaidToggle
+              buildingId={buildingId}
+              flatId={group.flatId}
+              month={month}
+              rows={billedRows}
+              allPaid={allPaid}
+            />
+            {proofPaymentId && (
+              <PaymentProofChip
+                paymentId={proofPaymentId}
+                hasProof={hasProof}
+              />
+            )}
+          </div>
         ) : (
           <span className="text-xs text-muted-foreground">—</span>
         )}
@@ -956,7 +1002,10 @@ function FlatRow({
         )}
       </td>
 
-      {/* Remarks — inline editable */}
+      {/* Remarks — inline editable, with a payment-proof thumbnail
+          below when a proof is attached to any PAID row on this flat.
+          Click the thumbnail → full-size lightbox with the "verify
+          against your bank statement" caption. */}
       <td className="px-3 py-2 align-top">
         {remarkRow ? (
           <RemarksCell
@@ -967,6 +1016,12 @@ function FlatRow({
           />
         ) : (
           <span className="text-xs text-muted-foreground">—</span>
+        )}
+        {proofPaymentId && (
+          <PaymentProofThumbnail
+            paymentId={proofPaymentId}
+            hasProof={hasProof}
+          />
         )}
       </td>
     </tr>

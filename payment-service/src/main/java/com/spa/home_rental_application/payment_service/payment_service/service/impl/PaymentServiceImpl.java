@@ -28,13 +28,22 @@ import com.spa.home_rental_application.payment_service.payment_service.repositor
 import com.spa.home_rental_application.payment_service.payment_service.security.CallerSecurity;
 import com.spa.home_rental_application.payment_service.payment_service.service.PaymentService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.FileSystemResource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -46,6 +55,25 @@ public class PaymentServiceImpl implements PaymentService {
 
     private static final Set<PaymentStatus> ACTIVE = EnumSet.of(
             PaymentStatus.PENDING, PaymentStatus.PROCESSING, PaymentStatus.OVERDUE);
+
+    /**
+     * Payment-proof upload guard-rails. Mirrors the maintenance-service
+     * image-upload limits so the two feel consistent to tenants who
+     * bounce between "raise a request" and "confirm my payment".
+     */
+    private static final Set<String> ALLOWED_PROOF_TYPES =
+            Set.of("image/jpeg", "image/png", "image/webp");
+    private static final long MAX_PROOF_BYTES = 5L * 1024 * 1024;
+
+    /**
+     * On-disk directory where payment-proof screenshots live. Default
+     * targets a local {@code uploads/payment-proofs} for dev; prod
+     * containers set {@code app.payment-proof.dir=/data/payment-proofs}
+     * via env so writes land on the named docker volume rather than
+     * the ephemeral container FS.
+     */
+    @Value("${app.payment-proof.dir:uploads/payment-proofs}")
+    private String proofDir;
 
     private final PaymentRepository paymentRepo;
     private final InvoiceRepository invoiceRepo;
@@ -552,6 +580,80 @@ public class PaymentServiceImpl implements PaymentService {
                         "note", note == null ? "" : note));
 
         return PaymentMapper.toResponse(p);
+    }
+
+    @Override
+    @Transactional
+    public PaymentResponse uploadPaymentProof(String paymentId, MultipartFile file)
+            throws IOException {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("File must not be empty");
+        }
+        if (file.getSize() > MAX_PROOF_BYTES) {
+            throw new IllegalArgumentException("File exceeds 5 MB");
+        }
+        String ct = file.getContentType();
+        if (ct == null || !ALLOWED_PROOF_TYPES.contains(ct)) {
+            throw new IllegalArgumentException("Unsupported content type: " + ct);
+        }
+        Payment existing = mustFind(paymentId);
+
+        Path dir = Paths.get(proofDir);
+        Files.createDirectories(dir);
+        // Filename convention: {paymentId}_{uuid}_{sanitised original}.
+        // Prefixed with paymentId so ops can grep the volume by
+        // payment; UUID keeps re-uploads collision-free; the sanitised
+        // original preserves the extension for content-type sniffing
+        // via Files.probeContentType later.
+        String safeOriginal = file.getOriginalFilename() == null
+                ? "proof"
+                : file.getOriginalFilename().replaceAll("[^A-Za-z0-9._-]", "_");
+        String filename = paymentId + "_" + UUID.randomUUID() + "_" + safeOriginal;
+        Path target = dir.resolve(filename);
+        Files.write(target, file.getBytes());
+
+        // Last-write-wins: any prior proof file for this payment is
+        // deliberately left on disk (small, and useful for forensic
+        // dispute review) but only the latest is referenced by the
+        // DB row. A separate cleanup job can reap orphans by grep
+        // once volumes grow.
+        existing.setPaymentProofUrl(filename);
+        existing.setUpdatedAt(Instant.now());
+        Payment saved = paymentRepo.save(existing);
+
+        audit.publishSuccess("payment.proof-uploaded",
+                saved.getTenantId(), saved.getTenantId(), saved.getId(),
+                java.util.Map.of(
+                        "filename", filename,
+                        "size", String.valueOf(file.getSize()),
+                        "contentType", ct));
+        log.info("Payment proof uploaded for paymentId={} bytes={} type={}",
+                saved.getId(), file.getSize(), ct);
+
+        return PaymentMapper.toResponse(saved);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ProofDownload getPaymentProof(String paymentId) throws IOException {
+        Payment p = mustFind(paymentId);
+        if (p.getPaymentProofUrl() == null || p.getPaymentProofUrl().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "No payment proof uploaded for this payment");
+        }
+        Path path = Paths.get(proofDir).resolve(p.getPaymentProofUrl());
+        if (!Files.exists(path)) {
+            log.warn("Payment {} references proof {} but file missing on disk",
+                    paymentId, p.getPaymentProofUrl());
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Payment proof file missing from storage");
+        }
+        String ct = Files.probeContentType(path);
+        if (ct == null) ct = "application/octet-stream";
+        return new ProofDownload(
+                new FileSystemResource(path),
+                ct,
+                p.getPaymentProofUrl());
     }
 
     /**

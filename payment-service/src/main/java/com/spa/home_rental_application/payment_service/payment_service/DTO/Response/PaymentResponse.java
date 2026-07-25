@@ -34,6 +34,14 @@ public record PaymentResponse(
          * (resident-initiated bulk-pay / per-charge society payment).
          */
         String         sourceType,
+        /**
+         * Filename of the tenant-uploaded payment-proof screenshot,
+         * relative to the payment-service upload dir. Null when no
+         * proof has been uploaded. The frontend uses presence of
+         * this field to know whether to render a preview thumbnail,
+         * and fetches the actual bytes via GET /payments/{id}/proof.
+         */
+        String         paymentProofUrl,
         Instant        createdAt,
         Instant        updatedAt
 ) {}

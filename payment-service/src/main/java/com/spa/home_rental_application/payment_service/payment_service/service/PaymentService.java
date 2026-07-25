@@ -2,14 +2,24 @@ package com.spa.home_rental_application.payment_service.payment_service.service;
 
 import com.spa.home_rental_application.payment_service.payment_service.DTO.Request.*;
 import com.spa.home_rental_application.payment_service.payment_service.DTO.Response.*;
+import org.springframework.core.io.Resource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
 public interface PaymentService {
+
+    /**
+     * Bundle returned by {@link #getPaymentProof(String)} — the raw
+     * resource plus the metadata needed to stream it back with a
+     * correct Content-Type + filename.
+     */
+    record ProofDownload(Resource resource, String contentType, String filename) {}
 
     /* --- lifecycle --- */
     PaymentResponse createPayment(CreatePaymentRequest dto);
@@ -75,6 +85,28 @@ public interface PaymentService {
      * uses {@link #markUpiReceived} instead.
      */
     PaymentResponse tenantReportPaid(String paymentId, String note);
+
+    /**
+     * Store a tenant-uploaded payment-proof screenshot on disk and
+     * stamp its URL on {@code Payment.paymentProofUrl}. Called from
+     * {@code POST /payments/{id}/upload-proof}. Idempotency: a
+     * re-upload silently replaces the previous file (last one wins).
+     * Content-type + size validation happens here; JPEG / PNG / WebP
+     * up to 5 MB.
+     *
+     * <p>Does NOT mark the payment as PAID — see
+     * {@link #tenantReportPaid}. The two are separate so a tenant
+     * can re-upload a bad screenshot without re-triggering audit
+     * events / Kafka fan-out.
+     */
+    PaymentResponse uploadPaymentProof(String paymentId, MultipartFile file) throws IOException;
+
+    /**
+     * Fetch the stored proof screenshot for streaming back to the
+     * maintainer's dashboard. Throws {@code ResponseStatusException
+     * (404)} when no proof is attached to the payment.
+     */
+    ProofDownload getPaymentProof(String paymentId) throws IOException;
 
     /**
      * Owner (or admin) reverts a wrongly-marked-PAID payment back to

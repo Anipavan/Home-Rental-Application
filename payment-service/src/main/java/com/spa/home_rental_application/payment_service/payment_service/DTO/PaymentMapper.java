@@ -35,6 +35,7 @@ public final class PaymentMapper {
                 p.getGatewayName(),
                 p.getFailureReason(),
                 p.getSourceType(),
+                p.getPaymentProofUrl(),
                 p.getCreatedAt(),
                 p.getUpdatedAt()
         );

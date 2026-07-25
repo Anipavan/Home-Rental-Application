@@ -26,6 +26,7 @@ import {
   type VpaState,
 } from "@/components/payment/upi-id-field";
 import { UpiAppLaunchers } from "@/components/payment/upi-app-launchers";
+import { FilePreview, FileUpload } from "@/components/ui/file-upload";
 import {
   Dialog,
   DialogContent,
@@ -1055,6 +1056,7 @@ function DirectUpiRentView({
             <Skeleton className="h-64 rounded-2xl" />
           ) : !payoutData.upiId ? (
             <FallbackBankOnly
+              paymentId={payment.id}
               amount={total}
               payout={payoutData}
               note={txnNote}
@@ -1063,6 +1065,7 @@ function DirectUpiRentView({
             />
           ) : (
             <DirectUpiPayCard
+              paymentId={payment.id}
               amount={total}
               upiId={payoutData.upiId}
               payeeName={payoutData.accountHolderName}
@@ -1100,6 +1103,7 @@ function DirectUpiRentView({
 }
 
 function DirectUpiPayCard({
+  paymentId,
   amount,
   upiId,
   payeeName,
@@ -1109,6 +1113,9 @@ function DirectUpiPayCard({
   onReportPaid,
   reportPending,
 }: {
+  /** Payment id — needed so the internal upload mutation can hit
+   *  POST /payments/{id}/upload-proof before the tenant confirms. */
+  paymentId: string;
   amount: number;
   upiId: string;
   payeeName: string;
@@ -1171,6 +1178,49 @@ function DirectUpiPayCard({
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [launchedAt]);
 
+  // ── Proof-of-payment upload ─────────────────────────────────
+  // Optional but encouraged. When the tenant attaches a screenshot
+  // + hits Confirm, we upload the file first (blocks confirmation
+  // on failure so the maintainer never sees "paid" without the
+  // promised proof) then chain into onReportPaid. Object URL is
+  // revoked on unmount + on Change to avoid a small memory leak.
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [proofUrl, setProofUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!proofFile) return;
+    const url = URL.createObjectURL(proofFile);
+    setProofUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [proofFile]);
+
+  const uploadProofMut = useMutation({
+    mutationFn: (f: File) => paymentsApi.uploadProof(paymentId, f),
+    onError: (err) =>
+      toast({
+        variant: "destructive",
+        title: "Couldn't upload the screenshot",
+        description: extractErrorMessage(err),
+      }),
+  });
+
+  // Called by the primary Confirm button + the auto-confirm dialog's
+  // Yes button. If a proof is attached, upload first and only then
+  // mark paid — that ordering means a mid-flight upload failure
+  // leaves the tenant on this page with a clear error, not on the
+  // "your payment is recorded" screen with no proof attached.
+  const confirmPayment = async () => {
+    if (proofFile) {
+      try {
+        await uploadProofMut.mutateAsync(proofFile);
+      } catch {
+        return; // toast fired in onError; stay on the page
+      }
+    }
+    onReportPaid();
+  };
+  const busy = reportPending || uploadProofMut.isPending;
+
   return (
     <Card>
       <CardContent className="p-6 space-y-5">
@@ -1215,13 +1265,16 @@ function DirectUpiPayCard({
                 onClick={() => {
                   setAskConfirm(false);
                   setLaunchedAt(null);
-                  onReportPaid();
+                  void confirmPayment();
                 }}
-                disabled={reportPending}
+                disabled={busy}
               >
-                {reportPending ? (
+                {busy ? (
                   <>
-                    <Loader2 className="size-4 animate-spin" /> Recording…
+                    <Loader2 className="size-4 animate-spin" />{" "}
+                    {uploadProofMut.isPending
+                      ? "Uploading…"
+                      : "Recording…"}
                   </>
                 ) : (
                   <>Yes, I paid {formatINR(amount)}</>
@@ -1352,32 +1405,68 @@ function DirectUpiPayCard({
           NEFT / IMPS from your banking app.
         </p>
 
-        {/* Tenant self-attest button — flips the Payment to PAID
-            immediately + redirects to the overview. Owner sees it as
-            paid with a "tenant-reported" audit trail so they can
-            double-check against their bank. Deliberately worded to
-            make it clear this is the tenant confirming, not the app
-            detecting. */}
-        <div className="pt-3 border-t border-border/40">
+        {/* Tenant confirms + optionally attaches proof. Proof is
+            optional but strongly nudged: the maintainer sees the
+            screenshot inline on their dashboard so they can match
+            it against the bank SMS in one glance. Skipping still
+            works — the manual bank-statement verification path is
+            unchanged for tenants who forgot to screenshot. */}
+        <div className="pt-3 border-t border-border/40 space-y-3">
+          <div>
+            <p className="text-xs font-semibold text-foreground">
+              Attach payment screenshot{" "}
+              <span className="font-normal text-muted-foreground">
+                (recommended)
+              </span>
+            </p>
+            <p className="text-[11px] text-muted-foreground mt-0.5 mb-2">
+              Your maintainer will see the PhonePe / GPay / Paytm
+              success screen next to this charge on their dashboard.
+              JPG, PNG or WebP up to 5 MB.
+            </p>
+            {proofFile && proofUrl ? (
+              <FilePreview
+                url={proofUrl}
+                name={proofFile.name}
+                onRemove={() => setProofFile(null)}
+                className="aspect-video max-w-xs"
+              />
+            ) : (
+              <FileUpload
+                accept="image/*"
+                maxSizeMB={5}
+                onFiles={(files) => {
+                  if (files[0]) setProofFile(files[0]);
+                }}
+                disabled={busy}
+              />
+            )}
+          </div>
           <Button
             variant="gradient"
             size="lg"
             className="w-full"
-            onClick={onReportPaid}
-            disabled={reportPending}
+            onClick={() => {
+              void confirmPayment();
+            }}
+            disabled={busy}
           >
-            {reportPending ? (
+            {busy ? (
               <>
-                <Loader2 className="size-4 animate-spin" /> Recording…
+                <Loader2 className="size-4 animate-spin" />{" "}
+                {uploadProofMut.isPending
+                  ? "Uploading screenshot…"
+                  : "Recording…"}
               </>
             ) : (
               <>
-                <CheckCircle2 className="size-4" /> I've completed the payment
+                <CheckCircle2 className="size-4" />
+                {proofFile ? "Confirm & upload proof" : "Confirm payment"}
               </>
             )}
           </Button>
-          <p className="text-[11px] text-muted-foreground text-center mt-2">
-            Only tap this after the money has actually left your account.
+          <p className="text-[11px] text-muted-foreground text-center">
+            Only tap after the money has actually left your account.
           </p>
         </div>
       </CardContent>
@@ -1386,18 +1475,52 @@ function DirectUpiPayCard({
 }
 
 function FallbackBankOnly({
+  paymentId,
   amount,
   payout,
   note,
   onReportPaid,
   reportPending,
 }: {
+  paymentId: string;
   amount: number;
   payout: import("@/lib/api/bank-accounts").BankAccountPayoutResponse;
   note: string;
   onReportPaid: () => void;
   reportPending: boolean;
 }) {
+  // Same upload-then-confirm chain as DirectUpiPayCard — tenants
+  // who NEFT/IMPS also usually have a banking-app receipt they can
+  // screenshot, so the maintainer gets the same inline preview.
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [proofUrl, setProofUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!proofFile) return;
+    const url = URL.createObjectURL(proofFile);
+    setProofUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [proofFile]);
+  const uploadProofMut = useMutation({
+    mutationFn: (f: File) => paymentsApi.uploadProof(paymentId, f),
+    onError: (err) =>
+      toast({
+        variant: "destructive",
+        title: "Couldn't upload the screenshot",
+        description: extractErrorMessage(err),
+      }),
+  });
+  const busy = reportPending || uploadProofMut.isPending;
+  const confirm = async () => {
+    if (proofFile) {
+      try {
+        await uploadProofMut.mutateAsync(proofFile);
+      } catch {
+        return;
+      }
+    }
+    onReportPaid();
+  };
+
   return (
     <Card>
       <CardContent className="p-6 space-y-4">
@@ -1425,26 +1548,63 @@ function FallbackBankOnly({
           <BankRow label="Reference" value={note} />
         </div>
 
-        <div className="pt-3 border-t border-border/40">
+        <div className="pt-3 border-t border-border/40 space-y-3">
+          <div>
+            <p className="text-xs font-semibold text-foreground">
+              Attach transfer screenshot{" "}
+              <span className="font-normal text-muted-foreground">
+                (recommended)
+              </span>
+            </p>
+            <p className="text-[11px] text-muted-foreground mt-0.5 mb-2">
+              Your owner will see the transfer receipt next to this
+              charge on their dashboard.
+            </p>
+            {proofFile && proofUrl ? (
+              <FilePreview
+                url={proofUrl}
+                name={proofFile.name}
+                onRemove={() => setProofFile(null)}
+                className="aspect-video max-w-xs"
+              />
+            ) : (
+              <FileUpload
+                accept="image/*"
+                maxSizeMB={5}
+                onFiles={(files) => {
+                  if (files[0]) setProofFile(files[0]);
+                }}
+                disabled={busy}
+              />
+            )}
+          </div>
           <Button
             variant="gradient"
             size="lg"
             className="w-full"
-            onClick={onReportPaid}
-            disabled={reportPending}
+            onClick={() => {
+              void confirm();
+            }}
+            disabled={busy}
           >
-            {reportPending ? (
+            {busy ? (
               <>
-                <Loader2 className="size-4 animate-spin" /> Recording…
+                <Loader2 className="size-4 animate-spin" />{" "}
+                {uploadProofMut.isPending
+                  ? "Uploading screenshot…"
+                  : "Recording…"}
               </>
             ) : (
               <>
-                <CheckCircle2 className="size-4" /> I've completed the transfer
+                <CheckCircle2 className="size-4" />
+                {proofFile
+                  ? "Confirm & upload proof"
+                  : "Confirm transfer"}
               </>
             )}
           </Button>
-          <p className="text-[11px] text-muted-foreground text-center mt-2">
-            Only tap this after the {formatINR(amount)} has actually left your account.
+          <p className="text-[11px] text-muted-foreground text-center">
+            Only tap after the {formatINR(amount)} has actually left your account.
           </p>
         </div>
       </CardContent>

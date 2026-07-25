@@ -83,6 +83,17 @@ public record FlatMaintenanceRowResponse(
          * {@link #prevUsageReading} this exposes the unit count
          * (curr - prev) behind the rupee figure.
          */
-        BigDecimal currUsageReading
+        BigDecimal currUsageReading,
+
+        /**
+         * Payment-service payment.id that this collection row rolled
+         * into when the tenant paid via the direct-UPI bridge (or
+         * Razorpay Route once enabled). Null on rows that were
+         * marked PAID manually by the maintainer — those don't go
+         * through payment-service. The frontend uses this to look
+         * up the tenant-uploaded payment-proof screenshot for
+         * inline preview on the maintainer's dashboard.
+         */
+        String paymentId
 ) {
 }

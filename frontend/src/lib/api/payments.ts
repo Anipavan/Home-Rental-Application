@@ -131,4 +131,40 @@ export const paymentsApi = {
     api
       .get<Blob>(`/payments/${id}/receipt.pdf`, { responseType: "blob" })
       .then((r) => r.data),
+
+  /**
+   * Tenant uploads a payment-proof screenshot (PhonePe/GPay/Paytm
+   * success screen) after paying via direct UPI. Stored server-side
+   * against the Payment row so the maintainer's dashboard can
+   * preview it inline. Content type must be jpeg / png / webp, max
+   * 5 MB (enforced backend-side too).
+   *
+   * <p>Does NOT mark the payment as PAID by itself — the frontend
+   * chains this call with {@link tenantReportPaid} in the DirectUpi
+   * flow. Kept separate on the backend so a re-upload with a wrong
+   * screenshot doesn't re-trigger audit events.
+   */
+  uploadProof: (id: number | string, file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return api
+      .post<PaymentResponse>(`/payments/${id}/upload-proof`, fd, {
+        // axios + the browser handle the multipart boundary; an
+        // explicit Content-Type would strip the boundary and break
+        // upstream parsing. Same pattern as maintenanceApi.uploadImage.
+        headers: { "Content-Type": undefined },
+      })
+      .then((r) => r.data);
+  },
+
+  /**
+   * Fetch the stored payment-proof screenshot as a Blob. The
+   * maintainer's dashboard turns this into an object URL to render
+   * inline in an <img> tag (auth headers can't ride on a bare
+   * <img src=> so we can't hotlink the endpoint directly).
+   */
+  proofBlob: (id: number | string) =>
+    api
+      .get<Blob>(`/payments/${id}/proof`, { responseType: "blob" })
+      .then((r) => r.data),
 };

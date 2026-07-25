@@ -125,6 +125,18 @@ public class Payment {
     @Builder.Default
     private String sourceType = "RENT";
 
+    /**
+     * URL of the tenant-uploaded payment-proof screenshot (typically
+     * a PhonePe / GPay / Paytm success screen). Nullable — set only
+     * after the tenant hits POST /payments/{id}/upload-proof. Served
+     * back via GET /payments/{id}/proof so the maintainer's Flat
+     * charges table can preview it inline. Convenience aid only —
+     * the maintainer still verifies against their bank statement
+     * before treating the row as truly settled.
+     */
+    @Column(name = "payment_proof_url", length = 500)
+    private String paymentProofUrl;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 

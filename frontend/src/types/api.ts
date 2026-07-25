@@ -591,6 +591,13 @@ export interface PaymentResponse {
    * migration) may be undefined — treat as RENT.
    */
   sourceType?: "RENT" | "SOCIETY_CHARGE" | string;
+  /**
+   * Filename of the tenant-uploaded payment-proof screenshot,
+   * relative to payment-service's upload dir. Presence of this
+   * field is the signal to the maintainer dashboard that a proof
+   * is attached; the bytes come from GET /payments/{id}/proof.
+   */
+  paymentProofUrl?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -1414,6 +1421,15 @@ export interface FlatMaintenanceRow {
   /** Water-meter reading at the end of the billing period. See
    *  {@link prevUsageReading}. */
   currUsageReading?: number | null;
+  /**
+   * Payment-service Payment.id this collection row is linked to,
+   * when settlement went through the direct-UPI bridge. Null on
+   * rows that were marked PAID manually by the maintainer (those
+   * skip payment-service entirely). Frontend uses this to fetch
+   * the tenant-uploaded payment-proof screenshot for inline
+   * preview via {@code paymentsApi.get} + {@code paymentsApi.proofBlob}.
+   */
+  paymentId?: string | null;
 }
 
 /** Body for {@code POST /society/{buildingId}/flats/{flatId}/collection}. */

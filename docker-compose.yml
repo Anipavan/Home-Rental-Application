@@ -221,6 +221,12 @@ services:
       config-server:    {condition: service_healthy}
     ports: ["8084:8084"]
     networks: [hra-net]
+    volumes:
+      # Tenant-uploaded payment-proof screenshots land here. Named
+      # volume so they survive container recreation. Mirrors the
+      # pattern compliance-service / lease-service / document-service
+      # use for their persisted file artefacts.
+      - payment-proofs:/data/payment-proofs
     environment:
       DB_URL: jdbc:oracle:thin:@//oracle-db:1521/FREEPDB1
       DB_USERNAME: ${ORACLE_APP_USER:-siva}
@@ -228,6 +234,8 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       EUREKA_URL: http://service-registry:8761/eureka
       INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+      # Read by PaymentServiceImpl @Value("${app.payment-proof.dir}").
+      APP_PAYMENT_PROOF_DIR: /data/payment-proofs
       PAYMENT_GATEWAY: ${PAYMENT_GATEWAY:-mock}
       # Razorpay credentials — only consumed when PAYMENT_GATEWAY=razorpay.
       # Empty defaults so the mock-gateway dev path (and CI) don't fail
@@ -464,6 +472,7 @@ volumes:
   gst-invoices:
   lease-deeds:
   documents:
+  payment-proofs:
 
 networks:
   hra-net:
