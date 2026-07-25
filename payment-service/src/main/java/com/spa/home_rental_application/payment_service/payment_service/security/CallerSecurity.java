@@ -63,13 +63,26 @@ public final class CallerSecurity {
      */
     public static boolean isMaintainer() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null) return false;
+        if (auth == null) {
+            log.debug("isMaintainer: no Authentication in SecurityContext");
+            return false;
+        }
         for (GrantedAuthority ga : auth.getAuthorities()) {
             String a = ga.getAuthority();
             if ("MAINTAINER".equalsIgnoreCase(a)
                     || "ROLE_MAINTAINER".equalsIgnoreCase(a)) {
                 return true;
             }
+        }
+        // Not a maintainer — log every authority we DID see so we
+        // can debug role-name mismatches from the browser console
+        // by tailing payment-service logs after a failed request.
+        if (log.isDebugEnabled()) {
+            log.debug("isMaintainer: caller={} authorities=[{}] — no MAINTAINER match",
+                    auth.getName(),
+                    auth.getAuthorities().stream()
+                            .map(GrantedAuthority::getAuthority)
+                            .reduce((a, b) -> a + "," + b).orElse("<empty>"));
         }
         return false;
     }
