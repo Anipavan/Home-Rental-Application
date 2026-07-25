@@ -15,6 +15,20 @@ spring:
   lifecycle:
     timeout-per-shutdown-phase: 20s
 
+  # Multipart / file-upload sizing. Spring Boot's defaults cap a
+  # single file at 1 MB and a request at 10 MB — the payment-proof
+  # upload endpoint accepts up to 5 MB per screenshot, so those
+  # defaults reject valid uploads with HTTP 500 before the
+  # controller even sees the file. Bumped to 10 MB per file /
+  # 12 MB per request so the service-layer check
+  # (MAX_PROOF_BYTES = 5 MB) is the actual enforcer + returns a
+  # readable "File exceeds 5 MB" 400 instead of a Spring stack
+  # trace.
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 12MB
+
   datasource:
     url: ${DB_URL:jdbc:oracle:thin:@//localhost:1521/orcl}
     username: ${DB_USERNAME:siva}

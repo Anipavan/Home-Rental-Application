@@ -1461,7 +1461,7 @@ function DirectUpiPayCard({
             ) : (
               <>
                 <CheckCircle2 className="size-4" />
-                {proofFile ? "Confirm & upload proof" : "Confirm payment"}
+                Submit payment confirmation
               </>
             )}
           </Button>
@@ -1597,9 +1597,7 @@ function FallbackBankOnly({
             ) : (
               <>
                 <CheckCircle2 className="size-4" />
-                {proofFile
-                  ? "Confirm & upload proof"
-                  : "Confirm transfer"}
+                Submit payment confirmation
               </>
             )}
           </Button>
