@@ -13,25 +13,32 @@ import {
 import {
   Building2,
   Calendar,
+  Check,
   CheckCircle2,
+  ChevronDown,
   FileText,
   Receipt,
   TrendingUp,
   Wallet,
+  X,
 } from "lucide-react";
 import { societyApi } from "@/lib/api/society";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { PageHeader } from "@/components/layout/page-header";
 import { AnnouncementsPanel } from "@/components/society/announcements-panel";
 import { SocietyLedgerView } from "@/components/society/ledger-view";
-import { formatINR } from "@/lib/utils";
+import { cn, formatINR } from "@/lib/utils";
 import type {
   FlatChargeCategory,
   FlatMaintenanceRow,
@@ -107,8 +114,6 @@ export function TenantSocietyPage() {
 }
 
 function ResidentSociety({ config }: { config: SocietyConfig }) {
-  const [month, setMonth] = useState(currentMonth());
-
   return (
     <>
       <p className="text-sm text-muted-foreground mb-4">
@@ -162,11 +167,7 @@ function ResidentSociety({ config }: { config: SocietyConfig }) {
 
         {/* ── Tab 1: personal bills + pay ─────────────────────────── */}
         <TabsContent value="mine" className="mt-5">
-          <YourMaintenanceTab
-            config={config}
-            month={month}
-            setMonth={setMonth}
-          />
+          <YourMaintenanceTab config={config} />
         </TabsContent>
 
         {/* ── Tab 2: shared transparency dashboard ────────────────── */}
@@ -182,44 +183,81 @@ function ResidentSociety({ config }: { config: SocietyConfig }) {
 }
 
 /**
- * The "Your maintenance" tab content — extracted so the Tabs render
- * cleanly. Same behaviour as the pre-tabs page: month picker at the
- * top, "no UPI configured" banner if the society hasn't hooked up a
- * collection VPA, then the tenant's own charges with a Pay button
- * per row.
+ * The "Your maintenance" tab content — multi-month view that
+ * mirrors the Maintenance details tab's picker semantics. Owns
+ * its own selectedMonths state (parent no longer threads month
+ * through props). Bills fetch one query per selected month via
+ * useQueries, so React Query caches month-by-month and toggling
+ * a month off in the picker doesn't refetch the survivors.
  */
-function YourMaintenanceTab({
-  config,
-  month,
-  setMonth,
-}: {
-  config: SocietyConfig;
-  month: string;
-  setMonth: (m: string) => void;
-}) {
-  const myBillsQ = useQuery({
-    queryKey: ["tenant-society-bills", config.buildingId, month],
-    queryFn: () => societyApi.myBills(config.buildingId, month),
-    staleTime: 15_000,
+function YourMaintenanceTab({ config }: { config: SocietyConfig }) {
+  // Default = just the current month so first-paint matches the
+  // pre-multi-select behaviour. Empty array is guarded against in
+  // the MonthFilter component (it enforces min 1 selection).
+  const [selectedMonths, setSelectedMonths] = useState<string[]>([
+    currentMonth(),
+  ]);
+
+  // Newest first — keeps table rows in a stable descending order.
+  const orderedMonths = useMemo(
+    () => [...selectedMonths].sort((a, b) => b.localeCompare(a)),
+    [selectedMonths],
+  );
+
+  const billQueries = useQueries({
+    queries: orderedMonths.map((m) => ({
+      queryKey: ["tenant-society-bills", config.buildingId, m] as const,
+      queryFn: () => societyApi.myBills(config.buildingId, m),
+      staleTime: 15_000,
+    })),
   });
 
-  const totalDue = useMemo(() => {
-    const rows = myBillsQ.data ?? [];
-    return rows
-      .filter((r) => r.status === "DUE" || r.status === "OVERDUE")
-      .reduce((s, r) => s + r.monthAmount, 0);
-  }, [myBillsQ.data]);
+  const anyBillsLoading = billQueries.some((q) => q.isLoading);
+
+  // Flatten every selected month's bills, tagging each row with
+  // its source month so the table can render a "For month" column
+  // when the user has more than one month picked.
+  type BillRow = FlatMaintenanceRow & { _month: string };
+  const allBills: BillRow[] = useMemo(() => {
+    return orderedMonths.flatMap((m, i) => {
+      const rows = billQueries[i]?.data ?? [];
+      return rows.map((r) => ({ ...r, _month: m }));
+    });
+  }, [orderedMonths, billQueries]);
+
+  const totalDue = useMemo(
+    () =>
+      allBills
+        .filter((r) => r.status === "DUE" || r.status === "OVERDUE")
+        .reduce((s, r) => s + r.monthAmount, 0),
+    [allBills],
+  );
+
+  const showMonthColumn = orderedMonths.length > 1;
+  // Pay-all footer keeps its single-month deep-link semantics —
+  // one URL, one month. On multi-select we hide the footer button
+  // and let the tenant use the per-row Pay buttons instead.
+  const singleMonthForPayAll =
+    orderedMonths.length === 1 ? orderedMonths[0]! : null;
 
   return (
     <>
-      <div className="flex items-center gap-3 mb-4">
-        <Calendar className="size-4 text-muted-foreground" />
-        <Input
-          type="month"
-          value={month}
-          onChange={(e) => setMonth(e.target.value || currentMonth())}
-          className="w-48"
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <MonthFilter
+          selected={selectedMonths}
+          onChange={setSelectedMonths}
+          options={lastNMonths(12)}
         />
+        {selectedMonths.length > 1 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-xs"
+            onClick={() => setSelectedMonths([currentMonth()])}
+          >
+            <X className="size-3.5" /> Reset to this month
+          </Button>
+        )}
       </div>
 
       {!config.upiId && (
@@ -240,38 +278,40 @@ function YourMaintenanceTab({
         </Card>
       )}
 
-      {/* Personal history strip — six-month bar chart of what the
-          tenant has actually paid to the society, month-over-month.
-          The window is anchored to the month picked above (Jan
-          2026 selected → chart spans Aug 2025 → Jan 2026), so the
-          chart and the bills table always describe the same
-          period. Auto-hides on brand-new residents (nothing paid
-          yet) so we never render an empty axis. */}
+      {/* Personal history strip — bar chart of what the tenant has
+          actually paid, one bar per selected month. Renders an
+          empty-state card (instead of vanishing) when nothing has
+          been paid in the window, matching the Maintenance details
+          tab's "No data" affordance. */}
       <MyMonthlySpendChart
         buildingId={config.buildingId}
-        anchorMonth={month}
+        selectedMonths={orderedMonths}
       />
 
       <CollapsibleSection
         className="mb-4"
-        title={`My charges — ${month}`}
+        title={
+          orderedMonths.length === 1
+            ? `My charges — ${fmtMonth(orderedMonths[0]!)}`
+            : `My charges — ${orderedMonths.length} months`
+        }
         icon={Receipt}
         summary={
-          myBillsQ.data?.length
+          allBills.length
             ? totalDue > 0
               ? `Total Dues ${formatINR(totalDue)}`
-              : `${myBillsQ.data.length} charge${myBillsQ.data.length === 1 ? "" : "s"}`
+              : `${allBills.length} charge${allBills.length === 1 ? "" : "s"}`
             : "No bills"
         }
       >
-        {myBillsQ.isLoading ? (
+        {anyBillsLoading ? (
           <Skeleton className="h-24 rounded-xl" />
-        ) : !myBillsQ.data?.length ? (
+        ) : !allBills.length ? (
           <EmptyState
             variant="info"
             icon={Receipt}
-            title="No bills posted for you this month yet"
-            description="The maintainer hasn't entered any charges against your flat for this month. Check back later or message them if you think this is wrong."
+            title="No bills posted for the selected month(s) yet"
+            description="The maintainer hasn't entered any charges against your flat for this period. Check back later or message them if you think this is wrong."
           />
         ) : (
           <div className="overflow-x-auto rounded-lg border border-border/60">
@@ -281,6 +321,11 @@ function YourMaintenanceTab({
                   <th className="text-left px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground whitespace-nowrap">
                     Category
                   </th>
+                  {showMonthColumn && (
+                    <th className="text-left px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+                      For month
+                    </th>
+                  )}
                   <th className="text-left px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground">
                     Description
                   </th>
@@ -296,19 +341,20 @@ function YourMaintenanceTab({
                 </tr>
               </thead>
               <tbody>
-                {myBillsQ.data.map((row) => (
+                {allBills.map((row) => (
                   <ChargeRow
-                    key={row.collectionId ?? row.category ?? "row"}
+                    key={`${row._month}-${row.collectionId ?? row.category ?? "row"}`}
                     row={row}
                     config={config}
+                    showMonth={showMonthColumn}
                   />
                 ))}
               </tbody>
-              {totalDue > 0 && (
+              {totalDue > 0 && singleMonthForPayAll && (
                 <tfoot>
                   <tr className="bg-primary/5 border-t-2 border-border/60 font-semibold">
                     <td
-                      colSpan={3}
+                      colSpan={showMonthColumn ? 4 : 3}
                       className="px-3 py-3 text-right text-sm uppercase tracking-wider text-muted-foreground"
                     >
                       Total Due
@@ -321,7 +367,7 @@ function YourMaintenanceTab({
                     <td className="px-3 py-3 text-right whitespace-nowrap">
                       <Button asChild variant="gradient" size="sm">
                         <Link
-                          to={`/app/society/pay-all/${config.buildingId}/${month}`}
+                          to={`/app/society/pay-all/${config.buildingId}/${singleMonthForPayAll}`}
                         >
                           Pay all · {formatINR(totalDue)}
                         </Link>
@@ -331,6 +377,13 @@ function YourMaintenanceTab({
                 </tfoot>
               )}
             </table>
+            {totalDue > 0 && !singleMonthForPayAll && (
+              <p className="px-3 py-2 text-[11px] text-muted-foreground bg-secondary/20 border-t border-border/60">
+                Pay-all covers one month at a time. Pick a single
+                month to enable the Pay all button, or use the Pay
+                button on each row.
+              </p>
+            )}
           </div>
         )}
       </CollapsibleSection>
@@ -339,15 +392,79 @@ function YourMaintenanceTab({
 }
 
 /**
+ * Month multi-select for the "Your maintenance" tab. Same pattern
+ * the Maintenance details tab uses under the hood — a dropdown
+ * with a check next to selected months. Enforces at least one
+ * selected so the page never renders a blank state.
+ */
+function MonthFilter({
+  selected,
+  onChange,
+  options,
+}: {
+  selected: string[];
+  onChange: (next: string[]) => void;
+  options: string[];
+}) {
+  function toggle(m: string) {
+    if (selected.includes(m)) {
+      if (selected.length === 1) return; // keep at least one
+      onChange(selected.filter((s) => s !== m));
+    } else {
+      onChange([...selected, m]);
+    }
+  }
+  const sorted = [...selected].sort((a, b) => b.localeCompare(a));
+  const label =
+    selected.length === 1
+      ? fmtMonth(sorted[0]!)
+      : `${selected.length} months`;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm" className="gap-2">
+          <Calendar className="size-3.5" />
+          {label}
+          <ChevronDown className="size-3.5 opacity-60" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent className="w-56 max-h-80 overflow-y-auto p-1">
+        {options.map((m) => {
+          const isSelected = selected.includes(m);
+          return (
+            <button
+              key={m}
+              type="button"
+              onClick={() => toggle(m)}
+              className={cn(
+                "w-full flex items-center justify-between gap-2 px-2 py-1.5 text-sm rounded-md hover:bg-secondary/60",
+                isSelected && "font-semibold",
+              )}
+            >
+              <span>{fmtMonth(m)}</span>
+              {isSelected && <Check className="size-3.5 text-primary" />}
+            </button>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/**
  * One charge row. Pay button on DUE/OVERDUE (destination page handles
  * the "no UPI configured" case); check mark + paid-on date on PAID.
+ * The optional For-month cell is rendered when the caller has more
+ * than one month selected — otherwise the column is hidden entirely.
  */
 function ChargeRow({
   row,
   config,
+  showMonth = false,
 }: {
-  row: FlatMaintenanceRow;
+  row: FlatMaintenanceRow & { _month?: string };
   config: SocietyConfig;
+  showMonth?: boolean;
 }) {
   const label = row.category ? CHARGE_LABELS[row.category] : "Other";
   const tone = STATUS_TONES[row.status] ?? "bg-muted text-muted-foreground";
@@ -362,6 +479,11 @@ function ChargeRow({
           {label}
         </Badge>
       </td>
+      {showMonth && (
+        <td className="px-3 py-2 align-top text-sm text-muted-foreground whitespace-nowrap font-medium">
+          {row._month ? fmtMonth(row._month) : "—"}
+        </td>
+      )}
       <td className="px-3 py-2 align-top">
         {row.notes ? (
           <p className="text-xs text-muted-foreground italic line-clamp-2">
@@ -422,18 +544,16 @@ function ChargeRow({
  */
 function MyMonthlySpendChart({
   buildingId,
-  anchorMonth,
+  selectedMonths,
 }: {
   buildingId: string;
-  /** Right-most month on the X-axis, "YYYY-MM". Chart spans the
-   *  six months up-to-and-including this one so the picker above
-   *  and the chart always describe the same window. */
-  anchorMonth: string;
+  /** Months the picker has selected, newest first. One bar per
+   *  month on the X-axis, rendered oldest → newest so the axis
+   *  reads left-to-right. */
+  selectedMonths: string[];
 }) {
-  // Six months ending at anchorMonth (inclusive), newest first.
-  const months = useMemo(() => lastNMonths(6, anchorMonth), [anchorMonth]);
   const queries = useQueries({
-    queries: months.map((m) => ({
+    queries: selectedMonths.map((m) => ({
       queryKey: ["tenant-society-bills", buildingId, m],
       queryFn: () => societyApi.myBills(buildingId, m),
       staleTime: 30_000,
@@ -442,34 +562,29 @@ function MyMonthlySpendChart({
 
   const isLoading = queries.some((q) => q.isLoading);
 
-  // Build chart data oldest → newest so the X-axis reads left-to-right.
+  // Chart data oldest → newest so the X-axis reads left-to-right,
+  // regardless of which order the picker holds the months in.
   const chartData = useMemo(() => {
-    return months
-      .slice()
-      .reverse()
-      .map((m) => {
-        const idx = months.indexOf(m);
-        const rows = queries[idx]?.data ?? [];
-        const paid = rows
-          .filter((r) => r.status === "PAID")
-          .reduce((s, r) => s + r.monthAmount, 0);
-        return { month: fmtMonth(m), paid };
-      });
-  }, [months, queries]);
+    const orderedOldFirst = [...selectedMonths].sort((a, b) =>
+      a.localeCompare(b),
+    );
+    return orderedOldFirst.map((m) => {
+      const idx = selectedMonths.indexOf(m);
+      const rows = queries[idx]?.data ?? [];
+      const paid = rows
+        .filter((r) => r.status === "PAID")
+        .reduce((s, r) => s + r.monthAmount, 0);
+      return { month: fmtMonth(m), paid };
+    });
+  }, [selectedMonths, queries]);
 
   const totalPaid = chartData.reduce((s, r) => s + r.paid, 0);
+  const hasData = totalPaid > 0;
 
-  // Nothing paid across the whole window — brand-new resident,
-  // or one whose maintainer hasn't billed anything yet. Skip the
-  // empty chart rather than render six empty bars.
-  if (!isLoading && totalPaid === 0) return null;
-
-  // "Last 6 months" if the picker sits on the current month;
-  // otherwise "6 months to Jul 2026" so the collapsed header
-  // never lies about which window it represents.
-  const nowMonth = currentMonth();
   const windowLabel =
-    anchorMonth === nowMonth ? "last 6 months" : `6 months to ${fmtMonth(anchorMonth)}`;
+    selectedMonths.length === 1
+      ? fmtMonth(selectedMonths[0]!)
+      : `${selectedMonths.length} months`;
 
   return (
     <CollapsibleSection
@@ -477,12 +592,24 @@ function MyMonthlySpendChart({
       title="Your payment history"
       icon={TrendingUp}
       summary={
-        isLoading ? windowLabel : `${formatINR(totalPaid)} · ${windowLabel}`
+        isLoading
+          ? windowLabel
+          : hasData
+            ? `${formatINR(totalPaid)} · ${windowLabel}`
+            : `No data · ${windowLabel}`
       }
       defaultOpen
     >
       {isLoading ? (
         <Skeleton className="h-40" />
+      ) : !hasData ? (
+        /* Matches the Maintenance details tab's empty-state copy so
+         * the two charts feel like one system. The card stays
+         * visible (unlike the earlier auto-hide) so the layout
+         * doesn't jump around when a resident toggles months. */
+        <p className="text-sm text-muted-foreground py-10 text-center">
+          No payments settled for the selected month(s) yet.
+        </p>
       ) : (
         <div className="h-40">
           <ResponsiveContainer width="100%" height="100%">
