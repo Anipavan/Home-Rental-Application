@@ -802,6 +802,7 @@ function CategoryBarChart({
               name={cat}
               fill={CATEGORY_COLOR[cat]}
               radius={[4, 4, 0, 0]}
+              minPointSize={3}
             />
           ))}
           {!hasFlatFilter
@@ -812,6 +813,7 @@ function CategoryBarChart({
                   name={`FLAT_${cat}`}
                   fill={FLAT_CATEGORY_COLOR[cat]}
                   radius={[4, 4, 0, 0]}
+                  minPointSize={3}
                 />
               ))
             : selectedFlats.flatMap((flatNum) =>
@@ -822,6 +824,7 @@ function CategoryBarChart({
                     name={`FLAT_${flatNum}__${cat}`}
                     fill={FLAT_CATEGORY_COLOR[cat]}
                     radius={[4, 4, 0, 0]}
+                    minPointSize={3}
                   />
                 )),
               )}

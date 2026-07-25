@@ -667,6 +667,11 @@ function MyMonthlySpendChart({
   // Recharts renders adjacent <Bar> components as clustered groups
   // when they share no stackId, so each category becomes its own
   // side-by-side bar within the month tick.
+  //
+  // Includes PAID + DUE + OVERDUE (skips WAIVED). The chart is a
+  // "what have I been charged" view, not a settlement ledger — a
+  // month with only DUE bills should still show its bars so the
+  // tenant sees the full pattern instead of a blank tick.
   const chartData = useMemo(() => {
     const orderedOldFirst = [...selectedMonths].sort((a, b) =>
       a.localeCompare(b),
@@ -679,7 +684,7 @@ function MyMonthlySpendChart({
         row[cat] = 0;
       }
       for (const r of rows) {
-        if (r.status !== "PAID") continue;
+        if (r.status === "WAIVED") continue;
         const cat = r.category ?? "OTHER";
         row[cat] = (Number(row[cat]) || 0) + r.monthAmount;
       }
@@ -795,7 +800,11 @@ function MyMonthlySpendChart({
                 }
               />
               {/* One <Bar> per live category, no stackId, so Recharts
-                * groups them side-by-side per month (clustered). */}
+                * groups them side-by-side per month (clustered).
+                * minPointSize=3 keeps a small charge (e.g. ₹2K
+                * Maintenance) visible next to a giant one (e.g.
+                * ₹20L Water bill) — without it the tiny bar would
+                * be under a pixel tall on a linear axis. */}
               {liveCategories.map((cat) => (
                 <Bar
                   key={cat}
@@ -803,6 +812,7 @@ function MyMonthlySpendChart({
                   name={cat}
                   fill={CATEGORY_COLORS[cat]}
                   radius={[4, 4, 0, 0]}
+                  minPointSize={3}
                 />
               ))}
             </BarChart>
