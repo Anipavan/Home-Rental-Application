@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  ArrowRight,
   Building2,
   Calendar,
   ChevronRight,
@@ -463,16 +464,9 @@ export function MaintainerFlatsPage() {
         title={configQ.data?.societyDisplayName ?? "Society — flats"}
         description="Per-flat monthly dues, payments received, and a quick way to enter usage-based amounts (water, gas, common-area share)."
         actions={
-          <div className="flex gap-2">
-            <Button asChild variant="outline" size="sm">
-              <Link to={`/maintainer/${buildingId}/expenses`}>
-                Common expenses
-              </Link>
-            </Button>
-            <Button asChild variant="ghost" size="sm">
-              <Link to="/maintainer">← All societies</Link>
-            </Button>
-          </div>
+          <Button asChild variant="ghost" size="sm">
+            <Link to="/maintainer">← All societies</Link>
+          </Button>
         }
       />
 
@@ -481,15 +475,38 @@ export function MaintainerFlatsPage() {
           the fold on a busy flats month. */}
       <MaintainerPendingClaimsWidget />
 
-      {/* Month selector */}
-      <div className="flex items-center gap-3 mb-4">
-        <Calendar className="size-4 text-muted-foreground" />
-        <Input
-          type="month"
-          value={month}
-          onChange={(e) => setMonth(e.target.value || currentMonth())}
-          className="w-48"
-        />
+      {/* Month selector + Common expenses CTA on one row. The CTA
+          sits at the right end so the eye lands on the picker first
+          (which drives everything below), then the "log a bill"
+          entry point. Amber gradient matches the "spend / expenses"
+          mental model and mirrors the amber Society tile on the
+          owner dashboard. */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <div className="flex items-center gap-3">
+          <Calendar className="size-4 text-muted-foreground" />
+          <Input
+            type="month"
+            value={month}
+            onChange={(e) => setMonth(e.target.value || currentMonth())}
+            className="w-48"
+          />
+        </div>
+        <Button
+          asChild
+          className={
+            "ml-auto sm:ml-3 group relative overflow-hidden gap-2 " +
+            "bg-gradient-to-br from-amber-500 to-orange-600 " +
+            "text-white shadow-sm hover:shadow-lift " +
+            "hover:from-amber-500 hover:to-orange-600 " +
+            "transition-all hover:-translate-y-0.5"
+          }
+        >
+          <Link to={`/maintainer/${buildingId}/expenses`}>
+            <Droplets className="size-4" />
+            Common expenses
+            <ArrowRight className="size-4 opacity-80 transition-transform group-hover:translate-x-0.5" />
+          </Link>
+        </Button>
       </div>
 
       {/* Common bank account — owner OR maintainer can edit */}
