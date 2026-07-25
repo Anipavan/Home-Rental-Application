@@ -71,7 +71,16 @@ export function TenantDashboard() {
 
   const flat = flatsQ.data?.[0];
   const payments = paymentsQ.data ?? [];
-  const pending = payments.find((p) => p.status === "PENDING" || p.status === "OVERDUE");
+  // The hero card at the top is the RENT hero — filter out society-
+  // charge Payment rows (bulk-pay bridge writes those to the same
+  // table). Legacy rows with no sourceType are treated as RENT.
+  // Society charges surface on the Society page's "Your maintenance"
+  // tab; showing them here as "Rent due" mis-labels them.
+  const pending = payments.find(
+    (p) =>
+      (p.status === "PENDING" || p.status === "OVERDUE") &&
+      (p.sourceType === undefined || p.sourceType === "RENT"),
+  );
   const openRequests = requests.filter(
     (r) => r.status === "OPEN" || r.status === "IN_PROGRESS",
   ).length;

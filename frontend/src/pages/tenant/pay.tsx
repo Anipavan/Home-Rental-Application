@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Copy,
   Loader2,
+  QrCode,
   ShieldCheck,
   Smartphone,
   Wallet,
@@ -912,6 +913,21 @@ function DirectUpiRentView({
   const navigate = useNavigate();
   const qc = useQueryClient();
   const total = payment.totalAmount ?? payment.amount;
+
+  // Text that shows up in the receiver's "Message" field inside
+  // GPay / PhonePe / Paytm. Kept short (a natural sentence) so it
+  // reads professionally instead of showing "Rent 001 Due 25 Jul
+  // 2026" — a comma-separated fragment that confused users into
+  // thinking "001" was some rent tier. Uses the payment's
+  // sourceType so bulk-pay society charges no longer say "Rent".
+  const isSociety = payment.sourceType === "SOCIETY_CHARGE";
+  const monthLabel = new Date(payment.dueDate).toLocaleString("en-IN", {
+    month: "short",
+    year: "numeric",
+  });
+  const txnNote = isSociety
+    ? `Society maintenance for ${monthLabel}, Flat ${flatLabel}`
+    : `Rent for ${monthLabel}, Flat ${flatLabel}`;
   const payoutQ = useQuery({
     queryKey: ["owner-payout", payment.ownerId],
     queryFn: () => bankAccountsApi.getPayoutByUserId(payment.ownerId),
@@ -980,7 +996,7 @@ function DirectUpiRentView({
             <FallbackBankOnly
               amount={total}
               payout={payoutQ.data}
-              note={`Rent ${flatLabel} · Due ${formatDate(payment.dueDate)}`}
+              note={txnNote}
               onReportPaid={() => reportPaidMut.mutate()}
               reportPending={reportPaidMut.isPending}
             />
@@ -990,7 +1006,7 @@ function DirectUpiRentView({
               upiId={payoutQ.data.upiId}
               payeeName={payoutQ.data.accountHolderName}
               payout={payoutQ.data}
-              note={`Rent ${flatLabel} · Due ${formatDate(payment.dueDate)}`}
+              note={txnNote}
               onReportPaid={() => reportPaidMut.mutate()}
               reportPending={reportPaidMut.isPending}
             />
@@ -1057,12 +1073,32 @@ function DirectUpiPayCard({
           </div>
         </div>
 
-        {/* Primary path — tap-to-open app launchers. Way more
-            convenient than scanning a QR when the tenant is already
-            on their phone. Each button deep-links into the specific
-            UPI app with amount + payee pre-filled; the "Any other"
-            tile uses the standard upi:// scheme + OS chooser. */}
-        <UpiAppLaunchers upiUri={upiUri} />
+        {/* Section 1 — tap-to-open UPI apps. Default OPEN because
+            this is the primary path on a phone. Each button is
+            routed via Android intent:// so PhonePe/GPay treat it as
+            a native UPI intent (no ₹2K browser-external cap). */}
+        <details
+          open
+          className="rounded-xl border border-primary/30 bg-primary/5 group"
+        >
+          <summary className="cursor-pointer list-none p-3 flex items-center justify-between hover:bg-primary/10 transition-colors rounded-t-xl">
+            <div className="flex items-center gap-2">
+              <Smartphone className="size-4 text-primary" />
+              <span className="text-sm font-semibold">
+                Pay with a UPI app
+              </span>
+            </div>
+            <span className="text-[11px] text-muted-foreground group-open:hidden">
+              Tap to expand
+            </span>
+            <span className="text-[11px] text-muted-foreground hidden group-open:inline">
+              Tap to collapse
+            </span>
+          </summary>
+          <div className="p-3 pt-0">
+            <UpiAppLaunchers upiUri={upiUri} />
+          </div>
+        </details>
 
         {/* Receiver details — prominent so anyone on desktop / iOS /
             an unsupported app can copy-paste the VPA into their own
@@ -1121,20 +1157,28 @@ function DirectUpiPayCard({
           )}
         </div>
 
-        {/* QR code — demoted behind a disclosure so it stays
-            available for wall-scanner / other-phone cases but
-            doesn't lead the flow. Most payers will tap a launcher
-            above without ever opening this. */}
-        <details className="rounded-lg border border-border/60 group">
-          <summary className="cursor-pointer list-none p-3 flex items-center justify-between text-sm font-medium hover:bg-secondary/30 transition-colors">
-            <span>Or show a QR code</span>
+        {/* Section 2 — QR code path. Kept for wall-scanner / other-
+            phone cases (someone using a family member's phone to
+            pay). Default CLOSED because the launcher path above is
+            faster on a single phone. */}
+        <details className="rounded-xl border border-border/60 group">
+          <summary className="cursor-pointer list-none p-3 flex items-center justify-between hover:bg-secondary/30 transition-colors rounded-t-xl">
+            <div className="flex items-center gap-2">
+              <QrCode className="size-4 text-muted-foreground" />
+              <span className="text-sm font-semibold">
+                Scan a QR code instead
+              </span>
+            </div>
             <span className="text-[11px] text-muted-foreground group-open:hidden">
               Tap to expand
+            </span>
+            <span className="text-[11px] text-muted-foreground hidden group-open:inline">
+              Tap to collapse
             </span>
           </summary>
           <div className="p-4 pt-0 text-center">
             <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-3">
-              Scan with any UPI app
+              Open any UPI app and scan
             </p>
             <div className="inline-block rounded-xl border-2 border-border/60 bg-white p-4">
               <QRCodeSVG value={upiUri} size={180} includeMargin={false} />

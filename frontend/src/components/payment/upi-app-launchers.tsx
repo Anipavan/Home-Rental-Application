@@ -1,124 +1,158 @@
 import { Smartphone } from "lucide-react";
 
 /**
- * Colourful, app-branded launcher grid for a UPI intent URL. Deep-
- * links straight into Google Pay / PhonePe / Paytm / BHIM by
- * swapping the {@code upi://} scheme for each app's private scheme;
- * the "Any UPI app" tile keeps the standard {@code upi://} scheme
- * which triggers the Android OS-wide UPI app chooser.
+ * Tap-to-open UPI-app launcher grid.
  *
- * <p>Only Android reliably honours these schemes — iOS and desktop
- * don't route them. The caller is expected to render the receiver's
- * UPI ID + bank details BELOW the launcher grid so users on those
- * platforms can copy-paste into their app manually. This component
- * intentionally does NOT show a QR — the QR belongs in an optional
- * "Show QR" disclosure below the launchers.
+ * <p><b>Why intent:// instead of app-specific schemes.</b>
+ * The vendor schemes ({@code phonepe://}, {@code tez://},
+ * {@code paytmmp://}) trigger each app's "external browser link"
+ * flow. PhonePe caps unverified merchants on that flow at ₹2,000,
+ * so a rent payment above ₹2K opens PhonePe in a mode with no
+ * Pay button — just DISMISS. Users hit a dead end.
  *
- * <p>The {@code amount} field in the upi:// URL is enforced by
- * NPCI's UPI spec, so tapping a launcher opens the app with the
- * receiver, amount, and note pre-filled — the user only confirms.
+ * <p>The Android {@code intent://} URL with {@code scheme=upi} +
+ * {@code package=<app>} tells the OS "open this specific app
+ * with a native UPI intent, not an external browser link". The
+ * target app treats it as a first-class UPI transaction — no cap.
+ * When the named package isn't installed the browser falls back
+ * to {@code S.browser_fallback_url}, a plain {@code upi://…} that
+ * triggers Android's system-wide UPI chooser.
+ *
+ * <p>iOS + desktop don't honour {@code intent://}. Those users
+ * copy the receiver details rendered below the launcher grid.
  */
 export interface UpiAppLaunchersProps {
   /**
-   * Fully-formed {@code upi://pay?...} intent URL (payee VPA, name,
-   * amount, currency, note). Each per-app link is derived by
-   * swapping the scheme.
+   * Fully-formed {@code upi://pay?...} intent URL with payee VPA,
+   * name, amount, currency, and note. Every per-app link is
+   * derived by re-wrapping the query string into an intent:// URL.
    */
   upiUri: string;
 }
 
 /**
- * (Display name, target scheme with trailing '/' if needed, gradient
- * classes, text-color classes). Ordered by usage in India — GPay
- * and PhonePe combined cover ~85% of UPI transactions.
+ * Popular Indian UPI apps by combined market share. Each entry
+ * carries the Android package id (drives the intent:// package=
+ * hint), a display name, and Tailwind classes for the tile.
+ * Colors are the brand-associated palette but rendered as plain
+ * gradients with typography — no logo reproduction.
  */
 const APPS: Array<{
   name: string;
-  scheme: string;
-  gradient: string;
-  textCls: string;
+  androidPackage: string;
+  bgClass: string;
+  textClass: string;
+  accentLetter: string;
 }> = [
   {
     name: "Google Pay",
-    scheme: "tez://upi/",
-    gradient: "from-white to-slate-50 border border-slate-200",
-    textCls: "text-slate-900",
+    androidPackage: "com.google.android.apps.nbu.paisa.user",
+    bgClass:
+      "bg-white border border-slate-200 hover:border-slate-300",
+    textClass: "text-slate-900",
+    accentLetter: "G",
   },
   {
     name: "PhonePe",
-    scheme: "phonepe://",
-    gradient: "from-indigo-600 to-purple-700",
-    textCls: "text-white",
+    androidPackage: "com.phonepe.app",
+    bgClass:
+      "bg-gradient-to-br from-[#5F259F] to-[#3d1670] border border-[#5F259F]/40",
+    textClass: "text-white",
+    accentLetter: "पे",
   },
   {
     name: "Paytm",
-    scheme: "paytmmp://",
-    gradient: "from-sky-500 to-blue-600",
-    textCls: "text-white",
+    androidPackage: "net.one97.paytm",
+    bgClass:
+      "bg-gradient-to-br from-[#00BAF2] to-[#0088c9] border border-[#00BAF2]/40",
+    textClass: "text-white",
+    accentLetter: "₹",
   },
   {
     name: "BHIM",
-    scheme: "bhim://",
-    gradient: "from-orange-500 to-orange-600",
-    textCls: "text-white",
+    androidPackage: "in.org.npci.upiapp",
+    bgClass:
+      "bg-gradient-to-br from-[#F26722] to-[#c94e12] border border-[#F26722]/40",
+    textClass: "text-white",
+    accentLetter: "₹",
+  },
+  {
+    name: "Amazon Pay",
+    androidPackage: "in.amazon.mShop.android.shopping",
+    bgClass:
+      "bg-gradient-to-br from-[#232F3E] to-[#131a24] border border-[#232F3E]/60",
+    textClass: "text-white",
+    accentLetter: "a",
+  },
+  {
+    name: "WhatsApp Pay",
+    androidPackage: "com.whatsapp",
+    bgClass:
+      "bg-gradient-to-br from-[#25D366] to-[#128C7E] border border-[#25D366]/40",
+    textClass: "text-white",
+    accentLetter: "✓",
   },
 ];
 
 /**
- * Convert a {@code upi://pay?...} URL to the same URL under a
- * different app's scheme. Preserves the entire query string so
- * receiver / amount / note stay intact.
+ * Build the Android intent:// URL for a target app. Passes the
+ * UPI query string with scheme=upi so the target app treats the
+ * open as a native UPI intent (no browser-external caps). Falls
+ * back to the plain upi:// URL when the package isn't installed.
  */
-function swapScheme(upiUri: string, targetScheme: string): string {
-  const idx = upiUri.indexOf("upi://");
-  if (idx !== 0) return upiUri;
-  return `${targetScheme}${upiUri.slice("upi://".length)}`;
+function intentUrlFor(upiUri: string, androidPackage: string): string {
+  const qIdx = upiUri.indexOf("?");
+  const query = qIdx >= 0 ? upiUri.slice(qIdx + 1) : "";
+  const fallback = encodeURIComponent(upiUri);
+  return (
+    `intent://pay?${query}` +
+    `#Intent;scheme=upi;package=${androidPackage};` +
+    `S.browser_fallback_url=${fallback};end`
+  );
 }
 
 export function UpiAppLaunchers({ upiUri }: UpiAppLaunchersProps) {
   return (
     <div className="space-y-2">
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
         {APPS.map((app) => {
-          const href = swapScheme(upiUri, app.scheme);
+          const href = intentUrlFor(upiUri, app.androidPackage);
           return (
             <a
               key={app.name}
               href={href}
               className={
-                `group relative overflow-hidden rounded-xl px-3 py-3 text-center ` +
-                `bg-gradient-to-br ${app.gradient} ${app.textCls} ` +
-                `shadow-sm hover:shadow-lift transition-all hover:-translate-y-0.5 ` +
-                `text-sm font-semibold`
+                `group flex items-center gap-2.5 rounded-xl px-3 py-2.5 ` +
+                `${app.bgClass} ${app.textClass} ` +
+                `shadow-sm hover:shadow-lift transition-all hover:-translate-y-0.5`
               }
             >
-              <span className="block leading-tight">{app.name}</span>
-              <span className="block text-[10px] font-normal opacity-80 mt-0.5">
-                Tap to open
+              <span
+                className={
+                  `size-9 shrink-0 grid place-items-center rounded-lg ` +
+                  `bg-white/15 font-display font-bold text-base ` +
+                  `${app.textClass}`
+                }
+                aria-hidden="true"
+              >
+                {app.accentLetter}
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold leading-tight truncate">
+                  {app.name}
+                </span>
+                <span className="block text-[10px] opacity-80 leading-tight mt-0.5">
+                  Tap to pay
+                </span>
               </span>
             </a>
           );
         })}
       </div>
-      {/* Fallback catches any UPI app installed on the device via
-          the OS-wide UPI chooser. Kept full-width below the branded
-          tiles so it never crowds them. */}
-      <a
-        href={upiUri}
-        className={
-          "group flex items-center justify-center gap-2 rounded-xl " +
-          "border border-primary/30 bg-primary/5 text-primary " +
-          "px-3 py-2.5 text-sm font-medium " +
-          "hover:bg-primary hover:text-primary-foreground " +
-          "transition-colors"
-        }
-      >
-        <Smartphone className="size-4" />
-        Any other UPI app
-      </a>
-      <p className="text-[11px] text-muted-foreground text-center">
-        Not on Android? Copy the UPI ID below and paste it in your
-        UPI app manually.
+      <p className="text-[11px] text-muted-foreground text-center flex items-center justify-center gap-1.5">
+        <Smartphone className="size-3" />
+        On iPhone or desktop? Copy the UPI ID below and paste it in
+        your UPI app manually.
       </p>
     </div>
   );

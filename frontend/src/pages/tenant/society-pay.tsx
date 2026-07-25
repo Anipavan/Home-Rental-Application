@@ -9,6 +9,7 @@ import {
   Copy,
   Loader2,
   Lock,
+  QrCode,
   ShieldCheck,
   Smartphone,
 } from "lucide-react";
@@ -469,7 +470,16 @@ function DirectUpiBlock({
         description: extractErrorMessage(err),
       }),
   });
-  const txnNote = `${row.category ?? "Maintenance"} ${row.forMonth} Flat ${row.flatNumber}`;
+  // Message that shows up in the payer app's "Note" field. Kept
+  // as a short natural sentence so it reads professionally in
+  // PhonePe / GPay / Paytm ("Society maintenance for Jul 2026,
+  // Flat 001") instead of a comma-fragment.
+  const categoryLabel = row.category === "MAINTENANCE"
+    ? "Society maintenance"
+    : row.category
+      ? `Society ${row.category.replaceAll("_", " ").toLowerCase()}`
+      : "Society maintenance";
+  const txnNote = `${categoryLabel} for ${row.forMonth}, Flat ${row.flatNumber}`;
   const upiUri =
     `upi://pay?pa=${encodeURIComponent(cfg.upiId ?? "")}` +
     `&pn=${encodeURIComponent(cfg.payeeName ?? cfg.societyDisplayName ?? "Society")}` +
@@ -484,9 +494,32 @@ function DirectUpiBlock({
 
   return (
     <>
-      {/* Primary path — tap-to-open app launchers with amount + payee
-          pre-filled. Same visual treatment as the rent-pay flow. */}
-      <UpiAppLaunchers upiUri={upiUri} />
+      {/* Section 1 — tap-to-open UPI apps. Default OPEN because
+          this is the primary path on a phone. Same visual treatment
+          as the rent-pay flow so the tenant sees consistent UX
+          across both money flows. */}
+      <details
+        open
+        className="rounded-xl border border-primary/30 bg-primary/5 group"
+      >
+        <summary className="cursor-pointer list-none p-3 flex items-center justify-between hover:bg-primary/10 transition-colors rounded-t-xl">
+          <div className="flex items-center gap-2">
+            <Smartphone className="size-4 text-primary" />
+            <span className="text-sm font-semibold">
+              Pay with a UPI app
+            </span>
+          </div>
+          <span className="text-[11px] text-muted-foreground group-open:hidden">
+            Tap to expand
+          </span>
+          <span className="text-[11px] text-muted-foreground hidden group-open:inline">
+            Tap to collapse
+          </span>
+        </summary>
+        <div className="p-3 pt-0">
+          <UpiAppLaunchers upiUri={upiUri} />
+        </div>
+      </details>
 
       <div className="rounded-lg border border-border/60 p-3 space-y-2 text-sm">
         <h5 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -516,18 +549,27 @@ function DirectUpiBlock({
         />
       </div>
 
-      {/* QR demoted behind a disclosure — kept for wall-scanner /
-          other-phone edge cases but no longer leads the flow. */}
-      <details className="rounded-lg border border-border/60 group">
-        <summary className="cursor-pointer list-none p-3 flex items-center justify-between text-sm font-medium hover:bg-secondary/30 transition-colors">
-          <span>Or show a QR code</span>
+      {/* Section 2 — QR code path. Same header + shape as the
+          rent-pay page for consistency. Default CLOSED because
+          the launcher path above is faster on a single phone. */}
+      <details className="rounded-xl border border-border/60 group">
+        <summary className="cursor-pointer list-none p-3 flex items-center justify-between hover:bg-secondary/30 transition-colors rounded-t-xl">
+          <div className="flex items-center gap-2">
+            <QrCode className="size-4 text-muted-foreground" />
+            <span className="text-sm font-semibold">
+              Scan a QR code instead
+            </span>
+          </div>
           <span className="text-[11px] text-muted-foreground group-open:hidden">
             Tap to expand
+          </span>
+          <span className="text-[11px] text-muted-foreground hidden group-open:inline">
+            Tap to collapse
           </span>
         </summary>
         <div className="p-4 pt-0 text-center">
           <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-3">
-            Scan with any UPI app
+            Open any UPI app and scan
           </p>
           <div className="inline-block rounded-xl border-2 border-border/60 bg-white p-4">
             <QRCodeSVG value={upiUri} size={160} includeMargin={false} />
