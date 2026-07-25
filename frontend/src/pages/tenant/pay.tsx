@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -26,6 +26,14 @@ import {
   type VpaState,
 } from "@/components/payment/upi-id-field";
 import { UpiAppLaunchers } from "@/components/payment/upi-app-launchers";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -1060,6 +1068,14 @@ function DirectUpiRentView({
               payeeName={payoutData.accountHolderName}
               payout={payoutData}
               note={txnNote}
+              title={
+                isSociety
+                  ? `Pay ${
+                      societyQ.data?.societyDisplayName ??
+                      "society maintenance"
+                    }`
+                  : undefined
+              }
               onReportPaid={() => reportPaidMut.mutate()}
               reportPending={reportPaidMut.isPending}
             />
@@ -1089,6 +1105,7 @@ function DirectUpiPayCard({
   payeeName,
   payout,
   note,
+  title,
   onReportPaid,
   reportPending,
 }: {
@@ -1097,6 +1114,12 @@ function DirectUpiPayCard({
   payeeName: string;
   payout: import("@/lib/api/bank-accounts").BankAccountPayoutResponse;
   note: string;
+  /** Override for the card header. When absent falls back to the
+   *  default "Pay {payeeName} via UPI" — society-charge callers
+   *  pass a "Pay <society name>" title because payeeName often
+   *  ends up as the maintainer's personal name ("Anirudh") which
+   *  reads as confusing to a resident. */
+  title?: string;
   onReportPaid: () => void;
   reportPending: boolean;
 }) {
@@ -1112,6 +1135,42 @@ function DirectUpiPayCard({
     toast({ title: "UPI ID copied" });
   };
 
+  // ── Auto-confirm on tab return ───────────────────────────────
+  // Direct UPI has no webhook — we only learn the money moved
+  // when the tenant tells us. The best we can do without a PSP
+  // is prompt for confirmation the moment they come back to the
+  // browser after their UPI app closes. The "I've completed the
+  // payment" button below stays as the manual fallback (desktop
+  // users, or anyone who dismisses this dialog).
+  //
+  // Flow: click launcher → setLaunchedAt → tab goes hidden as the
+  // UPI app takes focus → tab becomes visible when the user
+  // returns → we show the confirm dialog. The wentHidden ref
+  // makes sure we only trigger for the round-trip and not for a
+  // random alt-tab away and back.
+  const [launchedAt, setLaunchedAt] = useState<number | null>(null);
+  const [askConfirm, setAskConfirm] = useState(false);
+  const wentHiddenRef = useRef(false);
+
+  useEffect(() => {
+    if (launchedAt === null) return;
+    const onVis = () => {
+      if (document.visibilityState === "hidden") {
+        wentHiddenRef.current = true;
+      } else if (
+        document.visibilityState === "visible" &&
+        wentHiddenRef.current
+      ) {
+        // Small settle delay so a very fast return (accidental app
+        // dismissal without paying) doesn't spam the dialog.
+        wentHiddenRef.current = false;
+        window.setTimeout(() => setAskConfirm(true), 400);
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [launchedAt]);
+
   return (
     <Card>
       <CardContent className="p-6 space-y-5">
@@ -1121,10 +1180,56 @@ function DirectUpiPayCard({
           </div>
           <div>
             <h3 className="font-display text-lg font-semibold">
-              Pay {payeeName ?? "your owner"} via UPI
+              {title ?? `Pay ${payeeName ?? "your owner"} via UPI`}
             </h3>
           </div>
         </div>
+
+        {/* Auto-confirm dialog. Fires when the user returns to the
+            tab after tapping a launcher. Yes → the same tenant-
+            report-paid flow the manual button uses; the mutation's
+            onSuccess handler generates the receipt server-side and
+            redirects to /app. Not yet → just dismiss; the manual
+            button below is still an option. */}
+        <Dialog open={askConfirm} onOpenChange={setAskConfirm}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Did you complete the payment?</DialogTitle>
+              <DialogDescription>
+                If your UPI app confirmed the transfer, tap Yes below
+                and we'll mark this {formatINR(amount)} as paid right
+                away. Only tap Yes if the money actually left your
+                account.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setAskConfirm(false)}
+                disabled={reportPending}
+              >
+                Not yet
+              </Button>
+              <Button
+                variant="gradient"
+                onClick={() => {
+                  setAskConfirm(false);
+                  setLaunchedAt(null);
+                  onReportPaid();
+                }}
+                disabled={reportPending}
+              >
+                {reportPending ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" /> Recording…
+                  </>
+                ) : (
+                  <>Yes, I paid {formatINR(amount)}</>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Section 1 — tap-to-open UPI apps. Default OPEN because
             this is the primary path on a phone. Each button is
@@ -1149,7 +1254,10 @@ function DirectUpiPayCard({
             </span>
           </summary>
           <div className="p-3 pt-0">
-            <UpiAppLaunchers upiUri={upiUri} />
+            <UpiAppLaunchers
+              upiUri={upiUri}
+              onLaunch={() => setLaunchedAt(Date.now())}
+            />
           </div>
         </details>
 

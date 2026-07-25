@@ -28,6 +28,12 @@ export interface UpiAppLaunchersProps {
    * derived by re-wrapping the query string into an intent:// URL.
    */
   upiUri: string;
+  /**
+   * Fires when the user taps a launcher. The parent uses this to
+   * arm the "did you complete the payment?" prompt that fires on
+   * tab-return (see DirectUpiPayCard's visibility-change flow).
+   */
+  onLaunch?: () => void;
 }
 
 /**
@@ -68,30 +74,6 @@ const APPS: Array<{
     textClass: "text-white",
     accentLetter: "₹",
   },
-  {
-    name: "BHIM",
-    androidPackage: "in.org.npci.upiapp",
-    bgClass:
-      "bg-gradient-to-br from-[#F26722] to-[#c94e12] border border-[#F26722]/40",
-    textClass: "text-white",
-    accentLetter: "₹",
-  },
-  {
-    name: "Amazon Pay",
-    androidPackage: "in.amazon.mShop.android.shopping",
-    bgClass:
-      "bg-gradient-to-br from-[#232F3E] to-[#131a24] border border-[#232F3E]/60",
-    textClass: "text-white",
-    accentLetter: "a",
-  },
-  {
-    name: "WhatsApp Pay",
-    androidPackage: "com.whatsapp",
-    bgClass:
-      "bg-gradient-to-br from-[#25D366] to-[#128C7E] border border-[#25D366]/40",
-    textClass: "text-white",
-    accentLetter: "✓",
-  },
 ];
 
 /**
@@ -111,16 +93,20 @@ function intentUrlFor(upiUri: string, androidPackage: string): string {
   );
 }
 
-export function UpiAppLaunchers({ upiUri }: UpiAppLaunchersProps) {
+export function UpiAppLaunchers({
+  upiUri,
+  onLaunch,
+}: UpiAppLaunchersProps) {
   return (
     <div className="space-y-2">
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         {APPS.map((app) => {
           const href = intentUrlFor(upiUri, app.androidPackage);
           return (
             <a
               key={app.name}
               href={href}
+              onClick={onLaunch}
               className={
                 `group flex items-center gap-2.5 rounded-xl px-3 py-2.5 ` +
                 `${app.bgClass} ${app.textClass} ` +
