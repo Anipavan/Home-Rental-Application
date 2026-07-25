@@ -5,10 +5,8 @@ import {
   Building2,
   Calendar,
   CalendarRange,
-  Copy,
   Droplets,
   HandCoins,
-  RefreshCw,
   Sparkles,
   UserPlus,
   Wallet,
@@ -154,54 +152,16 @@ export function OwnerSocietyPage() {
         <SetupWizard buildingId={buildingId} />
       ) : (
         <>
-          {/* Maintainer + Public link side by side on desktop, stacked on mobile */}
-          <div className="grid gap-4 sm:grid-cols-2 mb-6">
+          {/* Public shareable-link card retired — residents now see
+              the same transparency dashboard on their own /app/society
+              page under the "Maintenance details" tab. Backend token
+              + /society/view/:token route stay so previously-shared
+              URLs keep working; only the copy/rotate UI is gone. */}
+          <div className="mb-6">
             <MaintainerCard
               buildingId={buildingId}
               currentMaintainerUserId={configQ.data!.maintainerUserId}
             />
-            <Card>
-              <CardContent className="p-5 h-full flex flex-col">
-                <p className="text-xs uppercase tracking-wider text-muted-foreground font-mono">
-                  Building Expense Viewer
-                </p>
-                <p
-                  className="text-sm font-mono mt-1 truncate"
-                  title={configQ.data!.publicViewUrl}
-                >
-                  {configQ.data!.publicViewUrl}
-                </p>
-                <div className="flex gap-2 mt-3">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      navigator.clipboard.writeText(configQ.data!.publicViewUrl);
-                      toast({ title: "Link copied — share it in the residents' WhatsApp group." });
-                    }}
-                  >
-                    <Copy className="size-4" /> Copy link
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={async () => {
-                      if (
-                        !confirm(
-                          "Rotate the link? The old URL will stop working immediately.",
-                        )
-                      )
-                        return;
-                      await societyApi.regenerateToken(buildingId);
-                      qc.invalidateQueries({ queryKey: ["society", buildingId] });
-                      toast({ title: "Link rotated — share the new one." });
-                    }}
-                  >
-                    <RefreshCw className="size-4" /> Rotate
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
           </div>
 
           {/* Common bank account */}

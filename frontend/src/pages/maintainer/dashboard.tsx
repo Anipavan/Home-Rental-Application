@@ -497,14 +497,6 @@ export function MaintainerFlatsPage() {
         <SocietyBankPanel buildingId={buildingId} config={configQ.data} />
       )}
 
-      {/* Shareable read-only ledger URL — maintainer paste-shares this
-          into the residents' WhatsApp group so anyone with the link
-          gets the public expense view without registering. Same URL
-          the owner sees on their society page. */}
-      {configQ.data?.publicViewUrl && (
-        <BuildingExpenseViewerShare url={configQ.data.publicViewUrl} />
-      )}
-
       {/* Notice board (V17) — write access. Every resident of the
           building sees the same list on their /app/society page. */}
       {buildingId && (
@@ -1593,50 +1585,3 @@ function SetAmountDialog({
   );
 }
 
-/**
- * Shareable read-only ledger URL panel for the maintainer dashboard.
- * Mirrors the same surface the owner has on /owner/buildings/:id/society
- * — same underlying public_view_token, same Copy-link button. The
- * Rotate button is deliberately NOT exposed here; only the owner
- * should be able to invalidate the URL (rotation makes the old link
- * stop working for everyone, and that's an owner-level governance
- * call).
- */
-function BuildingExpenseViewerShare({ url }: { url: string }) {
-  const { toast } = useToast();
-  return (
-    <Card className="mb-6">
-      <CardContent className="p-5">
-        <p className="text-xs uppercase tracking-wider text-muted-foreground font-mono">
-          Building Expense Viewer
-        </p>
-        <p
-          className="text-sm font-mono mt-1 truncate"
-          title={url}
-        >
-          {url}
-        </p>
-        <p className="text-[11px] text-muted-foreground mt-1.5">
-          Share this link with residents. Anyone with the URL sees a
-          read-only ledger of expenses and the fund balance — no login
-          required.
-        </p>
-        <div className="mt-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              navigator.clipboard.writeText(url);
-              toast({
-                title: "Link copied",
-                description: "Paste it into the residents' WhatsApp group.",
-              });
-            }}
-          >
-            Copy link
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
