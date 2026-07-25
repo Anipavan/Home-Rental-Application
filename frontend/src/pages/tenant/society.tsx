@@ -684,12 +684,18 @@ function MyMonthlySpendChart({
       ) : (
         <div className="h-56">
           <ResponsiveContainer width="100%" height="100%">
+            {/* No maxBarSize — Recharts auto-fills the category
+                slot. Combined with barGap=0 that makes sibling
+                bars sit truly flush (no whitespace between the
+                green Maintenance bar and the blue Water-bill bar
+                within a month). barCategoryGap="35%" keeps each
+                month's cluster narrow enough that a multi-month
+                view still reads as distinct groups. */}
             <BarChart
               data={chartData}
               margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
-              maxBarSize={36}
               barGap={0}
-              barCategoryGap="20%"
+              barCategoryGap="35%"
             >
               <CartesianGrid
                 strokeDasharray="3 3"

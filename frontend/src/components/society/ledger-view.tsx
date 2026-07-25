@@ -740,18 +740,17 @@ function CategoryBarChart({
   return (
     <div className="h-80 w-full">
       <ResponsiveContainer width="100%" height="100%">
-        {/* maxBarSize caps bar thickness so a single-month view
-            doesn't render one giant bar — the previous 50%+ chart-
-            width bar looked more like a block than a data point.
-            barGap=0 makes clustered bars within a month sit flush
-            against each other (no whitespace between siblings);
-            barCategoryGap keeps the gap BETWEEN months intact. */}
+        {/* No maxBarSize — Recharts auto-fills the category slot.
+            Combined with barGap=0 that makes sibling category bars
+            sit truly flush within a month (no whitespace between
+            e.g. Maintenance and Water bill). barCategoryGap="35%"
+            keeps each month cluster narrow enough that multi-month
+            views still read as distinct groups. */}
         <BarChart
           data={data}
           margin={{ top: 8, right: 8, left: 8, bottom: 0 }}
-          maxBarSize={56}
           barGap={0}
-          barCategoryGap="20%"
+          barCategoryGap="35%"
         >
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
           <XAxis
