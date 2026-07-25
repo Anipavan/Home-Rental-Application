@@ -688,6 +688,8 @@ function MyMonthlySpendChart({
               data={chartData}
               margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
               maxBarSize={36}
+              barGap={0}
+              barCategoryGap="20%"
             >
               <CartesianGrid
                 strokeDasharray="3 3"
