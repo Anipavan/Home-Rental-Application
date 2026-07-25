@@ -45,4 +45,16 @@ public class PaymentClientFallback implements PaymentClient {
         throw new IllegalStateException(
                 "Couldn't reach payment service to set up the Razorpay flow. Please retry in a moment.");
     }
+
+    @Override
+    public void revertToDue(String id, RevertPaymentBody body) {
+        // Fail loud too. The maintainer flip is a paid-money reversal
+        // and we shouldn't silently continue as if it succeeded when
+        // payment-service is down — the collection row would end up
+        // in an inconsistent state (row=DUE but Payment=PAID).
+        log.warn("payment-service unavailable — couldn't revert paymentId={} reason={}",
+                id, body == null ? "(none)" : body.reason());
+        throw new IllegalStateException(
+                "Couldn't reach payment service to revert the payment. Please retry in a moment.");
+    }
 }

@@ -1044,29 +1044,34 @@ function PaidToggle({
 
   const onClick = async () => {
     if (busy) return;
-    const target: CollectionStatus = allPaid ? "DUE" : "PAID";
+    // YES → NO is a destructive action (revokes the tenant's Payment,
+    // clears their uploaded proof, resets the collection). Confirm
+    // before firing so an accidental click doesn't wipe a legitimate
+    // settlement. NO → YES is a benign "I saw cash" mark — no confirm
+    // needed there.
+    if (allPaid) {
+      const ok = window.confirm(
+        "Marking this flat unpaid will revoke the linked payment: the tenant's proof screenshot is cleared and the Payment record is reset to DUE. This can't be undone from here. Continue?",
+      );
+      if (!ok) return;
+    }
     setBusy(true);
     try {
-      // One upsert per row. We don't have a bulk endpoint, but in
-      // practice a flat has 1-3 rows per month so the round-trip
-      // cost is small.
-      for (const r of rows) {
-        if (!r.category) continue; // can't upsert without a category
-        await societyApi.upsertFlatCollection(buildingId, flatId, {
-          forMonth: month,
-          amountDue: r.monthAmount,
-          status: target,
-          category: r.category,
-          notes: r.notes ?? "",
-          paidOn: target === "PAID" ? new Date().toISOString().slice(0, 10) : undefined,
-          amountPaid: target === "PAID" ? r.monthAmount : undefined,
-          paidVia: target === "PAID" ? r.paidVia ?? "CASH" : undefined,
-        });
-      }
+      // Atomic backend flip. For YES → NO the backend also calls
+      // payment-service to revert every linked Payment (clears the
+      // proof URL + status) BEFORE resetting the collection rows,
+      // so we never end up with row=DUE while Payment=PAID.
+      await societyApi.toggleFlatPaid(buildingId, flatId, month, !allPaid);
+      // Invalidate every cache that surfaces PAID state — the row list,
+      // the ledger, and any per-payment cache the proof preview reads.
       qc.invalidateQueries({ queryKey: ["society-flats", buildingId] });
       qc.invalidateQueries({ queryKey: ["society-ledger", buildingId] });
+      qc.invalidateQueries({ queryKey: ["payment"] });
+      qc.invalidateQueries({ queryKey: ["payment-proof-blob"] });
       toast({
-        title: target === "PAID" ? "Marked as paid." : "Marked as due.",
+        title: allPaid
+          ? "Marked as due — payment revoked."
+          : "Marked as paid.",
       });
     } catch (err) {
       toast({

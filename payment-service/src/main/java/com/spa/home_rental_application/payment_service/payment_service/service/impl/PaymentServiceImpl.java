@@ -528,12 +528,16 @@ public class PaymentServiceImpl implements PaymentService {
         // Wipe payment-completion fields. Status back to PENDING so
         // the row shows as unpaid + still-collectable; the daily
         // overdue scheduler will bump it to OVERDUE again if past
-        // due_date on its next pass.
+        // due_date on its next pass. paymentProofUrl also cleared —
+        // a reverted payment's screenshot is stale evidence and
+        // shouldn't linger to be viewed on the maintainer dashboard
+        // as if it belonged to a subsequent successful payment.
         p.setStatus(PaymentStatus.PENDING);
         p.setPaymentDate(null);
         p.setTransactionId(null);
         p.setGatewayName(null);
         p.setGatewayOrderId(null);
+        p.setPaymentProofUrl(null);
         paymentRepo.save(p);
 
         audit.publishSuccess("payment.reverted-to-due",

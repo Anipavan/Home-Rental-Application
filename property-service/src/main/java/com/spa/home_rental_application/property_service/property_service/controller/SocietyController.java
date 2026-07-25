@@ -251,6 +251,21 @@ public class SocietyController {
         return ResponseEntity.ok(service.upsertFlatCollection(buildingId, flatId, body));
     }
 
+    @Operation(summary = "Maintainer / owner: atomically flip a flat's month PAID⇄DUE. YES→NO revokes the linked Payment (proof cleared, status reset) so a subsequent pay attempt gets a clean slate.")
+    @PostMapping(value = "/{buildingId}/flats/{flatId}/paid-toggle",
+            consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<List<FlatMaintenanceRowResponse>> togglePaidForFlatMonth(
+            @PathVariable String buildingId,
+            @PathVariable String flatId,
+            @Valid @RequestBody
+            com.spa.home_rental_application.property_service.property_service.DTO.Request
+                    .FlatPaidToggleRequest body) {
+        log.info("POST /society/{}/flats/{}/paid-toggle month={} paid={}",
+                buildingId, flatId, body.month(), body.paid());
+        return ResponseEntity.ok(
+                service.togglePaidForFlatMonth(buildingId, flatId, body.month(), body.paid()));
+    }
+
     @Operation(summary = "Tenant: every charge against my own flat for the month. Drives the Pay-Now surface on /app/society.")
     @GetMapping("/{buildingId}/my-bills")
     public ResponseEntity<List<FlatMaintenanceRowResponse>> myBills(

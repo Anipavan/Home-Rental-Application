@@ -1058,6 +1058,105 @@ public class SocietyServiceImpl implements SocietyService {
 
     @Override
     @Transactional
+    public List<FlatMaintenanceRowResponse> togglePaidForFlatMonth(
+            String buildingId, String flatId, String month, boolean paid) {
+        SocietyConfig cfg = requireConfig(buildingId);
+        Building b = requireBuilding(buildingId);
+        requireOwnerOrMaintainerOrAdmin(cfg, b);
+
+        // Sanity: the flat belongs to this building.
+        Flat flat = flatRepo.findById(flatId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Flat not found: " + flatId));
+        if (!buildingId.equals(flat.getBuildingId())) {
+            throw new IllegalArgumentException(
+                    "Flat " + flatId + " does not belong to building " + buildingId);
+        }
+
+        String me = CallerSecurity.getCurrentAuthUserId().orElse(cfg.getMaintainerUserId());
+        LocalDateTime now = LocalDateTime.now();
+        List<MaintenanceCollection> rows =
+                collectionRepo.findByFlatIdAndForMonthOrderByCategory(flatId, month);
+
+        if (paid) {
+            // NO → YES: maintainer's manual "cash in hand" mark.
+            // Leave any linked Payment alone — this path doesn't
+            // touch payment-service. Applies to every real charge
+            // (skip WAIVED rows so we don't accidentally un-waive).
+            for (MaintenanceCollection r : rows) {
+                if (r.getStatus() == CollectionStatus.WAIVED) continue;
+                r.setStatus(CollectionStatus.PAID);
+                r.setPaidOn(LocalDate.now());
+                r.setAmountPaid(r.getAmountDue());
+                if (r.getPaidVia() == null || r.getPaidVia().isBlank()) {
+                    r.setPaidVia("CASH");
+                }
+                r.setMarkedByUserId(me);
+                r.setUpdatedAt(now);
+            }
+            collectionRepo.saveAll(rows);
+        } else {
+            // YES → NO: revoke every linked Payment first. Fail loud
+            // if any revert fails so we don't end up with the
+            // collection = DUE but Payment still = PAID.
+            java.util.Set<String> uniquePaymentIds = new java.util.HashSet<>();
+            for (MaintenanceCollection r : rows) {
+                if (r.getPaymentId() != null && !r.getPaymentId().isBlank()) {
+                    uniquePaymentIds.add(r.getPaymentId());
+                }
+            }
+            for (String pid : uniquePaymentIds) {
+                try {
+                    paymentClient.revertToDue(pid, new PaymentClient.RevertPaymentBody(
+                            "Maintainer flipped PAID to DUE on Flat charges table"));
+                } catch (Exception ex) {
+                    log.warn("Revert Payment {} failed while flipping flat={} month={} to DUE",
+                            pid, flatId, month, ex);
+                    // If the Payment was already PENDING (e.g. someone else
+                    // reverted concurrently), payment-service throws
+                    // IllegalStateException. Treat as best-effort success —
+                    // the row-reset below still runs.
+                    if (!(ex.getMessage() != null
+                            && ex.getMessage().toLowerCase().contains("only paid"))) {
+                        throw new IllegalStateException(
+                                "Couldn't revert linked payment " + pid
+                                        + ": " + ex.getMessage(), ex);
+                    }
+                }
+            }
+            // Reset every collection row: DUE, clear paidOn/paidVia/
+            // amountPaid, and CLEAR paymentId so a subsequent pay
+            // attempt mints a fresh Payment instead of trying to
+            // reuse the now-reverted one.
+            for (MaintenanceCollection r : rows) {
+                if (r.getStatus() == CollectionStatus.WAIVED) continue;
+                r.setStatus(CollectionStatus.DUE);
+                r.setPaidOn(null);
+                r.setPaidVia(null);
+                r.setAmountPaid(null);
+                r.setPaymentId(null);
+                r.setMarkedByUserId(me);
+                r.setUpdatedAt(now);
+            }
+            collectionRepo.saveAll(rows);
+        }
+
+        log.info("Flat paid-toggle flat={} month={} paid={} rows={} paymentsReverted={}",
+                flatId, month, paid, rows.size(),
+                paid ? 0 : rows.stream()
+                        .map(MaintenanceCollection::getPaymentId)
+                        .filter(java.util.Objects::nonNull)
+                        .distinct().count());
+
+        // Return the fresh row list so the frontend can update its
+        // cache in place without a follow-up fetch.
+        return listFlatsForMonth(buildingId, month).stream()
+                .filter(r -> flatId.equals(r.flatId()))
+                .toList();
+    }
+
+    @Override
+    @Transactional
     public FlatMaintenanceRowResponse upsertFlatCollection(
             String buildingId, String flatId, UpsertFlatCollectionRequest req) {
         SocietyConfig cfg = requireConfig(buildingId);

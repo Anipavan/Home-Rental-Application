@@ -184,6 +184,34 @@ export const societyApi = {
       .then((r) => r.data),
 
   /**
+   * Atomically flip a flat's month PAID⇄DUE. Powers the Yes/No
+   * pill on the maintainer's Flat charges table.
+   *
+   * <p>{@code paid=true} (NO → YES) marks every real charge PAID
+   * with paidVia=CASH — a manual "cash in hand" assertion; no
+   * payment-service transaction happens.
+   *
+   * <p>{@code paid=false} (YES → NO) is the actual revocation:
+   * the backend collects every linked Payment for those rows,
+   * calls payment-service's revert-to-due for each (which clears
+   * the proof screenshot + status), then resets each collection
+   * row to DUE with cleared paidOn / paidVia / amountPaid /
+   * paymentId so a subsequent pay attempt starts fresh.
+   */
+  toggleFlatPaid: (
+    buildingId: string,
+    flatId: string,
+    month: string,
+    paid: boolean,
+  ) =>
+    api
+      .post<FlatMaintenanceRow[]>(
+        `/society/${buildingId}/flats/${flatId}/paid-toggle`,
+        { month, paid },
+      )
+      .then((r) => r.data),
+
+  /**
    * Tenant-side: every charge against the caller's own flat for the
    * given month. Caller must be a tenant of a flat in the building.
    * Drives the Pay-Now surface on /app/society.

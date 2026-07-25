@@ -63,6 +63,21 @@ public interface PaymentClient {
     SocietyChargePaymentResponse getPayment(@PathVariable("id") String id);
 
     /**
+     * Revert a wrongly-marked-PAID Payment back to DUE. Property-
+     * service calls this when the maintainer flips PAID → NO on
+     * the Flat charges table — the collection row's linked Payment
+     * needs to lose its PAID stamp + proof URL so a subsequent
+     * pay attempt gets a clean slate.
+     */
+    @PostMapping("/payments/{id}/revert-to-due")
+    void revertToDue(
+            @PathVariable("id") String id,
+            @RequestBody RevertPaymentBody body);
+
+    /** Body mirror of payment-service's RevertPaymentRequest. */
+    record RevertPaymentBody(String reason) {}
+
+    /**
      * Body mirror of payment-service's {@code CreatePaymentRequest}.
      * Inlined as a nested record so this client module stays
      * dependency-free of payment-service's DTOs. {@code sourceType}

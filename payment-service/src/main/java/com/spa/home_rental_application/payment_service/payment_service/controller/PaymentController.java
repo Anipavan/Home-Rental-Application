@@ -299,14 +299,22 @@ public class PaymentController {
      * optional but a reason is strongly recommended — the audit
      * event carries it verbatim for dispute records.
      */
-    @Operation(summary = "Owner reverts a wrongly-marked-PAID payment back to DUE (owner of this payment or admin)")
+    @Operation(summary = "Owner or maintainer reverts a wrongly-marked-PAID payment back to DUE")
     @PostMapping(value = "/{id}/revert-to-due")
     public ResponseEntity<PaymentResponse> revertToDue(
             @PathVariable String id,
             @RequestBody(required = false)
             com.spa.home_rental_application.payment_service.payment_service.DTO.Request.RevertPaymentRequest body) {
         PaymentResponse p = paymentService.getPaymentById(id);
-        CallerSecurity.requireSelfOrAdmin(p.ownerId());
+        // Maintainer bypass — the flat's building maintainer needs
+        // to flip PAID → DUE from the Flat charges table (they know
+        // the money didn't actually arrive even when the tenant
+        // hit "Submit payment confirmation"). Role-level check;
+        // paymentIds are opaque UUIDs handed only via property-
+        // service's authz-gated Flat charges response.
+        if (!CallerSecurity.isMaintainer()) {
+            CallerSecurity.requireSelfOrAdmin(p.ownerId());
+        }
         String reason = body != null ? body.reason() : null;
         return ResponseEntity.ok(paymentService.revertPaymentToDue(id, reason));
     }

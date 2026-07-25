@@ -157,6 +157,31 @@ public interface SocietyService {
             String buildingId, String flatId, UpsertFlatCollectionRequest req);
 
     /**
+     * Atomically flip a flat's month PAID⇄DUE from the maintainer
+     * dashboard's Yes/No toggle.
+     *
+     * <p><b>paid = true (NO → YES)</b>: mark every real charge for
+     * (flat, month) as PAID with paidOn=today, paidVia=CASH.
+     * Doesn't touch any linked Payment rows — this is a manual
+     * "I saw the cash" assertion by the maintainer, not a
+     * payment-service transaction.
+     *
+     * <p><b>paid = false (YES → NO)</b>: revoke every distinct
+     * linked Payment via {@code PaymentClient.revertToDue} (clears
+     * paymentProofUrl + status), then reset every collection row
+     * to DUE with cleared paidOn/paidVia/amountPaid AND cleared
+     * paymentId so a subsequent pay attempt starts a fresh flow.
+     * A Payment revert failure short-circuits the whole flip so
+     * the collection never ends up in an inconsistent state.
+     *
+     * @return the fresh row list for (buildingId, flat, month)
+     *         so the frontend can update its cache without a
+     *         second fetch.
+     */
+    java.util.List<FlatMaintenanceRowResponse> togglePaidForFlatMonth(
+            String buildingId, String flatId, String month, boolean paid);
+
+    /**
      * Every charge against the caller's own flat for the given month.
      * Caller must be a tenant of a flat in the building (the standard
      * society-read check). Returns rows for every category the
