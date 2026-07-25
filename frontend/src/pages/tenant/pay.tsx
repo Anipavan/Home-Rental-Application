@@ -1246,10 +1246,9 @@ function DirectUpiPayCard({
             <DialogHeader>
               <DialogTitle>Did you complete the payment?</DialogTitle>
               <DialogDescription>
-                If your UPI app confirmed the transfer, tap Yes below
-                and we'll mark this {formatINR(amount)} as paid right
-                away. Only tap Yes if the money actually left your
-                account.
+                {proofFile
+                  ? `We'll upload your screenshot and mark this ${formatINR(amount)} as paid. Only tap Yes if the money actually left your account.`
+                  : `Attach the ${formatINR(amount)} payment screenshot below (PhonePe / GPay / Paytm success screen) so your maintainer can verify the transfer against their bank statement.`}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter className="gap-2">
@@ -1265,9 +1264,18 @@ function DirectUpiPayCard({
                 onClick={() => {
                   setAskConfirm(false);
                   setLaunchedAt(null);
-                  void confirmPayment();
+                  if (proofFile) {
+                    void confirmPayment();
+                  }
+                  // else: dialog closes, user attaches proof in the
+                  // form below then hits Submit.
                 }}
-                disabled={busy}
+                disabled={busy || !proofFile}
+                title={
+                  !proofFile
+                    ? "Attach your screenshot below to enable this"
+                    : undefined
+                }
               >
                 {busy ? (
                   <>
@@ -1276,8 +1284,10 @@ function DirectUpiPayCard({
                       ? "Uploading…"
                       : "Recording…"}
                   </>
+                ) : proofFile ? (
+                  <>Yes, submit confirmation</>
                 ) : (
-                  <>Yes, I paid {formatINR(amount)}</>
+                  <>Attach screenshot first</>
                 )}
               </Button>
             </DialogFooter>
@@ -1415,8 +1425,8 @@ function DirectUpiPayCard({
           <div>
             <p className="text-xs font-semibold text-foreground">
               Attach payment screenshot{" "}
-              <span className="font-normal text-muted-foreground">
-                (recommended)
+              <span className="font-normal text-destructive">
+                (required)
               </span>
             </p>
             <p className="text-[11px] text-muted-foreground mt-0.5 mb-2">
@@ -1449,7 +1459,12 @@ function DirectUpiPayCard({
             onClick={() => {
               void confirmPayment();
             }}
-            disabled={busy}
+            disabled={busy || !proofFile}
+            title={
+              !proofFile
+                ? "Attach your payment screenshot to enable this button"
+                : undefined
+            }
           >
             {busy ? (
               <>
@@ -1466,7 +1481,9 @@ function DirectUpiPayCard({
             )}
           </Button>
           <p className="text-[11px] text-muted-foreground text-center">
-            Only tap after the money has actually left your account.
+            {proofFile
+              ? "Only tap after the money has actually left your account."
+              : "Attach the payment screenshot above to enable the button."}
           </p>
         </div>
       </CardContent>
@@ -1552,8 +1569,8 @@ function FallbackBankOnly({
           <div>
             <p className="text-xs font-semibold text-foreground">
               Attach transfer screenshot{" "}
-              <span className="font-normal text-muted-foreground">
-                (recommended)
+              <span className="font-normal text-destructive">
+                (required)
               </span>
             </p>
             <p className="text-[11px] text-muted-foreground mt-0.5 mb-2">
@@ -1585,7 +1602,12 @@ function FallbackBankOnly({
             onClick={() => {
               void confirm();
             }}
-            disabled={busy}
+            disabled={busy || !proofFile}
+            title={
+              !proofFile
+                ? "Attach your transfer screenshot to enable this button"
+                : undefined
+            }
           >
             {busy ? (
               <>
@@ -1602,7 +1624,9 @@ function FallbackBankOnly({
             )}
           </Button>
           <p className="text-[11px] text-muted-foreground text-center">
-            Only tap after the {formatINR(amount)} has actually left your account.
+            {proofFile
+              ? `Only tap after the ${formatINR(amount)} has actually left your account.`
+              : "Attach the transfer screenshot above to enable the button."}
           </p>
         </div>
       </CardContent>

@@ -24,6 +24,16 @@ RUN addgroup -S app && adduser -S app -G app
 WORKDIR /app
 COPY --from=build /workspace/payment-service/target/*.jar app.jar
 
+# Payment-proof screenshot storage. Compose mounts the
+# `payment-proofs` named volume at /data/payment-proofs; without
+# this chown the mount point stays root-owned and the app user
+# gets EACCES on the first Files.write, which bubbles up as HTTP
+# 500 on POST /payments/{id}/upload-proof. Same pattern
+# maintenance-service uses for its image uploads.
+ENV APP_PAYMENT_PROOF_DIR=/data/payment-proofs
+RUN mkdir -p /data/payment-proofs && chown -R app:app /data
+VOLUME ["/data/payment-proofs"]
+
 USER app
 EXPOSE 8084
 HEALTHCHECK --interval=30s --timeout=5s --start-period=150s CMD wget -qO- http://localhost:8084/actuator/health/liveness || exit 1
