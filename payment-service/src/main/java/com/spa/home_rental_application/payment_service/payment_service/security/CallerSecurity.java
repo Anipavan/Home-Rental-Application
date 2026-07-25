@@ -51,6 +51,30 @@ public final class CallerSecurity {
     }
 
     /**
+     * True when the current caller has the MAINTAINER authority.
+     * Used by payment-service's read-side endpoints so a building
+     * maintainer can view payments made against flats they manage
+     * (needed to render the payment-proof preview on the flat-
+     * charges table). This is a role-level check, not a per-payment
+     * ownership check — a MAINTAINER can look up any paymentId they
+     * know. Payment ids are UUIDs so information disclosure risk is
+     * bounded to what property-service's Flat charges response has
+     * already handed the maintainer.
+     */
+    public static boolean isMaintainer() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null) return false;
+        for (GrantedAuthority ga : auth.getAuthorities()) {
+            String a = ga.getAuthority();
+            if ("MAINTAINER".equalsIgnoreCase(a)
+                    || "ROLE_MAINTAINER".equalsIgnoreCase(a)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Throws {@link ForbiddenException} unless the caller is the tenant,
      * the owner, or an admin. Used to gate per-payment endpoints — a
      * payment is visible to (a) its tenant, (b) its owner (= building's

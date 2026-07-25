@@ -129,11 +129,17 @@ public class PaymentController {
         return ResponseEntity.ok(paymentService.getAllPayments(pageable));
     }
 
-    @Operation(summary = "Get a payment by id (tenant/owner/admin)")
+    @Operation(summary = "Get a payment by id (tenant/owner/maintainer/admin)")
     @GetMapping("/{id}")
     public ResponseEntity<PaymentResponse> getById(@PathVariable String id) {
         PaymentResponse p = paymentService.getPaymentById(id);
-        CallerSecurity.requireTenantOwnerOrAdmin(p.tenantId(), p.ownerId());
+        // Maintainers need this to render the payment-proof preview
+        // on their Flat charges table — role-level bypass is enough
+        // because paymentIds are UUIDs handed to the maintainer via
+        // property-service's own authz-gated Flat charges response.
+        if (!CallerSecurity.isMaintainer()) {
+            CallerSecurity.requireTenantOwnerOrAdmin(p.tenantId(), p.ownerId());
+        }
         return ResponseEntity.ok(p);
     }
 
@@ -263,11 +269,18 @@ public class PaymentController {
      * matches the /invoice + /receipt access model. Returns 404 when
      * no proof has been uploaded.
      */
-    @Operation(summary = "Download the payment-proof screenshot (tenant/owner/admin)")
+    @Operation(summary = "Download the payment-proof screenshot (tenant/owner/maintainer/admin)")
     @GetMapping("/{id}/proof")
     public ResponseEntity<Resource> proof(@PathVariable String id) throws IOException {
         PaymentResponse p = paymentService.getPaymentById(id);
-        CallerSecurity.requireTenantOwnerOrAdmin(p.tenantId(), p.ownerId());
+        // Same bypass as getById — the maintainer needs to view
+        // tenant-uploaded proofs against payments in flats they
+        // manage. Not scoped to a specific building because
+        // paymentIds are UUIDs handed via property-service's own
+        // authz-gated Flat charges response.
+        if (!CallerSecurity.isMaintainer()) {
+            CallerSecurity.requireTenantOwnerOrAdmin(p.tenantId(), p.ownerId());
+        }
         PaymentService.ProofDownload dl = paymentService.getPaymentProof(id);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_TYPE, dl.contentType())
