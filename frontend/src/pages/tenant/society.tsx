@@ -5,6 +5,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Legend,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -429,6 +430,34 @@ function MonthFilter({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-56 max-h-80 overflow-y-auto p-1">
+        {/* Quick-action row — "All" fills the picker with every
+            month in the options list; "This month only" resets it
+            back to a single-month view. Sits above the per-month
+            list so residents scanning for it see it first. */}
+        <div className="flex gap-1 px-1 pb-1 border-b border-border/60 mb-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="flex-1 text-xs h-7"
+            onClick={() => onChange(options)}
+            disabled={selected.length === options.length}
+          >
+            All months
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="flex-1 text-xs h-7"
+            onClick={() => onChange([currentMonth()])}
+            disabled={
+              selected.length === 1 && selected[0] === currentMonth()
+            }
+          >
+            This month
+          </Button>
+        </div>
         {options.map((m) => {
           const isSelected = selected.includes(m);
           return (
@@ -542,14 +571,29 @@ function ChargeRow({
  * <p>Hides itself when the six-month window carries zero paid
  * amounts — a brand-new resident shouldn't see an empty axis.
  */
+/**
+ * Category palette for the personal payment-history chart. Matches
+ * the FLAT_CATEGORY_COLOR map in ledger-view.tsx so the tenant sees
+ * the same colour for "Water bill" on both the Your maintenance
+ * chart and the Details tab chart — no re-learning required.
+ */
+const CATEGORY_COLORS: Record<FlatChargeCategory, string> = {
+  MAINTENANCE: "#10b981",
+  WATER_BILL: "#0891b2",
+  GAS_BILL: "#facc15",
+  ELECTRICITY: "#f97316",
+  COMMON_AREA_SHARE: "#84cc16",
+  OTHER: "#a3a3a3",
+};
+
 function MyMonthlySpendChart({
   buildingId,
   selectedMonths,
 }: {
   buildingId: string;
-  /** Months the picker has selected, newest first. One bar per
-   *  month on the X-axis, rendered oldest → newest so the axis
-   *  reads left-to-right. */
+  /** Months the picker has selected. Chart data is re-ordered
+   *  oldest → newest internally so the X-axis always reads
+   *  left-to-right regardless of picker order. */
   selectedMonths: string[];
 }) {
   const queries = useQueries({
@@ -562,8 +606,10 @@ function MyMonthlySpendChart({
 
   const isLoading = queries.some((q) => q.isLoading);
 
-  // Chart data oldest → newest so the X-axis reads left-to-right,
-  // regardless of which order the picker holds the months in.
+  // Chart data — one row per month, one numeric column per category.
+  // Recharts renders adjacent <Bar> components as clustered groups
+  // when they share no stackId, so each category becomes its own
+  // side-by-side bar within the month tick.
   const chartData = useMemo(() => {
     const orderedOldFirst = [...selectedMonths].sort((a, b) =>
       a.localeCompare(b),
@@ -571,14 +617,39 @@ function MyMonthlySpendChart({
     return orderedOldFirst.map((m) => {
       const idx = selectedMonths.indexOf(m);
       const rows = queries[idx]?.data ?? [];
-      const paid = rows
-        .filter((r) => r.status === "PAID")
-        .reduce((s, r) => s + r.monthAmount, 0);
-      return { month: fmtMonth(m), paid };
+      const row: Record<string, number | string> = { month: fmtMonth(m) };
+      for (const cat of Object.keys(CATEGORY_COLORS) as FlatChargeCategory[]) {
+        row[cat] = 0;
+      }
+      for (const r of rows) {
+        if (r.status !== "PAID") continue;
+        const cat = r.category ?? "OTHER";
+        row[cat] = (Number(row[cat]) || 0) + r.monthAmount;
+      }
+      return row;
     });
   }, [selectedMonths, queries]);
 
-  const totalPaid = chartData.reduce((s, r) => s + r.paid, 0);
+  // Only render categories with a positive value somewhere in the
+  // window — keeps the legend tight (no "Gas bill" entry for a
+  // tenant who never gets a gas bill).
+  const liveCategories = useMemo(
+    () =>
+      (Object.keys(CATEGORY_COLORS) as FlatChargeCategory[]).filter((c) =>
+        chartData.some((d) => Number(d[c] ?? 0) > 0),
+      ),
+    [chartData],
+  );
+
+  const totalPaid = chartData.reduce(
+    (s, r) =>
+      s +
+      (Object.keys(CATEGORY_COLORS) as FlatChargeCategory[]).reduce(
+        (ss, c) => ss + (Number(r[c]) || 0),
+        0,
+      ),
+    0,
+  );
   const hasData = totalPaid > 0;
 
   const windowLabel =
@@ -601,7 +672,7 @@ function MyMonthlySpendChart({
       defaultOpen
     >
       {isLoading ? (
-        <Skeleton className="h-40" />
+        <Skeleton className="h-52" />
       ) : !hasData ? (
         /* Matches the Maintenance details tab's empty-state copy so
          * the two charts feel like one system. The card stays
@@ -611,12 +682,12 @@ function MyMonthlySpendChart({
           No payments settled for the selected month(s) yet.
         </p>
       ) : (
-        <div className="h-40">
+        <div className="h-56">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart
               data={chartData}
               margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
-              maxBarSize={44}
+              maxBarSize={36}
             >
               <CartesianGrid
                 strokeDasharray="3 3"
@@ -640,14 +711,35 @@ function MyMonthlySpendChart({
               />
               <Tooltip
                 cursor={false}
-                formatter={(v: number) => [formatINR(v), "Paid"]}
+                formatter={(v: number, name: string) => [
+                  formatINR(v),
+                  CHARGE_LABELS[name as FlatChargeCategory] ?? name,
+                ]}
                 contentStyle={{
                   borderRadius: 10,
                   border: "1px solid hsl(var(--border))",
                   fontSize: 12,
                 }}
               />
-              <Bar dataKey="paid" fill="#10b981" radius={[6, 6, 0, 0]} />
+              <Legend
+                verticalAlign="bottom"
+                height={36}
+                wrapperStyle={{ fontSize: 11 }}
+                formatter={(name) =>
+                  CHARGE_LABELS[name as FlatChargeCategory] ?? String(name)
+                }
+              />
+              {/* One <Bar> per live category, no stackId, so Recharts
+                * groups them side-by-side per month (clustered). */}
+              {liveCategories.map((cat) => (
+                <Bar
+                  key={cat}
+                  dataKey={cat}
+                  name={cat}
+                  fill={CATEGORY_COLORS[cat]}
+                  radius={[4, 4, 0, 0]}
+                />
+              ))}
             </BarChart>
           </ResponsiveContainer>
         </div>

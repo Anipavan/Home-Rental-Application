@@ -786,14 +786,18 @@ function CategoryBarChart({
             wrapperStyle={{ fontSize: 11 }}
             formatter={(name) => chartLabelFor(name as string)}
           />
+          {/* No stackId anywhere — every category becomes its own
+              side-by-side bar within the month tick (clustered).
+              Easier to compare category-to-category at a glance
+              than the earlier stacked layout, which packed
+              everything into one column per month. */}
           {liveCommon.map((cat) => (
             <Bar
               key={cat}
               dataKey={cat}
               name={cat}
               fill={CATEGORY_COLOR[cat]}
-              stackId="common"
-              radius={[6, 6, 0, 0]}
+              radius={[4, 4, 0, 0]}
             />
           ))}
           {!hasFlatFilter
@@ -803,8 +807,7 @@ function CategoryBarChart({
                   dataKey={`FLAT_${cat}`}
                   name={`FLAT_${cat}`}
                   fill={FLAT_CATEGORY_COLOR[cat]}
-                  stackId="flat"
-                  radius={[6, 6, 0, 0]}
+                  radius={[4, 4, 0, 0]}
                 />
               ))
             : selectedFlats.flatMap((flatNum) =>
@@ -814,8 +817,7 @@ function CategoryBarChart({
                     dataKey={`FLAT_${flatNum}__${cat}`}
                     name={`FLAT_${flatNum}__${cat}`}
                     fill={FLAT_CATEGORY_COLOR[cat]}
-                    stackId={`flat-${flatNum}`}
-                    radius={[6, 6, 0, 0]}
+                    radius={[4, 4, 0, 0]}
                   />
                 )),
               )}
