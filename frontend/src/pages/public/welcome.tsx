@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   Home,
   Loader2,
-  Users,
 } from "lucide-react";
 import { Logo } from "@/components/layout/logo";
 import { Button } from "@/components/ui/button";
@@ -24,7 +23,7 @@ import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/lib/utils";
 import type { BuildingResponseDTO } from "@/types/api";
 
-type WelcomeChoice = "TENANT" | "OWNER" | "MAINTAINER" | "MAINTAINEE";
+type WelcomeChoice = "TENANT" | "OWNER" | "MAINTAINER";
 
 /** Two flavours of "I'm an owner":
  *   NEW_BUILDING — user owns the whole building (or plans to
@@ -39,23 +38,20 @@ type OwnerMode = "NEW_BUILDING" | "EXISTING_FLAT";
 
 /**
  * Phase 5 — "What brings you here today?" — the post-signup role
- * picker. Two clean worlds:
+ * picker.
  *
- *   Rental marketplace:
- *     TENANT     → /app (no role change; TENANT is the signup default)
- *     OWNER      → POST /auth/me/role (OWNER) → /owner
+ *   TENANT     → /app (no role change; TENANT is the signup default)
+ *   OWNER      → NEW_BUILDING: POST /auth/me/role (OWNER) → /owner
+ *                EXISTING_FLAT: submit a FLAT_OWNER claim → /pending-claim
+ *   MAINTAINER → POST /auth/me/role (MAINTAINER) → /setup-society →
+ *                pick their society building, then /maintainer.
  *
- *   Society management:
- *     MAINTAINER → POST /auth/me/role (MAINTAINER) → /setup-society →
- *                  register their building + flats, then /maintainer.
- *                  Maintainers can't see rent/tenant data; they only
- *                  see maintenance dues + the maintainees of their
- *                  building.
- *     MAINTAINEE → building picker (must be a maintainer-registered
- *                  building) + flat number → POST /society/claims
- *                  with requestedRole=RESIDENT → /pending-claim →
- *                  maintainer approves. After approval the user gets
- *                  a maintenance-only dashboard.
+ * <p>Maintainees don't self-signup — they get added as residents by
+ * their society's maintainer via the approval flow (RESIDENT claim
+ * created + auto-approved by the maintainer), which promotes the
+ * user to MAINTAINEE role server-side. Public self-signup for
+ * maintainees was removed because it duplicated the maintainer's
+ * resident-management path and led to orphan claims.
  */
 export function WelcomePage() {
   const navigate = useNavigate();
@@ -70,12 +66,11 @@ export function WelcomePage() {
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<BuildingResponseDTO[]>([]);
 
-  // Both the OWNER-EXISTING_FLAT flow and the MAINTAINEE flow need a
-  // picked building + flat number, so they reuse the SAME sub-panel.
-  // Compute which flow is active for readability.
+  // OWNER-EXISTING_FLAT is the only flow left that needs the
+  // building picker + flat number sub-panel (the MAINTAINEE self-
+  // signup path was retired).
   const showBuildingFlatPanel =
-    choice === "MAINTAINEE"
-    || (choice === "OWNER" && ownerMode === "EXISTING_FLAT");
+    choice === "OWNER" && ownerMode === "EXISTING_FLAT";
 
   const roleMut = useMutation({
     mutationFn: async (target: WelcomeChoice) => {
@@ -109,26 +104,12 @@ export function WelcomePage() {
         });
         return { destination: "/pending-claim" as const };
       }
-      if (target === "MAINTAINER") {
-        const auth = await authApi.setPrimaryRole("MAINTAINER");
-        setSession(auth);
-        return { destination: "/setup-society" as const };
-      }
-      // MAINTAINEE — submit a RESIDENT claim on a maintainer-registered
-      // building. The building's maintainer (not owner) approves.
-      if (!pickedBuilding) {
-        throw new Error("Search and pick your society's building first.");
-      }
-      if (!flatNumber.trim()) {
-        throw new Error("Enter your flat number so the maintainer can find you.");
-      }
-      await claimsApi.create({
-        buildingId: pickedBuilding.buildingId,
-        requestedRole: "RESIDENT",
-        claimedFlatNumber: flatNumber.trim(),
-        applicantNote: note.trim() || undefined,
-      });
-      return { destination: "/pending-claim" as const };
+      // MAINTAINER — final option; the remaining branches above handle
+      // TENANT + OWNER (both modes) with an explicit return, so this
+      // path always fires when target=="MAINTAINER".
+      const auth = await authApi.setPrimaryRole("MAINTAINER");
+      setSession(auth);
+      return { destination: "/setup-society" as const };
     },
     onSuccess: (result) => {
       if (result.destination === "/setup-society") {
@@ -209,7 +190,7 @@ export function WelcomePage() {
             Pick one. You can add more later from your profile.
           </p>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-6">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-6">
             <WelcomeCard
               label="I'm renting"
               desc="Find a home and pay rent online."
@@ -230,13 +211,6 @@ export function WelcomePage() {
               icon={Building2}
               active={choice === "MAINTAINER"}
               onClick={() => setChoice("MAINTAINER")}
-            />
-            <WelcomeCard
-              label="I'm a maintainee"
-              desc="I live in a society-managed building and want to pay dues."
-              icon={Users}
-              active={choice === "MAINTAINEE"}
-              onClick={() => setChoice("MAINTAINEE")}
             />
           </div>
 
@@ -391,30 +365,20 @@ export function WelcomePage() {
                       Double-check the flat number.
                     </p>
                   ) : (
-                    // Vacant is a hard block for MAINTAINEE (society
-                    // residency requires someone actually living there),
-                    // but a legit case for FLAT_OWNER (buying an empty
-                    // flat to move into). Different messaging per flow.
-                    !previewQ.data.occupied && choice === "MAINTAINEE" ? (
-                      <p className="text-[11px] text-destructive mt-1 flex items-start gap-1">
-                        <AlertCircle className="size-3 mt-0.5 shrink-0" />
-                        Flat {debouncedFlat} is currently vacant. Ask the
-                        owner to assign a tenant to it first, then submit.
-                      </p>
-                    ) : (
-                      <p className="text-[11px] text-success mt-1 flex items-start gap-1">
-                        <CheckCircle2 className="size-3 mt-0.5 shrink-0" />
-                        Flat {debouncedFlat} found
-                        {!previewQ.data.occupied && " (currently vacant — that's fine)"}.
-                      </p>
-                    )
+                    // Vacant is fine for a FLAT_OWNER claim — buying an
+                    // empty flat to move into is legit. The claim goes
+                    // to the building's existing owner for review either
+                    // way.
+                    <p className="text-[11px] text-success mt-1 flex items-start gap-1">
+                      <CheckCircle2 className="size-3 mt-0.5 shrink-0" />
+                      Flat {debouncedFlat} found
+                      {!previewQ.data.occupied && " (currently vacant — that's fine)"}.
+                    </p>
                   )
                 )}
                 {(!pickedBuilding || debouncedFlat.length === 0) && (
                   <p className="text-[11px] text-muted-foreground mt-1">
-                    {choice === "OWNER"
-                      ? "Required so the current building owner can verify your claim."
-                      : "Required so the building owner can verify you live there."}
+                    Required so the current building owner can verify your claim.
                   </p>
                 )}
               </div>

@@ -6,8 +6,6 @@ import {
   Building2,
   CheckCircle2,
   Loader2,
-  Plus,
-  Search,
 } from "lucide-react";
 import { Logo } from "@/components/layout/logo";
 import { Button } from "@/components/ui/button";
@@ -19,29 +17,21 @@ import { claimsApi } from "@/lib/api/claims";
 import { propertiesApi } from "@/lib/api/properties";
 import { extractErrorMessage } from "@/lib/api/client";
 import { toast } from "@/hooks/use-toast";
-import { useAuthStore } from "@/stores/auth-store";
-import { cn } from "@/lib/utils";
 import type { BuildingResponseDTO } from "@/types/api";
-
-type Mode = "pick" | "create";
 
 /**
  * Phase 5 — Society setup for a fresh MAINTAINER signup.
  *
- * <p>Two paths in one page:
- *   1. "My society is already registered" → search + pick → submit a
- *      MAINTAINER membership claim. The backend either auto-approves
- *      (no existing maintainer) or holds it for dual approval (owner
- *      + current maintainer both need to say yes).
- *   2. "It's not registered yet" → the original small form that hits
- *      POST /properties/buildings/create/building. The row's ownerId
- *      = maintainer's own userId (schema requires non-null); frontend
- *      role-routing keeps maintainer-only accounts on /maintainer.
+ * <p>Maintainers can only pick from an already-registered building.
+ * The "Register new building" path was retired — building
+ * registration belongs to the owner flow (/owner/buildings/new), and
+ * having a duplicate entry point on the maintainer signup was
+ * producing orphan buildings owned by nobody plausible. Maintainers
+ * search for their society, pick it, and submit a MAINTAINER
+ * membership claim; the building owner (plus any existing
+ * maintainer) approves.
  */
 export function SetupSocietyPage() {
-  const { authUserId } = useAuthStore();
-  const [mode, setMode] = useState<Mode>("pick");
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-muted/30 p-4 py-10">
       <div className="w-full max-w-lg">
@@ -53,69 +43,16 @@ export function SetupSocietyPage() {
             Set up your society
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {mode === "pick"
-              ? "If your building is already registered here, pick it below and we'll send a maintainer-access request."
-              : "Not registered yet? Fill in the basics and we'll create the building for you."}
+            Find your building below and we'll send a maintainer-access
+            request to the owner.
           </p>
 
-          <div className="grid grid-cols-2 gap-2 mt-5">
-            <ModeCard
-              label="Pick existing"
-              desc="Society is already here"
-              icon={Search}
-              active={mode === "pick"}
-              onClick={() => setMode("pick")}
-            />
-            <ModeCard
-              label="Register new"
-              desc="Add my building"
-              icon={Plus}
-              active={mode === "create"}
-              onClick={() => setMode("create")}
-            />
-          </div>
-
           <div className="mt-6">
-            {mode === "pick" ? (
-              <PickExistingForm />
-            ) : (
-              <CreateNewForm authUserId={authUserId} />
-            )}
+            <PickExistingForm />
           </div>
         </Card>
       </div>
     </div>
-  );
-}
-
-function ModeCard({
-  label,
-  desc,
-  icon: Icon,
-  active,
-  onClick,
-}: {
-  label: string;
-  desc: string;
-  icon: typeof Search;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "text-left p-3 rounded-xl border-2 transition-all",
-        active
-          ? "border-primary bg-primary/5 ring-2 ring-primary/20"
-          : "border-border bg-card hover:border-primary/40",
-      )}
-    >
-      <Icon className="size-4 text-primary mb-1.5" />
-      <div className="font-semibold text-sm">{label}</div>
-      <div className="text-xs text-muted-foreground mt-0.5">{desc}</div>
-    </button>
   );
 }
 
@@ -253,8 +190,9 @@ function PickExistingForm() {
           !picked &&
           !searching && (
             <p className="text-xs text-muted-foreground mt-2">
-              Type your building name and press Search. Nothing matches?
-              Switch to "Register new" above.
+              Nothing matches. Ask the building's owner to register it
+              from their own account first, then come back to this
+              page.
             </p>
           )}
 
@@ -347,151 +285,5 @@ function PickExistingForm() {
         Request maintainer access
       </Button>
     </div>
-  );
-}
-
-function CreateNewForm({ authUserId }: { authUserId: string | null }) {
-  const navigate = useNavigate();
-  const [clientError, setClientError] = useState<string | null>(null);
-
-  const createM = useMutation({
-    mutationFn: async (body: {
-      name: string;
-      address: string;
-      city: string;
-      state: string;
-      totalFlats: number;
-    }) => {
-      if (!authUserId) throw new Error("Not signed in.");
-      return propertiesApi.buildings.create({
-        buildingName: body.name,
-        ownerId: authUserId,
-        buildingAddress: body.address,
-        buildingCity: body.city,
-        buildingState: body.state,
-        buildingTotalFloors: 1,
-        buildingTotalFlats: body.totalFlats,
-      });
-    },
-    onSuccess: () => {
-      toast({
-        title: "Society registered",
-        description:
-          "Add flats next so residents can join. You'll see join requests on your dashboard.",
-      });
-      navigate("/maintainer");
-    },
-    onError: (err) => {
-      toast({
-        variant: "destructive",
-        title: "Couldn't register your society",
-        description: extractErrorMessage(err),
-      });
-    },
-  });
-
-  function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setClientError(null);
-    const fd = new FormData(e.currentTarget);
-    const name = String(fd.get("name") ?? "").trim();
-    const address = String(fd.get("address") ?? "").trim();
-    const city = String(fd.get("city") ?? "").trim();
-    const state = String(fd.get("state") ?? "").trim();
-    const totalFlatsRaw = String(fd.get("totalFlats") ?? "").trim();
-    const totalFlats = Number(totalFlatsRaw);
-
-    if (!name || !address || !city || !state || !totalFlatsRaw) {
-      setClientError("Fill every field.");
-      return;
-    }
-    if (!Number.isFinite(totalFlats) || totalFlats < 1) {
-      setClientError("Total flats must be a positive number.");
-      return;
-    }
-    createM.mutate({ name, address, city, state, totalFlats });
-  }
-
-  return (
-    <form onSubmit={onSubmit} className="space-y-4">
-      <div>
-        <Label htmlFor="name">Building / society name</Label>
-        <Input
-          id="name"
-          name="name"
-          required
-          placeholder="Sunshine Valley"
-          className="mt-1.5"
-        />
-      </div>
-
-      <div>
-        <Label htmlFor="address">Address</Label>
-        <Textarea
-          id="address"
-          name="address"
-          required
-          rows={2}
-          placeholder="12th Main Road, Sector 5"
-          className="mt-1.5"
-        />
-      </div>
-
-      <div className="grid sm:grid-cols-2 gap-4">
-        <div>
-          <Label htmlFor="city">City</Label>
-          <Input
-            id="city"
-            name="city"
-            required
-            placeholder="Bengaluru"
-            className="mt-1.5"
-          />
-        </div>
-        <div>
-          <Label htmlFor="state">State</Label>
-          <Input
-            id="state"
-            name="state"
-            required
-            placeholder="Karnataka"
-            className="mt-1.5"
-          />
-        </div>
-      </div>
-
-      <div>
-        <Label htmlFor="totalFlats">Total flats</Label>
-        <Input
-          id="totalFlats"
-          name="totalFlats"
-          type="number"
-          required
-          min={1}
-          placeholder="e.g. 24"
-          className="mt-1.5"
-        />
-        <p className="text-[11px] text-muted-foreground mt-1">
-          Approximate is fine — you can add each flat's exact number later.
-        </p>
-      </div>
-
-      {clientError && (
-        <p className="text-sm text-destructive">{clientError}</p>
-      )}
-
-      <Button
-        type="submit"
-        size="lg"
-        variant="gradient"
-        className="w-full"
-        disabled={createM.isPending}
-      >
-        {createM.isPending && (
-          <Loader2 className="size-4 animate-spin mr-2" />
-        )}
-        Register society
-      </Button>
-    </form>
   );
 }
