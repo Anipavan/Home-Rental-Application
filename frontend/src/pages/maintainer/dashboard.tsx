@@ -398,6 +398,19 @@ export function MaintainerFlatsPage() {
     enabled: !!buildingId,
   });
 
+  // Fetch the maintainer's society list so we can decide whether the
+  // "← All societies" header button is worth showing. Single-society
+  // maintainers get bounced straight back here by MaintainerHomePage's
+  // auto-redirect (see line ~110), so the button reads as broken to
+  // them — hide it in that case. Reuses the same query key as the
+  // MaintainerHomePage fetch so React Query dedupes.
+  const societiesQ = useQuery({
+    queryKey: ["my-societies"],
+    queryFn: () => societyApi.mine(),
+    staleTime: 60_000,
+  });
+  const hasMultipleSocieties = (societiesQ.data?.length ?? 0) > 1;
+
   const flatsQ = useQuery({
     queryKey: ["society-flats", buildingId, month],
     queryFn: () => societyApi.flatsForMonth(buildingId!, month),
@@ -467,9 +480,11 @@ export function MaintainerFlatsPage() {
         title={configQ.data?.societyDisplayName ?? "Society — flats"}
         description="Per-flat monthly dues, payments received, and a quick way to enter usage-based amounts (water, gas, common-area share)."
         actions={
-          <Button asChild variant="ghost" size="sm">
-            <Link to="/maintainer">← All societies</Link>
-          </Button>
+          hasMultipleSocieties ? (
+            <Button asChild variant="ghost" size="sm">
+              <Link to="/maintainer">← All societies</Link>
+            </Button>
+          ) : null
         }
       />
 
