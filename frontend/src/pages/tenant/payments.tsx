@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { Banknote, CheckCircle2, Download, FileText, Home, Inbox, Loader2, Receipt, Wallet, Wrench } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { paymentsApi } from "@/lib/api/payments";
+import { societyApi } from "@/lib/api/society";
 import { extractErrorMessage } from "@/lib/api/client";
 import { toast } from "@/hooks/use-toast";
 import { useFlatLookup } from "@/hooks/use-flat-lookup";
@@ -15,7 +16,12 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/layout/page-header";
 import { formatINR, formatDate } from "@/lib/utils";
-import type { PaymentResponse, PaymentStatus } from "@/types/api";
+import type {
+  FlatChargeCategory,
+  FlatMaintenanceRow,
+  PaymentResponse,
+  PaymentStatus,
+} from "@/types/api";
 
 /**
  * Payment sourceType bucket. Anything not explicitly tagged
@@ -118,8 +124,13 @@ export function PaymentsListPage() {
         </TabsContent>
 
         <TabsContent value="maintenance" className="mt-0">
-          <PaymentsSection
-            scope="maintenance"
+          {/* Wrapper fetches society collection rows (which is
+              where maintainer-added DUE charges actually live) and
+              feeds them in as extra "Due now" items so the tenant
+              sees them here, not just on the Society tab. Payment
+              rows tagged SOCIETY_CHARGE still surface too — those
+              are historical or bridge-in-flight items. */}
+          <MaintenanceSectionWrapper
             payments={maintenancePayments}
             loading={q.isLoading}
             flatLookup={flatLookup}
@@ -140,11 +151,23 @@ function PaymentsSection({
   payments,
   loading,
   flatLookup,
+  extraDueItems,
+  extraDueLoading,
 }: {
   scope: PaymentBucket;
   payments: PaymentResponse[];
   loading: boolean;
   flatLookup: ReturnType<typeof useFlatLookup>;
+  /** Extra "Due now" rows rendered ABOVE the Payment-derived
+   *  cards. Used by the Maintenance tab to inject society-charge
+   *  collection rows (which live in property-service, not
+   *  payment-service) so a maintainer-added DUE bill still shows
+   *  up as a payable item on the tenant's Payments page. */
+  extraDueItems?: React.ReactNode[];
+  /** Loading flag for whatever produced extraDueItems. When true,
+   *  the "Due now" empty state is suppressed so the tenant doesn't
+   *  see a false "you're all paid up" flash on first paint. */
+  extraDueLoading?: boolean;
 }) {
   const dueNow = payments.filter(
     (p) => p.status === "PENDING" || p.status === "OVERDUE",
@@ -152,6 +175,8 @@ function PaymentsSection({
   const history = payments.filter(
     (p) => p.status === "PAID" || p.status === "FAILED",
   );
+  const anyDue = dueNow.length > 0 || (extraDueItems?.length ?? 0) > 0;
+  const anyLoading = loading || Boolean(extraDueLoading);
 
   const dueEmptyTitle =
     scope === "rent" ? "You're all paid up." : "No maintenance dues right now.";
@@ -170,8 +195,8 @@ function PaymentsSection({
     <>
       <section className="mb-8">
         <h2 className="font-display font-semibold text-lg mb-3">Due now</h2>
-        {loading && <Skeleton className="h-32 rounded-2xl" />}
-        {!loading && dueNow.length === 0 && (
+        {anyLoading && <Skeleton className="h-32 rounded-2xl" />}
+        {!anyLoading && !anyDue && (
           <EmptyState
             variant="success"
             icon={CheckCircle2}
@@ -180,6 +205,12 @@ function PaymentsSection({
           />
         )}
         <div className="space-y-3">
+          {/* Extra items first — for the Maintenance tab these are
+              society-collection DUE rows, which are the newest
+              info the tenant just discovered on their /app/society
+              page. Showing them above legacy DUE Payment rows
+              matches the order of intent. */}
+          {extraDueItems}
           {dueNow.map((p) => (
             <DueCard
               key={p.id}
@@ -373,6 +404,171 @@ function HistoryRow({ payment }: { payment: PaymentResponse }) {
         <span className="hidden sm:inline">Receipt</span>
       </Button>
     </div>
+  );
+}
+
+/** Labels for the per-flat charge categories rendered inside a
+ *  SocietyDueCard. Mirrors the maintainer Flat charges table so the
+ *  tenant sees the same "Maintenance" / "Water bill" wording
+ *  everywhere. */
+const CATEGORY_LABELS: Record<FlatChargeCategory, string> = {
+  WATER_BILL: "Water bill",
+  MAINTENANCE: "Maintenance",
+  GAS_BILL: "Gas bill",
+  ELECTRICITY: "Electricity",
+  COMMON_AREA_SHARE: "Common-area share",
+  OTHER: "Other",
+};
+
+/** Six most recent "YYYY-MM" strings, newest first — used to fetch
+ *  the tenant's bills across a window that comfortably covers any
+ *  DUE/OVERDUE charges. */
+function lastNMonths(n: number): string[] {
+  const out: string[] = [];
+  const d = new Date();
+  for (let i = 0; i < n; i += 1) {
+    out.push(
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
+    );
+    d.setMonth(d.getMonth() - 1);
+  }
+  return out;
+}
+
+/**
+ * Wrapper for the Maintenance tab that pulls society-collection
+ * rows from property-service (which is where maintainer-added DUE
+ * charges actually live) and injects them into PaymentsSection as
+ * extra "Due now" items.
+ *
+ * <p>Without this bridge, the Payments page's Maintenance tab only
+ * saw Payment rows tagged SOCIETY_CHARGE — and those only exist
+ * after the tenant has already gone through the Pay bridge. A
+ * DUE charge the maintainer just added would live in
+ * maintenance_collections until then, so the tenant would land on
+ * the Payments page and see a misleading "You're all paid up".
+ */
+function MaintenanceSectionWrapper({
+  payments,
+  loading,
+  flatLookup,
+}: {
+  payments: PaymentResponse[];
+  loading: boolean;
+  flatLookup: ReturnType<typeof useFlatLookup>;
+}) {
+  const configQ = useQuery({
+    queryKey: ["tenant-society"],
+    queryFn: () => societyApi.myTenant(),
+  });
+  const buildingId = configQ.data?.buildingId ?? null;
+
+  // Fetch six months in parallel; keeps a small window of open dues
+  // visible without hammering the backend. Same cache keys the
+  // Society tab uses so navigating between the two pages reuses
+  // whichever fetches already ran.
+  const months = useMemo(() => lastNMonths(6), []);
+  const billQueries = useQueries({
+    queries: months.map((m) => ({
+      queryKey: ["tenant-society-bills", buildingId, m],
+      queryFn: () => societyApi.myBills(buildingId!, m),
+      enabled: !!buildingId,
+      staleTime: 15_000,
+    })),
+  });
+
+  const societyLoading =
+    configQ.isLoading || billQueries.some((q) => q.isLoading);
+
+  const societyDueRows: FlatMaintenanceRow[] = useMemo(() => {
+    const rows = billQueries.flatMap((q) => q.data ?? []);
+    // Only DUE / OVERDUE. Sort newest month first so this month's
+    // charges lead — matches the mental model of "here's what I owe
+    // right now" that the Payments page projects.
+    return rows
+      .filter((r) => r.status === "DUE" || r.status === "OVERDUE")
+      .sort((a, b) => (b.forMonth ?? "").localeCompare(a.forMonth ?? ""));
+  }, [billQueries]);
+
+  const extraDueItems = societyDueRows.map((row) => (
+    <SocietyDueCard
+      key={row.collectionId ?? `${row.forMonth}-${row.category}`}
+      row={row}
+      buildingId={buildingId!}
+    />
+  ));
+
+  return (
+    <PaymentsSection
+      scope="maintenance"
+      payments={payments}
+      loading={loading}
+      flatLookup={flatLookup}
+      extraDueItems={extraDueItems}
+      extraDueLoading={societyLoading && !!buildingId}
+    />
+  );
+}
+
+/**
+ * One-line DUE / OVERDUE card for a society collection row. Same
+ * visual language as {@link DueCard} — badge, amount, due month +
+ * flat number, action button — but the Pay button links to the
+ * society-charge pay page ({@code /app/society/pay/:b/:c}) which
+ * mints a Payment via the bridge on click and forwards to the
+ * shared /app/payments/{id}/pay checkout.
+ */
+function SocietyDueCard({
+  row,
+  buildingId,
+}: {
+  row: FlatMaintenanceRow;
+  buildingId: string;
+}) {
+  const overdue = row.status === "OVERDUE";
+  const label = row.category ? CATEGORY_LABELS[row.category] : "Other";
+  return (
+    <Card className={overdue ? "border-destructive/40" : "border-warning/40"}>
+      <CardContent className="p-5 sm:p-6 grid gap-4 sm:grid-cols-[1fr_auto] items-center">
+        <div>
+          <div className="flex items-center gap-2">
+            <p className="font-display font-semibold text-xl">
+              {formatINR(row.monthAmount)}
+            </p>
+            <Badge variant={overdue ? "destructive" : "warning"}>
+              {overdue ? "Overdue" : "Due"}
+            </Badge>
+            <Badge variant="secondary" className="text-[10px]">
+              {label}
+            </Badge>
+          </div>
+          <p className="text-sm text-muted-foreground mt-1">
+            {row.forMonth} ·{" "}
+            <span className="text-foreground">Flat {row.flatNumber}</span>
+          </p>
+          {row.notes && (
+            <p className="text-xs text-muted-foreground italic mt-1 line-clamp-2">
+              {row.notes}
+            </p>
+          )}
+        </div>
+        <div className="flex justify-end">
+          {row.collectionId ? (
+            <Button asChild variant="gradient" size="lg">
+              <Link
+                to={`/app/society/pay/${buildingId}/${row.collectionId}`}
+              >
+                <Wallet /> Pay {formatINR(row.monthAmount)}
+              </Link>
+            </Button>
+          ) : (
+            <Button variant="outline" size="lg" disabled>
+              Pending setup
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
