@@ -44,7 +44,6 @@ import {
 import { PageHeader } from "@/components/layout/page-header";
 import {
   PaymentProofChip,
-  PaymentProofThumbnail,
 } from "@/components/payment/payment-proof-preview";
 import { useToast } from "@/hooks/use-toast";
 import { formatINR } from "@/lib/utils";
@@ -1006,12 +1005,6 @@ function FlatRow({
           />
         ) : (
           <span className="text-xs text-muted-foreground">—</span>
-        )}
-        {proofPaymentId && (
-          <PaymentProofThumbnail
-            paymentId={proofPaymentId}
-            hasProof={hasProof}
-          />
         )}
       </td>
     </tr>

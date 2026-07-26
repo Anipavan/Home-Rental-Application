@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { Camera, ImageOff } from "lucide-react";
+import { ImageOff, Receipt } from "lucide-react";
 import { paymentsApi } from "@/lib/api/payments";
 import {
   Dialog,
@@ -46,11 +46,11 @@ export function usePaymentProofsByPaymentId(
 }
 
 /**
- * Small camera pill rendered next to the PAID chip on the maintainer's
- * flat charges table when a payment-proof screenshot has been
- * uploaded. Clicking opens a lightbox with the full-size image.
- * Renders nothing when no proof is attached — the parent can wrap
- * unconditionally.
+ * Small "receipt attached" pill rendered next to the PAID chip on
+ * the maintainer's flat charges table when a payment-proof
+ * screenshot has been uploaded. Clicking opens a lightbox with the
+ * full-size image. Renders nothing when no proof is attached — the
+ * parent can wrap unconditionally.
  */
 export function PaymentProofChip({
   paymentId,
@@ -69,11 +69,11 @@ export function PaymentProofChip({
           e.stopPropagation();
           setOpen(true);
         }}
-        aria-label="View payment proof"
-        title="View tenant-uploaded payment proof"
+        aria-label="View payment receipt"
+        title="View tenant-uploaded payment receipt"
         className="ml-1 inline-flex size-5 items-center justify-center rounded-full bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground transition-colors"
       >
-        <Camera className="size-3" />
+        <Receipt className="size-3" />
       </button>
       <PaymentProofLightbox
         paymentId={paymentId}
