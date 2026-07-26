@@ -1429,13 +1429,45 @@ export interface FlatMaintenanceRow {
    */
   paymentId?: string | null;
   /**
-   * Filename of the tenant-uploaded payment-proof screenshot,
-   * enriched server-side by property-service via a Feign lookup
-   * to payment-service. Non-null → maintainer sees a camera pill
-   * on the PAID chip + a thumbnail in REMARKS; clicking either
-   * fetches the blob via {@code paymentsApi.proofBlob(paymentId)}.
+   * Filename of the LATEST tenant-uploaded payment-proof screenshot.
+   * Kept for backwards compat with consumers that only care about
+   * the single most-recent proof. New callers should read the
+   * {@link #proofs} array below which carries every historical
+   * proof across every payment cycle.
    */
   paymentProofUrl?: string | null;
+  /**
+   * Every proof screenshot uploaded across the whole payment
+   * history for this collection row — populated when a row went
+   * through multiple payment cycles (maintainer edited amountDue
+   * after a first payment landed, tenant paid the delta separately,
+   * each cycle got its own proof). Newest first; empty when no
+   * proof has been attached to any linked Payment.
+   */
+  proofs?: PaymentProofSummary[];
+}
+
+/**
+ * One tenant-uploaded payment-proof screenshot enriched with its
+ * originating Payment's metadata. Powers the maintainer's proof
+ * gallery on the Flat charges table — each entry gets a thumbnail
+ * that opens the full image, labelled with the amount + when it
+ * settled so the maintainer can tell "which cycle is this for".
+ */
+export interface PaymentProofSummary {
+  /** payment-service Payment.id. Frontend requests the blob via
+   *  {@code GET /payments/{paymentId}/proof}. */
+  paymentId: string;
+  /** Server-side filename of the proof screenshot. Non-null by
+   *  construction — the backend enrichment skips Payments without
+   *  a proof URL. */
+  paymentProofUrl: string;
+  /** Amount the linked Payment settled. */
+  amount: number;
+  /** When the Payment was marked PAID (webhook or tenant self-
+   *  report). Nullable on legacy pre-M8 rows that don't carry a
+   *  paid timestamp. */
+  paidAt?: string | null;
 }
 
 /** Body for {@code POST /society/{buildingId}/flats/{flatId}/collection}. */

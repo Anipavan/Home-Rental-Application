@@ -165,7 +165,25 @@ public class SchemaMigrationRunner {
             "  created_at     TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL," +
             "  updated_at     TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL" +
             ")",
-            "CREATE INDEX idx_sa_building_created ON society_announcements (building_id, created_at DESC)"
+            "CREATE INDEX idx_sa_building_created ON society_announcements (building_id, created_at DESC)",
+
+            // ── maintenance_collection_payment_history (V18) ──
+            // Many-to-many link between a collection row and every
+            // Payment ever minted for it — preserves the whole
+            // chain so a row that goes through multiple pay cycles
+            // (e.g. maintainer bumped amountDue → tenant pays the
+            // delta separately) still surfaces all historical
+            // proof screenshots on the maintainer's dashboard.
+            "CREATE TABLE maintenance_collection_payment_history (" +
+            "  id            VARCHAR2(36) PRIMARY KEY," +
+            "  collection_id VARCHAR2(36) NOT NULL," +
+            "  payment_id    VARCHAR2(36) NOT NULL," +
+            "  linked_at     TIMESTAMP    NOT NULL," +
+            "  linked_by     VARCHAR2(64)," +
+            "  CONSTRAINT uq_mcph_pair UNIQUE (collection_id, payment_id)" +
+            ")",
+            "CREATE INDEX idx_mcph_collection ON maintenance_collection_payment_history (collection_id)",
+            "CREATE INDEX idx_mcph_payment    ON maintenance_collection_payment_history (payment_id)"
     );
 
     @PostConstruct

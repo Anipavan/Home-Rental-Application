@@ -109,7 +109,14 @@ public interface PaymentClient {
              * carries the URL and the frontend doesn't need to hit
              * payment-service directly for each row.
              */
-            String paymentProofUrl
+            String paymentProofUrl,
+            /**
+             * When the Payment settled (gateway webhook OR tenant-
+             * report). Feeds the "which cycle is this proof for"
+             * ordering + sub-label in the maintainer's proof
+             * gallery. Nullable on legacy pre-M8 rows.
+             */
+            java.time.Instant paymentDate
     ) {}
 
     /**

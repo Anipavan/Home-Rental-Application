@@ -97,13 +97,22 @@ public record FlatMaintenanceRowResponse(
         String paymentId,
 
         /**
-         * Filename of the tenant-uploaded payment-proof screenshot,
-         * resolved via a Feign call to payment-service at DTO build
-         * time. Null when no proof is attached (or when the Feign
-         * call soft-failed). Frontend uses presence of this field
-         * to decide whether to render the camera pill on the PAID
-         * chip + the thumbnail in REMARKS.
+         * Filename of the tenant-uploaded payment-proof screenshot
+         * on the LATEST linked Payment. Kept for backwards compat
+         * with any consumer that only wants a single URL; the
+         * {@code proofs} list below carries every historical proof
+         * across every payment cycle.
          */
-        String paymentProofUrl
+        String paymentProofUrl,
+
+        /**
+         * Every proof screenshot uploaded across the whole payment
+         * history for this collection row. Includes the current
+         * cycle's proof as the newest entry AND any prior cycles'
+         * proofs from when the maintainer edited amountDue after
+         * a first payment. Newest first. Empty when no proofs
+         * exist on any linked Payment.
+         */
+        java.util.List<PaymentProofSummary> proofs
 ) {
 }

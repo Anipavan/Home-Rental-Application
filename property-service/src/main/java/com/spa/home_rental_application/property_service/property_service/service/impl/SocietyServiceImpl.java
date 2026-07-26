@@ -17,6 +17,7 @@ import com.spa.home_rental_application.property_service.property_service.DTO.Res
 import com.spa.home_rental_application.property_service.property_service.Entities.Building;
 import com.spa.home_rental_application.property_service.property_service.Entities.Flat;
 import com.spa.home_rental_application.property_service.property_service.Entities.MaintenanceCollection;
+import com.spa.home_rental_application.property_service.property_service.Entities.MaintenanceCollectionPaymentHistory;
 import com.spa.home_rental_application.property_service.property_service.Entities.MaintenanceExpense;
 import com.spa.home_rental_application.property_service.property_service.Entities.SocietyConfig;
 import com.spa.home_rental_application.property_service.property_service.Mapper.SocietyMapper;
@@ -28,6 +29,7 @@ import com.spa.home_rental_application.property_service.property_service.enums.E
 import com.spa.home_rental_application.property_service.property_service.enums.MaintenanceCategory;
 import com.spa.home_rental_application.property_service.property_service.repository.BuildingRepo;
 import com.spa.home_rental_application.property_service.property_service.repository.FlatRepo;
+import com.spa.home_rental_application.property_service.property_service.repository.MaintenanceCollectionPaymentHistoryRepository;
 import com.spa.home_rental_application.property_service.property_service.repository.MaintenanceCollectionRepository;
 import com.spa.home_rental_application.property_service.property_service.repository.MaintenanceExpenseRepository;
 import com.spa.home_rental_application.property_service.property_service.repository.MembershipClaimRepository;
@@ -87,6 +89,7 @@ public class SocietyServiceImpl implements SocietyService {
     private final SocietyConfigRepository configRepo;
     private final MaintenanceExpenseRepository expenseRepo;
     private final MaintenanceCollectionRepository collectionRepo;
+    private final MaintenanceCollectionPaymentHistoryRepository paymentHistoryRepo;
     private final BuildingRepo buildingRepo;
     private final FlatRepo flatRepo;
     private final MembershipClaimRepository claimRepo;
@@ -99,6 +102,7 @@ public class SocietyServiceImpl implements SocietyService {
     public SocietyServiceImpl(SocietyConfigRepository configRepo,
                               MaintenanceExpenseRepository expenseRepo,
                               MaintenanceCollectionRepository collectionRepo,
+                              MaintenanceCollectionPaymentHistoryRepository paymentHistoryRepo,
                               BuildingRepo buildingRepo,
                               FlatRepo flatRepo,
                               MembershipClaimRepository claimRepo,
@@ -110,6 +114,7 @@ public class SocietyServiceImpl implements SocietyService {
         this.configRepo = configRepo;
         this.expenseRepo = expenseRepo;
         this.collectionRepo = collectionRepo;
+        this.paymentHistoryRepo = paymentHistoryRepo;
         this.buildingRepo = buildingRepo;
         this.flatRepo = flatRepo;
         this.claimRepo = claimRepo;
@@ -950,31 +955,108 @@ public class SocietyServiceImpl implements SocietyService {
                         .collect(java.util.stream.Collectors.groupingBy(
                                 MaintenanceCollection::getFlatId));
 
-        // Pre-fetch payment-proof URLs so the maintainer's Flat
-        // charges table gets paymentProofUrl inline on each row —
-        // avoids the frontend having to hit /payments/{id} per row
-        // (which required a maintainer-authz bypass on payment-
-        // service and doesn't scale as row count grows). One Feign
-        // call per unique paymentId; falls back to null on any
-        // per-row failure so the whole endpoint doesn't fail closed
-        // just because payment-service is having a bad day.
-        java.util.Map<String, String> proofByPaymentId = new java.util.HashMap<>();
+        // ── Payment-proof enrichment (multi-history) ──────────────
+        // Walk the payment-history table to collect EVERY historical
+        // paymentId linked to each visible collection row (not just
+        // the current collection.paymentId — which loses prior
+        // cycles when the maintainer edits amountDue after a first
+        // payment and the tenant pays the delta).
+        //
+        // Layout:
+        //   1. Batch-fetch all history rows for the visible
+        //      collections in one query (no N+1).
+        //   2. Union with the currently-stamped collection.paymentId
+        //      as a safety net for rows written before V18 backfill
+        //      finishes propagating, and for the extremely brief
+        //      window between the bridge stamping paymentId and the
+        //      history insert firing.
+        //   3. Fetch each unique Payment once via PaymentClient →
+        //      snapshot (paymentProofUrl, totalAmount, paymentDate).
+        //   4. Emit an ordered List<PaymentProofSummary> per
+        //      collection, newest paid → oldest. Payments without a
+        //      proof URL (tenant hit "I've paid" without attaching)
+        //      are skipped — the gallery only shows real screenshots.
+        java.util.List<String> visibleCollectionIds = monthCharges.stream()
+                .map(MaintenanceCollection::getId)
+                .toList();
+        java.util.Map<String, java.util.List<String>> paymentIdsByCollection =
+                new java.util.HashMap<>();
+        if (!visibleCollectionIds.isEmpty()) {
+            java.util.List<MaintenanceCollectionPaymentHistory> historyRows =
+                    paymentHistoryRepo.findByCollectionIdIn(visibleCollectionIds);
+            // Sort newest-linked first so the emitted list starts
+            // with the latest cycle. Nulls (defensive) land last.
+            historyRows.sort(java.util.Comparator.comparing(
+                    (MaintenanceCollectionPaymentHistory h) -> h.getLinkedAt(),
+                    java.util.Comparator.nullsLast(
+                            java.util.Comparator.reverseOrder())));
+            for (MaintenanceCollectionPaymentHistory h : historyRows) {
+                paymentIdsByCollection
+                        .computeIfAbsent(h.getCollectionId(),
+                                k -> new java.util.ArrayList<>())
+                        .add(h.getPaymentId());
+            }
+        }
+        // Include collection.paymentId as a safety net (dedup
+        // downstream — LinkedHashSet preserves the newest-first
+        // ordering built above).
         for (MaintenanceCollection r : monthCharges) {
             String pid = r.getPaymentId();
             if (pid == null || pid.isBlank()) continue;
-            if (proofByPaymentId.containsKey(pid)) continue;
+            java.util.List<String> list = paymentIdsByCollection
+                    .computeIfAbsent(r.getId(),
+                            k -> new java.util.ArrayList<>());
+            if (!list.contains(pid)) list.add(0, pid);
+        }
+
+        java.util.Set<String> allPaymentIds = new java.util.HashSet<>();
+        paymentIdsByCollection.values().forEach(allPaymentIds::addAll);
+
+        // Fetch each unique Payment once — soft-fail per lookup so
+        // one bad row doesn't take out the whole endpoint.
+        java.util.Map<String,
+                com.spa.home_rental_application.property_service.property_service.DTO.Response
+                        .PaymentProofSummary> proofByPaymentId = new java.util.HashMap<>();
+        for (String pid : allPaymentIds) {
             try {
                 PaymentClient.SocietyChargePaymentResponse payment =
                         paymentClient.getPayment(pid);
-                if (payment != null && payment.paymentProofUrl() != null) {
-                    proofByPaymentId.put(pid, payment.paymentProofUrl());
-                } else {
-                    proofByPaymentId.put(pid, null);
+                if (payment != null
+                        && payment.paymentProofUrl() != null
+                        && !payment.paymentProofUrl().isBlank()) {
+                    proofByPaymentId.put(pid,
+                            new com.spa.home_rental_application.property_service
+                                    .property_service.DTO.Response.PaymentProofSummary(
+                                    pid,
+                                    payment.paymentProofUrl(),
+                                    payment.totalAmount(),
+                                    payment.paymentDate()));
                 }
             } catch (Exception ex) {
-                log.debug("Proof lookup failed for paymentId={} ({}); leaving null",
+                log.debug("Proof lookup failed for paymentId={} ({}); skipping",
                         pid, ex.getMessage());
-                proofByPaymentId.put(pid, null);
+            }
+        }
+
+        // Build per-collection proof list preserving newest-first
+        // order. Dedup by paymentId via LinkedHashSet in case the
+        // safety-net union produced a repeat.
+        java.util.Map<String,
+                java.util.List<com.spa.home_rental_application.property_service
+                        .property_service.DTO.Response.PaymentProofSummary>>
+                proofsByCollection = new java.util.HashMap<>();
+        for (var entry : paymentIdsByCollection.entrySet()) {
+            java.util.LinkedHashSet<String> unique =
+                    new java.util.LinkedHashSet<>(entry.getValue());
+            java.util.List<com.spa.home_rental_application.property_service
+                    .property_service.DTO.Response.PaymentProofSummary> list =
+                    new java.util.ArrayList<>();
+            for (String pid : unique) {
+                var summary = proofByPaymentId.get(pid);
+                if (summary != null) list.add(summary);
+            }
+            if (!list.isEmpty()) {
+                proofsByCollection.put(entry.getKey(), list);
             }
         }
 
@@ -1019,6 +1101,18 @@ public class SocietyServiceImpl implements SocietyService {
                 rows.sort(java.util.Comparator.comparing(
                         r -> r.getCategory() == null ? "" : r.getCategory().name()));
                 for (MaintenanceCollection r : rows) {
+                    java.util.List<com.spa.home_rental_application.property_service
+                            .property_service.DTO.Response.PaymentProofSummary>
+                            rowProofs = proofsByCollection.getOrDefault(
+                                    r.getId(), java.util.List.of());
+                    // paymentProofUrl kept for backward compat with
+                    // any consumer that only reads a single URL —
+                    // set to the newest (index 0) so it matches the
+                    // legacy "latest proof" semantics. The full list
+                    // travels alongside on `proofs`.
+                    String latestProofUrl = rowProofs.isEmpty()
+                            ? null
+                            : rowProofs.get(0).paymentProofUrl();
                     out.add(FlatMaintenanceRowResponse.builder()
                             .flatId(f.getId())
                             .flatNumber(f.getFlatNumber())
@@ -1038,17 +1132,12 @@ public class SocietyServiceImpl implements SocietyService {
                             .collectionId(r.getId())
                             // Payment id (nullable — null on maintainer-
                             // manually-marked-PAID rows, non-null on
-                            // rows the direct-UPI bridge minted). The FE
-                            // uses this to look up the tenant-uploaded
-                            // payment proof screenshot for inline preview.
+                            // rows the direct-UPI bridge minted). Points
+                            // at the LATEST linked Payment; the full
+                            // history travels on the `proofs` list.
                             .paymentId(r.getPaymentId())
-                            // Enriched from the payment-service lookup
-                            // above. Null when no proof is attached or
-                            // when the Feign call soft-failed.
-                            .paymentProofUrl(
-                                    r.getPaymentId() == null
-                                            ? null
-                                            : proofByPaymentId.get(r.getPaymentId()))
+                            .paymentProofUrl(latestProofUrl)
+                            .proofs(rowProofs)
                             .build());
                 }
             }
@@ -1604,6 +1693,29 @@ public class SocietyServiceImpl implements SocietyService {
             row.setUpdatedAt(now);
         }
         collectionRepo.saveAll(rows);
+
+        // Append a history link for each (collection, payment) pair.
+        // Bridge is idempotent for concurrent double-clicks; the
+        // uq_mcph_pair unique constraint short-circuits a duplicate
+        // save cleanly, so the pre-check is a nicety, not a
+        // correctness guarantee. Without this table the previous
+        // Payment on each row (when the maintainer edits amountDue
+        // after a first payment and the tenant pays the delta)
+        // gets orphaned and its proof screenshot disappears from
+        // the maintainer's Flat charges view.
+        for (MaintenanceCollection row : rows) {
+            if (paymentHistoryRepo.existsByCollectionIdAndPaymentId(
+                    row.getId(), pay.id())) {
+                continue;
+            }
+            paymentHistoryRepo.save(
+                    MaintenanceCollectionPaymentHistory.builder()
+                            .collectionId(row.getId())
+                            .paymentId(pay.id())
+                            .linkedAt(now)
+                            .linkedBy(me)
+                            .build());
+        }
 
         log.info("Society-charge Razorpay flow: buildingId={} flatId={} tenantId={} amount={} paymentId={} rows={}",
                 buildingId, flatId, flat.getTenantId(), total, pay.id(), rows.size());

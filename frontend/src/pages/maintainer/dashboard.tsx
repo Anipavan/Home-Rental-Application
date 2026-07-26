@@ -883,22 +883,25 @@ function FlatRow({
   const remarkRow = group.rows.find((r) => r.notes) ?? group.rows[0];
   const remarkText = remarkRow?.notes ?? "";
 
-  // Find the first PAID row for this flat that has a payment-proof
-  // attached. paymentProofUrl comes inline on each row (property-
-  // service enriches it via a Feign call to payment-service at
-  // response-build time). For most tenants this is either "the
-  // bulk-pay Payment covering all their July charges" or "one of a
-  // few single-charge Payments" — rendering the chip / thumbnail
-  // against the first-matching id is enough for the maintainer's
-  // "did they attach evidence?" glance.
-  const proofPaymentId: string | null = (() => {
+  // Merge every row's proof-history list into a single dedup'd
+  // gallery for this flat-group. Each collection row carries its
+  // own `proofs` (server enriches from the maintenance_collection_
+  // payment_history table so multiple pay cycles all survive).
+  // Ordering: preserve newest-first as it arrives from the server;
+  // dedup by paymentId so bulk-pay Payments covering both
+  // Maintenance + Water bill don't show twice.
+  const flatProofs = (() => {
+    const seen = new Set<string>();
+    const out: import("@/types/api").PaymentProofSummary[] = [];
     for (const r of group.rows) {
-      if (r.status !== "PAID" || !r.paymentId) continue;
-      if (r.paymentProofUrl) return r.paymentId;
+      for (const p of r.proofs ?? []) {
+        if (seen.has(p.paymentId)) continue;
+        seen.add(p.paymentId);
+        out.push(p);
+      }
     }
-    return null;
+    return out;
   })();
-  const hasProof = proofPaymentId !== null;
 
   return (
     <tr className="border-b border-border/60 last:border-b-0 hover:bg-secondary/20">
@@ -979,11 +982,8 @@ function FlatRow({
               rows={billedRows}
               allPaid={allPaid}
             />
-            {proofPaymentId && (
-              <PaymentProofChip
-                paymentId={proofPaymentId}
-                hasProof={hasProof}
-              />
+            {flatProofs.length > 0 && (
+              <PaymentProofChip proofs={flatProofs} />
             )}
           </div>
         ) : (
