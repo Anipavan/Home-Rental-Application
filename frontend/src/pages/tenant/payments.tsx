@@ -480,22 +480,58 @@ function MaintenanceSectionWrapper({
   const societyLoading =
     configQ.isLoading || billQueries.some((q) => q.isLoading);
 
-  const societyDueRows: FlatMaintenanceRow[] = useMemo(() => {
+  // Group DUE / OVERDUE rows by (flatNumber, forMonth) so the
+  // Payments page renders ONE card per outstanding month instead of
+  // one per charge (Maintenance + Water bill for the same month
+  // would otherwise show as two look-alike cards). Dedup by
+  // collectionId defensively — the (flat, month, category) unique
+  // constraint on the collection table makes true duplicates
+  // impossible, but a stray render is worse than a cheap Set check.
+  const societyMonthGroups = useMemo(() => {
     const rows = billQueries.flatMap((q) => q.data ?? []);
-    // Only DUE / OVERDUE. Sort newest month first so this month's
-    // charges lead — matches the mental model of "here's what I owe
-    // right now" that the Payments page projects.
-    return rows
-      .filter((r) => r.status === "DUE" || r.status === "OVERDUE")
-      .sort((a, b) => (b.forMonth ?? "").localeCompare(a.forMonth ?? ""));
+    const seen = new Set<string>();
+    const groups = new Map<
+      string,
+      {
+        key: string;
+        flatNumber: string;
+        forMonth: string;
+        rows: FlatMaintenanceRow[];
+        total: number;
+        overdue: boolean;
+      }
+    >();
+    for (const r of rows) {
+      if (r.status !== "DUE" && r.status !== "OVERDUE") continue;
+      if (r.collectionId) {
+        if (seen.has(r.collectionId)) continue;
+        seen.add(r.collectionId);
+      }
+      const key = `${r.flatNumber ?? r.flatId}::${r.forMonth ?? ""}`;
+      const existing = groups.get(key);
+      if (existing) {
+        existing.rows.push(r);
+        existing.total += r.monthAmount;
+        existing.overdue = existing.overdue || r.status === "OVERDUE";
+      } else {
+        groups.set(key, {
+          key,
+          flatNumber: r.flatNumber ?? r.flatId ?? "",
+          forMonth: r.forMonth ?? "",
+          rows: [r],
+          total: r.monthAmount,
+          overdue: r.status === "OVERDUE",
+        });
+      }
+    }
+    // Newest month first — matches "here's what I owe right now".
+    return Array.from(groups.values()).sort((a, b) =>
+      b.forMonth.localeCompare(a.forMonth),
+    );
   }, [billQueries]);
 
-  const extraDueItems = societyDueRows.map((row) => (
-    <SocietyDueCard
-      key={row.collectionId ?? `${row.forMonth}-${row.category}`}
-      row={row}
-      buildingId={buildingId!}
-    />
+  const extraDueItems = societyMonthGroups.map((g) => (
+    <SocietyMonthDueCard key={g.key} group={g} buildingId={buildingId!} />
   ));
 
   return (
@@ -511,61 +547,74 @@ function MaintenanceSectionWrapper({
 }
 
 /**
- * One-line DUE / OVERDUE card for a society collection row. Same
- * visual language as {@link DueCard} — badge, amount, due month +
- * flat number, action button — but the Pay button links to the
- * society-charge pay page ({@code /app/society/pay/:b/:c}) which
- * mints a Payment via the bridge on click and forwards to the
- * shared /app/payments/{id}/pay checkout.
+ * One card per outstanding month — aggregates every DUE / OVERDUE
+ * category for that (flat, month) into a single line. Shows the
+ * total + a category chip strip + a single "Pay all for <month>"
+ * button that routes to the bulk-pay page. Individual per-charge
+ * Pay buttons still live on the Society tab for tenants who want
+ * to settle one category at a time; the Payments page's job is
+ * "one tap, everything for this month done".
  */
-function SocietyDueCard({
-  row,
+function SocietyMonthDueCard({
+  group,
   buildingId,
 }: {
-  row: FlatMaintenanceRow;
+  group: {
+    key: string;
+    flatNumber: string;
+    forMonth: string;
+    rows: FlatMaintenanceRow[];
+    total: number;
+    overdue: boolean;
+  };
   buildingId: string;
 }) {
-  const overdue = row.status === "OVERDUE";
-  const label = row.category ? CATEGORY_LABELS[row.category] : "Other";
   return (
-    <Card className={overdue ? "border-destructive/40" : "border-warning/40"}>
+    <Card
+      className={group.overdue ? "border-destructive/40" : "border-warning/40"}
+    >
       <CardContent className="p-5 sm:p-6 grid gap-4 sm:grid-cols-[1fr_auto] items-center">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <p className="font-display font-semibold text-xl">
-              {formatINR(row.monthAmount)}
+              {formatINR(group.total)}
             </p>
-            <Badge variant={overdue ? "destructive" : "warning"}>
-              {overdue ? "Overdue" : "Due"}
-            </Badge>
-            <Badge variant="secondary" className="text-[10px]">
-              {label}
+            <Badge variant={group.overdue ? "destructive" : "warning"}>
+              {group.overdue ? "Overdue" : "Due"}
             </Badge>
           </div>
           <p className="text-sm text-muted-foreground mt-1">
-            {row.forMonth} ·{" "}
-            <span className="text-foreground">Flat {row.flatNumber}</span>
+            {group.forMonth} ·{" "}
+            <span className="text-foreground">Flat {group.flatNumber}</span>
+            {group.rows.length > 1 && (
+              <> · {group.rows.length} charges</>
+            )}
           </p>
-          {row.notes && (
-            <p className="text-xs text-muted-foreground italic mt-1 line-clamp-2">
-              {row.notes}
-            </p>
-          )}
+          <div className="flex items-center gap-1.5 flex-wrap mt-2">
+            {group.rows.map((r) => {
+              const label = r.category
+                ? CATEGORY_LABELS[r.category]
+                : "Other";
+              return (
+                <Badge
+                  key={r.collectionId ?? `${r.forMonth}-${r.category}`}
+                  variant="secondary"
+                  className="text-[10px]"
+                >
+                  {label} · {formatINR(r.monthAmount)}
+                </Badge>
+              );
+            })}
+          </div>
         </div>
         <div className="flex justify-end">
-          {row.collectionId ? (
-            <Button asChild variant="gradient" size="lg">
-              <Link
-                to={`/app/society/pay/${buildingId}/${row.collectionId}`}
-              >
-                <Wallet /> Pay {formatINR(row.monthAmount)}
-              </Link>
-            </Button>
-          ) : (
-            <Button variant="outline" size="lg" disabled>
-              Pending setup
-            </Button>
-          )}
+          <Button asChild variant="gradient" size="lg">
+            <Link
+              to={`/app/society/pay-all/${buildingId}/${group.forMonth}`}
+            >
+              <Wallet /> Pay all · {formatINR(group.total)}
+            </Link>
+          </Button>
         </div>
       </CardContent>
     </Card>
