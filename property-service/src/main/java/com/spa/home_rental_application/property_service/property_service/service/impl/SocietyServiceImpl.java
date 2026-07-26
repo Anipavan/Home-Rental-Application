@@ -1199,12 +1199,8 @@ public class SocietyServiceImpl implements SocietyService {
                         .updatedAt(now)
                         .build());
 
-        // Update fields. amountDue is required; status defaults to DUE
-        // on create and keeps prior value on update if not specified.
+        // Update fields. amountDue is required.
         row.setAmountDue(req.amountDue());
-        if (req.status() != null) {
-            row.setStatus(req.status());
-        }
         // Category is part of the row key. On update we trust the
         // caller is editing the row they just fetched (category in
         // the request matches what's stored). On create we set it
@@ -1216,6 +1212,28 @@ public class SocietyServiceImpl implements SocietyService {
         if (req.amountPaid() != null) row.setAmountPaid(req.amountPaid());
         if (req.paidVia() != null && !req.paidVia().isBlank()) {
             row.setPaidVia(req.paidVia().trim());
+        }
+        // Status handling — two paths:
+        //   1. Explicit status in the request → honor it verbatim
+        //      (maintainer manual override, e.g. "I saw cash in hand"
+        //      forces PAID even if amountPaid < amountDue).
+        //   2. No explicit status → auto-derive from amountPaid vs
+        //      amountDue. Fixes the case where the maintainer raises
+        //      amountDue after a payment (₹4000 paid, DUE bumped to
+        //      ₹6000): status flips back to DUE + the tenant sees the
+        //      ₹2000 balance on their Payments page. WAIVED rows are
+        //      never auto-recomputed — a forgiven charge stays
+        //      forgiven regardless of the amount ledger.
+        if (req.status() != null) {
+            row.setStatus(req.status());
+        } else if (row.getStatus() != CollectionStatus.WAIVED) {
+            java.math.BigDecimal paid = row.getAmountPaid() == null
+                    ? java.math.BigDecimal.ZERO
+                    : row.getAmountPaid();
+            row.setStatus(
+                    paid.compareTo(row.getAmountDue()) >= 0
+                            ? CollectionStatus.PAID
+                            : CollectionStatus.DUE);
         }
         // Water-meter readings — explicit setters (no null-guard) so the
         // maintainer can also clear them by submitting the form with
