@@ -110,4 +110,21 @@ public interface PaymentRepository extends JpaRepository<Payment, String> {
             "  AND p.tenantId = :payerAuthUserId " +
             "  AND p.status = com.spa.home_rental_application.payment_service.payment_service.enums.PaymentStatus.PENDING")
     List<Payment> findPendingRegistrationPaymentsForUser(String payerAuthUserId);
+
+    /**
+     * All PAID rent payments whose dueDate is >= the given cutoff,
+     * newest first. Drives the {@code MonthlyRentScheduler} — a flat
+     * with a PAID payment in the recent past is treated as an active
+     * lease and gets a fresh PENDING invoice for the current month.
+     *
+     * <p>Filtering on PAID (not just "any status") avoids double-
+     * billing flats that already have an unpaid PENDING / OVERDUE
+     * invoice sitting there. It also naturally excludes vacated
+     * flats — no PAID activity in 45+ days → no new invoice.
+     */
+    @Query("SELECT p FROM Payment p " +
+            "WHERE p.status = com.spa.home_rental_application.payment_service.payment_service.enums.PaymentStatus.PAID " +
+            "  AND p.dueDate >= :cutoff " +
+            "ORDER BY p.dueDate DESC")
+    List<Payment> findRecentPaidPayments(LocalDate cutoff);
 }
