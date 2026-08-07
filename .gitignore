@@ -29,11 +29,21 @@ frontend/.env.local
 frontend/.env.development
 frontend/.env.production
 
-# Root-level prod env file — operators copy .env.example → .env and
-# fill in real secrets. Never commit a real one.
+# Root-level prod env file — operators copy .env-prod.example →
+# .env-prod on the droplet and fill in real secrets. Never commit
+# a real one. Both dot and hyphen conventions blocked to catch
+# accidental filenames like .env-prod or .env.prod.
 .env
 .env.*
-!.env.example
+.env-*
+!.env-prod.example
+!.env-dev
+
+# Grafana Alloy config — may contain Grafana Cloud API token inline.
+# Kept droplet-only until we confirm it references secrets via env vars.
+# To version-control it: refactor to use env("GRAFANA_CLOUD_TOKEN")
+# etc., then remove this line + `git add -f grafana-alloy/config.alloy`.
+grafana-alloy/config.alloy
 
 # Belt-and-braces: cover any nested target/ that the line 2 rule
 # might miss due to path semantics.

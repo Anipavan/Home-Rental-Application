@@ -40,7 +40,7 @@
 
 set -uo pipefail
 
-COMPOSE="docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.fix.yml"
+COMPOSE="docker compose --env-file .env-prod -f docker-compose-base.yml -f docker-compose-prod.yml"
 
 echo "═══════════════════════════════════════════════════════════════════"
 echo "  Anirudh Homes Properties Seeder (SQL direct)"

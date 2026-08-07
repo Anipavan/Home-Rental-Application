@@ -55,7 +55,7 @@ BASE_URL="${BASE_URL:-https://anirudhhomes.in/api/rentals/v1}"
 AUTH_BASE_URL="${AUTH_BASE_URL:-http://localhost:9090}"
 AUTH_SLEEP="${AUTH_SLEEP:-0}"
 DEMO_PASSWORD="${DEMO_PASSWORD:-Demo@2026!}"
-COMPOSE="docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.fix.yml"
+COMPOSE="docker compose --env-file .env-prod -f docker-compose-base.yml -f docker-compose-prod.yml"
 
 echo "═══════════════════════════════════════════════════════════════════"
 echo "  Anirudh Homes Demo Data Seeder"

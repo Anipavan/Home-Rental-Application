@@ -22,9 +22,13 @@ services:
     image: gvenzl/oracle-free:23.5-slim
     container_name: hra-oracle
     environment:
-      ORACLE_PASSWORD: ${ORACLE_PASSWORD:-Pavan@123}
+      # No fallback defaults for secrets — every deploy must source
+      # an env-file (.env.dev for local, .env for prod). Missing vars
+      # resolve to an empty string and Oracle refuses to init, which
+      # is the correct fail-fast behavior.
+      ORACLE_PASSWORD: ${ORACLE_PASSWORD}
       APP_USER: ${ORACLE_APP_USER:-siva}
-      APP_USER_PASSWORD: ${ORACLE_APP_PASSWORD:-Pavan@123}
+      APP_USER_PASSWORD: ${ORACLE_APP_PASSWORD}
     # No host port binding. Every backend reaches Oracle via the
     # internal `hra-net` Docker network at oracle-db:1521. Exposing
     # 1521 on the host was a real risk — anyone scanning the VPS IP
@@ -139,8 +143,8 @@ services:
     environment:
       EUREKA_URL: http://service-registry:8761/eureka
       CONFIG_SERVER_URL: http://config-server:8888
-      JWT_SECRET: ${JWT_SECRET:-U3VwZXJTZWNyZXRLZXlGb3JKV1RUb2tlbkdlbmVyYXRpb24xMjM0NTY3ODkwIQ==}
-      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+      JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:4200}
 
   # ========================================================================
@@ -162,12 +166,12 @@ services:
     environment:
       DB_URL: jdbc:oracle:thin:@//oracle-db:1521/FREEPDB1
       DB_USERNAME: ${ORACLE_APP_USER:-siva}
-      DB_PASSWORD: ${ORACLE_APP_PASSWORD:-Pavan@123}
+      DB_PASSWORD: ${ORACLE_APP_PASSWORD}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       EUREKA_URL: http://service-registry:8761/eureka
       CONFIG_SERVER_URL: http://config-server:8888
-      JWT_SECRET: ${JWT_SECRET:-U3VwZXJTZWNyZXRLZXlGb3JKV1RUb2tlbkdlbmVyYXRpb24xMjM0NTY3ODkwIQ==}
-      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+      JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET}
 
   property-service:
     build:
@@ -184,10 +188,10 @@ services:
     environment:
       DB_URL: jdbc:oracle:thin:@//oracle-db:1521/FREEPDB1
       DB_USERNAME: ${ORACLE_APP_USER:-siva}
-      DB_PASSWORD: ${ORACLE_APP_PASSWORD:-Pavan@123}
+      DB_PASSWORD: ${ORACLE_APP_PASSWORD}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       EUREKA_URL: http://service-registry:8761/eureka
-      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET}
 
   user-service:
     build:
@@ -204,10 +208,10 @@ services:
     environment:
       DB_URL: jdbc:oracle:thin:@//oracle-db:1521/FREEPDB1
       DB_USERNAME: ${ORACLE_APP_USER:-siva}
-      DB_PASSWORD: ${ORACLE_APP_PASSWORD:-Pavan@123}
+      DB_PASSWORD: ${ORACLE_APP_PASSWORD}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       EUREKA_URL: http://service-registry:8761/eureka
-      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET}
 
   payment-service:
     build:
@@ -230,10 +234,10 @@ services:
     environment:
       DB_URL: jdbc:oracle:thin:@//oracle-db:1521/FREEPDB1
       DB_USERNAME: ${ORACLE_APP_USER:-siva}
-      DB_PASSWORD: ${ORACLE_APP_PASSWORD:-Pavan@123}
+      DB_PASSWORD: ${ORACLE_APP_PASSWORD}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       EUREKA_URL: http://service-registry:8761/eureka
-      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET}
       # Read by PaymentServiceImpl @Value("${app.payment-proof.dir}").
       APP_PAYMENT_PROOF_DIR: /data/payment-proofs
       PAYMENT_GATEWAY: ${PAYMENT_GATEWAY:-mock}
@@ -266,7 +270,7 @@ services:
       MONGO_URI: mongodb://mongodb:27017/HomeRentalDB
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       EUREKA_URL: http://service-registry:8761/eureka
-      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET}
 
   notification-service:
     build:
@@ -285,7 +289,7 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       EUREKA_URL: http://service-registry:8761/eureka
       CONFIG_SERVER_URL: http://config-server:8888
-      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET}
       NOTIFICATION_DELIVERY: "false"   # don't send real emails in dev compose
 
   analytics-service:
@@ -303,11 +307,11 @@ services:
     environment:
       DB_URL: jdbc:oracle:thin:@//oracle-db:1521/FREEPDB1
       DB_USERNAME: ${ORACLE_APP_USER:-siva}
-      DB_PASSWORD: ${ORACLE_APP_PASSWORD:-Pavan@123}
+      DB_PASSWORD: ${ORACLE_APP_PASSWORD}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       EUREKA_URL: http://service-registry:8761/eureka
       CONFIG_SERVER_URL: http://config-server:8888
-      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET}
 
   # ========================================================================
   # INDIA COMPLIANCE LAYER
@@ -332,14 +336,14 @@ services:
     environment:
       DB_URL: jdbc:oracle:thin:@//oracle-db:1521/FREEPDB1
       DB_USERNAME: ${ORACLE_APP_USER:-siva}
-      DB_PASSWORD: ${ORACLE_APP_PASSWORD:-Pavan@123}
+      DB_PASSWORD: ${ORACLE_APP_PASSWORD}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       EUREKA_URL: http://service-registry:8761/eureka
       CONFIG_SERVER_URL: http://config-server:8888
-      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET}
       # KYC provider — keep MOCK for dev / CI; switch to DIGIO or SANDBOX once creds wired
       KYC_PROVIDER: ${KYC_PROVIDER:-MOCK}
-      KYC_AADHAAR_SALT: ${KYC_AADHAAR_SALT:-change-me-in-prod-aadhaar-pepper}
+      KYC_AADHAAR_SALT: ${KYC_AADHAAR_SALT}
       DIGIO_BASE_URL: ${DIGIO_BASE_URL:-https://api.digio.in}
       DIGIO_API_KEY: ${DIGIO_API_KEY:-}
       DIGIO_CLIENT_ID: ${DIGIO_CLIENT_ID:-}
@@ -377,11 +381,11 @@ services:
     environment:
       DB_URL: jdbc:oracle:thin:@//oracle-db:1521/FREEPDB1
       DB_USERNAME: ${ORACLE_APP_USER:-siva}
-      DB_PASSWORD: ${ORACLE_APP_PASSWORD:-Pavan@123}
+      DB_PASSWORD: ${ORACLE_APP_PASSWORD}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       EUREKA_URL: http://service-registry:8761/eureka
       CONFIG_SERVER_URL: http://config-server:8888
-      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET}
       COMPLIANCE_INVOICE_DIR: /data/gst-invoices
       COMPLIANCE_GST_THRESHOLD: ${COMPLIANCE_GST_THRESHOLD:-2000000.00}
       COMPLIANCE_GST_RATE: ${COMPLIANCE_GST_RATE:-18.00}
@@ -405,11 +409,11 @@ services:
     environment:
       DB_URL: jdbc:oracle:thin:@//oracle-db:1521/FREEPDB1
       DB_USERNAME: ${ORACLE_APP_USER:-siva}
-      DB_PASSWORD: ${ORACLE_APP_PASSWORD:-Pavan@123}
+      DB_PASSWORD: ${ORACLE_APP_PASSWORD}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       EUREKA_URL: http://service-registry:8761/eureka
       CONFIG_SERVER_URL: http://config-server:8888
-      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET}
       LEASE_DEED_DIR: /data/lease-deeds
       LEASE_EXPIRY_WARNING_DAYS: ${LEASE_EXPIRY_WARNING_DAYS:-60}
       LEASE_RENT_INCREMENT_PERCENT: ${LEASE_RENT_INCREMENT_PERCENT:-5.0}
@@ -432,16 +436,16 @@ services:
     environment:
       DB_URL: jdbc:oracle:thin:@//oracle-db:1521/FREEPDB1
       DB_USERNAME: ${ORACLE_APP_USER:-siva}
-      DB_PASSWORD: ${ORACLE_APP_PASSWORD:-Pavan@123}
+      DB_PASSWORD: ${ORACLE_APP_PASSWORD}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       EUREKA_URL: http://service-registry:8761/eureka
       CONFIG_SERVER_URL: http://config-server:8888
-      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET}
       DOCUMENT_STORAGE_BACKEND: ${DOCUMENT_STORAGE_BACKEND:-LOCAL}
       DOCUMENT_LOCAL_DIR: /data/documents
       DOCUMENT_S3_BUCKET: ${DOCUMENT_S3_BUCKET:-rentgenius-documents}
       DOCUMENT_DOWNLOAD_TTL: ${DOCUMENT_DOWNLOAD_TTL:-900}
-      DOCUMENT_DOWNLOAD_SECRET: ${DOCUMENT_DOWNLOAD_SECRET:-change-me-in-prod-doc-download-secret}
+      DOCUMENT_DOWNLOAD_SECRET: ${DOCUMENT_DOWNLOAD_SECRET}
       DOCUMENT_OCR_PROVIDER: ${DOCUMENT_OCR_PROVIDER:-STUB}
 
   review-service:
@@ -461,7 +465,7 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       EUREKA_URL: http://service-registry:8761/eureka
       CONFIG_SERVER_URL: http://config-server:8888
-      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-Z2F0ZXdheS1zaGFyZWQtc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9k}
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET}
       REVIEWS_AUTO_PUBLISH: ${REVIEWS_AUTO_PUBLISH:-true}
 
 # ============================================================================

@@ -49,7 +49,14 @@ public class SecretsBootstrapValidator implements ApplicationListener<Applicatio
             "app.razorpay.key-secret",
             "app.razorpay.webhook-secret",
             "app.stripe.secret-key",
-            "app.stripe.webhook-secret"
+            "app.stripe.webhook-secret",
+            // KYC pepper — added to raw Aadhaar before hashing. A
+            // known pepper defeats the whole point of the hash.
+            "app.kyc.aadhaar-hash-salt",
+            // Presigned-URL HMAC — document-service signs download
+            // links with this. A known key lets any attacker mint
+            // valid download URLs for anyone's lease deed or PAN.
+            "app.document.download-url-secret"
     );
 
     /** Substrings that, if present in a sensitive value, indicate the placeholder default leaked through. */
@@ -61,7 +68,9 @@ public class SecretsBootstrapValidator implements ApplicationListener<Applicatio
             "sk_test_xxxx",
             "whsec_xxxx",
             "SuperSecretKeyForJWTTokenGeneration",
-            "gateway-shared-secret-change-me-in-prod"
+            "gateway-shared-secret-change-me-in-prod",
+            "change-me-in-prod-aadhaar-pepper",
+            "change-me-in-prod-doc-download-secret"
     );
 
     @Override

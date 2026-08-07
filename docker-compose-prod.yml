@@ -1,45 +1,57 @@
 # ════════════════════════════════════════════════════════════════════
-#  Production overlay for docker-compose.
+#  Production overlay — Anirudh Homes
 #
-#  Run with:
-#    docker compose --env-file .env \
-#                   -f docker-compose.yml \
-#                   -f docker-compose.prod.yml up -d
+#  Combined from what used to be three separate files:
+#    • docker-compose.prod.yml     — Caddy, port stripping, env wiring
+#    • docker-compose.tune.yml     — per-service JVM heap caps
+#    • compose.bootstrap.yml       — SPRING_FLYWAY_ENABLED=false etc.
 #
-#  This file ONLY contains the diff from docker-compose.yml that
-#  prod needs. Everything in here REPLACES or AUGMENTS the
-#  matching key in the base file:
+#  Run via the wrapper script:
+#    ./deploy-prod.sh up -d
 #
+#  Or manually:
+#    docker compose --env-file .env-prod \
+#                   -f docker-compose-base.yml \
+#                   -f docker-compose-prod.yml up -d
+#
+#  This overlay REPLACES or AUGMENTS keys from docker-compose-base.yml:
 #   • Activates the `prod` Spring profile in every service.
-#   • Removes host port bindings on internal-only services (so the
-#     box only exposes 80 / 443 via nginx, not 8080 / 9090 / etc.).
-#   • Wires every secret to an env var read from `.env` — no
+#   • Wires every secret to an env var read from .env-prod — no
 #     literal credentials.
-#   • Replaces the bind-mount `uploads/` with a named volume so
-#     document blobs survive container restarts.
-#   • Adds resource limits + restart policies appropriate for a
-#     production host.
-#
-#  This overlay assumes:
-#   • You're running on a single host (EC2 / Hetzner / DO droplet)
-#     with docker-compose, NOT a real orchestrator. For k8s, drop
-#     this file and write proper Deployments + Services + Secrets
-#     instead.
-#   • Oracle / MongoDB / Kafka are RUN OUTSIDE compose. The
-#     `oracle-db`, `mongodb`, `zookeeper`, `kafka` services from
-#     the base file should be COMMENTED OUT in prod — point
-#     DB_URL / SPRING_DATA_MONGODB_URI / KAFKA_BOOTSTRAP_SERVERS
-#     at managed services (RDS / Atlas / MSK).
+#   • Disables Flyway + turns on Hibernate DDL-auto=update so schema
+#     comes up on fresh boot. Reason: V1__baseline.sql files are
+#     no-op stubs; there are no proper CREATE TABLE migrations yet.
+#     Change this ONLY when proper V1 migrations exist for every
+#     service.
+#   • Caps JVM heaps per service so the 2-4GB droplet doesn't OOM.
+#   • Removes host port bindings on internal services so only 80/443
+#     are reachable from the public internet (Caddy handles ingress).
 # ════════════════════════════════════════════════════════════════════
 
 services:
 
+  # ─── Infrastructure services ────────────────────────────────────
+  # Close host port bindings. Plain `ports: []` would silently merge
+  # with the base file's list — `!reset []` actually clears it.
+
+  mongodb:
+    ports: !reset []
+
+  zookeeper:
+    ports: !reset []
+    environment:
+      # cp-zookeeper image reads KAFKA_HEAP_OPTS for its JVM.
+      KAFKA_HEAP_OPTS: "-Xmx512M -Xms512M"
+
+  kafka:
+    ports: !reset []
+    environment:
+      KAFKA_HEAP_OPTS: "-Xmx384M -Xms384M"
+
   # ─── Caddy reverse-proxy (TLS termination) ──────────────────────
   # Public entry-point. Terminates TLS on :443, auto-renews
   # Let's Encrypt certs for anirudhhomes.in + www.anirudhhomes.in,
-  # and forwards everything to the frontend container. This is the
-  # ONLY service bound to host ports in prod — frontend stays on the
-  # internal hra-net network.
+  # and forwards everything to the frontend container.
   #
   # Persistent volumes:
   #   caddy_data   — issued certs + ACME account key. Losing this
@@ -47,18 +59,6 @@ services:
   #                  (Let's Encrypt has a 5-cert/week rate limit).
   #   caddy_config — Caddy's runtime config dump. Safe to lose;
   #                  recreated from Caddyfile on start.
-  # ─── Infrastructure services — explicitly close their host port
-  # bindings. Plain `ports: []` would silently merge with the parent
-  # docker-compose.yml list and leave the dev-time host bindings
-  # (Mongo 27017, ZK 2181, Kafka 9093) wide-open on the public IP.
-  # `!reset []` actually clears the parent list. None of these need
-  # to be reachable from outside the Docker network in prod.
-  mongodb:
-    ports: !reset []
-  zookeeper:
-    ports: !reset []
-  kafka:
-    ports: !reset []
 
   caddy:
     image: caddy:2-alpine
@@ -80,32 +80,43 @@ services:
         limits:
           memory: 128M
 
+  # ─── Grafana Cloud log shipping (Alloy) ─────────────────────────
+  # Ships every container's stdout/stderr to the Grafana Cloud Loki
+  # tenant configured in ./grafana-alloy/config.alloy. Auto-discovers
+  # containers via the docker socket. Prod-only — dev doesn't ship
+  # logs anywhere.
+  grafana-alloy:
+    image: grafana/alloy:latest
+    container_name: hra-grafana-alloy
+    restart: unless-stopped
+    command:
+      - run
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./grafana-alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - hra-net
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
   # ─── Frontend ────────────────────────────────────────────────────
   # Built from frontend/Dockerfile. nginx inside serves the SPA +
   # reverse-proxies /api/* to api-gateway:8080. NOT bound to host
-  # ports in prod — Caddy sits in front and forwards to frontend:80
-  # over the internal hra-net network.
+  # ports in prod — Caddy sits in front and forwards to frontend:80.
   frontend:
     build:
       context: .
       dockerfile: frontend/Dockerfile
       args:
-        # Match whatever your axios baseURL is — see frontend/.env.example.
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/rentals/v1}
         VITE_CSP_CONNECT_SRC: ${VITE_CSP_CONNECT_SRC:-}
     image: anirudhhomes/frontend:${IMAGE_TAG:-latest}
     container_name: anirudhhomes-frontend
     restart: unless-stopped
-    # No host port binding — Caddy reaches us on the internal network.
-    # !reset clears the parent file's port list — plain `ports: []`
-    # silently merges to "[] + parent" which leaves the host bindings
-    # intact. The frontend container is the only ingress; backends
-    # talk to each other over hra-net without host bindings.
     ports: !reset []
-    # Must be on hra-net so nginx can resolve `api-gateway` for its
-    # upstream proxy. Without this, frontend lands on docker-compose's
-    # auto-created default network while api-gateway is on hra-net,
-    # and nginx crash-loops with "host not found in upstream".
     networks:
       - hra-net
     depends_on:
@@ -121,11 +132,7 @@ services:
       SPRING_PROFILES_ACTIVE: prod
       EUREKA_USERNAME: ${EUREKA_USERNAME}
       EUREKA_PASSWORD: ${EUREKA_PASSWORD}
-    # No host port — only reachable from other compose services
-    # !reset clears the parent file's port list — plain `ports: []`
-    # silently merges to "[] + parent" which leaves the host bindings
-    # intact. The frontend container is the only ingress; backends
-    # talk to each other over hra-net without host bindings.
+      JAVA_TOOL_OPTIONS: "-Xmx256m -Xms128m"
     ports: !reset []
     restart: unless-stopped
 
@@ -136,10 +143,7 @@ services:
       EUREKA_URL: ${EUREKA_URL}
       EUREKA_USERNAME: ${EUREKA_USERNAME}
       EUREKA_PASSWORD: ${EUREKA_PASSWORD}
-    # !reset clears the parent file's port list — plain `ports: []`
-    # silently merges to "[] + parent" which leaves the host bindings
-    # intact. The frontend container is the only ingress; backends
-    # talk to each other over hra-net without host bindings.
+      JAVA_TOOL_OPTIONS: "-Xmx256m -Xms128m"
     ports: !reset []
     restart: unless-stopped
 
@@ -155,11 +159,7 @@ services:
       EUREKA_PASSWORD: ${EUREKA_PASSWORD}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
       MANAGEMENT_TRACING_SAMPLING_PROBABILITY: ${MANAGEMENT_TRACING_SAMPLING_PROBABILITY:-0.1}
-    # No host port — nginx in the frontend container proxies to it.
-    # !reset clears the parent file's port list — plain `ports: []`
-    # silently merges to "[] + parent" which leaves the host bindings
-    # intact. The frontend container is the only ingress; backends
-    # talk to each other over hra-net without host bindings.
+      JAVA_TOOL_OPTIONS: "-Xmx320m -Xms192m"
     ports: !reset []
     restart: unless-stopped
     deploy:
@@ -168,6 +168,15 @@ services:
           memory: 768M
 
   # ─── Auth service ───────────────────────────────────────────────
+  # Shared env anchor for every JPA-backed service. Merged into each
+  # service's `environment:` via `<<: *spring-jpa-env`. Adding a key
+  # here propagates to auth / user / property / payment / analytics /
+  # kyc / compliance / lease / document / review / maintenance.
+  #
+  # Flyway is disabled here because the V1__baseline.sql files across
+  # services are no-op stubs — Hibernate ddl-auto=update creates the
+  # schema on first boot instead. This must stay in sync until proper
+  # V1 CREATE TABLE migrations land for every service.
   auth-service:
     environment: &spring-jpa-env
       SPRING_PROFILES_ACTIVE: prod
@@ -183,20 +192,11 @@ services:
       EUREKA_PASSWORD: ${EUREKA_PASSWORD}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
       MANAGEMENT_TRACING_SAMPLING_PROBABILITY: ${MANAGEMENT_TRACING_SAMPLING_PROBABILITY:-0.1}
-      # The Java code reads ${app.frontend.base-url:...} which Spring's
-      # relaxed binding maps from APP_FRONTEND_BASE_URL — NOT from
-      # FRONTEND_URL. The legacy FRONTEND_URL name was set but silently
-      # ignored by Spring, so password-reset + welcome emails were
-      # falling back to the hardcoded localhost default. Inject both
-      # names: keep FRONTEND_URL for any existing consumer + add the
-      # Spring-friendly APP_FRONTEND_BASE_URL.
       APP_FRONTEND_BASE_URL: ${FRONTEND_URL:-https://anirudhhomes.in}
       FRONTEND_URL: ${FRONTEND_URL:-https://anirudhhomes.in}
       APP_AUTH_LOCKOUT_ENABLED: ${APP_AUTH_LOCKOUT_ENABLED:-true}
-    # !reset clears the parent file's port list — plain `ports: []`
-    # silently merges to "[] + parent" which leaves the host bindings
-    # intact. The frontend container is the only ingress; backends
-    # talk to each other over hra-net without host bindings.
+      SPRING_FLYWAY_ENABLED: "false"
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
     ports: !reset []
     restart: unless-stopped
     deploy:
@@ -214,10 +214,7 @@ services:
       PII_ENCRYPTION_KEY: ${PII_ENCRYPTION_KEY}
       APP_RETENTION_SOFT_DELETE_DAYS: ${APP_RETENTION_SOFT_DELETE_DAYS:-30}
       APP_RETENTION_ENABLED: ${APP_RETENTION_ENABLED:-true}
-    # !reset clears the parent file's port list — plain `ports: []`
-    # silently merges to "[] + parent" which leaves the host bindings
-    # intact. The frontend container is the only ingress; backends
-    # talk to each other over hra-net without host bindings.
+      JAVA_TOOL_OPTIONS: "-Xmx256m -Xms128m"
     ports: !reset []
     restart: unless-stopped
     deploy:
@@ -227,11 +224,9 @@ services:
 
   # ─── Property service ──────────────────────────────────────────
   property-service:
-    environment: *spring-jpa-env
-    # !reset clears the parent file's port list — plain `ports: []`
-    # silently merges to "[] + parent" which leaves the host bindings
-    # intact. The frontend container is the only ingress; backends
-    # talk to each other over hra-net without host bindings.
+    environment:
+      <<: *spring-jpa-env
+      JAVA_TOOL_OPTIONS: "-Xmx320m -Xms192m"
     ports: !reset []
     restart: unless-stopped
     deploy:
@@ -248,10 +243,8 @@ services:
       APP_RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET}
       APP_STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       APP_STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
-    # !reset clears the parent file's port list — plain `ports: []`
-    # silently merges to "[] + parent" which leaves the host bindings
-    # intact. The frontend container is the only ingress; backends
-    # talk to each other over hra-net without host bindings.
+      APP_PAYMENT_GATEWAY: ${PAYMENT_GATEWAY:-mock}
+      JAVA_TOOL_OPTIONS: "-Xmx256m -Xms128m"
     ports: !reset []
     restart: unless-stopped
     deploy:
@@ -261,11 +254,9 @@ services:
 
   # ─── Maintenance service ───────────────────────────────────────
   maintenance-service:
-    environment: *spring-jpa-env
-    # !reset clears the parent file's port list — plain `ports: []`
-    # silently merges to "[] + parent" which leaves the host bindings
-    # intact. The frontend container is the only ingress; backends
-    # talk to each other over hra-net without host bindings.
+    environment:
+      <<: *spring-jpa-env
+      JAVA_TOOL_OPTIONS: "-Xmx256m -Xms128m"
     ports: !reset []
     restart: unless-stopped
     deploy:
@@ -275,11 +266,9 @@ services:
 
   # ─── Lease service ─────────────────────────────────────────────
   lease-service:
-    environment: *spring-jpa-env
-    # !reset clears the parent file's port list — plain `ports: []`
-    # silently merges to "[] + parent" which leaves the host bindings
-    # intact. The frontend container is the only ingress; backends
-    # talk to each other over hra-net without host bindings.
+    environment:
+      <<: *spring-jpa-env
+      JAVA_TOOL_OPTIONS: "-Xmx256m -Xms128m"
     ports: !reset []
     restart: unless-stopped
     deploy:
@@ -289,11 +278,9 @@ services:
 
   # ─── Compliance service ────────────────────────────────────────
   compliance-service:
-    environment: *spring-jpa-env
-    # !reset clears the parent file's port list — plain `ports: []`
-    # silently merges to "[] + parent" which leaves the host bindings
-    # intact. The frontend container is the only ingress; backends
-    # talk to each other over hra-net without host bindings.
+    environment:
+      <<: *spring-jpa-env
+      JAVA_TOOL_OPTIONS: "-Xmx256m -Xms128m"
     ports: !reset []
     restart: unless-stopped
     deploy:
@@ -303,11 +290,9 @@ services:
 
   # ─── KYC service ───────────────────────────────────────────────
   kyc-service:
-    environment: *spring-jpa-env
-    # !reset clears the parent file's port list — plain `ports: []`
-    # silently merges to "[] + parent" which leaves the host bindings
-    # intact. The frontend container is the only ingress; backends
-    # talk to each other over hra-net without host bindings.
+    environment:
+      <<: *spring-jpa-env
+      JAVA_TOOL_OPTIONS: "-Xmx256m -Xms128m"
     ports: !reset []
     restart: unless-stopped
     deploy:
@@ -317,11 +302,9 @@ services:
 
   # ─── Review service ────────────────────────────────────────────
   review-service:
-    environment: *spring-jpa-env
-    # !reset clears the parent file's port list — plain `ports: []`
-    # silently merges to "[] + parent" which leaves the host bindings
-    # intact. The frontend container is the only ingress; backends
-    # talk to each other over hra-net without host bindings.
+    environment:
+      <<: *spring-jpa-env
+      JAVA_TOOL_OPTIONS: "-Xmx256m -Xms128m"
     ports: !reset []
     restart: unless-stopped
     deploy:
@@ -330,6 +313,8 @@ services:
           memory: 512M
 
   # ─── Notification service (MongoDB-backed) ────────────────────
+  # NOT part of *spring-jpa-env because it doesn't have a JPA
+  # datasource — Flyway wouldn't run here anyway.
   notification-service:
     environment:
       SPRING_PROFILES_ACTIVE: prod
@@ -342,13 +327,6 @@ services:
       EUREKA_PASSWORD: ${EUREKA_PASSWORD}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
       MANAGEMENT_TRACING_SAMPLING_PROBABILITY: ${MANAGEMENT_TRACING_SAMPLING_PROBABILITY:-0.1}
-      # The Java code reads ${app.frontend.base-url:...} which Spring's
-      # relaxed binding maps from APP_FRONTEND_BASE_URL — NOT from
-      # FRONTEND_URL. The legacy FRONTEND_URL name was set but silently
-      # ignored by Spring, so password-reset + welcome emails were
-      # falling back to the hardcoded localhost default. Inject both
-      # names: keep FRONTEND_URL for any existing consumer + add the
-      # Spring-friendly APP_FRONTEND_BASE_URL.
       APP_FRONTEND_BASE_URL: ${FRONTEND_URL:-https://anirudhhomes.in}
       FRONTEND_URL: ${FRONTEND_URL:-https://anirudhhomes.in}
       SPRING_MAIL_HOST: ${SPRING_MAIL_HOST:-}
@@ -361,10 +339,7 @@ services:
       APP_TWILIO_AUTH_TOKEN: ${APP_TWILIO_AUTH_TOKEN:-}
       APP_TWILIO_SMS_FROM: ${APP_TWILIO_SMS_FROM:-}
       APP_TWILIO_WHATSAPP_FROM: ${APP_TWILIO_WHATSAPP_FROM:-}
-    # !reset clears the parent file's port list — plain `ports: []`
-    # silently merges to "[] + parent" which leaves the host bindings
-    # intact. The frontend container is the only ingress; backends
-    # talk to each other over hra-net without host bindings.
+      JAVA_TOOL_OPTIONS: "-Xmx256m -Xms128m"
     ports: !reset []
     restart: unless-stopped
     deploy:
@@ -375,17 +350,13 @@ services:
   # ─── Document service ──────────────────────────────────────────
   # Replaces the dev bind-mount `./uploads:/uploads` with a named
   # volume so document blobs survive container restarts. For real
-  # prod, migrate to S3-compatible object storage (see
-  # PRODUCTION_READINESS.md P1-10).
+  # prod, migrate to S3-compatible object storage.
   document-service:
     environment:
       <<: *spring-jpa-env
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
       DOWNLOAD_URL_SECRET: ${DOWNLOAD_URL_SECRET}
-    # !reset clears the parent file's port list — plain `ports: []`
-    # silently merges to "[] + parent" which leaves the host bindings
-    # intact. The frontend container is the only ingress; backends
-    # talk to each other over hra-net without host bindings.
+      JAVA_TOOL_OPTIONS: "-Xmx256m -Xms128m"
     ports: !reset []
     restart: unless-stopped
     volumes:
@@ -397,11 +368,9 @@ services:
 
   # ─── Analytics service ─────────────────────────────────────────
   analytics-service:
-    environment: *spring-jpa-env
-    # !reset clears the parent file's port list — plain `ports: []`
-    # silently merges to "[] + parent" which leaves the host bindings
-    # intact. The frontend container is the only ingress; backends
-    # talk to each other over hra-net without host bindings.
+    environment:
+      <<: *spring-jpa-env
+      JAVA_TOOL_OPTIONS: "-Xmx256m -Xms128m"
     ports: !reset []
     restart: unless-stopped
     deploy:
@@ -410,13 +379,6 @@ services:
           memory: 512M
 
 # ─── Persistent volumes ────────────────────────────────────────────
-# Override the bind-mount under uploads/ with a named docker volume
-# so document blobs survive `docker compose down` and host restarts.
-# For real prod, swap this for an S3 bucket (P1-10).
-#
-# caddy_data must survive container restarts — losing it forces a
-# full Let's Encrypt re-issue, and there's a 5-cert/week rate limit
-# per domain.
 volumes:
   anirudhhomes-documents:
     driver: local

@@ -1,0 +1,69 @@
+# ────────────────────────────────────────────────────────────────
+#  Optional monitoring stack — Prometheus + Grafana + cAdvisor.
+#
+#  NOT part of the base deploy. Bring it up separately when you
+#  want dashboards:
+#
+#    docker compose -f docker-compose-monitoring.yml up -d
+#
+#  Grafana UI:  http://<droplet-ip>:3000  (admin / admin123)
+#  Prometheus:  http://<droplet-ip>:9091
+#  cAdvisor:    http://<droplet-ip>:8081
+#
+#  SECURITY: the Grafana admin password below is a WEAK default.
+#  Change it before exposing this stack on a public IP, or firewall
+#  ports 3000/9091/8081 to localhost only.
+#
+#  Networks: piggy-backs on the main compose network
+#  `home-rental_hra-net`. Bring up the base stack first.
+# ────────────────────────────────────────────────────────────────
+
+services:
+
+  prometheus:
+    image: prom/prometheus
+    container_name: hra-prometheus
+    restart: unless-stopped
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - hra-net
+
+  grafana:
+    image: grafana/grafana
+    container_name: hra-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin123}
+    volumes:
+      - grafana-data:/var/lib/grafana
+    networks:
+      - hra-net
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: hra-cadvisor
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+    privileged: true
+    networks:
+      - hra-net
+
+volumes:
+  grafana-data:
+
+networks:
+  hra-net:
+    external: true
+    name: home-rental_hra-net

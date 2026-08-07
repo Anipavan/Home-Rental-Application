@@ -1,0 +1,50 @@
+# ────────────────────────────────────────────────────────────────
+#  Optional log-aggregation stack — Loki + Promtail.
+#
+#  NOT part of the base deploy. Bring it up separately when you
+#  want centralized logs on the droplet:
+#
+#    docker compose -f docker-compose-logging.yml up -d
+#
+#  Loki UI: http://<droplet-ip>:3100 (query API only — pair with
+#           local Grafana or Grafana Cloud for a web UI).
+#
+#  Networks: piggy-backs on the main compose network
+#  `home-rental_hra-net` which is created by the base stack. Bring
+#  up the base stack (deploy-prod.sh) first so the network exists.
+# ────────────────────────────────────────────────────────────────
+
+services:
+
+  loki:
+    image: grafana/loki:latest
+    container_name: hra-loki
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./logging/loki-config.yml:/etc/loki/local-config.yaml
+      - loki-data:/loki
+    networks:
+      - hra-net
+
+  promtail:
+    image: grafana/promtail:latest
+    container_name: hra-promtail
+    restart: unless-stopped
+    volumes:
+      - ./logging/promtail-config.yml:/etc/promtail/config.yml
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - hra-net
+
+volumes:
+  loki-data:
+
+networks:
+  hra-net:
+    external: true
+    name: home-rental_hra-net

@@ -1,20 +1,17 @@
 #!/bin/bash
+# ─────────────────────────────────────────────────────────────────
+#  deploy.sh — backward-compat wrapper.
+#
+#  The old deploy.sh referenced compose.bootstrap.yml + tune.yml,
+#  both of which were merged into docker-compose-prod.yml. This
+#  file now forwards to the new deploy-prod.sh so any existing
+#  cron jobs or muscle-memory calls to `./deploy.sh` keep working.
+#
+#  New scripts / operators should call deploy-prod.sh directly.
+# ─────────────────────────────────────────────────────────────────
+
 set -euo pipefail
-cd /opt/anirudhhomes
-git pull origin master
+cd "$(dirname "$0")"
 
-docker compose \
-  -f docker-compose.yml \
-  -f docker-compose.prod.yml \
-  -f compose.bootstrap.yml \
-  -f docker-compose.tune.yml \
-  build "$@"
-
-docker compose \
-  -f docker-compose.yml \
-  -f docker-compose.prod.yml \
-  -f compose.bootstrap.yml \
-  -f docker-compose.tune.yml \
-  up -d --force-recreate "$@"
-
-docker compose logs --tail=80 -f auth-service
+echo "→ deploy.sh is now a wrapper — forwarding to deploy-prod.sh"
+exec ./deploy-prod.sh "${@:-up -d --force-recreate}"

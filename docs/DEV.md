@@ -6,7 +6,7 @@ Quickstart for running the full Anirudh Homes stack on your laptop.
 
 ```bash
 # Terminal 1 — backend services + infra
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+./deploy-dev.sh up -d --build
 
 # Terminal 2 — frontend (Vite dev server)
 cd frontend
@@ -17,9 +17,11 @@ npm run dev
 open http://localhost:4200
 ```
 
-That's it. No env files, no extra setup. Defaults baked into
-`docker-compose.yml` create a working Oracle user (`siva`/`Pavan@123`)
-and the gateway already accepts CORS from `localhost:4200`.
+That's it. The `.env-dev` file (committed to the repo, contains only
+placeholder secrets — real secrets live in `.env-prod` on the droplet)
+provides every var the stack needs. Placeholder JWT/HMAC values are
+allowed under the `dev` profile; `SecretsBootstrapValidator` blocks
+them under `prod` so they can't accidentally ship.
 
 ---
 
@@ -88,8 +90,8 @@ Connect from a SQL client (DBeaver / SQL Developer):
 ### Reset everything (DB included)
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml down -v
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+./deploy-dev.sh down -v
+./deploy-dev.sh up -d --build
 ```
 
 The `-v` flag deletes named volumes — wipes Oracle, Mongo, Kafka. Fresh start.
@@ -97,30 +99,39 @@ The `-v` flag deletes named volumes — wipes Oracle, Mongo, Kafka. Fresh start.
 ### Restart one service after a code change
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build user-service
+./deploy-dev.sh up -d --build user-service
 ```
 
 ### Tail logs
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml logs -f user-service
+./deploy-dev.sh logs -f user-service
 ```
 
 ### Set up a shell alias (optional)
 
-The double-compose flag is verbose. Save it once:
-
 ```bash
 # bash / zsh on Linux/macOS / WSL
-alias dc='docker compose -f docker-compose.yml -f docker-compose.dev.yml'
-```
-
-```powershell
-# PowerShell
-function dc { docker compose -f docker-compose.yml -f docker-compose.dev.yml @Args }
+alias dc='./deploy-dev.sh'
 ```
 
 Then: `dc up -d --build`, `dc ps`, `dc logs -f api-gateway`.
+
+## File layout
+
+Four compose files, two envs, two deploy wrappers:
+
+| File | Role |
+|---|---|
+| `docker-compose-base.yml` | Service definitions shared by dev + prod |
+| `docker-compose-dev.yml` | Dev overlay (profile=dev, port remaps, CORS) |
+| `docker-compose-prod.yml` | Prod overlay (Caddy, JVM caps, Flyway-off, resource limits) |
+| `docker-compose-logging.yml` | Optional Loki + Promtail stack |
+| `docker-compose-monitoring.yml` | Optional Prometheus + Grafana + cAdvisor stack |
+| `.env-dev` | Local dev env (committed, placeholder secrets only) |
+| `.env-prod.example` | Prod env template (real values live in `.env-prod` on the droplet, NEVER committed) |
+| `deploy-dev.sh` | `docker compose --env-file .env-dev -f base -f dev "$@"` |
+| `deploy-prod.sh` | `docker compose --env-file .env-prod -f base -f prod "$@"` |
 
 ## Troubleshooting
 
@@ -131,7 +142,7 @@ Then: `dc up -d --build`, `dc ps`, `dc logs -f api-gateway`.
    curl -i http://localhost:8080/actuator/health
    ```
    Expect `{"status":"UP"}`. If you get `connection refused`, the
-   gateway container isn't running — `docker compose ps` and check.
+   gateway container isn't running — `./deploy-dev.sh ps` and check.
 
 2. Check Eureka shows all services registered:
    ```
@@ -140,7 +151,7 @@ Then: `dc up -d --build`, `dc ps`, `dc logs -f api-gateway`.
    You should see ~14 services listed under "Instances currently
    registered with Eureka". If only Eureka itself is there, the
    backend services haven't started — wait 60s and refresh, or
-   `docker compose logs` to see what crashed.
+   `./deploy-dev.sh logs` to see what crashed.
 
 3. Check Vite is actually proxying:
    ```bash
@@ -153,7 +164,7 @@ Then: `dc up -d --build`, `dc ps`, `dc logs -f api-gateway`.
 Oracle hasn't finished booting yet. The container reports healthy
 when the listener is ready, but Spring services have `depends_on:
 { condition: service_healthy }` so they wait. If you still see this,
-`docker compose logs oracle-db` to confirm `DATABASE IS READY TO USE!`
+`./deploy-dev.sh logs oracle-db` to confirm `DATABASE IS READY TO USE!`
 appeared. First boot takes 60-120 seconds.
 
 ### `ORA-01017: invalid username/password`
@@ -162,34 +173,26 @@ The Oracle container was previously created with a different password
 (because volumes persist). Wipe and recreate:
 
 ```bash
-docker compose down
-docker volume rm anirudhhomes_oracle-data
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+./deploy-dev.sh down
+docker volume rm home-rental_oracle-data
+./deploy-dev.sh up -d --build
 ```
 
 ### Custom credentials / non-default ports
 
-Copy `.env.dev` to `.env` and edit. Docker Compose auto-loads `.env`
-when no `--env-file` is passed. See comments inside `.env.dev` for
-what each variable controls.
+Copy `.env-dev` to `.env` (Docker Compose auto-loads `.env`) and edit,
+or edit `.env-dev` directly. See comments inside `.env-dev` for what
+each variable controls.
 
-### Alternative: backend-in-Docker, frontend-on-Docker too
+### Alternative: full stack in Docker (no host-side Vite)
 
 If you want EVERYTHING in Docker (no host-side `npm run dev`), use
 the prod overlay — same compose layering as production:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+./deploy-prod.sh up -d --build
 ```
 
 This builds the frontend into an nginx image and serves it through
-Caddy at https://anirudhhomes.in (in prod). Locally, the Caddy step
-expects a real domain + Let's Encrypt; for pure local you generally
-want the dev flow above instead.
-
-### Alternative: only-infra-in-Docker (run services in IntelliJ)
-
-For breakpoint-driven debugging of a Spring service, use the
-`docker-compose.dev.local.yml` standalone compose file — it spins up
-only the infra (Eureka, config-server, Oracle, Kafka) so you can
-launch services via IntelliJ run configs against `localhost`.
+Caddy. Locally, the Caddy step expects a real domain + Let's Encrypt;
+for pure local you generally want the dev flow above instead.
