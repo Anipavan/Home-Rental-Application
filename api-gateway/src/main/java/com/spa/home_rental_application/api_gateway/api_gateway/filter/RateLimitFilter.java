@@ -144,6 +144,16 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         String path = exchange.getRequest().getURI().getPath();
         int[] rule = findRule(path);
+
+        // Temporary INFO-level diagnostic — will be dropped after we
+        // confirm the filter is firing on the paths we expect. Prints
+        // every request the filter sees so we can spot path-matching
+        // bugs (e.g. an unexpected /api prefix from nginx).
+        log.info("RateLimitFilter[TRACE] path={} rule={} rulesLoaded={}",
+                path,
+                rule == null ? "none" : ("max=" + rule[0] + "/window=" + rule[1] + "s"),
+                RULES.size());
+
         if (rule == null) return chain.filter(exchange);
 
         String ip = clientIp(exchange.getRequest());
@@ -157,6 +167,8 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
             while (!stamps.isEmpty() && now - stamps.peekFirst() > windowMs) {
                 stamps.pollFirst();
             }
+            log.info("RateLimitFilter[TRACE] ip={} key={} bucketSize={}",
+                    ip, key, stamps.size());
             if (stamps.size() >= rule[0]) {
                 long retryAfterSec = Math.max(1, (windowMs - (now - stamps.peekFirst())) / 1000);
                 log.warn("Rate limit hit: ip={} path={} attempts={} window={}s",
