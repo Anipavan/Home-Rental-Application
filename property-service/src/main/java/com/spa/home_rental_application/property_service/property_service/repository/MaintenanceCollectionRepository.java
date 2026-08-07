@@ -2,7 +2,9 @@ package com.spa.home_rental_application.property_service.property_service.reposi
 
 import com.spa.home_rental_application.property_service.property_service.Entities.MaintenanceCollection;
 import com.spa.home_rental_application.property_service.property_service.enums.CollectionStatus;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -13,6 +15,27 @@ import java.util.Optional;
 
 @Repository
 public interface MaintenanceCollectionRepository extends JpaRepository<MaintenanceCollection, String> {
+
+    /**
+     * Load collection rows by IDs with a PESSIMISTIC_WRITE lock —
+     * serializes concurrent pay-all attempts on the same rows.
+     *
+     * <p>Without this, two browser tabs firing the pay-all bridge
+     * for the same collection set both saw {@code paymentId == null}
+     * on their pre-check, both minted a fresh Payment, and both
+     * stamped {@code collection.paymentId} (last-write-wins). If the
+     * tenant then paid one of the two orders via UPI, both Payments
+     * settled and the tenant was charged twice.
+     *
+     * <p>SELECT FOR UPDATE holds the row locks until the transaction
+     * commits, so the second tab blocks on the DB until the first
+     * finishes — by which point the first tab has already stamped
+     * {@code paymentId} and the second tab's re-check sees the
+     * existing PENDING Payment and reuses it (idempotency path).
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT c FROM MaintenanceCollection c WHERE c.id IN :ids")
+    List<MaintenanceCollection> findAllByIdForUpdate(@Param("ids") java.util.Collection<String> ids);
 
     List<MaintenanceCollection> findByBuildingIdAndForMonthOrderByFlatId(
             String buildingId, String forMonth);

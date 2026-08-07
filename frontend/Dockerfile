@@ -1,6 +1,6 @@
 # Self-contained build: this Dockerfile is run from the repository root
-# (build.context: . in docker-compose.yml). Two stages keep the runtime
-# image tiny — nginx-alpine alone, no Node, no source.
+# (build.context: . in docker-compose-base.yml). Two stages keep the runtime
+# image tiny — nginx-unprivileged-alpine alone, no Node, no source.
 #
 # Build args:
 #   VITE_API_BASE_URL — the URL the SPA's axios client talks to. Default
@@ -27,12 +27,12 @@ ENV VITE_CSP_CONNECT_SRC=$VITE_CSP_CONNECT_SRC
 RUN npm run build
 
 # ----- runtime stage -----
-# nginx:alpine is ~50MB; we drop the built dist/ folder into the
-# default static-serve root + ship a small nginx.conf that handles
-# SPA routing (every unknown path → index.html so client-side routes
-# resolve) and proxies /api/* through to the API gateway.
-FROM nginx:alpine
-RUN addgroup -S app && adduser -S app -G app
+# nginxinc/nginx-unprivileged: same nginx binary as the official image,
+# but runs as the `nginx` user (uid 101) instead of root and binds :8080
+# by default. Container-escape severity drops materially — a bug in
+# nginx that yields RCE lands in an unprivileged user, not root.
+# Caddy in front of us forwards to port 8080 (see deploy/Caddyfile).
+FROM nginxinc/nginx-unprivileged:alpine
 
 # Replace the default nginx config with one that knows about SPA
 # routing + gateway proxying. See frontend/nginx.conf for the
@@ -41,18 +41,11 @@ RUN addgroup -S app && adduser -S app -G app
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /workspace/dist /usr/share/nginx/html
 
-# Default port is 80 (overridable via PORT env at runtime if your
-# orchestrator wants something different). Healthcheck hits the
-# SPA root so a broken build (empty index.html, bad nginx config)
-# is caught by kubelet before the pod is added to the LB rotation.
-EXPOSE 80
+# Runs on 8080 (unprivileged nginx can't bind < 1024 without CAP_NET_BIND_SERVICE).
+EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
-        CMD wget -qO- http://localhost/ >/dev/null || exit 1
+        CMD wget -qO- http://localhost:8080/ >/dev/null || exit 1
 
-# nginx must be PID 1 for proper SIGTERM handling. The default
-# image already runs as root because nginx binds :80 — we accept
-# that here because the container should be sandboxed by k8s pod
-# security policy anyway (drop capabilities except NET_BIND_SERVICE,
-# read-only root FS). For unprivileged-only environments switch to
-# nginxinc/nginx-unprivileged:alpine and bind :8080 instead.
+# nginx must be PID 1 for proper SIGTERM handling. Base image already
+# runs as the non-root `nginx` user (uid 101).
 CMD ["nginx", "-g", "daemon off;"]

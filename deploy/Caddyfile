@@ -57,7 +57,9 @@ anirudhhomes.in, www.anirudhhomes.in {
 
     # Forward all traffic to the frontend container. The frontend's
     # internal nginx handles SPA fallback + /api/* → gateway.
-    reverse_proxy frontend:80 {
+    # Port 8080 because the frontend image runs unprivileged nginx
+    # (nginxinc/nginx-unprivileged) which can't bind < 1024.
+    reverse_proxy frontend:8080 {
         # Pass the original host through so the gateway can build
         # absolute URLs (presigned download links, magic auth links)
         # that point at anirudhhomes.in, not "frontend".

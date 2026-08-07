@@ -1577,7 +1577,15 @@ public class SocietyServiceImpl implements SocietyService {
         String me = CallerSecurity.getCurrentAuthUserId().orElseThrow(
                 () -> new ForbiddenException("Sign in to pay society charges."));
 
-        List<MaintenanceCollection> rows = collectionRepo.findAllById(req.collectionIds());
+        // PESSIMISTIC_WRITE lock — serializes concurrent pay-all
+        // attempts on the same collection rows. Two browser tabs
+        // firing the bridge for the same IDs used to both mint a
+        // fresh Payment (last-write-wins on collection.paymentId)
+        // and the tenant got charged twice via UPI. With the lock,
+        // the second tab blocks on the DB until the first commits,
+        // by which point the paymentId is stamped and the reuse
+        // path (a few lines down) kicks in instead of a new mint.
+        List<MaintenanceCollection> rows = collectionRepo.findAllByIdForUpdate(req.collectionIds());
         if (rows.size() != req.collectionIds().size()) {
             // findAllById silently drops missing ids — surface the discrepancy
             // instead of charging the tenant for fewer rows than they asked.
