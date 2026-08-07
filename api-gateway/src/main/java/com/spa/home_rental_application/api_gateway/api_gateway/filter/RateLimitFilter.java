@@ -144,16 +144,6 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         String path = exchange.getRequest().getURI().getPath();
         int[] rule = findRule(path);
-
-        // Temporary INFO-level diagnostic — will be dropped after we
-        // confirm the filter is firing on the paths we expect. Prints
-        // every request the filter sees so we can spot path-matching
-        // bugs (e.g. an unexpected /api prefix from nginx).
-        log.info("RateLimitFilter[TRACE] path={} rule={} rulesLoaded={}",
-                path,
-                rule == null ? "none" : ("max=" + rule[0] + "/window=" + rule[1] + "s"),
-                RULES.size());
-
         if (rule == null) return chain.filter(exchange);
 
         String ip = clientIp(exchange.getRequest());
@@ -167,8 +157,6 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
             while (!stamps.isEmpty() && now - stamps.peekFirst() > windowMs) {
                 stamps.pollFirst();
             }
-            log.info("RateLimitFilter[TRACE] ip={} key={} bucketSize={}",
-                    ip, key, stamps.size());
             if (stamps.size() >= rule[0]) {
                 long retryAfterSec = Math.max(1, (windowMs - (now - stamps.peekFirst())) / 1000);
                 log.warn("Rate limit hit: ip={} path={} attempts={} window={}s",
@@ -193,40 +181,52 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
     }
 
     /**
-     * Resolve the caller's real IP from {@code X-Forwarded-For}
-     * parsed <b>right-to-left</b>, skipping RFC1918 (private-network)
-     * addresses which are our own trusted proxies (Caddy sitting on
-     * the docker network, plus any LAN hop).
+     * Resolve the caller's real IP, in priority order:
      *
-     * <p>Rationale: an attacker can put anything in the LEFTMOST XFF
-     * position — Caddy just appends the actual client IP after any
-     * pre-existing header. Reading leftmost-first lets the attacker
-     * spoof a new IP per request and defeat per-IP rate limiting.
-     * Right-to-left with trusted-proxy skipping picks the actual
-     * client IP even when it sits behind our proxy chain.
-     *
-     * <p>Falls back to {@code RemoteAddress} when no XFF is present.
+     * <ol>
+     *   <li>{@code CF-Connecting-IP} — Cloudflare stamps this per-
+     *       request to the ORIGINAL client IP. Browsers can't spoof
+     *       it because Cloudflare strips any inbound value. Only
+     *       trusted when the immediate upstream is a private-network
+     *       address (Caddy inside docker) — a request that bypassed
+     *       our proxy chain can't be trusted to have set it honestly.
+     *       Required when we sit behind Cloudflare because CF uses
+     *       hundreds of edge IPs and each request may traverse a
+     *       different one, defeating per-IP bucketing that keys on
+     *       the Cloudflare edge.
+     *   <li>{@code X-Forwarded-For} parsed <b>right-to-left</b>,
+     *       skipping RFC1918 (private-network) addresses which are
+     *       our own trusted proxies. Old leftmost-first parsing let
+     *       an attacker spoof a new IP per request.
+     *   <li>{@code RemoteAddress} — last resort.
+     * </ol>
      */
     private static String clientIp(ServerHttpRequest req) {
+        // 1) Cloudflare CF-Connecting-IP — only if request came from
+        //    our trusted proxy chain (Caddy on docker network).
+        String remoteAddr = req.getRemoteAddress() == null
+                ? null
+                : req.getRemoteAddress().getAddress().getHostAddress();
+        if (remoteAddr != null && isTrustedProxy(remoteAddr)) {
+            String cfIp = req.getHeaders().getFirst("CF-Connecting-IP");
+            if (cfIp != null && !cfIp.isBlank()) {
+                return cfIp.trim();
+            }
+        }
+        // 2) XFF right-to-left, skipping trusted proxies.
         List<String> xff = req.getHeaders().get("X-Forwarded-For");
         if (xff != null && !xff.isEmpty()) {
-            // Header may be repeated OR comma-separated on one line —
-            // handle both by flattening to a single list of hops.
             String[] hops = String.join(",", xff).split(",");
             for (int i = hops.length - 1; i >= 0; i--) {
                 String hop = hops[i].trim();
                 if (hop.isEmpty()) continue;
                 if (!isTrustedProxy(hop)) return hop;
             }
-            // Every hop was a trusted proxy — take the leftmost as
-            // best-guess client. This happens when the LAN is
-            // entirely RFC1918 (e.g. an internal-only test).
             String leftmost = hops[0].trim();
             if (!leftmost.isEmpty()) return leftmost;
         }
-        return req.getRemoteAddress() == null
-                ? "unknown"
-                : req.getRemoteAddress().getAddress().getHostAddress();
+        // 3) Remote address.
+        return remoteAddr == null ? "unknown" : remoteAddr;
     }
 
     /**

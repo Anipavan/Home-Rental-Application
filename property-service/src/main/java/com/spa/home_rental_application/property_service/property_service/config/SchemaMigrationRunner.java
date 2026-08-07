@@ -194,6 +194,28 @@ public class SchemaMigrationRunner {
             "CREATE INDEX idx_collection_payment ON maintenance_collection (payment_id)"
     );
 
+    /**
+     * Walk an exception's cause chain, joining every non-null message
+     * with " | " so raw Oracle codes (like {@code ORA-00955}) buried
+     * in nested SQLExceptions become searchable by the string checks
+     * above. Without this, Spring's outer "bad SQL grammar" wrapper
+     * hides the code and every real "already exists" gets logged as
+     * a real error on re-runs.
+     */
+    private static String collectMessages(Throwable ex) {
+        StringBuilder sb = new StringBuilder();
+        Throwable t = ex;
+        int guard = 0;
+        while (t != null && guard++ < 10) {
+            if (t.getMessage() != null) {
+                if (sb.length() > 0) sb.append(" | ");
+                sb.append(t.getMessage());
+            }
+            t = t.getCause();
+        }
+        return sb.toString();
+    }
+
     @PostConstruct
     public void run() {
         log.info("property-service SchemaMigrationRunner: applying {} idempotent migration(s)",
@@ -210,7 +232,11 @@ public class SchemaMigrationRunner {
                 log.info("Executed: {}", snippet);
                 created++;
             } catch (Exception ex) {
-                String msg = ex.getMessage() == null ? "" : ex.getMessage();
+                // Walk the cause chain — Spring wraps SQLException as
+                // BadSqlGrammarException / DataIntegrityViolation etc.
+                // and the raw Oracle "ORA-00955: name already used"
+                // lives on the nested cause, not the top-level message.
+                String msg = collectMessages(ex);
                 if (msg.contains("ORA-00955")) {
                     log.debug("Already exists: {}", ddl.split("\\s+")[2]);
                     createSkipped++;
@@ -233,7 +259,7 @@ public class SchemaMigrationRunner {
                 log.info("Added column {}.{} ({})", m.table, m.column, m.type);
                 added++;
             } catch (Exception ex) {
-                String msg = ex.getMessage() == null ? "" : ex.getMessage();
+                String msg = collectMessages(ex);
                 // Predictable / safe errors:
                 //   ORA-01430: column being added already exists in table
                 //   ORA-00955: name already used by an existing object
