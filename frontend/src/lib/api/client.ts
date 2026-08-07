@@ -12,6 +12,10 @@ const BASE_URL =
 
 export const api: AxiosInstance = axios.create({
   baseURL: BASE_URL,
+  // withCredentials: true is REQUIRED — the hra_refresh cookie is
+  // HttpOnly + SameSite=Lax and only travels when credentials are
+  // included. Missing this here would break the silent-refresh handshake
+  // on every hard page reload.
   withCredentials: true,
   headers: {
     "Content-Type": "application/json",
@@ -26,19 +30,18 @@ api.interceptors.request.use(async (config) => {
   const state = useAuthStore.getState();
   let token = state.accessToken;
 
-  // Audit H17: the access token no longer persists. On a hard refresh
-  // we lose it but the refresh token is still on disk. If we're about
-  // to make a request that needs auth, transparently mint a new
-  // access token first so the user experience is identical to the
-  // pre-H17 behaviour. Skip for the /auth/* endpoints themselves to
-  // avoid recursion.
+  // Silent-refresh on hard reload: if we think we're signed in
+  // (isAuthenticated persisted to localStorage) but have no in-memory
+  // access token, try /auth/refresh — the browser will attach the
+  // hra_refresh cookie automatically. Skip for /auth/* endpoints to
+  // avoid infinite recursion.
   const path = (config.url ?? "").toLowerCase();
   const looksLikeAuthEndpoint = path.includes("/auth/login")
       || path.includes("/auth/register")
       || path.includes("/auth/refresh")
       || path.includes("/auth/forgot-password")
       || path.includes("/auth/reset-password");
-  if (!token && state.refreshToken && !looksLikeAuthEndpoint) {
+  if (!token && state.isAuthenticated && !looksLikeAuthEndpoint) {
     try {
       refreshing = refreshing ?? refreshAccessToken();
       token = await refreshing;
@@ -77,19 +80,24 @@ api.interceptors.request.use(async (config) => {
 
 let refreshing: Promise<string> | null = null;
 
+/**
+ * Mint a fresh access token using the hra_refresh HttpOnly cookie
+ * that the browser attaches automatically. No body needed — the
+ * cookie is the credential. Backend also Set-Cookies a rotated
+ * refresh token in the response.
+ */
 async function refreshAccessToken(): Promise<string> {
-  const { refreshToken, setTokens, clear } = useAuthStore.getState();
-  if (!refreshToken) throw new Error("No refresh token");
+  const { setTokens, clear } = useAuthStore.getState();
   try {
     const { data } = await axios.post(
       `${BASE_URL}/auth/refresh`,
-      { refreshToken },
+      {},
       {
         withCredentials: true,
         headers: { "ngrok-skip-browser-warning": "true" },
       },
     );
-    setTokens(data.accessToken, data.refreshToken ?? refreshToken);
+    setTokens(data.accessToken, data.accessTokenExpiresInSeconds);
     return data.accessToken as string;
   } catch (e) {
     clear();

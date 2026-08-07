@@ -47,7 +47,6 @@ export function PaymentPromptModal({
 }) {
   const navigate = useNavigate();
   const clearSession = useAuthStore((s) => s.clear);
-  const refreshToken = useAuthStore((s) => s.refreshToken);
   const [logoutPending, setLogoutPending] = useState(false);
 
   const initiateMut = useMutation({
@@ -101,13 +100,12 @@ export function PaymentPromptModal({
   async function handleLogout() {
     setLogoutPending(true);
     try {
-      if (refreshToken) {
-        try {
-          await authApi.logout(refreshToken);
-        } catch {
-          // Best-effort — log out client-side even if the server call
-          // fails so the user actually exits the gate.
-        }
+      try {
+        // hra_refresh HttpOnly cookie is sent automatically — no arg.
+        await authApi.logout();
+      } catch {
+        // Best-effort — log out client-side even if the server call
+        // fails so the user actually exits the gate.
       }
       clearSession();
       navigate("/login", { replace: true });

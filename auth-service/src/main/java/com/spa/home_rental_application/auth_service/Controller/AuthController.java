@@ -6,12 +6,14 @@ import com.spa.home_rental_application.auth_service.Dto.Response.AuthUserRespons
 import com.spa.home_rental_application.auth_service.Dto.Response.MessageResponse;
 import com.spa.home_rental_application.auth_service.Dto.Response.RegisterResponse;
 import com.spa.home_rental_application.auth_service.Service.AuthService;
+import com.spa.home_rental_application.auth_service.Util.RefreshCookie;
 import com.spa.home_rental_application.auth_service.enums.Roles;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -42,31 +44,54 @@ public class AuthController {
         return ResponseEntity.status(HttpStatus.CREATED).body(authService.register(req));
     }
 
-    @Operation(summary = "Log in. Returns access JWT + opaque refresh token")
+    @Operation(summary = "Log in. Sets hra_refresh HttpOnly cookie + returns access JWT")
     @PostMapping(value = "/login", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest req,
                                               HttpServletRequest httpReq) {
         log.info("POST /auth/login userName={}", req.userName());
         AuthResponse resp = authService.login(req,
                 clientIp(httpReq), httpReq.getHeader("User-Agent"));
-        return ResponseEntity.ok(resp);
+        return withRefreshCookie(resp);
     }
 
-    @Operation(summary = "Rotate refresh token. Returns a new access JWT + new refresh token")
+    @Operation(summary = "Rotate refresh token — reads hra_refresh cookie, sets a fresh one")
     @PostMapping(value = "/refresh", consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<AuthResponse> refresh(@Valid @RequestBody RefreshTokenRequest req,
+    public ResponseEntity<AuthResponse> refresh(@RequestBody(required = false) RefreshTokenRequest req,
                                                 HttpServletRequest httpReq) {
+        // Prefer the cookie (browsers); fall back to body (non-browser
+        // clients / legacy) so nothing sudden-breaks during rollout.
+        String refresh = RefreshCookie.read(httpReq);
+        if (refresh == null && req != null) refresh = req.refreshToken();
+        if (refresh == null || refresh.isBlank()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
         // Pass through client fingerprint so AuthService can enforce
         // the H5 IP/UA binding on the stored refresh token.
-        return ResponseEntity.ok(authService.refresh(req,
-                clientIp(httpReq), httpReq.getHeader("User-Agent")));
+        AuthResponse resp = authService.refresh(new RefreshTokenRequest(refresh),
+                clientIp(httpReq), httpReq.getHeader("User-Agent"));
+        return withRefreshCookie(resp);
     }
 
-    @Operation(summary = "Log out. Revokes the supplied refresh token")
+    @Operation(summary = "Log out. Reads hra_refresh cookie, revokes it, clears the cookie")
     @PostMapping(value = "/logout", consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<MessageResponse> logout(@Valid @RequestBody LogoutRequest req) {
-        authService.logout(req);
-        return ResponseEntity.ok(new MessageResponse("Logged out"));
+    public ResponseEntity<MessageResponse> logout(@RequestBody(required = false) LogoutRequest req,
+                                                  HttpServletRequest httpReq) {
+        String refresh = RefreshCookie.read(httpReq);
+        if (refresh == null && req != null) refresh = req.refreshToken();
+        if (refresh != null && !refresh.isBlank()) {
+            authService.logout(new LogoutRequest(refresh));
+        }
+        // Always clear the cookie even when we can't identify the
+        // token — logout is idempotent + browser-side cleanup happens
+        // regardless of server-side revocation success.
+        HttpHeaders headers = new HttpHeaders();
+        RefreshCookie.clearHeader(headers);
+        return ResponseEntity.ok().headers(headers).body(new MessageResponse("Logged out"));
+    }
+
+    /** Delegate to {@link RefreshCookie#wrap} for browser-safe cookie packaging. */
+    private static ResponseEntity<AuthResponse> withRefreshCookie(AuthResponse resp) {
+        return RefreshCookie.wrap(resp);
     }
 
     @Operation(summary = "Begin a forgot-password flow. Always 200 — does not reveal whether the email exists")

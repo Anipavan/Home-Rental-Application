@@ -33,18 +33,24 @@ export const authApi = {
     api
       .post<MessageResponse>("/auth/reset-password", { token, newPassword })
       .then((r) => r.data),
-  logout: (refreshToken: string) =>
+  /**
+   * Log out. The hra_refresh HttpOnly cookie is sent automatically
+   * with withCredentials:true; server revokes the token + clears the
+   * cookie via Set-Cookie: Max-Age=0. No body needed.
+   */
+  logout: () =>
     api
-      .post<MessageResponse>("/auth/logout", { refreshToken })
+      .post<MessageResponse>("/auth/logout", {})
       .then((r) => r.data),
   /**
    * Manual refresh — used by the "Stay signed in" idle-timer button.
    * The interceptor in client.ts handles the automatic on-401-retry
    * refresh; this overload is for explicit UI-initiated extension.
+   * The hra_refresh cookie is the credential — no body arg needed.
    */
-  refresh: (refreshToken: string) =>
+  refresh: () =>
     api
-      .post<AuthResponse>("/auth/refresh", { refreshToken })
+      .post<AuthResponse>("/auth/refresh", {})
       .then((r) => r.data),
   byRole: (role: string) =>
     api.get<AuthUserResponse[]>(`/auth/role/${role}`).then((r) => r.data),

@@ -90,6 +90,9 @@ public class MaintainerPaymentController {
         log.info("POST /auth/me/role authUserId={} newRole={}", authUserId, newRole);
         String ip = servletReq.getRemoteAddr();
         String ua = servletReq.getHeader("User-Agent");
-        return ResponseEntity.ok(authService.setPrimaryRole(authUserId, newRole, ip, ua));
+        AuthResponse resp = authService.setPrimaryRole(authUserId, newRole, ip, ua);
+        // Role change mints a fresh (access + refresh) token pair — move
+        // the new refresh into the hra_refresh cookie just like login.
+        return com.spa.home_rental_application.auth_service.Util.RefreshCookie.wrap(resp);
     }
 }

@@ -12,7 +12,6 @@ import type { AuthResponse, Role } from "@/types/api";
  */
 interface AuthState {
   accessToken: string | null;
-  refreshToken: string | null;
   authUserId: string | null;
   userName: string | null;
   role: Role | null;
@@ -33,7 +32,6 @@ interface AuthState {
   setSession: (auth: AuthResponse) => void;
   setTokens: (
     accessToken: string,
-    refreshToken: string,
     expiresInSeconds?: number,
   ) => void;
   touchActivity: () => void;
@@ -41,30 +39,32 @@ interface AuthState {
 }
 
 /**
- * Audit H17: the access token NEVER persists to localStorage anymore.
- * An XSS attack still has window-scoped access while the page is open,
- * but a stolen localStorage dump is no longer enough to impersonate
- * the user.
+ * Session-storage strategy:
  *
- * Strategy:
- *   - accessToken / accessTokenExpiresAt live in memory only — gone
- *     on full page reload.
- *   - refreshToken still persists (it's opaque + server-rotated + now
- *     IP/UA-bound thanks to the H5 backend fix) so users don't have
- *     to re-log-in after every tab close.
- *   - On app boot, if a refreshToken is present in localStorage but no
- *     accessToken in memory, the API client transparently calls
- *     `/auth/refresh` to mint a new access token. UX is unchanged;
- *     the security boundary shrinks dramatically.
+ *  - accessToken / accessTokenExpiresAt live in MEMORY ONLY — gone on
+ *    full page reload. XSS can't exfiltrate a persisted copy.
  *
- * The {@code partialize} option below is Zustand's way to opt fields
- * INTO persistence — anything not listed stays in memory only.
+ *  - refreshToken lives in an HttpOnly + Secure + SameSite=Lax cookie
+ *    (set by auth-service as `hra_refresh` on login/refresh). It is
+ *    NOT accessible from JavaScript at all. XSS on our domain cannot
+ *    read or exfiltrate it; the browser sends it automatically on
+ *    same-site requests (all axios calls have withCredentials:true).
+ *
+ *  - On app boot with no in-memory accessToken, the axios interceptor
+ *    transparently POSTs /auth/refresh with an empty body — the
+ *    browser attaches the hra_refresh cookie, backend rotates and
+ *    returns a fresh access token + a fresh Set-Cookie for the new
+ *    refresh token. UX is a silent handshake; user stays signed in.
+ *
+ * The {@code partialize} option is Zustand's way to opt fields INTO
+ * persistence — anything not listed stays in memory only. We persist
+ * only non-sensitive UI state (username, role, authenticated flag);
+ * NOTHING that could impersonate the user ever hits localStorage.
  */
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
       accessToken: null,
-      refreshToken: null,
       authUserId: null,
       userName: null,
       role: null,
@@ -75,7 +75,6 @@ export const useAuthStore = create<AuthState>()(
       setSession: (auth) =>
         set({
           accessToken: auth.accessToken,
-          refreshToken: auth.refreshToken,
           authUserId: auth.authUserId,
           userName: auth.userName,
           role: auth.role,
@@ -92,10 +91,9 @@ export const useAuthStore = create<AuthState>()(
               : null,
           lastActivityAt: Date.now(),
         }),
-      setTokens: (accessToken, refreshToken, expiresInSeconds) =>
+      setTokens: (accessToken, expiresInSeconds) =>
         set({
           accessToken,
-          refreshToken,
           accessTokenExpiresAt:
             expiresInSeconds != null ? Date.now() + expiresInSeconds * 1000 : null,
         }),
@@ -103,7 +101,6 @@ export const useAuthStore = create<AuthState>()(
       clear: () =>
         set({
           accessToken: null,
-          refreshToken: null,
           authUserId: null,
           userName: null,
           role: null,
@@ -115,12 +112,11 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: "hearth-auth",
-      // Whitelist the non-sensitive bits — the access token is
-      // intentionally excluded so it can't be exfiltrated from a
-      // localStorage dump. On hard refresh the API client uses the
-      // persisted refresh token to mint a new access token.
+      // Only non-sensitive UI state. The access token stays in memory
+      // (XSS can't exfiltrate a persisted copy); the refresh token
+      // lives in an HttpOnly cookie (JS can't read it at all). Neither
+      // token ever touches localStorage.
       partialize: (state) => ({
-        refreshToken: state.refreshToken,
         authUserId: state.authUserId,
         userName: state.userName,
         role: state.role,

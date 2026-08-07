@@ -209,7 +209,7 @@ function navFor(role: Role | null): NavItem[] {
 }
 
 export function AppShell() {
-  const { role, userName, authUserId, refreshToken, clear } = useAuthStore();
+  const { role, userName, authUserId, clear } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -301,7 +301,8 @@ export function AppShell() {
 
   const onLogout = async () => {
     try {
-      if (refreshToken) await authApi.logout(refreshToken).catch(() => {});
+      // hra_refresh HttpOnly cookie is sent automatically — no arg.
+      await authApi.logout().catch(() => {});
     } finally {
       clear();
       navigate("/login");

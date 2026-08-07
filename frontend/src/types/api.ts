@@ -15,7 +15,10 @@ export type Role =
 
 export interface AuthResponse {
   accessToken: string;
-  refreshToken: string;
+  /** Nullable now — server keeps the refresh token in an HttpOnly
+   *  `hra_refresh` cookie. Kept in the type for backward compat with
+   *  older frontend code paths; new code should ignore this field. */
+  refreshToken: string | null;
   tokenType: string;
   accessTokenExpiresInSeconds: number;
   userName: string;

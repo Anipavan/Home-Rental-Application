@@ -25,7 +25,7 @@ const TICK_INTERVAL_MS = 10 * 1000;         // re-check every 10 s
 
 export function IdleTimer() {
   const navigate = useNavigate();
-  const { lastActivityAt, accessTokenExpiresAt, refreshToken, touchActivity, clear } =
+  const { lastActivityAt, accessTokenExpiresAt, isAuthenticated, touchActivity, clear } =
     useAuthStore();
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const lastTouchedRef = useRef<number>(Date.now());
@@ -62,8 +62,12 @@ export function IdleTimer() {
         forceLogout("idle");
         return;
       }
-      // Hard expiry logout (refresh-token TTL also exceeded → force out)
-      if (expiresIn !== null && expiresIn <= 0 && !refreshToken) {
+      // Hard expiry logout — we can no longer check refreshToken client-
+      // side (it's in the HttpOnly cookie). Instead: when the access
+      // token is expired, silently attempt a refresh; if that fails,
+      // the response interceptor will already have redirected to /login.
+      // The banner logic below still runs so the user gets warned.
+      if (expiresIn !== null && expiresIn <= 0 && !isAuthenticated) {
         forceLogout("expired");
         return;
       }
@@ -79,11 +83,12 @@ export function IdleTimer() {
     tick(); // run once immediately
     return () => window.clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lastActivityAt, accessTokenExpiresAt, refreshToken]);
+  }, [lastActivityAt, accessTokenExpiresAt, isAuthenticated]);
 
   function forceLogout(reason: "idle" | "expired") {
-    // Best-effort revoke; we don't await the call before clearing local state.
-    if (refreshToken) authApi.logout(refreshToken).catch(() => {});
+    // Best-effort revoke — the hra_refresh cookie is sent automatically
+    // (withCredentials:true). Don't await before clearing local state.
+    authApi.logout().catch(() => {});
     clear();
     toast({
       variant: "destructive",
@@ -96,29 +101,18 @@ export function IdleTimer() {
     navigate("/login");
   }
 
-  // Click handler for the "Stay signed in" button. Previously only
-  // bumped lastActivityAt — which the next tick happily ignored
-  // because expiresIn was still <60s. The result was the banner
-  // refusing to dismiss until the user actually triggered a refresh
-  // via some other API call. Now we explicitly mint a new access
-  // token via /auth/refresh, which updates accessTokenExpiresAt;
-  // the tick then sees plenty of headroom and stops drawing the
-  // banner.
+  // Click handler for the "Stay signed in" button. Explicitly mints a
+  // new access token via /auth/refresh — the browser attaches the
+  // hra_refresh cookie, backend rotates and returns a fresh access
+  // token. The tick then sees plenty of headroom and hides the banner.
   const [extending, setExtending] = useState(false);
 
   async function extendSession() {
     setExtending(true);
     try {
-      const rt = useAuthStore.getState().refreshToken;
-      if (!rt) {
-        // No refresh token → can't extend; nudge the user to re-login.
-        forceLogout("expired");
-        return;
-      }
-      const resp = await authApi.refresh(rt);
+      const resp = await authApi.refresh();
       useAuthStore.getState().setTokens(
         resp.accessToken,
-        resp.refreshToken ?? rt,
         resp.accessTokenExpiresInSeconds,
       );
       useAuthStore.getState().touchActivity();
