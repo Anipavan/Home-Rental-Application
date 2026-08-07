@@ -47,3 +47,16 @@ otel:
     otlp:
       endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://otel-collector:4318}
       protocol: ${OTEL_EXPORTER_OTLP_PROTOCOL:http/protobuf}
+
+# ─── Springdoc / Swagger — DISABLED in prod ─────────────────────────
+# The default Swagger UI at /swagger-ui.html leaks the full API
+# surface + DTO schemas + role hints to anonymous visitors. Keep
+# Swagger on in dev; kill it in prod. /aggregate/*/v3/api-docs paths
+# still resolve at the gateway but every downstream service also has
+# api-docs disabled under prod profile (belt + braces), so the
+# aggregator has nothing to aggregate.
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false

@@ -39,6 +39,13 @@ services:
       - "1521"
     volumes: ["oracle-data:/opt/oracle/oradata"]
     networks: [hra-net]
+    # Auto-restart on crash / Docker daemon restart. Prior incidents:
+    # Oracle got OOM-killed during a `systemctl restart docker` and
+    # never came back up because it had no restart policy — every
+    # backend service crash-looped on "unknown host: oracle-db" until
+    # someone noticed and did `docker start hra-oracle`. Same reason
+    # kafka + zookeeper + mongo get the policy below.
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "healthcheck.sh"]
       interval: 30s
@@ -52,6 +59,7 @@ services:
     ports: ["27017:27017"]
     volumes: ["mongo-data:/data/db"]
     networks: [hra-net]
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
       interval: 15s
@@ -66,12 +74,14 @@ services:
       ZOOKEEPER_TICK_TIME: 2000
     ports: ["2181:2181"]
     networks: [hra-net]
+    restart: unless-stopped
 
   kafka:
     image: confluentinc/cp-kafka:7.5.0
     container_name: hra-kafka
     depends_on: [zookeeper]
     ports: ["9093:9093"]
+    restart: unless-stopped
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181

@@ -16,30 +16,40 @@ import reactor.core.publisher.Mono;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 /**
- * Audit H1: per-IP, per-route sliding-window rate limiter.
+ * Per-IP, per-route sliding-window rate limiter.
  *
  * <p>Buckets-per-route allow tighter limits on credential-attack
- * surfaces (login, forgot-password) while keeping bulk endpoints
- * (/browse) free. Limits apply to anonymous traffic too — the limiter
- * runs BEFORE {@link JWTAuthenticationFilter} so credential-stuffing
- * doesn't get to bypass the limiter by simply not presenting a token.
+ * surfaces (login, register, forgot-password, bank-detail lookups)
+ * while keeping bulk endpoints (/browse) free. Limits apply to
+ * anonymous traffic too — the limiter runs BEFORE
+ * {@link JWTAuthenticationFilter} so credential-stuffing doesn't get
+ * to bypass the limiter by simply not presenting a token.
+ *
+ * <p>Both URL prefixes covered: {@code /rentals/v1/auth/*} AND the
+ * legacy {@code /api/auth/*}. Earlier versions only rate-limited the
+ * v1 form, and the legacy prefix (still served for backward compat)
+ * was unlimited — trivially bypassable brute-force vector.
  *
  * <p>Implementation is in-memory (one process). For multi-instance
  * deployments behind a load balancer, switch to a Redis-backed
- * version — Spring Cloud Gateway ships
- * {@code RedisRateLimiter} which slots in via the
- * {@code RequestRateLimiter} gateway filter. The shape of the rules
- * table here stays identical so the migration is mechanical.
+ * version — Spring Cloud Gateway ships {@code RedisRateLimiter} which
+ * slots in via the {@code RequestRateLimiter} gateway filter. The
+ * shape of the rules table here stays identical so the migration is
+ * mechanical.
  *
  * <p>Routes not listed in {@link #RULES} pass through unlimited.
  * Limits are per-IP; the IP comes from the {@code X-Forwarded-For}
- * header (first hop) when present, else from the remote address.
+ * header parsed <b>right-to-left</b>, skipping any RFC1918 addresses
+ * (Docker network + private LAN — trusted proxies). This prevents
+ * clients from spoofing the header to get one-request-per-random-IP
+ * bucketing, which defeated the older "leftmost-hop" parsing.
  *
  * <p>On limit-exceeded, returns {@code 429 Too Many Requests} with a
  * structured JSON body the frontend can recognise and a
@@ -59,23 +69,66 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
     private static final AntPathMatcher MATCHER = new AntPathMatcher();
 
     /**
-     * Per-route limits. Pattern → (maxRequests, windowSeconds).
-     *   /auth/login       :  10 attempts / min  / IP  (brute-force guard)
-     *   /auth/register    :   5 / min            (signup spam guard)
-     *   /auth/forgot-pwd  :   5 / min            (enumeration probing)
-     *   /auth/reset-pwd   :  10 / min            (matched to forgot rate)
-     *   /notifications/send/* : 30 / min          (admin tools — generous)
+     * Per-route limits. Pattern -> (maxRequests, windowSeconds).
+     * LinkedHashMap preserves insertion order so more-specific
+     * patterns land before wildcards in the glob-fallback scan.
+     *
+     * <p>Every auth path is rate-limited under BOTH URL prefixes:
+     * {@code /rentals/v1/auth/*} (canonical) and {@code /api/auth/*}
+     * (legacy — same auth-service backend, so an unrated legacy
+     * prefix was a full brute-force bypass).
+     *
+     * <p>Bank-account payout lookup is limited to 10/min per IP.
+     * Every authenticated user CAN currently look up any other user's
+     * payout details (the payment flow relies on it), which makes it
+     * a mass-PII-exfiltration surface if unrated. Tenants pay their
+     * own owner ~once a month; 10/min is well above legitimate use
+     * but far below iteration speed for enumeration.
      */
-    private static final Map<String, int[]> RULES = Map.of(
-            "/rentals/v1/auth/login",            new int[]{10, 60},
-            "/rentals/v1/auth/register",         new int[]{ 5, 60},
-            "/rentals/v1/auth/forgot-password",  new int[]{ 5, 60},
-            "/rentals/v1/auth/reset-password",   new int[]{10, 60},
-            "/rentals/v1/notifications/send/**", new int[]{30, 60}
-    );
+    private static final Map<String, int[]> RULES;
+    static {
+        Map<String, int[]> r = new LinkedHashMap<>();
+
+        // ── Credential-attack surfaces (both URL prefixes) ──
+        r.put("/rentals/v1/auth/login",                     new int[]{10, 60});
+        r.put("/api/auth/login",                            new int[]{10, 60});
+        r.put("/rentals/v1/auth/register",                  new int[]{ 5, 60});
+        r.put("/api/auth/register",                         new int[]{ 5, 60});
+        r.put("/rentals/v1/auth/register/pending",          new int[]{ 5, 60});
+        r.put("/api/auth/register/pending",                 new int[]{ 5, 60});
+        r.put("/rentals/v1/auth/forgot-password",           new int[]{ 5, 60});
+        r.put("/api/auth/forgot-password",                  new int[]{ 5, 60});
+        r.put("/rentals/v1/auth/reset-password",            new int[]{10, 60});
+        r.put("/api/auth/reset-password",                   new int[]{10, 60});
+        r.put("/rentals/v1/auth/verify-email",              new int[]{10, 60});
+        r.put("/api/auth/verify-email",                     new int[]{10, 60});
+        r.put("/rentals/v1/auth/resend-verification",       new int[]{ 5, 60});
+        r.put("/api/auth/resend-verification",              new int[]{ 5, 60});
+
+        // ── PII-exfiltration surfaces ──
+        // Bank/payout details: any signed-in user can currently look
+        // up any other user's payout info (VPA, masked account,
+        // bank + branch + IFSC). Rate-limit hard to prevent scraping
+        // the whole owner base for UPI phishing.
+        r.put("/rentals/v1/users/bank-accounts/payout/**",  new int[]{10, 60});
+        r.put("/api/users/bank-accounts/payout/**",         new int[]{10, 60});
+
+        // ── API doc enumeration (limit even though prod disables
+        // springdoc; belt + braces in case one service is missed) ──
+        r.put("/swagger-ui.html",                           new int[]{ 5, 60});
+        r.put("/swagger-ui/**",                             new int[]{ 5, 60});
+        r.put("/v3/api-docs/**",                            new int[]{ 5, 60});
+        r.put("/aggregate/**",                              new int[]{ 5, 60});
+
+        // ── Admin-only notification blaster ──
+        r.put("/rentals/v1/notifications/send/**",          new int[]{30, 60});
+        r.put("/api/notifications/send/**",                 new int[]{30, 60});
+
+        RULES = Map.copyOf(r);
+    }
 
     /**
-     * {@code (ip + path)} → recent-request timestamps. ArrayDeque
+     * {@code (ip + path)} -> recent-request timestamps. ArrayDeque
      * holds longs (ms). On every request we drop entries older than
      * the window, then check size against the rule's max.
      *
@@ -127,16 +180,74 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
         return null;
     }
 
+    /**
+     * Resolve the caller's real IP from {@code X-Forwarded-For}
+     * parsed <b>right-to-left</b>, skipping RFC1918 (private-network)
+     * addresses which are our own trusted proxies (Caddy sitting on
+     * the docker network, plus any LAN hop).
+     *
+     * <p>Rationale: an attacker can put anything in the LEFTMOST XFF
+     * position — Caddy just appends the actual client IP after any
+     * pre-existing header. Reading leftmost-first lets the attacker
+     * spoof a new IP per request and defeat per-IP rate limiting.
+     * Right-to-left with trusted-proxy skipping picks the actual
+     * client IP even when it sits behind our proxy chain.
+     *
+     * <p>Falls back to {@code RemoteAddress} when no XFF is present.
+     */
     private static String clientIp(ServerHttpRequest req) {
-        // Honour X-Forwarded-For but only take the LEFTMOST hop —
-        // that's the original client. Subsequent commas are proxies.
         List<String> xff = req.getHeaders().get("X-Forwarded-For");
-        if (xff != null && !xff.isEmpty() && xff.get(0) != null && !xff.get(0).isBlank()) {
-            return xff.get(0).split(",")[0].trim();
+        if (xff != null && !xff.isEmpty()) {
+            // Header may be repeated OR comma-separated on one line —
+            // handle both by flattening to a single list of hops.
+            String[] hops = String.join(",", xff).split(",");
+            for (int i = hops.length - 1; i >= 0; i--) {
+                String hop = hops[i].trim();
+                if (hop.isEmpty()) continue;
+                if (!isTrustedProxy(hop)) return hop;
+            }
+            // Every hop was a trusted proxy — take the leftmost as
+            // best-guess client. This happens when the LAN is
+            // entirely RFC1918 (e.g. an internal-only test).
+            String leftmost = hops[0].trim();
+            if (!leftmost.isEmpty()) return leftmost;
         }
         return req.getRemoteAddress() == null
                 ? "unknown"
                 : req.getRemoteAddress().getAddress().getHostAddress();
+    }
+
+    /**
+     * True if {@code ip} looks like a trusted proxy — RFC1918 private
+     * addresses (Docker networks, LAN hops), loopback, or IPv6
+     * link-local. Anything routable is NOT trusted.
+     *
+     * <p>Explicit CIDR ranges rather than {@code InetAddress.isSiteLocalAddress}
+     * because that method has odd historical behaviour and doesn't
+     * cover Docker's default 172.17-31 range consistently.
+     */
+    private static boolean isTrustedProxy(String ip) {
+        if (ip == null || ip.isEmpty()) return false;
+        // IPv6 loopback + link-local
+        if (ip.equals("::1") || ip.toLowerCase().startsWith("fe80:")) return true;
+        // Strip IPv6 zone id if present
+        int zoneIdx = ip.indexOf('%');
+        if (zoneIdx >= 0) ip = ip.substring(0, zoneIdx);
+        // IPv4 loopback
+        if (ip.startsWith("127.")) return true;
+        // RFC1918: 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
+        if (ip.startsWith("10.")) return true;
+        if (ip.startsWith("192.168.")) return true;
+        if (ip.startsWith("172.")) {
+            String[] parts = ip.split("\\.");
+            if (parts.length >= 2) {
+                try {
+                    int second = Integer.parseInt(parts[1]);
+                    if (second >= 16 && second <= 31) return true;
+                } catch (NumberFormatException ignored) { /* not an IPv4 literal */ }
+            }
+        }
+        return false;
     }
 
     private static Mono<Void> tooMany(ServerWebExchange exchange,

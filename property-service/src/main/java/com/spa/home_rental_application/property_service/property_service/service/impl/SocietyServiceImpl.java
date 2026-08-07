@@ -476,8 +476,11 @@ public class SocietyServiceImpl implements SocietyService {
                 .orElseThrow(() -> new ForbiddenException("Sign in required."));
         // A tenant is linked to one flat via flats.tenant_id. From flat
         // → building → societyConfig.
-        Optional<Flat> myFlat = flatRepo.findAll().stream()
-                .filter(f -> me.equals(f.getTenantId()))
+        // Targeted lookup instead of loading every flat in the DB — the
+        // previous findAll().filter() scanned the whole flats table on
+        // every tenant society-page load, which O(N)-scaled the request
+        // as the platform grew.
+        Optional<Flat> myFlat = flatRepo.findActiveByTenantId(me).stream()
                 .findFirst();
         if (myFlat.isEmpty()) return null;
         return configRepo.findByBuildingId(myFlat.get().getBuildingId())

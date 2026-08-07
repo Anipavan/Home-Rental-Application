@@ -183,7 +183,15 @@ public class SchemaMigrationRunner {
             "  CONSTRAINT uq_mcph_pair UNIQUE (collection_id, payment_id)" +
             ")",
             "CREATE INDEX idx_mcph_collection ON maintenance_collection_payment_history (collection_id)",
-            "CREATE INDEX idx_mcph_payment    ON maintenance_collection_payment_history (payment_id)"
+            "CREATE INDEX idx_mcph_payment    ON maintenance_collection_payment_history (payment_id)",
+
+            // ── V19: hot-path index on maintenance_collection.payment_id ──
+            // Every payment.completed Kafka event triggers
+            // MaintenanceCollectionRepository.findByPaymentId — including
+            // rent payments where NO collection ever links to that
+            // paymentId. Without this index, that lookup is a full-scan
+            // of the collections table on EVERY payment completion.
+            "CREATE INDEX idx_collection_payment ON maintenance_collection (payment_id)"
     );
 
     @PostConstruct

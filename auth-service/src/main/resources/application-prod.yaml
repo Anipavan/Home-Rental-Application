@@ -53,6 +53,20 @@ spring:
       hibernate:
         format_sql: false
 
+# ─── Auth lockout (prod hardening) ─────────────────────────────
+# Default in application.yaml is 100 attempts / minute per account,
+# which is effectively no lockout — a common-password spray finishes
+# rockyou top-100 in ~1 minute against a single account. Tighten to
+# 5 attempts / 15-minute window in prod. Combined with the gateway-
+# side per-IP rate limiter, this closes the credential-stuffing
+# vector. Legitimate users typing wrong password a few times still
+# recover after 15 min without ops intervention.
+app:
+  auth:
+    lockout:
+      max-attempts: 5
+      window-minutes: 15
+
 management:
   endpoints:
     web:
