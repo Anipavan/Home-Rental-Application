@@ -23,7 +23,7 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/layout/page-header";
-import { getPlaceholderImage } from "@/components/property/property-card";
+import { ImageOff } from "lucide-react";
 import { formatINR } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import type { FlatResponseDTO } from "@/types/api";
@@ -318,11 +318,9 @@ export function ComparePage() {
                     onClick={() => addId(f.id)}
                     className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-secondary/60 text-left transition-colors"
                   >
-                    <img
-                      src={getPlaceholderImage(f.id)}
-                      alt=""
-                      className="size-14 rounded-md object-cover"
-                    />
+                    <div className="size-14 rounded-md bg-muted flex items-center justify-center text-muted-foreground shrink-0">
+                      <ImageOff className="size-5 opacity-60" />
+                    </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">
                         {f.buildingName ?? `Flat ${f.flatNumber}`}
@@ -495,12 +493,9 @@ function ColumnHeader({
         <X className="size-3.5" />
       </button>
       <Link to={`/property/${flat.id}`}>
-        <div className="aspect-[4/3] bg-muted">
-          <img
-            src={getPlaceholderImage(flat.id)}
-            alt=""
-            className="h-full w-full object-cover"
-          />
+        <div className="aspect-[4/3] bg-muted flex flex-col items-center justify-center gap-1 text-muted-foreground">
+          <ImageOff className="size-6 opacity-60" />
+          <span className="text-xs">No photos yet</span>
         </div>
         <div className="p-3">
           <p className="text-sm font-medium truncate">

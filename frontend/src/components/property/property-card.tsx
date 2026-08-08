@@ -1,27 +1,11 @@
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Bed, Bath, Square, MapPin } from "lucide-react";
+import { Bed, Bath, Square, MapPin, ImageOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { FavoriteButton } from "@/components/property/favorite-button";
 import { propertiesApi } from "@/lib/api/properties";
 import { formatINR } from "@/lib/utils";
 import type { FlatResponseDTO } from "@/types/api";
-
-const placeholders = [
-  "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?auto=format&fit=crop&w=900&q=70",
-  "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?auto=format&fit=crop&w=900&q=70",
-  "https://images.unsplash.com/photo-1493809842364-78817add7ffb?auto=format&fit=crop&w=900&q=70",
-  "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?auto=format&fit=crop&w=900&q=70",
-  "https://images.unsplash.com/photo-1505691938895-1758d7feb511?auto=format&fit=crop&w=900&q=70",
-  "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=900&q=70",
-];
-
-function pickImage(seed: number | string) {
-  const n = typeof seed === "number"
-    ? seed
-    : Array.from(String(seed)).reduce((a, c) => a + c.charCodeAt(0), 0);
-  return placeholders[Math.abs(n) % placeholders.length];
-}
 
 export function PropertyCard({
   flat,
@@ -33,11 +17,9 @@ export function PropertyCard({
   city?: string;
 }) {
   // Pull the building's gallery so we can use the cover image when
-  // the owner has uploaded one. Falls back to the deterministic
-  // Unsplash placeholder so listings without photos still render
-  // visually distinct cards. The query is cached for 5min — the
-  // browse grid renders many cards but they all share parent buildings,
-  // so React Query dedupes the fetches.
+  // the owner has uploaded one. Cards without uploads render a clean
+  // "no photo" placeholder — NO stock/Unsplash filler. Users need to
+  // see real listings, not synthetic decoration.
   const imgsQ = useQuery({
     queryKey: ["building", flat.buildingId, "images"],
     queryFn: () => propertiesApi.buildings.images(flat.buildingId),
@@ -65,9 +47,9 @@ export function PropertyCard({
     city ?? buildingQ.data?.buildingCity ?? "Location not specified";
 
   const cover = imgsQ.data?.find((img) => img.isCover) ?? imgsQ.data?.[0];
-  const img = cover
+  const coverUrl = cover
     ? propertiesApi.buildings.imageRawUrl(cover.id)
-    : pickImage(flat.id);
+    : null;
 
   return (
     <Link
@@ -75,12 +57,21 @@ export function PropertyCard({
       className="group block overflow-hidden rounded-2xl bg-card border border-border/60 shadow-soft hover:shadow-lift transition-all hover:-translate-y-1"
     >
       <div className="relative aspect-[4/3] overflow-hidden bg-muted">
-        <img
-          src={img}
-          alt={buildingName || flat.flatNumber}
-          loading="lazy"
-          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-        />
+        {imgsQ.isLoading ? (
+          <div className="h-full w-full bg-secondary animate-pulse" aria-busy="true" />
+        ) : coverUrl ? (
+          <img
+            src={coverUrl}
+            alt={buildingName || flat.flatNumber}
+            loading="lazy"
+            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+          />
+        ) : (
+          <div className="h-full w-full flex flex-col items-center justify-center gap-1 text-muted-foreground bg-muted">
+            <ImageOff className="size-8 opacity-60" />
+            <span className="text-xs">No photos yet</span>
+          </div>
+        )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
         <FavoriteButton
           flatId={flat.id}
@@ -133,5 +124,3 @@ export function PropertyCard({
     </Link>
   );
 }
-
-export { pickImage as getPlaceholderImage };

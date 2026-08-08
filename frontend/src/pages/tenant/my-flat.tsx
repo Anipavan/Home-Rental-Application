@@ -25,7 +25,7 @@ import { ScheduleVacateDialog } from "@/components/tenant/schedule-vacate-dialog
 import { formatINR, formatDate } from "@/lib/utils";
 import { extractErrorMessage } from "@/lib/api/client";
 import { toast } from "@/hooks/use-toast";
-import { getPlaceholderImage } from "@/components/property/property-card";
+import { ImageOff } from "lucide-react";
 
 export function MyFlatPage() {
   const { authUserId } = useAuthStore();
@@ -135,12 +135,9 @@ export function MyFlatPage() {
         </Card>
       )}
 
-      <div className="rounded-2xl overflow-hidden mb-6 aspect-[16/9] sm:aspect-[3/1] bg-muted">
-        <img
-          src={getPlaceholderImage(flat.id)}
-          alt="Home"
-          className="w-full h-full object-cover"
-        />
+      <div className="rounded-2xl overflow-hidden mb-6 aspect-[16/9] sm:aspect-[3/1] bg-muted flex flex-col items-center justify-center gap-2 text-muted-foreground">
+        <ImageOff className="size-10 opacity-60" />
+        <span className="text-sm">No photos uploaded yet</span>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
