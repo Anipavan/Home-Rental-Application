@@ -18,7 +18,7 @@ import { paymentGateway } from "@/lib/api/payment-gateway";
 import { bankAccountsApi } from "@/lib/api/bank-accounts";
 import { societyApi } from "@/lib/api/society";
 import { useFlatLookup } from "@/hooks/use-flat-lookup";
-import { isRazorpayPaymentsDisabled } from "@/lib/feature-flags";
+import { isCashfreeSplitCheckoutEnabled } from "@/lib/feature-flags";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
   UpiIdField,
@@ -151,11 +151,17 @@ export function PayPage() {
     );
   }
 
-  // Razorpay-off path: skip the whole method-picker + gateway flow
-  // and render the direct-UPI QR (owner's UPI from their bank details)
-  // as the only option. Owner marks PAID via their /owner/payments
-  // dashboard once they see the deposit in their bank app.
-  if (isRazorpayPaymentsDisabled()) {
+  // Direct-UPI path is the default until Phase 5 of the Cashfree Easy
+  // Split rollout lands. Render the QR pointing at the owner's own UPI
+  // (from their bank-account row); owner marks PAID via their
+  // /owner/payments dashboard once they see the deposit.
+  //
+  // Once Cashfree Checkout is wired up AND the owner is payout-ready,
+  // flipping isCashfreeSplitCheckoutEnabled=true will route through
+  // the split-payment flow instead. The else-branch below (Razorpay
+  // method picker) is transitional — it will be replaced by a
+  // Cashfree Checkout launcher in Phase 5, not re-enabled.
+  if (!isCashfreeSplitCheckoutEnabled()) {
     return (
       <DirectUpiRentView
         payment={p}

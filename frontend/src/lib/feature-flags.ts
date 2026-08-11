@@ -48,37 +48,20 @@ export const FEATURE_FLAGS = {
   COMPLIANCE_DISABLED: true as const,
 
   /**
-   * Razorpay-mediated payment paths (rent + society charge) disabled
-   * platform-wide. When true, tenant Pay pages surface ONLY the
-   * direct-UPI QR path — tenant scans a QR pointing at the recipient's
-   * own UPI (owner for rent, maintainer for society charges), money
-   * moves directly to the recipient's bank, recipient marks the
-   * charge PAID from their dashboard.
+   * Cashfree Easy Split checkout enabled platform-wide. When false
+   * (default until Phase 3–6 of the split-payment plan lands), tenant
+   * Pay pages surface ONLY the direct-UPI QR path. When true, owners
+   * with a registered Cashfree vendor id and verified KYC route
+   * through the Cashfree Checkout instead — money splits at Cashfree
+   * (owner's share → their bank, commission → yours) before either
+   * side sees it, so no PA license is needed on our end.
    *
-   * <p>Why paused: Razorpay Standard sends every payment into the
-   * PLATFORM's linked bank account, then relies on manual
-   * distribution to individual owners/maintainers. That's an RBI
-   * Payment Aggregator model that needs a PA license (not
-   * appropriate for MVP), plus doesn't match the product intent
-   * that "owner adds bank details, tenant pays owner directly".
-   *
-   * <p>Turn back on when Razorpay Route (split-settlement to per-
-   * owner linked accounts) is wired up. All the Razorpay-side
-   * frontend and payment-service code stays intact behind this
-   * flag — flipping to false restores the two-option UI.
+   * <p>The Razorpay-based paths (both Standard and Route) were removed
+   * entirely alongside this flag being introduced. Cashfree replaced
+   * them because Razorpay Route required a turnover threshold we
+   * don't have yet, whereas Cashfree onboards at any scale.
    */
-  // DISABLED again after test-mode happy-path validation confirmed the
-  // Razorpay integration itself works. The reason for keeping it off:
-  // Standard Razorpay's QR points to Razorpay's collection account
-  // (money → platform, not owner). Correct architecture is Razorpay
-  // Route (split-settlement to per-owner Linked Accounts). Route
-  // activation is in progress with Razorpay; backend code is being
-  // written now. Flip back to `false` only when:
-  //   1. Route is active on the Razorpay dashboard
-  //   2. Owner Linked Account onboarding UI is shipped
-  //   3. Backend order creation includes the `transfers[]` array
-  //   4. Money-to-owner split is verified in test mode end-to-end
-  RAZORPAY_PAYMENTS_DISABLED: true as const,
+  CASHFREE_SPLIT_CHECKOUT_ENABLED: false as const,
 } as const;
 
 /** True when the KYC feature is currently turned off platform-wide. */
@@ -96,9 +79,11 @@ export function isComplianceDisabled(): boolean {
   return FEATURE_FLAGS.COMPLIANCE_DISABLED;
 }
 
-/** True when Razorpay-mediated payments are paused platform-wide.
- *  When true, tenant Pay pages route through the direct-UPI-only
- *  flow instead of showing the Razorpay method picker. */
-export function isRazorpayPaymentsDisabled(): boolean {
-  return FEATURE_FLAGS.RAZORPAY_PAYMENTS_DISABLED;
+/** True when the Cashfree Easy Split checkout is enabled and should
+ *  replace the direct-UPI QR path for owners who are payout-ready.
+ *  False (default) → every Pay page uses the direct-UPI QR path.
+ *  True → payout-ready owners get the Cashfree Checkout; others fall
+ *  back to direct-UPI automatically. */
+export function isCashfreeSplitCheckoutEnabled(): boolean {
+  return FEATURE_FLAGS.CASHFREE_SPLIT_CHECKOUT_ENABLED;
 }

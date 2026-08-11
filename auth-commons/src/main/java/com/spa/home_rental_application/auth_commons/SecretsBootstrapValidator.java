@@ -45,11 +45,9 @@ public class SecretsBootstrapValidator implements ApplicationListener<Applicatio
             // numbers and similar columns). Production deployment
             // must source this from a secret manager.
             "app.encryption.key",
-            "app.razorpay.key-id",
-            "app.razorpay.key-secret",
-            "app.razorpay.webhook-secret",
-            "app.stripe.secret-key",
-            "app.stripe.webhook-secret",
+            "app.cashfree.app-id",
+            "app.cashfree.secret-key",
+            "app.cashfree.webhook-secret",
             // KYC pepper — added to raw Aadhaar before hashing. A
             // known pepper defeats the whole point of the hash.
             "app.kyc.aadhaar-hash-salt",
@@ -64,9 +62,7 @@ public class SecretsBootstrapValidator implements ApplicationListener<Applicatio
             "CHANGE_ME",
             "Pavan@123",
             "secretsecret",
-            "rzp_test_xxxx",
-            "sk_test_xxxx",
-            "whsec_xxxx",
+            "CHANGE_ME_CASHFREE",
             "SuperSecretKeyForJWTTokenGeneration",
             "gateway-shared-secret-change-me-in-prod",
             "change-me-in-prod-aadhaar-pepper",
@@ -135,7 +131,7 @@ public class SecretsBootstrapValidator implements ApplicationListener<Applicatio
         String activeProfiles = String.join(",", env.getActiveProfiles());
         String msg = "Refusing to start: placeholder secret(s) detected in non-dev profile '"
                 + activeProfiles + "'. Set the corresponding env vars (DB_PASSWORD, JWT_SECRET, "
-                + "INTERNAL_AUTH_SECRET, RAZORPAY_*, STRIPE_*) before deploying.\n" + detail;
+                + "INTERNAL_AUTH_SECRET, CASHFREE_*) before deploying.\n" + detail;
         log.error(msg);
         // Abort the application context — any in-flight request would be served
         // with insecure defaults.

@@ -20,7 +20,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { formatINR } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { extractErrorMessage } from "@/lib/api/client";
-import { isRazorpayPaymentsDisabled } from "@/lib/feature-flags";
+import { isCashfreeSplitCheckoutEnabled } from "@/lib/feature-flags";
 import type {
   FlatChargeCategory,
   FlatMaintenanceRow,
@@ -274,7 +274,11 @@ function RazorpayLaunchSection({
 }) {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const razorpayDisabled = isRazorpayPaymentsDisabled();
+  // Direct-UPI is the only supported society-charge path until Cashfree
+  // Easy Split (Phase 5+) lands. When enabled, only society configs
+  // with a Cashfree vendor id registered fall through the split path;
+  // everyone else keeps using direct-UPI.
+  const directUpiOnly = !isCashfreeSplitCheckoutEnabled();
 
   // Stable idempotency key for this render — two clicks of the Pay
   // button send the SAME key, so payment-service collides on the
@@ -314,7 +318,7 @@ function RazorpayLaunchSection({
   // picker when it's on. Same tenant reaction either way: one tap,
   // one destination, auto-confirmation.
   const societyLabel = cfg.societyDisplayName ?? "society maintenance";
-  const description = razorpayDisabled
+  const description = directUpiOnly
     ? "Tap Pay to open Google Pay / PhonePe / Paytm with the amount pre-filled. Money goes directly to the society's collection account; once you confirm, we mark the charge PAID and generate a receipt."
     : "Pick PhonePe, Google Pay, Paytm, Credit / Debit Card, or Net Banking on the next screen.";
 
@@ -323,7 +327,7 @@ function RazorpayLaunchSection({
       <CardContent className="p-6 space-y-4">
         <div className="flex items-start gap-4">
           <div className="size-12 rounded-2xl bg-primary/10 grid place-items-center shrink-0">
-            {razorpayDisabled ? (
+            {directUpiOnly ? (
               <Smartphone className="size-6 text-primary" />
             ) : (
               <ShieldCheck className="size-6 text-primary" />
@@ -372,7 +376,7 @@ function RazorpayLaunchSection({
                 </>
               )}
             </Button>
-            {!razorpayDisabled && (
+            {!directUpiOnly && (
               <p className="text-[11px] text-muted-foreground text-center flex items-center justify-center gap-1">
                 <ShieldCheck className="size-3" /> Secured by Razorpay ·
                 256-bit TLS

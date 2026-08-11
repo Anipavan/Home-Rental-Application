@@ -238,11 +238,14 @@ services:
   payment-service:
     environment:
       <<: *spring-jpa-env
-      APP_RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID}
-      APP_RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET}
-      APP_RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET}
-      APP_STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
-      APP_STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      # Cashfree Easy Split credentials — populate from .env-prod once the
+      # Cashfree merchant account is set up (Phase 3 of the split-payment
+      # rollout). Until then PAYMENT_GATEWAY=mock keeps payment-service
+      # booting cleanly without them.
+      APP_CASHFREE_APP_ID: ${CASHFREE_APP_ID:-}
+      APP_CASHFREE_SECRET_KEY: ${CASHFREE_SECRET_KEY:-}
+      APP_CASHFREE_WEBHOOK_SECRET: ${CASHFREE_WEBHOOK_SECRET:-}
+      APP_CASHFREE_ENVIRONMENT: ${CASHFREE_ENV:-sandbox}
       APP_PAYMENT_GATEWAY: ${PAYMENT_GATEWAY:-mock}
       JAVA_TOOL_OPTIONS: "-Xmx256m -Xms128m"
     ports: !reset []

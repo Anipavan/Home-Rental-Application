@@ -3,7 +3,7 @@ import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { paymentGateway } from "@/lib/api/payment-gateway";
-import { isRazorpayPaymentsDisabled } from "@/lib/feature-flags";
+import { isCashfreeSplitCheckoutEnabled } from "@/lib/feature-flags";
 import type { VpaValidationResponse } from "@/types/api";
 import { cn } from "@/lib/utils";
 
@@ -133,7 +133,12 @@ export function UpiIdField({
     // real resolution at pay time. Pretend the check succeeded so
     // Save unblocks; skip showing a name preview since we don't have
     // one from the server.
-    if (isRazorpayPaymentsDisabled()) {
+    // On the direct-UPI-only path (Cashfree Checkout not yet enabled),
+    // skip the server-side VPA validation call — /validate-vpa lives
+    // on the Razorpay-backed gateway path we're not using here. The
+    // format regex above is enough since the tenant's own UPI app
+    // resolves the VPA at pay time.
+    if (!isCashfreeSplitCheckoutEnabled()) {
       setState({ kind: "valid", customerName: "" });
       return;
     }

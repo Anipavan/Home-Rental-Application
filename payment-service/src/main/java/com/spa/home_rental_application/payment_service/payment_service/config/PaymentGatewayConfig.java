@@ -2,7 +2,6 @@ package com.spa.home_rental_application.payment_service.payment_service.config;
 
 import com.spa.home_rental_application.payment_service.payment_service.gateway.MockPaymentGateway;
 import com.spa.home_rental_application.payment_service.payment_service.gateway.PaymentGateway;
-import com.spa.home_rental_application.payment_service.payment_service.gateway.RazorpayPaymentGateway;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,10 +13,16 @@ import org.springframework.core.env.Environment;
 
 /**
  * Picks the active {@link PaymentGateway} based on {@code app.payment.gateway}.
- * Switching processors at deploy time is now an env-var change, not a code change.
+ * Switching processors is an env-var change, not a code change.
+ *
+ * <p>Supported values today: {@code mock} (dev + tests) and — once Phase 3 of
+ * the Cashfree Easy Split integration lands — {@code cashfree}. The old
+ * {@code razorpay} value was removed alongside the Route scaffolding; the
+ * gateway strategy pattern is deliberately preserved so slotting Cashfree in
+ * is a single new bean, not a rewrite.
  *
  * <p>Critical (Audit C13): the mock-gateway bean previously had
- * {@code matchIfMissing = true}. If {@code PAYMENT_GATEWAY} env was unset,
+ * {@code matchIfMissing = true}. If {@code APP_PAYMENT_GATEWAY} env was unset,
  * typo'd, or blank in prod, the deployment silently fell back to Mock —
  * every "payment" returned MOCK_OK, payment row flipped to PAID, and
  * <em>zero rupees actually collected</em>. No alarm, no log diff, no visible
@@ -35,21 +40,13 @@ public class PaymentGatewayConfig {
         return new MockPaymentGateway();
     }
 
-    @Bean
-    @ConditionalOnProperty(prefix = "app.payment", name = "gateway", havingValue = "razorpay")
-    public PaymentGateway razorpayPaymentGateway(
-            RazorpayProperties props,
-            com.spa.home_rental_application.payment_service.payment_service.repository.PaymentRepository paymentRepository,
-            com.spa.home_rental_application.payment_service.payment_service.service.VendorUsageRecorder usageRecorder,
-            @Value("${app.frontend-url:${FRONTEND_URL:https://anirudhhomes.in}}") String frontendBaseUrl) {
-        log.info("Active payment gateway: razorpay (keyId={}, callbackBase={})",
-                props.getKeyId(), frontendBaseUrl);
-        return new RazorpayPaymentGateway(props, paymentRepository, usageRecorder, frontendBaseUrl);
-    }
+    // Cashfree gateway bean is registered by CashfreePaymentGateway itself
+    // once Phase 3 of the plan lands — @ConditionalOnProperty on that class
+    // wires it in the same way the Razorpay bean used to be wired here.
 
     /**
      * Startup guard: refuse to boot in prod if {@code app.payment.gateway}
-     * is unset / blank / something other than mock|razorpay. Without this
+     * is unset / blank / something other than the supported set. Without this
      * the service would start cleanly but with NO PaymentGateway bean in
      * the context — payment endpoints would fail with confusing
      * NoSuchBeanDefinitionException at the first call instead of a clear
@@ -57,6 +54,12 @@ public class PaymentGatewayConfig {
      */
     @Configuration
     static class GatewaySelectionValidator {
+        /** Values app.payment.gateway may legally take. Kept as a single
+         *  source of truth so the error message stays in sync with the
+         *  set of gateway beans this config actually knows how to wire. */
+        private static final java.util.Set<String> SUPPORTED =
+                java.util.Set.of("mock", "cashfree");
+
         @Value("${app.payment.gateway:}")
         private String gatewayName;
 
@@ -70,18 +73,19 @@ public class PaymentGatewayConfig {
             for (String p : activeProfiles) {
                 if ("prod".equalsIgnoreCase(p)) { isProd = true; break; }
             }
-            String g = gatewayName == null ? "" : gatewayName.trim();
+            String g = gatewayName == null ? "" : gatewayName.trim().toLowerCase();
             if (g.isEmpty()) {
-                String msg = "app.payment.gateway must be set (mock | razorpay). "
+                String msg = "app.payment.gateway must be set (" + SUPPORTED + "). "
                         + "Unsetting it previously fell back to Mock silently — "
                         + "production deployments must declare this explicitly.";
                 if (isProd) throw new IllegalStateException(msg);
                 log.warn(msg + " Continuing in non-prod profile.");
                 return;
             }
-            if (!"mock".equalsIgnoreCase(g) && !"razorpay".equalsIgnoreCase(g)) {
+            if (!SUPPORTED.contains(g)) {
                 throw new IllegalStateException(
-                        "Unsupported app.payment.gateway=" + g + " (expected: mock | razorpay)");
+                        "Unsupported app.payment.gateway=" + g
+                        + " (expected one of: " + SUPPORTED + ")");
             }
             log.info("PaymentGateway selection validated: app.payment.gateway={}", g);
         }

@@ -251,17 +251,18 @@ services:
       # Read by PaymentServiceImpl @Value("${app.payment-proof.dir}").
       APP_PAYMENT_PROOF_DIR: /data/payment-proofs
       PAYMENT_GATEWAY: ${PAYMENT_GATEWAY:-mock}
-      # Razorpay credentials — only consumed when PAYMENT_GATEWAY=razorpay.
-      # Empty defaults so the mock-gateway dev path (and CI) don't fail
-      # SecretsBootstrapValidator on startup. Real values come from .env in
-      # prod — see RazorpayProperties + RazorpayPaymentGateway constructor.
-      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
-      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
-      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
-      # Used to build the Razorpay checkout callback_url so the user is
-      # redirected back to /app/payments/:id/return after they submit
-      # card / netbanking details. Without it Razorpay shows its own
-      # success page and the payment row stays stuck in PROCESSING.
+      # Cashfree credentials — only consumed when PAYMENT_GATEWAY=cashfree
+      # (Phase 3 of the Easy Split plan). Empty defaults so the mock-gateway
+      # dev path (and CI) don't fail SecretsBootstrapValidator on startup.
+      # Real values come from .env in prod once the merchant account is set up.
+      CASHFREE_APP_ID: ${CASHFREE_APP_ID:-}
+      CASHFREE_SECRET_KEY: ${CASHFREE_SECRET_KEY:-}
+      CASHFREE_WEBHOOK_SECRET: ${CASHFREE_WEBHOOK_SECRET:-}
+      # sandbox for dev/testing, production once you have live credentials
+      CASHFREE_ENV: ${CASHFREE_ENV:-sandbox}
+      # Used to build the payment redirect URL so the user is routed back
+      # to /app/payments/:id/return after they submit card / netbanking
+      # details on the Cashfree Checkout.
       FRONTEND_URL: ${FRONTEND_URL:-https://anirudhhomes.in}
 
   maintenance-service:

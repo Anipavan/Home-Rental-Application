@@ -12,7 +12,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { formatINR } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { extractErrorMessage } from "@/lib/api/client";
-import { isRazorpayPaymentsDisabled } from "@/lib/feature-flags";
+import { isCashfreeSplitCheckoutEnabled } from "@/lib/feature-flags";
 import type { FlatChargeCategory, FlatMaintenanceRow } from "@/types/api";
 
 /**
@@ -207,7 +207,7 @@ export function SocietyPayAllPage() {
             * — the cap comes from Razorpay's test-bank simulator, not
             * the app itself. When Razorpay is disabled, this warning
             * disappears because there's no cap on direct UPI. */}
-          {!isRazorpayPaymentsDisabled() && exceedsBulkCap && (
+          {!!isCashfreeSplitCheckoutEnabled() && exceedsBulkCap && (
             <Card className="mb-4 border-warning/40 bg-warning/5">
               <CardContent className="p-4 flex items-start gap-3">
                 <AlertTriangle className="size-5 text-warning shrink-0 mt-0.5" />
@@ -227,7 +227,7 @@ export function SocietyPayAllPage() {
               </CardContent>
             </Card>
           )}
-          {isRazorpayPaymentsDisabled() && (
+          {!isCashfreeSplitCheckoutEnabled() && (
             <Card className="mb-4 border-primary/30 bg-primary/5">
               <CardContent className="p-4 flex items-start gap-3">
                 <Smartphone className="size-5 text-primary shrink-0 mt-0.5" />
@@ -287,7 +287,7 @@ export function SocietyPayAllPage() {
                     <>
                       <Loader2 className="size-4 animate-spin" /> Starting…
                     </>
-                  ) : isRazorpayPaymentsDisabled() ? (
+                  ) : !isCashfreeSplitCheckoutEnabled() ? (
                     `Pay ${formatINR(total)} via UPI`
                   ) : (
                     `Pay all via Razorpay · ${formatINR(total)}`

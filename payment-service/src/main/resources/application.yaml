@@ -101,7 +101,10 @@ app:
     auth-topic: auth-events
 
   payment:
-    # Active gateway implementation: mock (dev) | razorpay | stripe
+    # Active gateway implementation: mock (dev + tests) | cashfree (prod
+    # once Phase 3 of the Easy Split rollout lands). The razorpay option
+    # was removed alongside the Route scaffolding — Cashfree Easy Split
+    # is the chosen split-payment provider going forward.
     gateway: ${PAYMENT_GATEWAY:mock}
     # Late-fee policy
     late-fee-percent-per-week: ${LATE_FEE_PCT:2.0}
@@ -109,13 +112,17 @@ app:
     # Reminder schedule: send a reminder N days before due date
     reminder-days-before-due: ${REMINDER_DAYS:3}
 
-  razorpay:
-    # All values below MUST be overridden via env in prod (Razorpay
-    # dashboard → Keys / Webhooks). SecretsBootstrapValidator refuses
-    # the placeholder defaults outside dev profiles.
-    key-id: ${RAZORPAY_KEY_ID:CHANGE_ME_RAZORPAY_KEY_ID_PLACEHOLDER}
-    key-secret: ${RAZORPAY_KEY_SECRET:CHANGE_ME_RAZORPAY_KEY_SECRET_PLACEHOLDER}
-    webhook-secret: ${RAZORPAY_WEBHOOK_SECRET:CHANGE_ME_RAZORPAY_WEBHOOK_SECRET_PLACEHOLDER}
+  # Cashfree credentials are consumed once the CashfreePaymentGateway
+  # bean lands in Phase 3 of the plan. Values set here become active
+  # the instant PAYMENT_GATEWAY=cashfree is flipped on. Placeholder
+  # defaults keep the yaml self-documenting; SecretsBootstrapValidator
+  # will refuse them outside dev profiles.
+  cashfree:
+    app-id: ${CASHFREE_APP_ID:CHANGE_ME_CASHFREE_APP_ID_PLACEHOLDER}
+    secret-key: ${CASHFREE_SECRET_KEY:CHANGE_ME_CASHFREE_SECRET_KEY_PLACEHOLDER}
+    webhook-secret: ${CASHFREE_WEBHOOK_SECRET:CHANGE_ME_CASHFREE_WEBHOOK_SECRET_PLACEHOLDER}
+    # sandbox for dev/testing, production for live payments
+    environment: ${CASHFREE_ENV:sandbox}
 
   # Shared HMAC secret used to verify the short-lived REG_PAY tokens
   # auth-service mints for the paid maintainer-signup flow. MUST be

@@ -7,13 +7,11 @@ spring:
 app:
   internal-auth:
     secret: CHANGE_ME_LOCAL_DEV_INTERNAL_AUTH_SECRET_PLACEHOLDER_AT_LEAST_32_BYTES_LONG
-  # Mock gateway in dev — real Razorpay/Stripe creds only land in prod.
+  # Mock gateway in dev — real Cashfree creds only land in prod.
   payment:
     gateway: mock
-  razorpay:
-    key-id: CHANGE_ME_RAZORPAY_KEY_ID_PLACEHOLDER
-    key-secret: CHANGE_ME_RAZORPAY_KEY_SECRET_PLACEHOLDER
-    webhook-secret: CHANGE_ME_RAZORPAY_WEBHOOK_SECRET_PLACEHOLDER
-  stripe:
-    secret-key: CHANGE_ME_STRIPE_SECRET_KEY_PLACEHOLDER
-    webhook-secret: CHANGE_ME_STRIPE_WEBHOOK_SECRET_PLACEHOLDER
+  cashfree:
+    app-id: CHANGE_ME_CASHFREE_APP_ID_PLACEHOLDER
+    secret-key: CHANGE_ME_CASHFREE_SECRET_KEY_PLACEHOLDER
+    webhook-secret: CHANGE_ME_CASHFREE_WEBHOOK_SECRET_PLACEHOLDER
+    environment: sandbox
