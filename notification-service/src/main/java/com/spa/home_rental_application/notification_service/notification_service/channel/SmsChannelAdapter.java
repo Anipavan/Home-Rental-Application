@@ -8,7 +8,7 @@ import com.twilio.rest.api.v2010.account.Message;
 import com.twilio.type.PhoneNumber;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
 
 /**
@@ -21,13 +21,25 @@ import org.springframework.stereotype.Component;
  * it lets every other notification (INAPP, EMAIL) keep working while
  * the SMS leg is unconfigured.
  */
+/*
+ * Registered ONLY when BOTH conditions below evaluate true:
+ *   - app.notification.delivery-enabled = true (default true)
+ *   - app.notification.channels.sms.enabled = true (default false)
+ *
+ * With SMS off by default, Twilio's Message API is never initialised
+ * (no accountSid → no Twilio.init call → no accidental spend). Flip
+ * app.notification.channels.sms.enabled=true once DLT registration is
+ * done and TWILIO_SID/TOKEN/FROM env vars are set.
+ *
+ * Uses @ConditionalOnExpression rather than two @ConditionalOnProperty
+ * annotations because ConditionalOnProperty is not repeatable — the
+ * SpEL expression is the canonical way to AND multiple flags.
+ */
 @Component
 @Slf4j
-@ConditionalOnProperty(
-        prefix = "app.notification",
-        name = "delivery-enabled",
-        havingValue = "true",
-        matchIfMissing = true
+@ConditionalOnExpression(
+        "${app.notification.delivery-enabled:true} "
+        + "and ${app.notification.channels.sms.enabled:false}"
 )
 public class SmsChannelAdapter implements NotificationChannelAdapter {
 

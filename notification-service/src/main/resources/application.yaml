@@ -145,6 +145,18 @@ app:
   notification:
     from-email: ${APP_NOTIFICATION_FROM_EMAIL:${MAIL_USERNAME:no-reply@homerental.local}}
     from-name:  ${APP_NOTIFICATION_FROM_NAME:Anirudh Homes}
+    # Per-channel kill switches. Global `delivery-enabled` (set
+    # elsewhere) still controls the noop fallback; these gate the real
+    # adapters + skip the leg in NotificationService.fanOut so no DB
+    # rows accumulate for a channel we're not using.
+    #
+    # SMS is OFF by default because India requires DLT registration
+    # (~5-10 business days, ~₹5,900 fee) before any commercial SMS can
+    # legally send. Flip SMS_ENABLED=true once that's done and TWILIO_*
+    # env vars are set.
+    channels:
+      sms:
+        enabled: ${SMS_ENABLED:false}
 
   # Twilio — set TWILIO_SID + TWILIO_TOKEN + TWILIO_FROM env vars to
   # enable real SMS / WhatsApp delivery. Without these (or while they

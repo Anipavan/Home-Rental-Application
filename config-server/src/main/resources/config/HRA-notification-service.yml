@@ -50,6 +50,12 @@ app:
     from-name:  ${NOTIFICATION_FROM_NAME:Home Rental}
     max-retries: 3
     retry-interval-minutes: 5
+    # Per-channel kill switches. SMS off by default — India requires
+    # DLT registration before commercial SMS can legally send, so we
+    # skip the leg entirely until SMS_ENABLED=true is set on prod.
+    channels:
+      sms:
+        enabled: ${SMS_ENABLED:false}
 
   twilio:
     account-sid: ${TWILIO_SID:placeholder}

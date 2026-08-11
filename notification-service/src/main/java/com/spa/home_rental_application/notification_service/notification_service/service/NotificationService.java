@@ -12,6 +12,7 @@ import com.spa.home_rental_application.notification_service.notification_service
 import com.spa.home_rental_application.notification_service.notification_service.exception.NotificationNotFoundException;
 import com.spa.home_rental_application.notification_service.notification_service.repository.NotificationLogRepository;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -35,16 +36,31 @@ public class NotificationService {
     private final NotificationLogRepository logRepo;
     private final NotificationStreamRegistry streamRegistry;
 
+    /**
+     * Global SMS kill-switch. When {@code false} (default), all SMS
+     * legs are skipped — no DB row, no dispatcher call, no Twilio
+     * traffic. Matches the {@link com.spa.home_rental_application.notification_service.notification_service.channel.SmsChannelAdapter}
+     * conditional so the adapter isn't registered either. Flip on
+     * via {@code app.notification.channels.sms.enabled=true} once
+     * TRAI/DLT registration is done and Twilio credentials are set.
+     */
+    private final boolean smsEnabled;
+
     public NotificationService(TemplateService templateService,
                                PreferenceService preferenceService,
                                NotificationDispatcher dispatcher,
                                NotificationLogRepository logRepo,
-                               NotificationStreamRegistry streamRegistry) {
+                               NotificationStreamRegistry streamRegistry,
+                               @Value("${app.notification.channels.sms.enabled:false}")
+                               boolean smsEnabled) {
         this.templateService = templateService;
         this.preferenceService = preferenceService;
         this.dispatcher = dispatcher;
         this.logRepo = logRepo;
         this.streamRegistry = streamRegistry;
+        this.smsEnabled = smsEnabled;
+        log.info("NotificationService SMS delivery is {}",
+                smsEnabled ? "ENABLED" : "DISABLED (kill-switch)");
     }
 
     /* ------------- Manual sends ------------- */
@@ -91,7 +107,14 @@ public class NotificationService {
         // sendFromTemplate / sendInapp still default to true so
         // single-channel callers keep getting their bell entry.
         deliver(userId, NotificationType.EMAIL, category, null, null, null, vars, false);
-        deliver(userId, NotificationType.SMS, category, null, null, null, vars, false);
+        // SMS gated on global kill-switch so we don't even persist a
+        // SKIPPED audit row per fan-out when SMS is turned off (that
+        // adds up fast — one row per event per user). deliver() has a
+        // secondary gate for direct sendFromTemplate(SMS,…) callers
+        // (KYC / compliance listeners) where the audit row IS wanted.
+        if (smsEnabled) {
+            deliver(userId, NotificationType.SMS, category, null, null, null, vars, false);
+        }
         // WhatsApp is explicit opt-in (whatsappEnabled default false)
         // — fires nothing for users who haven't opted in.
         deliver(userId, NotificationType.WHATSAPP, category, null, null, null, vars, false);
@@ -256,6 +279,20 @@ public class NotificationService {
                                     String recipientOverride,
                                     Map<String, Object> vars,
                                     boolean writeInappSibling) {
+
+        // Global SMS kill-switch — no Twilio traffic, no per-user
+        // preference lookup, no template render. Records one SKIPPED
+        // audit row so single-channel callers (KYC / compliance
+        // sendFromTemplate(SMS,…)) still have a trail explaining why
+        // their message didn't fly. fanOut skips this call entirely
+        // to keep bulk-fan traffic quiet.
+        if (type == NotificationType.SMS && !smsEnabled) {
+            return persist(userId, type, category,
+                    null, subjectOverride, messageOverride,
+                    NotificationStatus.SKIPPED,
+                    "SMS delivery globally disabled (app.notification.channels.sms.enabled=false)",
+                    vars);
+        }
 
         UserNotificationPreference pref = preferenceService.findOrDefault(userId);
 
