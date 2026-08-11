@@ -66,6 +66,7 @@ import { AdminSettingsPage } from "@/pages/admin/settings";
 import { MaintainerPaymentGate } from "@/components/maintainer/payment-gate";
 import { AdminPropertiesPage } from "@/pages/admin/properties";
 import { AdminPaymentsPage } from "@/pages/admin/payments";
+import { AdminCommissionPage } from "@/pages/admin/commission";
 import { AdminMaintenancePage } from "@/pages/admin/maintenance";
 import { AdminComplaintsPage } from "@/pages/admin/complaints";
 import { AdminReviewsPage } from "@/pages/admin/reviews";
@@ -383,6 +384,7 @@ export const router = createBrowserRouter([
       { path: "users", element: <AdminUsersPage /> },
       { path: "properties", element: <AdminPropertiesPage /> },
       { path: "payments", element: <AdminPaymentsPage /> },
+      { path: "commission", element: <AdminCommissionPage /> },
       { path: "maintenance", element: <AdminMaintenancePage /> },
       { path: "complaints", element: <AdminComplaintsPage /> },
       { path: "reviews", element: <AdminReviewsPage /> },

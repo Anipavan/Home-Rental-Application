@@ -38,6 +38,7 @@ import {
   Server,
   HandCoins,
   SlidersHorizontal,
+  Percent,
 } from "lucide-react";
 import { Logo } from "./logo";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -154,6 +155,7 @@ const adminNav: NavItem[] = [
   { to: "/admin/users", label: "Users", icon: Users },
   { to: "/admin/properties", label: "Properties", icon: Building2 },
   { to: "/admin/payments", label: "Payments", icon: Receipt },
+  { to: "/admin/commission", label: "Commission", icon: Percent },
   { to: "/admin/maintenance", label: "Maintenance", icon: Wrench },
   { to: "/admin/complaints", label: "Complaints", icon: MessageSquareWarning },
   { to: "/admin/reviews", label: "Reviews", icon: Star },
