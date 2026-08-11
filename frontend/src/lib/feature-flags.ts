@@ -67,7 +67,13 @@ export const FEATURE_FLAGS = {
    * frontend and payment-service code stays intact behind this
    * flag — flipping to false restores the two-option UI.
    */
-  RAZORPAY_PAYMENTS_DISABLED: true as const,
+  // TEMPORARILY ENABLED for end-to-end happy-path verification in test
+  // mode (rzp_test_* keys, no real money moves). Standard Razorpay
+  // sends money to the PLATFORM account — NOT the correct long-term
+  // architecture. Once verified, keep enabled while Razorpay Route
+  // integration is built out (owner linked accounts, split payments).
+  // If Route work stalls, flip back to `true` to revert to direct-UPI-only.
+  RAZORPAY_PAYMENTS_DISABLED: false as const,
 } as const;
 
 /** True when the KYC feature is currently turned off platform-wide. */
