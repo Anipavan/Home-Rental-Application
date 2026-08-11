@@ -112,16 +112,36 @@ public class CashfreePaymentGateway implements PaymentGateway {
 
         Map<String, Object> orderMeta = Map.of("return_url", returnUrl);
 
-        Map<String, Object> body = Map.of(
-                "order_id",         orderId,
-                "order_amount",     payment.getTotalAmount(),
-                "order_currency",   "INR",
-                "customer_details", customer,
-                "order_meta",       orderMeta,
-                "order_note",       payment.getSourceType() == null
-                        ? "Rent payment"
-                        : payment.getSourceType()
-        );
+        // Build the request body. Fixed keys go in an ordered map so we
+        // can conditionally include order_splits[] only when the caller
+        // (PaymentServiceImpl.initiate) has stamped a vendor id +
+        // platformFee. When absent, this is a plain non-split order.
+        java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("order_id",         orderId);
+        body.put("order_amount",     payment.getTotalAmount());
+        body.put("order_currency",   "INR");
+        body.put("customer_details", customer);
+        body.put("order_meta",       orderMeta);
+        body.put("order_note", payment.getSourceType() == null
+                ? "Rent payment"
+                : payment.getSourceType());
+
+        String vendorId = payment.getOwnerVendorId();
+        java.math.BigDecimal platformFee = payment.getPlatformFee() == null
+                ? java.math.BigDecimal.ZERO
+                : payment.getPlatformFee();
+        if (vendorId != null && !vendorId.isBlank()) {
+            java.math.BigDecimal vendorShare = payment.getTotalAmount().subtract(platformFee);
+            if (vendorShare.signum() < 0) {
+                throw new PaymentGatewayException(
+                        "platformFee (" + platformFee + ") exceeds totalAmount ("
+                                + payment.getTotalAmount() + ") for payment " + payment.getId());
+            }
+            body.put("order_splits", java.util.List.of(
+                    Map.of("vendor_id", vendorId, "amount", vendorShare)));
+            log.info("Cashfree order will split: total={} vendor={} share={} platformFee={}",
+                    payment.getTotalAmount(), vendorId, vendorShare, platformFee);
+        }
 
         JsonNode resp = post("/orders", body,
                 "CASHFREE_ORDER_CREATE",
@@ -192,6 +212,78 @@ public class CashfreePaymentGateway implements PaymentGateway {
                 .transactionId(cfPaymentId != null ? cfPaymentId : orderId)
                 .build();
     }
+
+    /* ------------------------- vendor registration ------------------------- */
+
+    /**
+     * Register an owner as a Cashfree Easy Split vendor.
+     *
+     * <p>Wraps {@code POST /pg/easy-split/vendors}. Called by
+     * {@code CashfreeVendorService} once both prereqs are met
+     * (bank saved AND kyc verified). Cashfree accepts synchronously,
+     * runs its penny-drop asynchronously, and returns
+     * {@code status: IN_BANK_VALIDATION} on the way to
+     * {@code ACTIVE} — the caller stores that transitional state on
+     * the local {@code cashfree_vendors} row and falls back to
+     * direct-UPI for tenants of this owner until it flips ACTIVE.
+     *
+     * <p>{@link CashfreeVendorRegistrationRequest#businessType} defaults
+     * to "Miscellaneous" — the only sandbox-safe value; see the
+     * cashfree-api-quirks memory for why. Change to "Real Estate" or
+     * "Rentals" ONLY after retesting against production, where the
+     * full advertised list appears to actually be honored.
+     */
+    public CashfreeVendorRegistrationResult registerVendor(CashfreeVendorRegistrationRequest req) {
+        if (!props.credentialsConfigured()) {
+            throw new PaymentGatewayException("Cashfree credentials not configured");
+        }
+        Map<String, Object> body = Map.of(
+                "vendor_id",        req.vendorId(),
+                "status",           "ACTIVE",
+                "name",             req.name(),
+                "email",            req.email(),
+                "phone",            req.phone(),
+                "verify_account",   true,
+                "dashboard_access", false,
+                "bank", Map.of(
+                        "account_number",  req.bankAccountNumber(),
+                        "account_holder",  req.bankAccountHolder(),
+                        "ifsc",            req.bankIfsc()
+                ),
+                "kyc_details", Map.of(
+                        "account_type",  "INDIVIDUAL",
+                        "business_type", req.businessType() == null ? "Miscellaneous" : req.businessType(),
+                        "pan",           req.pan()
+                )
+        );
+        JsonNode resp = post("/easy-split/vendors", body,
+                "CASHFREE_VENDOR_CREATE", req.vendorId());
+        String returnedVendorId = resp.path("vendor_id").asText(req.vendorId());
+        String status = resp.path("status").asText("UNKNOWN");
+        log.info("Cashfree vendor registered vendorId={} status={}", returnedVendorId, status);
+        return new CashfreeVendorRegistrationResult(returnedVendorId, status);
+    }
+
+    /** Inbound to {@link #registerVendor}. Kept in this file to avoid DTO sprawl. */
+    public record CashfreeVendorRegistrationRequest(
+            String vendorId,
+            String name,
+            String email,
+            String phone,
+            String pan,
+            String bankAccountNumber,
+            String bankAccountHolder,
+            String bankIfsc,
+            /** Nullable — defaults to "Miscellaneous". */
+            String businessType
+    ) {}
+
+    /** Response from {@link #registerVendor}. */
+    public record CashfreeVendorRegistrationResult(
+            String cashfreeVendorId,
+            /** IN_BANK_VALIDATION | ACTIVE | REJECTED — Cashfree's own status string. */
+            String status
+    ) {}
 
     /* ------------------------- webhook ------------------------- */
 

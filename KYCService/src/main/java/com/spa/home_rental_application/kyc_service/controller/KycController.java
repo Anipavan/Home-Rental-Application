@@ -7,9 +7,11 @@ import com.spa.home_rental_application.kyc_service.DTO.Request.DigioWebhookPaylo
 import com.spa.home_rental_application.kyc_service.DTO.Request.InitiateKycRequest;
 import com.spa.home_rental_application.kyc_service.DTO.Request.VerifyPanRequest;
 import com.spa.home_rental_application.kyc_service.DTO.Response.DigiLockerAuthorizeResponse;
+import com.spa.home_rental_application.kyc_service.DTO.Response.KycInternalDto;
 import com.spa.home_rental_application.kyc_service.DTO.Response.KycReportDto;
 import com.spa.home_rental_application.kyc_service.DTO.Response.KycResponseDto;
 import com.spa.home_rental_application.kyc_service.service.KycService;
+import org.springframework.web.server.ResponseStatusException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -46,6 +48,23 @@ public class KycController {
     @GetMapping("/status/{userId}")
     public ResponseEntity<KycResponseDto> status(@PathVariable String userId) {
         return ResponseEntity.ok(kycService.getKycStatus(userId));
+    }
+
+    /**
+     * Internal-only: returns the RAW PAN + legal holder name so
+     * payment-service can register the owner with Cashfree Easy
+     * Split. Gated by the shared {@code GatewayAuthFilter} —
+     * requires a valid gateway HMAC on every call, and the
+     * {@code /kyc/internal/**} path isn't exposed in the gateway's
+     * public route table.
+     */
+    @Operation(summary = "Internal-only: raw PAN for Cashfree vendor registration")
+    @GetMapping("/internal/{userId}")
+    public ResponseEntity<KycInternalDto> getInternalByUserId(@PathVariable String userId) {
+        return kycService.getInternalByUserId(userId)
+                .map(ResponseEntity::ok)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "No KYC record on file for userId=" + userId));
     }
 
     @Operation(summary = "Verify a PAN number (publishes kyc.pan.verified)")

@@ -31,6 +31,26 @@ public interface UserClient {
     UserProfileSummary getByAuthUserId(@PathVariable("authUserId") String authUserId);
 
     /**
+     * Internal-only: raw bank account details for Cashfree Easy Split
+     * vendor registration. Bypasses the masking that
+     * {@link #getPayoutDetails} applies — Cashfree needs the full
+     * account number to run its penny-drop bank verification.
+     *
+     * <p>404 when the user hasn't saved a bank account yet — the
+     * caller (CashfreeVendorService) treats that as "not ready to
+     * register" rather than an error.
+     */
+    @GetMapping("/users/bank-accounts/internal/{userId}")
+    BankAccountInternal getBankAccountInternal(@PathVariable("userId") String userId);
+
+    /** Wire shape mirrors user-service's BankAccountInternalDto. */
+    record BankAccountInternal(
+            String accountNumber,
+            String ifscCode,
+            String accountHolderName
+    ) {}
+
+    /**
      * Payable subset of a user's bank account — local mirror of
      * user-service's BankAccountPayoutDto so payment-service doesn't
      * have to depend on user-service code. Field-by-field identical

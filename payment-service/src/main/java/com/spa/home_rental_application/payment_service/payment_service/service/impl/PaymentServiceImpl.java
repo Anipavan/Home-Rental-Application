@@ -86,6 +86,8 @@ public class PaymentServiceImpl implements PaymentService {
     private final PropertyClient propertyClient;
     private final UserClient userClient;
     private final AuditEventPublisher audit;
+    private final com.spa.home_rental_application.payment_service.payment_service.service.CommissionService commissionService;
+    private final com.spa.home_rental_application.payment_service.payment_service.service.CashfreeVendorService vendorService;
 
     public PaymentServiceImpl(PaymentRepository paymentRepo,
                               InvoiceRepository invoiceRepo,
@@ -97,7 +99,9 @@ public class PaymentServiceImpl implements PaymentService {
                               PaymentPdfGenerator pdfGenerator,
                               PropertyClient propertyClient,
                               UserClient userClient,
-                              AuditEventPublisher audit) {
+                              AuditEventPublisher audit,
+                              com.spa.home_rental_application.payment_service.payment_service.service.CommissionService commissionService,
+                              com.spa.home_rental_application.payment_service.payment_service.service.CashfreeVendorService vendorService) {
         this.paymentRepo = paymentRepo;
         this.invoiceRepo = invoiceRepo;
         this.receiptRepo = receiptRepo;
@@ -109,6 +113,8 @@ public class PaymentServiceImpl implements PaymentService {
         this.propertyClient = propertyClient;
         this.userClient = userClient;
         this.audit = audit;
+        this.commissionService = commissionService;
+        this.vendorService = vendorService;
     }
 
     /* ---------------- Lifecycle ---------------- */
@@ -400,6 +406,31 @@ public class PaymentServiceImpl implements PaymentService {
         p.setCardNetwork(dto.cardNetwork());
         p.setCardLast4(dto.cardLast4());
         p.setStatus(PaymentStatus.PROCESSING);
+
+        // Cashfree Easy Split integration: compute the platform's cut
+        // from the CommissionService and stamp the owner's vendor id +
+        // fee amount on the Payment row BEFORE calling the gateway.
+        // CashfreePaymentGateway.initiate reads these to build its
+        // order_splits[] array; other gateways (Mock) ignore them.
+        //
+        // If the owner isn't payout-ready (no ACTIVE Cashfree vendor),
+        // leave the split fields blank — CashfreePaymentGateway then
+        // creates a plain, non-split order. The Phase 6 frontend will
+        // pre-check vendor readiness and route those tenants back to
+        // direct-UPI instead of even calling /initiate, but leaving
+        // the backend permissive keeps the fallback safe.
+        if (p.getOwnerId() != null && !p.getOwnerId().isBlank()) {
+            vendorService.getForUser(p.getOwnerId()).ifPresent(vendor -> {
+                if (vendor.getStatus() != null && vendor.getStatus().isPayoutReady()) {
+                    BigDecimal fee = commissionService.computePlatformFee(
+                            p.getOwnerId(), p.getTotalAmount());
+                    p.setPlatformFee(fee);
+                    p.setOwnerVendorId(vendor.getCashfreeVendorId());
+                    log.info("Split payment configured paymentId={} vendor={} platformFee={}",
+                            p.getId(), vendor.getCashfreeVendorId(), fee);
+                }
+            });
+        }
 
         PaymentInitiationResult r = gateway.initiate(p, dto);
         p.setGatewayName(r.getGatewayName());

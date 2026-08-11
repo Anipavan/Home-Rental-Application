@@ -11,6 +11,7 @@ import com.spa.home_rental_application.kyc_service.DTO.Request.DigioWebhookPaylo
 import com.spa.home_rental_application.kyc_service.DTO.Request.InitiateKycRequest;
 import com.spa.home_rental_application.kyc_service.DTO.Request.VerifyPanRequest;
 import com.spa.home_rental_application.kyc_service.DTO.Response.DigiLockerAuthorizeResponse;
+import com.spa.home_rental_application.kyc_service.DTO.Response.KycInternalDto;
 import com.spa.home_rental_application.kyc_service.DTO.Response.KycReportDto;
 import com.spa.home_rental_application.kyc_service.DTO.Response.KycResponseDto;
 import com.spa.home_rental_application.kyc_service.Entities.KycRecord;
@@ -552,6 +553,18 @@ public class KycServiceImpl implements KycService {
      * SHA-256 hash of {salt || aadhaar}. Aadhaar is never persisted in plain
      * text — required by DPDP Act 2023.
      */
+    @Override
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public java.util.Optional<KycInternalDto> getInternalByUserId(String userId) {
+        return kycRepository.findByUserId(userId).map(r -> new KycInternalDto(
+                r.getUserId(),
+                r.getPanNumber(),          // RAW — for Cashfree kyc_details.pan
+                r.getPanHolderName(),
+                "VERIFIED".equalsIgnoreCase(r.getVerificationStatus()),
+                r.getVerificationStatus()
+        ));
+    }
+
     private String hashAadhaar(String aadhaar) {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");

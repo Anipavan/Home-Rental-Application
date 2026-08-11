@@ -4,6 +4,7 @@ import com.spa.home_rental_application.KafkaEvents.Producers.DTO.UserServiceEven
 import com.spa.home_rental_application.KafkaEvents.Producers.Events.AuditEventPublisher;
 import com.spa.home_rental_application.KafkaEvents.Producers.Events.UserServiceEvents;
 import com.spa.home_rental_application.user_service.user_service.DTO.Request.BankAccountRequestDto;
+import com.spa.home_rental_application.user_service.user_service.DTO.Response.BankAccountInternalDto;
 import com.spa.home_rental_application.user_service.user_service.DTO.Response.BankAccountPayoutDto;
 import com.spa.home_rental_application.user_service.user_service.DTO.Response.BankAccountResponseDto;
 import com.spa.home_rental_application.user_service.user_service.Entities.BankAccount;
@@ -109,6 +110,16 @@ public class BankAccountServiceImpul implements BankAccountService {
     @Transactional(readOnly = true)
     public Optional<BankAccountPayoutDto> getPayoutByUserId(String userId) {
         return repo.findByUserId(userId).map(this::toPayoutDto);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<BankAccountInternalDto> getInternalByUserId(String userId) {
+        return repo.findByUserId(userId).map(b -> new BankAccountInternalDto(
+                b.getAccountNumber(),     // RAW — for Cashfree penny-drop
+                b.getIfscCode(),
+                b.getAccountHolderName()
+        ));
     }
 
     /* -------------------- helpers -------------------- */

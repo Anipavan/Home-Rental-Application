@@ -99,6 +99,7 @@ app:
     maintenance-topic: maintenance-events
     notification-topic: notification-events
     auth-topic: auth-events
+    kyc-topic: kyc-events
 
   payment:
     # Active gateway implementation: mock (dev + tests) | cashfree (prod

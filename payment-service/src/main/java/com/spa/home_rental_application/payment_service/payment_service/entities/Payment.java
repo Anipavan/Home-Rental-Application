@@ -57,6 +57,30 @@ public class Payment {
     @Column(name = "total_amount", nullable = false, precision = 12, scale = 2)
     private BigDecimal totalAmount;
 
+    /**
+     * Platform commission — the slice of {@link #totalAmount} the
+     * platform kept out of the split. Populated at initiate() time via
+     * {@code CommissionService.computePlatformFee}. Zero when the
+     * owner is on a 0% rule OR when the payment flowed via direct-UPI
+     * (i.e. no Cashfree split at all).
+     *
+     * <p>Owner's share is always {@code totalAmount - platformFee}
+     * and is set as the {@code order_splits[0].amount} on the
+     * Cashfree order.
+     */
+    @Column(name = "platform_fee", precision = 10, scale = 2)
+    @Builder.Default
+    private BigDecimal platformFee = BigDecimal.ZERO;
+
+    /**
+     * Cashfree vendor_id of the owner at the moment of the split.
+     * Historical — snapshot into this row so an owner bank-change
+     * doesn't retroactively rewrite which vendor was paid on a
+     * given transaction. Nullable for direct-UPI + legacy rows.
+     */
+    @Column(name = "owner_vendor_id", length = 64)
+    private String ownerVendorId;
+
     @Column(name = "due_date", nullable = false)
     private LocalDate dueDate;
 

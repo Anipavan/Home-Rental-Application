@@ -7,8 +7,11 @@ import com.spa.home_rental_application.kyc_service.DTO.Request.DigioWebhookPaylo
 import com.spa.home_rental_application.kyc_service.DTO.Request.InitiateKycRequest;
 import com.spa.home_rental_application.kyc_service.DTO.Request.VerifyPanRequest;
 import com.spa.home_rental_application.kyc_service.DTO.Response.DigiLockerAuthorizeResponse;
+import com.spa.home_rental_application.kyc_service.DTO.Response.KycInternalDto;
 import com.spa.home_rental_application.kyc_service.DTO.Response.KycReportDto;
 import com.spa.home_rental_application.kyc_service.DTO.Response.KycResponseDto;
+
+import java.util.Optional;
 
 public interface KycService {
 
@@ -44,4 +47,12 @@ public interface KycService {
      * record to VERIFIED (publishing {@code kyc.verified} downstream).
      */
     KycResponseDto completeDigilockerCallback(DigiLockerCallbackRequest request);
+
+    /**
+     * Internal-only projection with the RAW PAN. Consumed by
+     * payment-service (via HMAC-signed Feign) when registering an
+     * owner with Cashfree Easy Split. Returns empty when the user
+     * has no KYC record yet.
+     */
+    Optional<KycInternalDto> getInternalByUserId(String userId);
 }

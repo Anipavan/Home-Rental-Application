@@ -91,6 +91,12 @@ public class PaymentGatewayController {
     public ResponseEntity<Map<String, Object>> webhook(
             @RequestHeader(name = "X-Razorpay-Signature", required = false) String razorpaySig,
             @RequestHeader(name = "Stripe-Signature", required = false) String stripeSig,
+            // Cashfree uses two headers — signature + timestamp — that
+            // the CashfreePaymentGateway.verifyWebhook implementation
+            // pipes together as "signature|timestamp" to keep the
+            // PaymentGateway interface's two-arg shape.
+            @RequestHeader(name = "x-webhook-signature", required = false) String cashfreeSig,
+            @RequestHeader(name = "x-webhook-timestamp", required = false) String cashfreeTs,
             @RequestHeader(name = "Origin", required = false) String origin,
             @RequestBody String rawBody,
             jakarta.servlet.http.HttpServletRequest httpReq) {
@@ -115,7 +121,18 @@ public class PaymentGatewayController {
                     .body(Map.of("ok", false, "reason", "Body exceeds 1 MB"));
         }
 
-        String sig = razorpaySig != null ? razorpaySig : stripeSig;
+        // Pick the signature that matches the active gateway. For
+        // Cashfree we pipe-join sig + timestamp because their scheme
+        // is HMAC(timestamp + body), and PaymentGateway.verifyWebhook
+        // takes only one string.
+        String sig;
+        if (cashfreeSig != null && !cashfreeSig.isBlank()) {
+            sig = cashfreeSig + "|" + (cashfreeTs == null ? "" : cashfreeTs);
+        } else if (razorpaySig != null) {
+            sig = razorpaySig;
+        } else {
+            sig = stripeSig;
+        }
         WebhookVerificationResult res = gateway.verifyWebhook(rawBody, sig);
         if (!res.valid()) {
             log.warn("Rejected webhook (gateway={}): {}", gateway.name(), res.errorMessage());

@@ -2,6 +2,7 @@ package com.spa.home_rental_application.user_service.user_service.controller;
 
 import com.spa.home_rental_application.auth_commons.GatewayAuthFilter;
 import com.spa.home_rental_application.user_service.user_service.DTO.Request.BankAccountRequestDto;
+import com.spa.home_rental_application.user_service.user_service.DTO.Response.BankAccountInternalDto;
 import com.spa.home_rental_application.user_service.user_service.DTO.Response.BankAccountPayoutDto;
 import com.spa.home_rental_application.user_service.user_service.DTO.Response.BankAccountResponseDto;
 import com.spa.home_rental_application.user_service.user_service.service.BankAccountService;
@@ -94,6 +95,32 @@ public class BankAccountController {
                 .map(ResponseEntity::ok)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND,
                         "No payout details on file for userId=" + userId));
+    }
+
+    /**
+     * Internal-only: returns the RAW account number for a user so
+     * payment-service can register them as a Cashfree Easy Split
+     * vendor. Cashfree needs the raw number to run its penny-drop
+     * bank verification.
+     *
+     * <p>Access control: {@link com.spa.home_rental_application.auth_commons.GatewayAuthFilter}
+     * requires a valid gateway HMAC on every request; the gateway's
+     * public routing table doesn't expose {@code /internal/**} paths,
+     * so external callers are blocked at the network edge. Direct
+     * hits to this port without the HMAC header are rejected by the
+     * filter before reaching this method.
+     *
+     * <p>404 mirrors the shape of {@link #getByUserId} so a Feign
+     * caller can distinguish "no bank details on file" from a real
+     * error the same way in both endpoints.
+     */
+    @Operation(summary = "Internal-only: raw bank details for Cashfree vendor registration")
+    @GetMapping("/internal/{userId}")
+    public ResponseEntity<BankAccountInternalDto> getInternalByUserId(@PathVariable String userId) {
+        return service.getInternalByUserId(userId)
+                .map(ResponseEntity::ok)
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND,
+                        "No bank account on file for userId=" + userId));
     }
 
     /* --------------------------- authz ---------------------------- */

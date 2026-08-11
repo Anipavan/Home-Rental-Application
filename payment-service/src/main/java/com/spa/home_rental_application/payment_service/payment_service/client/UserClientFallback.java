@@ -29,4 +29,14 @@ public class UserClientFallback implements UserClient {
                 authUserId);
         return UserProfileSummary.empty();
     }
+
+    @Override
+    public BankAccountInternal getBankAccountInternal(String userId) {
+        // CashfreeVendorService interprets null as "user-service is down;
+        // don't attempt registration this pass, the Kafka listener will
+        // retry on the next bank-saved / kyc-verified event".
+        log.warn("user-service unavailable — getBankAccountInternal({}) falling back to null",
+                userId);
+        return null;
+    }
 }

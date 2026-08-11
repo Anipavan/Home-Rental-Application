@@ -1,6 +1,7 @@
 package com.spa.home_rental_application.user_service.user_service.service;
 
 import com.spa.home_rental_application.user_service.user_service.DTO.Request.BankAccountRequestDto;
+import com.spa.home_rental_application.user_service.user_service.DTO.Response.BankAccountInternalDto;
 import com.spa.home_rental_application.user_service.user_service.DTO.Response.BankAccountPayoutDto;
 import com.spa.home_rental_application.user_service.user_service.DTO.Response.BankAccountResponseDto;
 
@@ -43,4 +44,15 @@ public interface BankAccountService {
      * "owner hasn't set up payment details" error for the tenant.
      */
     Optional<BankAccountPayoutDto> getPayoutByUserId(String userId);
+
+    /**
+     * Internal-only projection with the RAW account number.
+     *
+     * <p>Consumed by payment-service (via HMAC-signed Feign) when
+     * registering an owner with Cashfree Easy Split — Cashfree needs
+     * the raw account number for penny-drop verification. Never called
+     * from a public HTTP path; the controller endpoint sits under
+     * {@code /users/bank-accounts/internal/**} guarded by GatewayAuthFilter.
+     */
+    Optional<BankAccountInternalDto> getInternalByUserId(String userId);
 }
