@@ -1,5 +1,6 @@
 package com.spa.home_rental_application.payment_service.payment_service.config;
 
+import com.spa.home_rental_application.payment_service.payment_service.gateway.CashfreePaymentGateway;
 import com.spa.home_rental_application.payment_service.payment_service.gateway.MockPaymentGateway;
 import com.spa.home_rental_application.payment_service.payment_service.gateway.PaymentGateway;
 import jakarta.annotation.PostConstruct;
@@ -40,9 +41,12 @@ public class PaymentGatewayConfig {
         return new MockPaymentGateway();
     }
 
-    // Cashfree gateway bean is registered by CashfreePaymentGateway itself
-    // once Phase 3 of the plan lands — @ConditionalOnProperty on that class
-    // wires it in the same way the Razorpay bean used to be wired here.
+    @Bean
+    @ConditionalOnProperty(prefix = "app.payment", name = "gateway", havingValue = "cashfree")
+    public PaymentGateway cashfreePaymentGateway(CashfreeProperties cashfreeProps) {
+        log.info("Active payment gateway: cashfree (env={})", cashfreeProps.getEnvironment());
+        return new CashfreePaymentGateway(cashfreeProps);
+    }
 
     /**
      * Startup guard: refuse to boot in prod if {@code app.payment.gateway}

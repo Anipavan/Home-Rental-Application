@@ -1,6 +1,6 @@
 package com.spa.home_rental_application.payment_service.payment_service.controller;
 
-import com.spa.home_rental_application.payment_service.payment_service.dto.CommissionDtos;
+import com.spa.home_rental_application.payment_service.payment_service.DTO.CommissionDtos;
 import com.spa.home_rental_application.payment_service.payment_service.security.CallerSecurity;
 import com.spa.home_rental_application.payment_service.payment_service.service.CommissionService;
 import io.swagger.v3.oas.annotations.Operation;

@@ -1,6 +1,6 @@
 package com.spa.home_rental_application.payment_service.payment_service.service.impl;
 
-import com.spa.home_rental_application.payment_service.payment_service.dto.CommissionDtos;
+import com.spa.home_rental_application.payment_service.payment_service.DTO.CommissionDtos;
 import com.spa.home_rental_application.payment_service.payment_service.entities.CommissionRule;
 import com.spa.home_rental_application.payment_service.payment_service.repository.CommissionRuleRepository;
 import com.spa.home_rental_application.payment_service.payment_service.service.CommissionService;

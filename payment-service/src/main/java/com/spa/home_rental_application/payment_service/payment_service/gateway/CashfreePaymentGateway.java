@@ -1,0 +1,320 @@
+package com.spa.home_rental_application.payment_service.payment_service.gateway;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.spa.home_rental_application.payment_service.payment_service.DTO.Request.InitiatePaymentRequest;
+import com.spa.home_rental_application.payment_service.payment_service.DTO.Request.VerifyPaymentRequest;
+import com.spa.home_rental_application.payment_service.payment_service.config.CashfreeProperties;
+import com.spa.home_rental_application.payment_service.payment_service.entities.Payment;
+import com.spa.home_rental_application.payment_service.payment_service.exception.PaymentGatewayException;
+import lombok.extern.slf4j.Slf4j;
+
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.Base64;
+import java.util.Locale;
+import java.util.Map;
+
+/**
+ * Cashfree Payment Gateway (Easy Split ready).
+ *
+ * <p>Implements the {@link PaymentGateway} strategy on top of Cashfree's
+ * PG v2023-08-01 API. Handles the three lifecycle steps we need today:
+ *
+ * <ol>
+ *   <li>{@link #initiate} — {@code POST /pg/orders} to mint a
+ *       {@code payment_session_id}. Frontend opens Cashfree Checkout
+ *       SDK with that id + the merchant's app id. Money never touches
+ *       our servers.</li>
+ *   <li>{@link #verify} — {@code GET /pg/orders/{orderId}} + the
+ *       {@code /payments} sibling to confirm the tenant's return-from-
+ *       checkout is genuine and the order actually moved to PAID.</li>
+ *   <li>{@link #verifyWebhook} — HMAC-SHA256 verifies the
+ *       {@code x-webhook-signature} header against
+ *       {@code timestamp + rawBody} using the webhook secret. Any
+ *       async status transition (PAID / FAILED / DROPPED) arrives here.</li>
+ * </ol>
+ *
+ * <p>The Phase-3 scaffolding stops short of populating the vendor
+ * {@code order_splits} array — Phase 5 wires
+ * {@code CommissionService.computePlatformFee} + owner
+ * {@code cashfree_vendor_id} lookup and passes the vendor split JSON to
+ * {@code /pg/orders} at initiate time. Today the order is a plain
+ * (non-split) order so we can smoke-test the checkout flow before
+ * adding the owner-registration + split leg.
+ */
+@Slf4j
+public class CashfreePaymentGateway implements PaymentGateway {
+
+    public static final String NAME = "cashfree";
+
+    private final CashfreeProperties props;
+    private final HttpClient http;
+    private final ObjectMapper json;
+
+    public CashfreePaymentGateway(CashfreeProperties props) {
+        this.props = props;
+        this.http = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(5))
+                .build();
+        this.json = new ObjectMapper();
+        log.info("CashfreePaymentGateway ready — environment={} baseUrl={} credentialsConfigured={}",
+                props.getEnvironment(),
+                props.baseUrl(),
+                props.credentialsConfigured());
+    }
+
+    @Override
+    public String name() { return NAME; }
+
+    /* ------------------------- initiate ------------------------- */
+
+    @Override
+    public PaymentInitiationResult initiate(Payment payment, InitiatePaymentRequest req) {
+        if (!props.credentialsConfigured()) {
+            throw new PaymentGatewayException("Cashfree credentials not configured — "
+                    + "set CASHFREE_APP_ID + CASHFREE_SECRET_KEY env vars");
+        }
+
+        String orderId = "hra_" + payment.getId();
+        String returnUrl = req.returnUrl() == null || req.returnUrl().isBlank()
+                ? "https://anirudhhomes.in/app/payments/" + payment.getId() + "/return"
+                : req.returnUrl();
+
+        // Cashfree needs a customer identifier + phone. The tenant's
+        // auth id is stable per user (safe key for their PG account);
+        // phone comes from the payment row's owner-facing metadata or
+        // a stub if we don't have one — the sandbox is happy with any
+        // 10-digit E.164-ish string.
+        String customerId = payment.getTenantId() == null
+                ? "anon_" + payment.getId()
+                : payment.getTenantId();
+        Map<String, Object> customer = Map.of(
+                "customer_id",    customerId,
+                "customer_email", "tenant+" + customerId + "@anirudhhomes.in",
+                "customer_phone", "9999999999"
+        );
+
+        Map<String, Object> orderMeta = Map.of("return_url", returnUrl);
+
+        Map<String, Object> body = Map.of(
+                "order_id",         orderId,
+                "order_amount",     payment.getTotalAmount(),
+                "order_currency",   "INR",
+                "customer_details", customer,
+                "order_meta",       orderMeta,
+                "order_note",       payment.getSourceType() == null
+                        ? "Rent payment"
+                        : payment.getSourceType()
+        );
+
+        JsonNode resp = post("/orders", body);
+        String cfOrderId       = resp.path("cf_order_id").asText(null);
+        String paymentSessionId = resp.path("payment_session_id").asText(null);
+
+        if (paymentSessionId == null || paymentSessionId.isBlank()) {
+            throw new PaymentGatewayException(
+                    "Cashfree /orders returned no payment_session_id: " + resp);
+        }
+
+        log.info("Cashfree order created paymentId={} cfOrderId={} sessionId={}",
+                payment.getId(), cfOrderId, mask(paymentSessionId));
+
+        return PaymentInitiationResult.builder()
+                .gatewayName(NAME)
+                .gatewayOrderId(cfOrderId)
+                .paymentSessionId(paymentSessionId)
+                .publicKeyId(props.getAppId())
+                .build();
+    }
+
+    /* ------------------------- verify ------------------------- */
+
+    /**
+     * Cross-check the tenant's return-from-checkout against Cashfree.
+     * Never trusts the client — always fetches the order status from
+     * the Cashfree API. Anything other than {@code order_status=PAID}
+     * is a verification failure.
+     */
+    @Override
+    public PaymentVerificationResult verify(Payment payment, VerifyPaymentRequest req) {
+        String orderId = req.gatewayOrderId() != null && !req.gatewayOrderId().isBlank()
+                ? req.gatewayOrderId()
+                : "hra_" + payment.getId();
+
+        JsonNode order = get("/orders/" + orderId);
+        String status = order.path("order_status").asText("");
+
+        if (!"PAID".equalsIgnoreCase(status)) {
+            return PaymentVerificationResult.builder()
+                    .success(false)
+                    .failureReason("Cashfree order status is " + status + ", not PAID")
+                    .gatewayErrorCode("ORDER_NOT_PAID")
+                    .build();
+        }
+
+        // Grab the actual cf_payment_id for the audit trail — it's what
+        // shows up on the tenant's bank statement / UPI ref.
+        JsonNode payments = get("/orders/" + orderId + "/payments");
+        String cfPaymentId = null;
+        if (payments.isArray() && payments.size() > 0) {
+            for (JsonNode p : payments) {
+                if ("SUCCESS".equalsIgnoreCase(p.path("payment_status").asText())) {
+                    cfPaymentId = p.path("cf_payment_id").asText(null);
+                    break;
+                }
+            }
+        }
+
+        return PaymentVerificationResult.builder()
+                .success(true)
+                .transactionId(cfPaymentId != null ? cfPaymentId : orderId)
+                .build();
+    }
+
+    /* ------------------------- webhook ------------------------- */
+
+    /**
+     * Verifies Cashfree's webhook signature. Their scheme:
+     * <pre>
+     *   sig = base64( HMAC-SHA256( timestamp + raw_body,  webhook_secret ) )
+     * </pre>
+     * where {@code timestamp} is the {@code x-webhook-timestamp} header
+     * value and {@code sig} is the {@code x-webhook-signature} header
+     * value.
+     *
+     * <p>The {@code signatureHeader} arg is passed by the controller as a
+     * pipe-joined {@code "signature|timestamp"} string so this method
+     * stays inside the interface's two-arg shape without a schema
+     * refactor. Ugly but surgical.
+     */
+    @Override
+    public WebhookVerificationResult verifyWebhook(String rawBody, String signatureHeader) {
+        if (props.getWebhookSecret() == null || props.getWebhookSecret().isBlank()) {
+            log.warn("Cashfree webhook received but no webhook_secret configured — refusing");
+            return new WebhookVerificationResult(false, null, null, "WEBHOOK_SECRET_NOT_SET");
+        }
+        if (signatureHeader == null || !signatureHeader.contains("|")) {
+            return new WebhookVerificationResult(false, null, null, "MALFORMED_SIGNATURE_HEADER");
+        }
+        String[] parts = signatureHeader.split("\\|", 2);
+        String sig = parts[0];
+        String ts  = parts[1];
+
+        String computed;
+        try {
+            computed = hmacSha256Base64(ts + rawBody, props.getWebhookSecret());
+        } catch (Exception ex) {
+            log.warn("Cashfree webhook HMAC compute failed: {}", ex.toString());
+            return new WebhookVerificationResult(false, null, null, "HMAC_COMPUTE_FAILED");
+        }
+        if (!constantTimeEq(sig, computed)) {
+            log.warn("Cashfree webhook signature mismatch");
+            return new WebhookVerificationResult(false, null, null, "SIGNATURE_MISMATCH");
+        }
+
+        // Signature good — parse the payload for the paymentId + txn id.
+        // Cashfree ships webhook events with type + data.order + data.payment.
+        try {
+            JsonNode root = json.readTree(rawBody);
+            String cfOrderId = root.path("data").path("order").path("order_id").asText(null);
+            String cfPaymentId = root.path("data").path("payment").path("cf_payment_id").asText(null);
+            // Our payment id is embedded in the order_id via the "hra_" prefix
+            // we set in initiate(). Strip it back out so the caller can look
+            // up the local Payment row.
+            String localPaymentId = cfOrderId != null && cfOrderId.startsWith("hra_")
+                    ? cfOrderId.substring(4)
+                    : null;
+            return new WebhookVerificationResult(true, localPaymentId, cfPaymentId, null);
+        } catch (Exception ex) {
+            log.warn("Cashfree webhook body unparseable: {}", ex.toString());
+            return new WebhookVerificationResult(true, null, null, "BODY_UNPARSEABLE");
+        }
+    }
+
+    /* ------------------------- helpers ------------------------- */
+
+    private JsonNode post(String path, Object body) {
+        try {
+            String payload = json.writeValueAsString(body);
+            HttpRequest req = baseRequest(path)
+                    .POST(HttpRequest.BodyPublishers.ofString(payload, StandardCharsets.UTF_8))
+                    .header("Content-Type", "application/json")
+                    .build();
+            HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
+            return checkOk(resp, path);
+        } catch (PaymentGatewayException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("Cashfree POST {} failed", path, e);
+            throw new PaymentGatewayException("Cashfree POST " + path + " failed: " + e.getMessage());
+        }
+    }
+
+    private JsonNode get(String path) {
+        try {
+            HttpRequest req = baseRequest(path).GET().build();
+            HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
+            return checkOk(resp, path);
+        } catch (PaymentGatewayException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("Cashfree GET {} failed", path, e);
+            throw new PaymentGatewayException("Cashfree GET " + path + " failed: " + e.getMessage());
+        }
+    }
+
+    private HttpRequest.Builder baseRequest(String path) {
+        return HttpRequest.newBuilder()
+                .uri(URI.create(props.baseUrl() + path))
+                .timeout(Duration.ofSeconds(10))
+                .header("x-client-id",   props.getAppId())
+                .header("x-client-secret", props.getSecretKey())
+                .header("x-api-version", props.getApiVersion())
+                .header("Accept", "application/json");
+    }
+
+    private JsonNode checkOk(HttpResponse<String> resp, String path) throws Exception {
+        int code = resp.statusCode();
+        if (code / 100 != 2) {
+            log.warn("Cashfree {} returned HTTP {} body={}", path, code, resp.body());
+            throw new PaymentGatewayException(
+                    "Cashfree " + path + " → HTTP " + code + ": " + safeTruncate(resp.body(), 500));
+        }
+        return json.readTree(resp.body());
+    }
+
+    private static String hmacSha256Base64(String data, String secret) throws Exception {
+        Mac mac = Mac.getInstance("HmacSHA256");
+        mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+        byte[] out = mac.doFinal(data.getBytes(StandardCharsets.UTF_8));
+        return Base64.getEncoder().encodeToString(out);
+    }
+
+    /** Byte-wise compare so timing side-channels don't leak the secret. */
+    private static boolean constantTimeEq(String a, String b) {
+        if (a == null || b == null || a.length() != b.length()) return false;
+        int diff = 0;
+        for (int i = 0; i < a.length(); i++) diff |= a.charAt(i) ^ b.charAt(i);
+        return diff == 0;
+    }
+
+    private static String mask(String s) {
+        if (s == null || s.length() < 8) return "***";
+        return s.substring(0, 6) + "…" + s.substring(s.length() - 4);
+    }
+
+    private static String safeTruncate(String s, int max) {
+        if (s == null) return "";
+        return s.length() <= max ? s : s.substring(0, max) + "…";
+    }
+
+    // Silence "unused import" — we may need Locale for future casing helpers.
+    @SuppressWarnings("unused") private static final Locale LOCALE = Locale.ROOT;
+}

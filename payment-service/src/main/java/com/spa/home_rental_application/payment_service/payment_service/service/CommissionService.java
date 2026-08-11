@@ -1,6 +1,6 @@
 package com.spa.home_rental_application.payment_service.payment_service.service;
 
-import com.spa.home_rental_application.payment_service.payment_service.dto.CommissionDtos;
+import com.spa.home_rental_application.payment_service.payment_service.DTO.CommissionDtos;
 
 import java.math.BigDecimal;
 import java.util.List;

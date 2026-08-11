@@ -31,4 +31,15 @@ public class PaymentInitiationResult {
      * ignore it).
      */
     String publicKeyId;
+
+    /**
+     * Cashfree's {@code payment_session_id} — the opaque token the
+     * frontend Cashfree Checkout SDK opens with. Populated by
+     * {@code CashfreePaymentGateway.initiate} and ignored by the
+     * other adapters (Mock etc.). Distinct from {@link #publicKeyId}
+     * because Cashfree's SDK takes both the app id AND the session
+     * id, and their semantics are different (app id is stable per
+     * merchant, session id is per-order and expires).
+     */
+    String paymentSessionId;
 }
