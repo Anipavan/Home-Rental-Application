@@ -60,6 +60,17 @@ public interface PaymentRepository extends JpaRepository<Payment, String> {
     List<Payment> findPendingDueOn(LocalDate date);
 
     /**
+     * Overdue payments whose dueDate is exactly {@code date}. Drives
+     * the overdue-nudge scheduler — the initial "you're now overdue"
+     * event fires once on the day the payment flips to OVERDUE; this
+     * lookup lets us re-fire the same event on configurable follow-up
+     * days (D+3, D+7, D+14) so the tenant doesn't forget after the
+     * first message goes stale in their inbox.
+     */
+    @Query("SELECT p FROM Payment p WHERE p.status = com.spa.home_rental_application.payment_service.payment_service.enums.PaymentStatus.OVERDUE AND p.dueDate = :date")
+    List<Payment> findOverdueDueOn(LocalDate date);
+
+    /**
      * Audit H25: lookup by the gateway-assigned order id. Razorpay
      * webhooks carry the order_id (the gateway's id, not ours) in
      * the payment entity, so we use it to find the matching local

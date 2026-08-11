@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { Banknote, CheckCircle2, Download, FileText, Home, Inbox, Loader2, Receipt, Wallet, Wrench } from "lucide-react";
+import { AlertCircle, Banknote, CheckCircle2, Download, FileText, Home, Inbox, Loader2, Receipt, Wallet, Wrench } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { paymentsApi } from "@/lib/api/payments";
 import { societyApi } from "@/lib/api/society";
+import { bankAccountsApi } from "@/lib/api/bank-accounts";
 import { extractErrorMessage } from "@/lib/api/client";
 import { toast } from "@/hooks/use-toast";
 import { useFlatLookup } from "@/hooks/use-flat-lookup";
@@ -266,6 +267,30 @@ function DueCard({
   const isPaid = payment.status === "PAID";
   const [downloadingInvoice, setDownloadingInvoice] = useState(false);
 
+  // Gate the Pay button on the owner having actually set up a payout
+  // destination. Without this the tenant clicks Pay, lands on the pay
+  // page, and hits an "Owner hasn't added bank details" empty state —
+  // a wasted round trip. Preflight the same endpoint the pay page
+  // uses; the API layer translates 404 → null so a missing bank
+  // account is a clean "no data" signal rather than an error.
+  //
+  // Society charges route through a completely different pay page
+  // (SocietyMonthDueCard below), so skip the check here for those.
+  const isRent = payment.sourceType !== "SOCIETY_CHARGE";
+  const payoutQ = useQuery({
+    queryKey: ["owner-payout", payment.ownerId],
+    queryFn: () => bankAccountsApi.getPayoutByUserId(payment.ownerId),
+    enabled: isRent && !!payment.ownerId,
+    staleTime: 60_000,
+  });
+  // While the preflight is in-flight, keep the button enabled — a
+  // brief flash of "can't pay" on first paint would be worse than
+  // letting the pay page do its own loading. `canPay` is only false
+  // once we've confirmed the query settled with no payout on file.
+  const payoutMissing =
+    isRent && !payoutQ.isLoading && !payoutQ.data;
+  const canPay = !payoutMissing;
+
   async function handleInvoiceDownload() {
     setDownloadingInvoice(true);
     try {
@@ -301,6 +326,16 @@ function DueCard({
               Late fee: {formatINR(payment.lateFee)}
             </p>
           ) : null}
+          {payoutMissing && (
+            <p className="text-xs text-destructive mt-2 flex items-start gap-1.5">
+              <AlertCircle className="size-3.5 mt-px shrink-0" />
+              <span>
+                Your owner hasn't added bank details yet — please ask
+                them to add a UPI ID from their profile page before you
+                can pay.
+              </span>
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap gap-2 justify-end">
           <Button
@@ -326,12 +361,27 @@ function DueCard({
               That page renders the UPI app picker (PhonePe, GPay,
               Paytm, Other UPI) plus the live-validated UpiIdField and
               card / net-banking fallback, which is what the user
-              expects from a modern rent-collection flow. */}
-          <Button asChild variant="gradient" size="lg">
-            <Link to={`/app/payments/${payment.id}/pay`}>
+              expects from a modern rent-collection flow.
+              When the owner has no payout destination on file, render
+              the same button as a disabled placeholder instead of a
+              <Link> so the tenant can't click through to a broken
+              pay page. The inline message above tells them what to do. */}
+          {canPay ? (
+            <Button asChild variant="gradient" size="lg">
+              <Link to={`/app/payments/${payment.id}/pay`}>
+                <Wallet /> Pay {formatINR(payment.totalAmount ?? payment.amount)}
+              </Link>
+            </Button>
+          ) : (
+            <Button
+              variant="gradient"
+              size="lg"
+              disabled
+              title="Owner hasn't added bank details yet"
+            >
               <Wallet /> Pay {formatINR(payment.totalAmount ?? payment.amount)}
-            </Link>
-          </Button>
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -530,8 +580,19 @@ function MaintenanceSectionWrapper({
     );
   }, [billQueries]);
 
+  // Maintainer may have set up the society without a UPI ID yet.
+  // Same "block the Pay button at list level" gate we use for rent —
+  // no reason to let the tenant click through to a QR that won't
+  // render.
+  const societyHasUpi = Boolean(configQ.data?.upiId);
+
   const extraDueItems = societyMonthGroups.map((g) => (
-    <SocietyMonthDueCard key={g.key} group={g} buildingId={buildingId!} />
+    <SocietyMonthDueCard
+      key={g.key}
+      group={g}
+      buildingId={buildingId!}
+      societyHasUpi={societyHasUpi}
+    />
   ));
 
   return (
@@ -558,6 +619,7 @@ function MaintenanceSectionWrapper({
 function SocietyMonthDueCard({
   group,
   buildingId,
+  societyHasUpi,
 }: {
   group: {
     key: string;
@@ -568,6 +630,10 @@ function SocietyMonthDueCard({
     overdue: boolean;
   };
   buildingId: string;
+  /** True when the maintainer has wired up a collection UPI ID for
+   *  this building. When false, the "Pay all" button is disabled so
+   *  the tenant can't land on a broken pay page with a blank QR. */
+  societyHasUpi: boolean;
 }) {
   return (
     <Card
@@ -606,15 +672,35 @@ function SocietyMonthDueCard({
               );
             })}
           </div>
+          {!societyHasUpi && (
+            <p className="text-xs text-destructive mt-2 flex items-start gap-1.5">
+              <AlertCircle className="size-3.5 mt-px shrink-0" />
+              <span>
+                Your society hasn't added a collection UPI ID yet — ask
+                your building's maintainer to add one before you can pay.
+              </span>
+            </p>
+          )}
         </div>
         <div className="flex justify-end">
-          <Button asChild variant="gradient" size="lg">
-            <Link
-              to={`/app/society/pay-all/${buildingId}/${group.forMonth}`}
+          {societyHasUpi ? (
+            <Button asChild variant="gradient" size="lg">
+              <Link
+                to={`/app/society/pay-all/${buildingId}/${group.forMonth}`}
+              >
+                <Wallet /> Pay all · {formatINR(group.total)}
+              </Link>
+            </Button>
+          ) : (
+            <Button
+              variant="gradient"
+              size="lg"
+              disabled
+              title="Society hasn't added a collection UPI ID yet"
             >
               <Wallet /> Pay all · {formatINR(group.total)}
-            </Link>
-          </Button>
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>

@@ -962,26 +962,41 @@ function DirectUpiRentView({
   // not the owner's personal UPI — that was the bug: the pay page
   // for a society charge was showing the owner's QR because it
   // only ever fetched ownerPayoutQ.
+  //
+  // Sentinel meanings after this block:
+  //   undefined = query is still in-flight (render a skeleton)
+  //   null      = query settled, no payable destination on file
+  //               (owner never added bank details, or society has no
+  //               collection UPI yet). Render the "not set up" empty
+  //               state — do NOT keep showing the skeleton.
+  //   object    = payable data ready. Empty `upiId` → bank-only
+  //               fallback; populated → direct-UPI QR.
+  //
+  // Explicit `isLoading` gate matters because the query may resolve
+  // with `undefined` even after settling — e.g. `enabled: false` when
+  // payment.ownerId is missing. Without the gate, the render would
+  // treat "settled with no data" the same as "still loading" and hang
+  // on the skeleton forever.
   const payoutData: import("@/lib/api/bank-accounts").BankAccountPayoutResponse | null | undefined =
     isSociety
-      ? societyQ.data && societyQ.data.upiId
-        ? {
-            accountHolderName:
-              societyQ.data.payeeName ??
-              societyQ.data.societyDisplayName ??
-              "Society",
-            bankName: "",
-            accountNumberMasked: societyQ.data.accountNumber ?? "",
-            ifscCode: societyQ.data.ifscCode ?? "",
-            upiId: societyQ.data.upiId,
-          }
-        : societyQ.data // config exists but no UPI yet
-          ? null
-          : undefined // still loading
-      : ownerPayoutQ.data;
-  const payoutIsLoading = isSociety
-    ? societyQ.isLoading
-    : ownerPayoutQ.isLoading;
+      ? societyQ.isLoading
+        ? undefined
+        : societyQ.data && societyQ.data.upiId
+          ? {
+              accountHolderName:
+                societyQ.data.payeeName ??
+                societyQ.data.societyDisplayName ??
+                "Society",
+              bankName: "",
+              accountNumberMasked: societyQ.data.accountNumber ?? "",
+              ifscCode: societyQ.data.ifscCode ?? "",
+              upiId: societyQ.data.upiId,
+            }
+          : null
+      : ownerPayoutQ.isLoading
+        ? undefined
+        : (ownerPayoutQ.data ?? null);
+  const payoutIsLoading = payoutData === undefined;
 
   // Tenant self-report → server marks Payment PAID + fires an audit
   // event tagged "tenant-reported" so the owner can spot self-
@@ -1029,8 +1044,9 @@ function DirectUpiRentView({
           {payoutIsLoading ? (
             <Skeleton className="h-64 rounded-2xl" />
           ) : payoutData === null ? (
-            /* Society config exists but no UPI yet — the maintainer
-             * hasn't wired up the collection account. */
+            /* No payable destination on file. For rent: the owner
+             * never saved bank details in their profile. For society:
+             * the maintainer hasn't wired up the collection account. */
             <EmptyState
               variant="info"
               icon={Smartphone}
@@ -1050,10 +1066,6 @@ function DirectUpiRentView({
                 </Button>
               }
             />
-          ) : !payoutData ? (
-            /* Undefined = still loading (queries have already
-             * short-circuited via `enabled`); treat as loading. */
-            <Skeleton className="h-64 rounded-2xl" />
           ) : !payoutData.upiId ? (
             <FallbackBankOnly
               paymentId={payment.id}
