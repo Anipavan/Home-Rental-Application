@@ -19,6 +19,7 @@ import { bankAccountsApi } from "@/lib/api/bank-accounts";
 import { societyApi } from "@/lib/api/society";
 import { useFlatLookup } from "@/hooks/use-flat-lookup";
 import { isCashfreeSplitCheckoutEnabled } from "@/lib/feature-flags";
+import { CashfreeCheckoutView } from "@/components/payment/cashfree-checkout-view";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
   UpiIdField,
@@ -112,6 +113,19 @@ export function PayPage() {
     paymentQ.data?.flatId ? [paymentQ.data.flatId] : [],
   );
 
+  // ── Cashfree branching state (Phase 6) ─────────────────────────
+  // Hooks live up here so they run in a stable order regardless of
+  // whether the payment is still loading / paid / active. Kept
+  // gate-off at the render layer below.
+  const cashfreeFlagOn = isCashfreeSplitCheckoutEnabled();
+  const [preferDirectUpi, setPreferDirectUpi] = useState(false);
+  const payoutReadyQ = useQuery({
+    queryKey: ["owner-payout-ready", paymentQ.data?.ownerId],
+    queryFn: () => paymentGateway.isOwnerPayoutReady(paymentQ.data!.ownerId),
+    enabled: cashfreeFlagOn && !!paymentQ.data?.ownerId,
+    staleTime: 30_000,
+  });
+
   function handlePay() {
     if (!selected) return;
     setStep("checkout");
@@ -151,17 +165,37 @@ export function PayPage() {
     );
   }
 
-  // Direct-UPI path is the default until Phase 5 of the Cashfree Easy
-  // Split rollout lands. Render the QR pointing at the owner's own UPI
-  // (from their bank-account row); owner marks PAID via their
-  // /owner/payments dashboard once they see the deposit.
+  // ── Cashfree branching (Phase 6) — render decision ────────────
   //
-  // Once Cashfree Checkout is wired up AND the owner is payout-ready,
-  // flipping isCashfreeSplitCheckoutEnabled=true will route through
-  // the split-payment flow instead. The else-branch below (Razorpay
-  // method picker) is transitional — it will be replaced by a
-  // Cashfree Checkout launcher in Phase 5, not re-enabled.
-  if (!isCashfreeSplitCheckoutEnabled()) {
+  // Direct-UPI is the always-available fallback: tenant scans a QR
+  // pointing at the owner's own UPI, money moves owner → owner, we
+  // never touch it. Cashfree Checkout is offered ONLY when:
+  //   1. The CASHFREE_SPLIT_CHECKOUT_ENABLED flag is on (kill-switch)
+  //   2. AND the owner is payout-ready (has an ACTIVE vendor row)
+  //   3. AND the tenant hasn't clicked "use direct-UPI instead"
+  //
+  // Fallback #2 matters because vendor registration is async — a
+  // fresh owner may have saved bank + KYC but Cashfree's penny-drop
+  // is still pending. Sending tenants of a not-yet-ACTIVE owner to
+  // Cashfree would fail at the /initiate call.
+  if (cashfreeFlagOn
+      && !preferDirectUpi
+      && payoutReadyQ.data === true) {
+    return (
+      <CashfreeCheckoutView
+        payment={p}
+        flatLabel={flatLookup.nameOf(p.flatId)}
+        onFallbackToDirectUpi={() => setPreferDirectUpi(true)}
+      />
+    );
+  }
+  // Any other combination — flag off, query still loading, query
+  // returned false, or tenant chose fallback — falls through to
+  // the always-safe direct-UPI QR view.
+  if (!cashfreeFlagOn
+      || preferDirectUpi
+      || payoutReadyQ.data === false
+      || payoutReadyQ.isLoading) {
     return (
       <DirectUpiRentView
         payment={p}

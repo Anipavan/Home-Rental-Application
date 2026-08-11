@@ -33,16 +33,25 @@ function buildContentSecurityPolicy(mode: string): string {
     .filter(Boolean)
     .join(" ");
 
-  // Razorpay Checkout.js is loaded on-demand from checkout.razorpay.com
-  // when a user reaches the paid-maintainer paywall, and the modal it
-  // opens needs to talk to api.razorpay.com + ship telemetry to
-  // lumberjack.razorpay.com. The modal renders inside an iframe sourced
-  // from api.razorpay.com, so frame-src has to allow it too. We list
-  // each subdomain we know we use rather than `*.razorpay.com` so a
-  // single bad URL on their side doesn't get a free pass.
-  const RAZORPAY_SCRIPT = "https://checkout.razorpay.com";
-  const RAZORPAY_API = "https://api.razorpay.com";
-  const RAZORPAY_TELEMETRY = "https://lumberjack.razorpay.com";
+  // Cashfree Checkout SDK is loaded on-demand from sdk.cashfree.com
+  // when the tenant hits the Pay page AND the owner is payout-ready.
+  // The SDK's hosted checkout page then routes through payments.cashfree.com
+  // (prod) / payments-test.cashfree.com (sandbox) — Cashfree hosts the
+  // actual card / UPI / netbanking UI, so we don't need to allow their
+  // form origin under connect-src, only under form-action + frame-src
+  // for the redirect. The SDK also calls api.cashfree.com +
+  // sandbox.cashfree.com for order status. Enumerating each subdomain
+  // (rather than *.cashfree.com) so a single bad URL doesn't get through.
+  //
+  // Razorpay origins were removed alongside the Cashfree migration —
+  // the paid-maintainer paywall still uses Razorpay Checkout.js, but
+  // it lives on a separate paywall page and its CSP will be revisited
+  // in a follow-up phase when that flow moves to Cashfree too.
+  const CASHFREE_SDK = "https://sdk.cashfree.com";
+  const CASHFREE_API = "https://api.cashfree.com";
+  const CASHFREE_SANDBOX = "https://sandbox.cashfree.com";
+  const CASHFREE_PAYMENTS = "https://payments.cashfree.com";
+  const CASHFREE_PAYMENTS_TEST = "https://payments-test.cashfree.com";
 
   // Nominatim (OpenStreetMap) is hit by the "Use my location" button on
   // the registration form for one-shot reverse-geocoding. Free, no API
@@ -54,11 +63,11 @@ function buildContentSecurityPolicy(mode: string): string {
   // WebSocket back to the dev server. We tighten in prod where we
   // control the build output and there are no inline scripts.
   const scriptSrc = isDev
-    ? `'self' 'unsafe-inline' 'unsafe-eval' ${RAZORPAY_SCRIPT}`
-    : `'self' ${RAZORPAY_SCRIPT}`;
+    ? `'self' 'unsafe-inline' 'unsafe-eval' ${CASHFREE_SDK}`
+    : `'self' ${CASHFREE_SDK}`;
   const connectSrc = isDev
-    ? `'self' ${apiOrigin} ws: wss: ${RAZORPAY_API} ${RAZORPAY_TELEMETRY} ${NOMINATIM_API} ${connectSrcExtra}`.trim()
-    : `'self' ${apiOrigin} ${RAZORPAY_API} ${RAZORPAY_TELEMETRY} ${NOMINATIM_API} ${connectSrcExtra}`.trim();
+    ? `'self' ${apiOrigin} ws: wss: ${CASHFREE_API} ${CASHFREE_SANDBOX} ${NOMINATIM_API} ${connectSrcExtra}`.trim()
+    : `'self' ${apiOrigin} ${CASHFREE_API} ${CASHFREE_SANDBOX} ${NOMINATIM_API} ${connectSrcExtra}`.trim();
 
   return [
     "default-src 'self'",
@@ -69,12 +78,16 @@ function buildContentSecurityPolicy(mode: string): string {
     // data: + blob: needed for image previews + canvas signatures.
     "img-src 'self' data: blob: https:",
     `connect-src ${connectSrc}`,
-    // Razorpay's Checkout modal renders inside an iframe from api.razorpay.com.
-    `frame-src ${RAZORPAY_API} ${RAZORPAY_SCRIPT}`,
+    // Cashfree Checkout redirects the whole tab to their hosted page,
+    // so frame-src only matters if Cashfree ever renders itself
+    // inside a modal on our origin. Allow the payment host defensively.
+    `frame-src ${CASHFREE_PAYMENTS} ${CASHFREE_PAYMENTS_TEST} ${CASHFREE_SDK}`,
     // Lock anything trying to embed us in a frame; matches the
     // gateway's X-Frame-Options: DENY (defense in depth).
     "frame-ancestors 'none'",
-    "form-action 'self'",
+    // Cashfree Checkout redirects a form-post to their hosted page,
+    // so form-action must include their payment origins as well.
+    `form-action 'self' ${CASHFREE_PAYMENTS} ${CASHFREE_PAYMENTS_TEST} ${CASHFREE_SDK}`,
     "base-uri 'self'",
     "object-src 'none'",
     "upgrade-insecure-requests",

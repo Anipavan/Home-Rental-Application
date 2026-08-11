@@ -38,5 +38,14 @@ public record InitiatePaymentResponse(
          * hard-coded in the bundle. Null on flows that don't need a
          * modal — the existing rent / society redirect flows ignore it.
          */
-        String gatewayKeyId
+        String gatewayKeyId,
+
+        /**
+         * Cashfree's per-order {@code payment_session_id}. Populated only
+         * on the Cashfree gateway path — the SPA passes it to Cashfree's
+         * Checkout SDK to open their hosted payment UI. Null on other
+         * gateways (Mock etc.); the frontend's Phase 6 pay page treats
+         * null as "no Cashfree flow available, fall back to direct-UPI".
+         */
+        String paymentSessionId
 ) {}

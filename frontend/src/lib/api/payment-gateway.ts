@@ -50,4 +50,23 @@ export const paymentGateway = {
         params: { vpa },
       })
       .then((r) => r.data),
+
+  /**
+   * Check whether an owner is ready to receive Cashfree Easy Split
+   * payouts. Backed by GET /payments/vendors/{userId}/payout-ready
+   * which returns {@code { ready: boolean }} and never 404s.
+   *
+   * <p>Called by the tenant Pay page: {@code true} → offer the
+   * Cashfree Checkout flow; {@code false} → fall back to the
+   * direct-UPI QR (owner hasn't been onboarded to Easy Split yet).
+   *
+   * <p>Deliberately network-optimistic — treats any error as
+   * "not ready" so a payment-service outage keeps tenants on the
+   * always-working direct-UPI path rather than blocking payment.
+   */
+  isOwnerPayoutReady: (ownerId: string) =>
+    api
+      .get<{ ready: boolean }>(`/payments/vendors/${ownerId}/payout-ready`)
+      .then((r) => r.data?.ready === true)
+      .catch(() => false),
 };

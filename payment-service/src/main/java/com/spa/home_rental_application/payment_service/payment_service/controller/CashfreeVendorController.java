@@ -64,6 +64,27 @@ public class CashfreeVendorController {
                         "No vendor row for userId=" + userId));
     }
 
+    /**
+     * Public-ish: exposes ONLY the boolean payout-ready state for the
+     * given owner, so the tenant-side pay page can decide whether to
+     * launch the Cashfree Checkout flow or fall back to the direct-UPI
+     * QR. Deliberately gate-free (no admin check) — the frontend needs
+     * this without ADMIN role, and the response leaks no PII: it's a
+     * yes/no about whether one specific user can receive split payments.
+     *
+     * <p>Never returns 404 — a user without any vendor row is treated as
+     * "not ready yet" ({@code ready: false}), which is the same signal
+     * the frontend needs anyway.
+     */
+    @Operation(summary = "Public: is this owner ready to receive split payments?")
+    @GetMapping("/{userId}/payout-ready")
+    public ResponseEntity<java.util.Map<String, Boolean>> payoutReady(@PathVariable String userId) {
+        boolean ready = service.getForUser(userId)
+                .map(v -> v.getStatus() != null && v.getStatus().isPayoutReady())
+                .orElse(false);
+        return ResponseEntity.ok(java.util.Map.of("ready", ready));
+    }
+
     private static void requireAdmin() {
         if (!CallerSecurity.isAdmin()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Admin only");

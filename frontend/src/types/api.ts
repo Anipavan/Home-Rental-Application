@@ -649,6 +649,13 @@ export interface InitiatePaymentResponse {
    * the paid-registration paywall). Null on flows that don't need it.
    */
   gatewayKeyId?: string;
+  /**
+   * Cashfree per-order payment_session_id. Populated only on the
+   * Cashfree gateway path — the pay page passes it to the Cashfree
+   * Checkout SDK to open their hosted payment UI. Null on other
+   * gateways; treat null as "no Cashfree available, use direct-UPI".
+   */
+  paymentSessionId?: string;
 }
 
 export interface VerifyPaymentRequest {
