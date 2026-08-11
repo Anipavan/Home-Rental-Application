@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { Ban, Eye, EyeOff, Loader2 } from "lucide-react";
 import { Logo } from "@/components/layout/logo";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -20,12 +20,26 @@ interface ApiErrorShape {
 export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation() as { state?: { from?: string } };
+  const [searchParams, setSearchParams] = useSearchParams();
   const setSession = useAuthStore((s) => s.setSession);
   const [show, setShow] = useState(false);
   const [unverifiedEmailHint, setUnverifiedEmailHint] = useState<string | null>(
     null,
   );
   const [resending, setResending] = useState(false);
+  // Two ways the disabled banner can appear:
+  //   1. ?disabled=1 in the URL — set by the axios interceptor when
+  //      an in-flight request 403'd with errorCode=ACCOUNT_DISABLED.
+  //      The interceptor hard-redirects here.
+  //   2. accountDisabled state — set by onError below when the user
+  //      tries to log in with a disabled account. The interceptor
+  //      also fires in that case (redirecting back to /login), so
+  //      the URL param path usually wins, but the local flag covers
+  //      the rare case where the interceptor's redirect races the
+  //      mutation's error handler.
+  const [accountDisabled, setAccountDisabled] = useState(false);
+  const showDisabledBanner =
+    accountDisabled || searchParams.get("disabled") === "1";
 
   const mutation = useMutation({
     mutationFn: authApi.login,
@@ -47,6 +61,14 @@ export function LoginPage() {
     },
     onError: (err) => {
       const errorCode = (err as ApiErrorShape).response?.data?.errorCode;
+      // Admin has disabled this account (or this session predates a
+      // disable and the gateway just caught up). Show the banner
+      // instead of the generic "bad credentials" toast so the user
+      // knows why they can't get in.
+      if (errorCode === "ACCOUNT_DISABLED") {
+        setAccountDisabled(true);
+        return;
+      }
       // V16 — when the email-verification gate rejects login,
       // surface a distinct copy + resend affordance instead of the
       // generic "bad credentials" toast.
@@ -125,6 +147,47 @@ export function LoginPage() {
             <p className="text-muted-foreground mt-1.5">
               Sign in to manage your home, payments and maintenance.
             </p>
+
+            {showDisabledBanner && (
+              <Card className="mt-6 p-5 border-destructive/40 bg-destructive/5">
+                <div className="flex items-start gap-3">
+                  <div className="size-10 rounded-lg bg-destructive/10 text-destructive grid place-items-center shrink-0">
+                    <Ban className="size-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-display text-sm font-semibold text-destructive">
+                      Your account has been disabled
+                    </h3>
+                    <p className="text-xs text-destructive/90 mt-1">
+                      You can't sign in right now. Please contact the
+                      admin or our support team at{" "}
+                      <a
+                        href="mailto:support@anirudhhomes.in"
+                        className="font-medium underline"
+                      >
+                        support@anirudhhomes.in
+                      </a>{" "}
+                      to reactivate your account.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="mt-2 h-7 px-2 text-xs text-destructive hover:text-destructive"
+                      onClick={() => {
+                        setAccountDisabled(false);
+                        if (searchParams.has("disabled")) {
+                          searchParams.delete("disabled");
+                          setSearchParams(searchParams, { replace: true });
+                        }
+                      }}
+                    >
+                      Dismiss
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            )}
 
             {unverifiedEmailHint !== null ? (
               <Card className="mt-6 p-5 border-amber-200 bg-amber-50/60">

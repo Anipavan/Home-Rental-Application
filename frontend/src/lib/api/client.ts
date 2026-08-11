@@ -111,6 +111,31 @@ api.interceptors.response.use(
     const original = error.config as InternalAxiosRequestConfig & {
       _retried?: boolean;
     };
+
+    // ── Account-disabled kill switch ───────────────────────────
+    // If ANY request comes back with errorCode=ACCOUNT_DISABLED,
+    // the admin has just switched this user off (or their JWT was
+    // issued before a disable happened and the gateway just caught
+    // up). Clear local auth state and hard-redirect to /login with
+    // ?disabled=1 so the login page can surface a "contact support"
+    // banner. Runs BEFORE the refresh retry — a disabled account
+    // won't get a fresh token back from /auth/refresh either, so
+    // trying is wasted work.
+    const errorCode = (error.response?.data as { errorCode?: string } | undefined)
+      ?.errorCode;
+    if (errorCode === "ACCOUNT_DISABLED") {
+      try {
+        useAuthStore.getState().clear();
+      } catch {
+        /* store may already be cleared — that's fine */
+      }
+      if (typeof window !== "undefined"
+          && window.location.pathname !== "/login") {
+        window.location.href = "/login?disabled=1";
+      }
+      return Promise.reject(error);
+    }
+
     const expired =
       error.response?.status === 401 &&
       (error.response?.headers?.["x-token-expired"] === "true" ||

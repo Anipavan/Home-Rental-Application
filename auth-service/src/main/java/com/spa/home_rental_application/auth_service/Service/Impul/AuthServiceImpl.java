@@ -1296,4 +1296,83 @@ public class AuthServiceImpl implements AuthService {
                 paymentToken,
                 registrationFeeInr);
     }
+
+    /* ---------- Admin: enable / disable user ---------- */
+
+    @Override
+    @Transactional
+    public AuthUserResponse setUserEnabled(Long targetUserId,
+                                           boolean enabled,
+                                           String reason,
+                                           Long actorId) {
+        if (targetUserId == null) {
+            throw new IllegalArgumentException("targetUserId is required");
+        }
+        // Self-disable guard: catches the "I'm the only admin and I
+        // just muted myself" foot-gun. Self-enable is fine to reject
+        // too — if the account is disabled, the caller couldn't have
+        // authenticated in the first place, so actorId==targetId here
+        // only happens on a self-disable attempt.
+        if (actorId != null && actorId.equals(targetUserId)) {
+            log.warn("setUserEnabled refused — admin cannot toggle their own account, actorId={}",
+                    actorId);
+            throw new IllegalStateException(
+                    "You can't disable your own account.");
+        }
+
+        UserDetails user = userRepository.findById(targetUserId)
+                .orElseThrow(() -> new AuthRecordNotFoundException(
+                        "User not found with id: " + targetUserId));
+
+        boolean wasEnabled = Boolean.TRUE.equals(user.getEnabled());
+
+        if (enabled) {
+            user.setEnabled(true);
+            // Clear the reason so the row doesn't carry a stale
+            // "SPAM_REPORTED" note into its next enabled life.
+            user.setDisableReason(null);
+            // Also clear any lockout state — an admin re-enabling is
+            // implicitly overriding the 5-failed-attempts lockout that
+            // may have been part of what got the user disabled in the
+            // first place.
+            user.setAccountNonLocked(true);
+            user.setFailedLoginAttempts(0);
+            user.setLockedUntil(null);
+        } else {
+            user.setEnabled(false);
+            // Truncate defensively even though the DTO caps at 60 —
+            // belt-and-braces so a rogue direct caller can't overflow
+            // the VARCHAR2(60) column.
+            String trimmed = reason == null
+                    ? null
+                    : reason.trim().isEmpty()
+                        ? null
+                        : reason.trim().substring(0, Math.min(60, reason.trim().length()));
+            user.setDisableReason(trimmed);
+            // Bump the revocation watermark so the gateway starts
+            // rejecting this user's live JWTs on the next request
+            // (subject to the 60s TokenRevocationCheck cache TTL).
+            // Without this the user could keep making requests until
+            // their access token expires (~5 min).
+            user.setTokensRevokedBefore(Instant.now());
+        }
+
+        UserDetails saved = userRepository.save(user);
+
+        audit.publishSuccess(enabled ? "auth.user.enable" : "auth.user.disable",
+                actorId == null ? null : actorId.toString(),
+                actorId == null ? null : actorId.toString(),
+                saved.getId().toString(),
+                Map.of("wasEnabled",   String.valueOf(wasEnabled),
+                        "nowEnabled",  String.valueOf(enabled),
+                        "reason",      reason == null ? "" : reason));
+
+        log.info("Admin actorId={} {} userId={} reason={}",
+                actorId,
+                enabled ? "ENABLED" : "DISABLED",
+                targetUserId,
+                reason == null ? "-" : reason);
+
+        return AuthUserMapper.toAuthUserResponse(saved);
+    }
 }

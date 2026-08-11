@@ -24,7 +24,9 @@ public final class AuthUserMapper {
                 rolesList(u),
                 u.getEmail(),
                 u.getRecordCreatedDate(),
-                u.getRecodeUpdatedDate()
+                u.getRecodeUpdatedDate(),
+                u.getEnabled(),
+                u.getDisableReason()
         );
     }
 

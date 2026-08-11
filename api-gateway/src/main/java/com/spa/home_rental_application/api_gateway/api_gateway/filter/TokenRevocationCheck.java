@@ -64,12 +64,17 @@ public class TokenRevocationCheck {
     public TokenRevocationCheck(WebClient.Builder builder,
                                 LoadBalancedExchangeFilterFunction lbFunction,
                                 GatewaySigner signer,
-                                // Default OFF — user testing surfaced extra
-                                // latency + occasional false-rejects from
-                                // a per-request lookup. Flip on in prod
-                                // (JWT_REVOKE_CHECK_ENABLED=true) once
-                                // ops has the auth-service SLOs to back it.
-                                @Value("${app.jwt.revoke-check.enabled:false}") boolean enabled,
+                                // Default ON so admin-initiated account
+                                // disable takes effect within the 60s
+                                // cache TTL. Without this, a disabled
+                                // user can keep hitting protected APIs
+                                // with their still-valid JWT until it
+                                // expires (~5 min). Set
+                                // JWT_REVOKE_CHECK_ENABLED=false to
+                                // temporarily bypass if auth-service is
+                                // stressed — fail-open behaviour keeps
+                                // the platform up either way.
+                                @Value("${app.jwt.revoke-check.enabled:true}") boolean enabled,
                                 @Value("${app.jwt.revoke-check.cache-ttl-seconds:60}") long ttlSec) {
         this.webClient = builder
                 .baseUrl("lb://HRA-auth-service")

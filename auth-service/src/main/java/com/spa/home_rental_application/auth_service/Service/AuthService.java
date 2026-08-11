@@ -176,4 +176,37 @@ public interface AuthService {
      */
     AuthResponse setPrimaryRole(Long authUserId, Roles newRole,
                                 String ipAddress, String userAgent);
+
+    /**
+     * Admin-only: flip a user's {@code enabled} flag. Backs the
+     * {@code PATCH /auth/users/{id}/status} endpoint used by the
+     * admin users page's Disable / Enable button.
+     *
+     * <p>When {@code enabled=false}:
+     * <ul>
+     *   <li>{@code enabled} flipped to {@code false}.</li>
+     *   <li>{@code disableReason} persisted (nullable — free-text
+     *       audit hint from the admin, e.g. "spam", "fraud",
+     *       "user requested closure").</li>
+     *   <li>{@code tokensRevokedBefore} bumped to {@code now()} so
+     *       any access JWT the user is currently holding starts
+     *       failing at the gateway on the next request (subject to
+     *       the 60s revocation cache on the gateway).</li>
+     * </ul>
+     *
+     * <p>When {@code enabled=true}: flag flipped, {@code disableReason}
+     * cleared. {@code tokensRevokedBefore} is left as-is — a user who
+     * was disabled has to log in fresh anyway, and preserving the
+     * watermark keeps the audit trail intact.
+     *
+     * <p>{@code actorId} is the admin performing the action, read
+     * from the {@link org.springframework.security.core.Authentication}
+     * subject at the controller layer. Blocks self-disable ({@code
+     * actorId == targetId}) so a lone admin can't accidentally lock
+     * themselves out of the platform.
+     */
+    AuthUserResponse setUserEnabled(Long targetUserId,
+                                    boolean enabled,
+                                    String reason,
+                                    Long actorId);
 }

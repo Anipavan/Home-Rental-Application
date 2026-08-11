@@ -18,6 +18,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -129,6 +130,49 @@ public class AuthController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<AuthUserResponse> getById(@PathVariable Long id) {
         return ResponseEntity.ok(authService.getById(id));
+    }
+
+    /**
+     * Admin-only: enable or disable a user account. Backs the
+     * Disable / Enable button on {@code /admin/users}.
+     *
+     * <p>When disabling: bumps {@code tokensRevokedBefore} so the
+     * gateway begins rejecting the user's live JWTs on the next
+     * request (subject to the 60s revocation cache TTL).
+     *
+     * <p>Refuses self-disable — the calling admin can't turn off
+     * their own account.
+     */
+    @Operation(summary = "Enable or disable a user account (ADMIN only)")
+    @PatchMapping(value = "/users/{id}/status",
+            consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<AuthUserResponse> setUserStatus(
+            @PathVariable Long id,
+            @Valid @RequestBody SetUserStatusRequest req,
+            Authentication auth) {
+        Long actorId = parseActorId(auth);
+        log.info("PATCH /auth/users/{}/status enabled={} actorId={}",
+                id, req.enabled(), actorId);
+        return ResponseEntity.ok(
+                authService.setUserEnabled(id, req.enabled(), req.reason(), actorId));
+    }
+
+    /**
+     * Pull the caller's numeric user id out of the JWT subject.
+     * The gateway (and the local JwtAuthenticationFilter) stamps
+     * the numeric user id as the Authentication principal / name.
+     * Returns {@code null} on unauthenticated calls or when the
+     * subject isn't a parseable long — the service layer handles
+     * that gracefully.
+     */
+    private static Long parseActorId(Authentication auth) {
+        if (auth == null || auth.getName() == null) return null;
+        try {
+            return Long.parseLong(auth.getName());
+        } catch (NumberFormatException ex) {
+            return null;
+        }
     }
 
     /**

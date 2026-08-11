@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Mail,
   Phone,
@@ -12,6 +12,9 @@ import {
   Check,
   Loader2,
   BadgeCheck,
+  Ban,
+  CheckCircle2,
+  AlertTriangle,
 } from "lucide-react";
 import {
   Dialog,
@@ -23,9 +26,13 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { usersApi } from "@/lib/api/users";
+import { authApi } from "@/lib/api/auth";
+import { useAuthStore } from "@/stores/auth-store";
 import { toast } from "@/hooks/use-toast";
+import { extractErrorMessage } from "@/lib/api/client";
 import { cn, formatDate, initials, normalizeDocUrl } from "@/lib/utils";
 import type { AuthUserResponse, Role } from "@/types/api";
 
@@ -59,6 +66,62 @@ export function UserDetailDialog({
 }) {
   const role = (user?.role ?? (user?.userRole as Role) ?? "TENANT") as Role;
   const authId = user?.id ? String(user.id) : null;
+
+  // ── Enable / Disable state ─────────────────────────────────────
+  const qc = useQueryClient();
+  const currentAdminId = useAuthStore((s) => s.authUserId);
+  // Two-step confirm: click "Disable" opens the reason form + confirm
+  // buttons; click Confirm to actually fire the mutation. Prevents a
+  // fat-finger single-click from disabling someone irreversibly to the
+  // user's day (they need to reach an admin to re-enable).
+  const [confirmMode, setConfirmMode] = useState(false);
+  const [reason, setReason] = useState("");
+  // Reset the inline confirm state whenever the dialog re-targets a
+  // different user or is closed. Without this, opening user B after
+  // half-typing a reason for user A would carry the typed text over.
+  useEffect(() => {
+    setConfirmMode(false);
+    setReason("");
+  }, [authId, open]);
+
+  const setEnabledMut = useMutation({
+    mutationFn: (args: { id: string; enabled: boolean; reason?: string }) =>
+      authApi.setUserEnabled(args.id, args.enabled, args.reason),
+    onSuccess: (updated) => {
+      toast({
+        title: updated.isActive === false
+          ? "Account disabled"
+          : "Account enabled",
+        description: updated.isActive === false
+          ? `${updated.userName} can no longer sign in or use the app.`
+          : `${updated.userName} can sign in again.`,
+      });
+      // Refresh every users query on the admin page so the badge on
+      // the list view flips without a manual reload. Wildcard prefix
+      // covers ["admin", "users-tenant"] / "users-owner" / "users-admin".
+      qc.invalidateQueries({ queryKey: ["admin"] });
+      // Also update the profile lookup that this dialog fetches
+      // (kycStatus etc.) — no dependency on the enabled flag, but
+      // consistent to refresh in case the admin re-opens.
+      qc.invalidateQueries({ queryKey: ["admin", "user-profile", authId] });
+      setConfirmMode(false);
+      setReason("");
+    },
+    onError: (err) => {
+      toast({
+        variant: "destructive",
+        title: "Couldn't update the account",
+        description: extractErrorMessage(err),
+      });
+    },
+  });
+
+  const isSelf = !!authId && !!currentAdminId && authId === currentAdminId;
+  // Fall back to "Active" when isActive is undefined — a Feign consumer
+  // that pre-dates the isActive field on AuthUserResponse would omit
+  // it, and we don't want to render "Disabled" for every legacy row.
+  const isDisabled = user?.isActive === false;
+  const canToggle = !isSelf && !!authId;
 
   // Lazy: only fetches when the dialog is actually open AND we have an
   // id. Cached for 60s so re-opening the same user in quick succession
@@ -224,6 +287,134 @@ export function UserDetailDialog({
                 No full profile on file yet — this user hasn't completed the
                 onboarding form.
               </p>
+            )}
+
+            {/* ── Admin actions footer ─────────────────────────────
+                Disable / Enable button — hidden entirely when the
+                admin is viewing themselves (the backend also refuses
+                self-toggle, but we don't even render the button so
+                there's nothing to fat-finger). Two-step confirm
+                pattern instead of a native window.confirm() so we
+                can capture an optional audit reason for disables. */}
+            {canToggle && (
+              <>
+                <Separator className="my-5" />
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium">Account access</p>
+                      <p className="text-xs text-muted-foreground">
+                        {isDisabled
+                          ? "Currently disabled — the user can't sign in or use any part of the app."
+                          : "Currently active — the user can sign in and use the app normally."}
+                      </p>
+                    </div>
+                    {!confirmMode && (
+                      <Button
+                        type="button"
+                        variant={isDisabled ? "default" : "destructive"}
+                        onClick={() => setConfirmMode(true)}
+                        disabled={setEnabledMut.isPending}
+                      >
+                        {isDisabled ? (
+                          <>
+                            <CheckCircle2 /> Enable account
+                          </>
+                        ) : (
+                          <>
+                            <Ban /> Disable account
+                          </>
+                        )}
+                      </Button>
+                    )}
+                  </div>
+
+                  {confirmMode && (
+                    <div className={cn(
+                      "rounded-xl border p-3.5",
+                      isDisabled
+                        ? "border-success/40 bg-success/5"
+                        : "border-destructive/40 bg-destructive/5",
+                    )}>
+                      <div className="flex items-start gap-2.5 mb-3">
+                        <AlertTriangle
+                          className={cn(
+                            "size-4 mt-0.5 shrink-0",
+                            isDisabled ? "text-success" : "text-destructive",
+                          )}
+                        />
+                        <div className="text-xs">
+                          {isDisabled ? (
+                            <>
+                              Re-enable <span className="font-medium">{user.userName}</span>?
+                              They'll be able to sign in immediately.
+                            </>
+                          ) : (
+                            <>
+                              Disable <span className="font-medium">{user.userName}</span>?
+                              Their active session will be revoked within a minute
+                              and every future request will fail with an
+                              "account disabled" error.
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      {!isDisabled && (
+                        <Input
+                          value={reason}
+                          onChange={(e) => setReason(e.target.value.slice(0, 60))}
+                          placeholder="Optional reason (audit trail) — e.g. spam, fraud, user requested"
+                          maxLength={60}
+                          className="mb-3 text-sm"
+                          autoFocus
+                        />
+                      )}
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setConfirmMode(false);
+                            setReason("");
+                          }}
+                          disabled={setEnabledMut.isPending}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={isDisabled ? "default" : "destructive"}
+                          size="sm"
+                          onClick={() =>
+                            setEnabledMut.mutate({
+                              id: authId!,
+                              enabled: isDisabled,
+                              reason: isDisabled ? undefined : reason.trim() || undefined,
+                            })
+                          }
+                          disabled={setEnabledMut.isPending}
+                        >
+                          {setEnabledMut.isPending ? (
+                            <>
+                              <Loader2 className="animate-spin" />
+                              {isDisabled ? "Enabling…" : "Disabling…"}
+                            </>
+                          ) : isDisabled ? (
+                            <>
+                              <CheckCircle2 /> Confirm enable
+                            </>
+                          ) : (
+                            <>
+                              <Ban /> Confirm disable
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
             )}
           </div>
         )}

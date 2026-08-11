@@ -23,5 +23,26 @@ public record AuthUserResponse(
         List<String> roles,
         String       email,
         Instant      recordCreatedDate,
-        Instant      recodeUpdatedDate
+        Instant      recodeUpdatedDate,
+        /**
+         * Account active flag — mirrors {@code UserDetails.enabled}.
+         * Field is named {@code isActive} instead of {@code enabled}
+         * to match the frontend's existing type definition
+         * (frontend/src/types/api.ts) and the "Active" / "Disabled"
+         * badge on the admin users page.
+         * <p>Nullable for backward compatibility with legacy Feign
+         * consumers (user-service) that were built before the field
+         * existed — they read the payload with Jackson which happily
+         * ignores unknown fields, and any code that reads this via
+         * accessor gets {@code null} instead of a NullPointerException.
+         */
+        Boolean      isActive,
+        /**
+         * Free-text reason the account is disabled, or {@code null}
+         * when active. Populated by the admin at the point of disable
+         * ({@code SetUserStatusRequest.reason}) or auto-populated with
+         * {@code REGISTRATION_PAYMENT_PENDING} on the maintainer
+         * paywall path.
+         */
+        String       disableReason
 ) {}

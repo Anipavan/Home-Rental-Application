@@ -74,4 +74,16 @@ export const authApi = {
     api
       .post<AuthResponse>("/auth/me/role", { role })
       .then((r) => r.data),
+  /**
+   * Admin-only: enable or disable a user account.
+   *
+   * On disable the backend bumps the user's tokens-revoked-before
+   * watermark so their active JWT starts failing at the gateway
+   * within the 60s revocation cache TTL. Also blocks self-disable:
+   * a 400 back if `id` equals the calling admin's id.
+   */
+  setUserEnabled: (id: string, enabled: boolean, reason?: string) =>
+    api
+      .patch<AuthUserResponse>(`/auth/users/${id}/status`, { enabled, reason })
+      .then((r) => r.data),
 };
