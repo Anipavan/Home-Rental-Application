@@ -43,9 +43,11 @@ public class PaymentGatewayConfig {
 
     @Bean
     @ConditionalOnProperty(prefix = "app.payment", name = "gateway", havingValue = "cashfree")
-    public PaymentGateway cashfreePaymentGateway(CashfreeProperties cashfreeProps) {
+    public PaymentGateway cashfreePaymentGateway(
+            CashfreeProperties cashfreeProps,
+            com.spa.home_rental_application.payment_service.payment_service.service.VendorUsageRecorder usageRecorder) {
         log.info("Active payment gateway: cashfree (env={})", cashfreeProps.getEnvironment());
-        return new CashfreePaymentGateway(cashfreeProps);
+        return new CashfreePaymentGateway(cashfreeProps, usageRecorder);
     }
 
     /**

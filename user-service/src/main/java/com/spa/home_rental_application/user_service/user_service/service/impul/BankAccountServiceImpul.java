@@ -1,6 +1,8 @@
 package com.spa.home_rental_application.user_service.user_service.service.impul;
 
+import com.spa.home_rental_application.KafkaEvents.Producers.DTO.UserServiceEvents.BankAccountSavedEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.Events.AuditEventPublisher;
+import com.spa.home_rental_application.KafkaEvents.Producers.Events.UserServiceEvents;
 import com.spa.home_rental_application.user_service.user_service.DTO.Request.BankAccountRequestDto;
 import com.spa.home_rental_application.user_service.user_service.DTO.Response.BankAccountPayoutDto;
 import com.spa.home_rental_application.user_service.user_service.DTO.Response.BankAccountResponseDto;
@@ -11,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 
@@ -20,10 +23,14 @@ public class BankAccountServiceImpul implements BankAccountService {
 
     private final BankAccountRepo repo;
     private final AuditEventPublisher audit;
+    private final UserServiceEvents userEvents;
 
-    public BankAccountServiceImpul(BankAccountRepo repo, AuditEventPublisher audit) {
+    public BankAccountServiceImpul(BankAccountRepo repo,
+                                    AuditEventPublisher audit,
+                                    UserServiceEvents userEvents) {
         this.repo = repo;
         this.audit = audit;
+        this.userEvents = userEvents;
     }
 
     @Override
@@ -62,6 +69,28 @@ public class BankAccountServiceImpul implements BankAccountService {
                 userId, userId, saved.getId(),
                 Map.of("bankName", saved.getBankName(),
                         "ifsc", saved.getIfscCode()));
+
+        // Fire the Kafka event so payment-service can attempt Cashfree
+        // vendor registration for this owner (Phase 4 of the split-payment
+        // rollout). Fired for BOTH create + update paths — the consumer
+        // is idempotent and the "re-register" case matters when an owner
+        // changes bank details after being registered on the previous
+        // account.
+        //
+        // Only the account_number LAST-4 leaks into the Kafka payload —
+        // never the full account number. Full details go through the
+        // Feign call the consumer makes at registration time.
+        String rawAccount = body.accountNumber() == null ? "" : body.accountNumber().trim();
+        String last4 = rawAccount.length() >= 4
+                ? rawAccount.substring(rawAccount.length() - 4)
+                : rawAccount;
+        userEvents.sendBankAccountSaved(BankAccountSavedEvent.builder()
+                .eventType("user.bank-account.saved")
+                .userId(userId)
+                .accountNumberLast4(last4)
+                .bankName(saved.getBankName())
+                .timestamp(Instant.now())
+                .build());
         return toDto(saved);
     }
 

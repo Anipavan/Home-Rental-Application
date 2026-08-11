@@ -14,7 +14,7 @@ import java.time.LocalDateTime;
  * Mirror of the {@code VendorApiCall} entity in kyc-service. Both
  * services write to the same {@code vendor_api_calls} table — the
  * admin Vendor Usage dashboard reads it from kyc-service, the
- * RazorpayPaymentGateway / future VPA / OCR calls write to it from
+ * CashfreePaymentGateway / future VPA / OCR calls write to it from
  * payment-service and document-service. Keep the column shape in
  * lockstep with kyc-service's copy; the table is created by Flyway
  * migration V3 in kyc-service.
@@ -59,7 +59,16 @@ public class VendorApiCall {
 
     /**
      * Logical vendor + product identifier. For payment-service this
-     * is one of: {@code RAZORPAY_ORDER_CREATE}, {@code RAZORPAY_VPA_VALIDATE}.
+     * is one of the tracked payment-vendor operations:
+     * <ul>
+     *   <li>{@code CASHFREE_ORDER_CREATE} — POST /pg/orders (with optional split)</li>
+     *   <li>{@code CASHFREE_ORDER_VERIFY} — GET /pg/orders/{id}</li>
+     *   <li>{@code CASHFREE_PAYMENT_LOOKUP} — GET /pg/orders/{id}/payments</li>
+     *   <li>{@code CASHFREE_VENDOR_CREATE} — POST /pg/easy-split/vendors (Phase 4)</li>
+     * </ul>
+     * Historical rows may still exist with {@code RAZORPAY_*} names from
+     * before the Cashfree migration; those are truthful audit records
+     * of the removed integration.
      * Format intentionally matches kyc-service's
      * {@code SANDBOX_NSDL_PAN} so the dashboard groups them visually.
      */

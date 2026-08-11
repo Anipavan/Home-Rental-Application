@@ -1,5 +1,6 @@
 package com.spa.home_rental_application.KafkaEvents.Producers.Impliments;
 
+import com.spa.home_rental_application.KafkaEvents.Producers.DTO.UserServiceEvents.BankAccountSavedEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.UserServiceEvents.OwnerRegisteredEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.UserServiceEvents.UserProfileCreatedEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.UserServiceEvents.UserProfileUpdatedEvent;
@@ -45,5 +46,12 @@ public class UserServiceEventsImpul implements UserServiceEvents {
     public void sendOwnerRegistered(OwnerRegisteredEvent event) {
         log.info("→ {} : owner.registered ownerId={}", topics.getUserTopic(), event.getOwnerId());
         kafkaTemplate.send(topics.getUserTopic(), event.getOwnerId(), event);
+    }
+
+    @Override
+    public void sendBankAccountSaved(BankAccountSavedEvent event) {
+        log.info("→ {} : user.bank-account.saved userId={}",
+                topics.getUserTopic(), event.getUserId());
+        kafkaTemplate.send(topics.getUserTopic(), event.getUserId(), event);
     }
 }

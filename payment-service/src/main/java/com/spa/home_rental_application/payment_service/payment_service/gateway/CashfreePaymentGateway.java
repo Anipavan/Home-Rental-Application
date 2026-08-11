@@ -6,7 +6,9 @@ import com.spa.home_rental_application.payment_service.payment_service.DTO.Reque
 import com.spa.home_rental_application.payment_service.payment_service.DTO.Request.VerifyPaymentRequest;
 import com.spa.home_rental_application.payment_service.payment_service.config.CashfreeProperties;
 import com.spa.home_rental_application.payment_service.payment_service.entities.Payment;
+import com.spa.home_rental_application.payment_service.payment_service.entities.VendorApiCall;
 import com.spa.home_rental_application.payment_service.payment_service.exception.PaymentGatewayException;
+import com.spa.home_rental_application.payment_service.payment_service.service.VendorUsageRecorder;
 import lombok.extern.slf4j.Slf4j;
 
 import javax.crypto.Mac;
@@ -57,9 +59,16 @@ public class CashfreePaymentGateway implements PaymentGateway {
     private final CashfreeProperties props;
     private final HttpClient http;
     private final ObjectMapper json;
+    /**
+     * Fire-and-forget vendor-call audit sink. Nullable so tests can
+     * pass {@code null} instead of wiring the full JPA graph.
+     */
+    private final VendorUsageRecorder usageRecorder;
 
-    public CashfreePaymentGateway(CashfreeProperties props) {
+    public CashfreePaymentGateway(CashfreeProperties props,
+                                   VendorUsageRecorder usageRecorder) {
         this.props = props;
+        this.usageRecorder = usageRecorder;
         this.http = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
                 .build();
@@ -114,7 +123,9 @@ public class CashfreePaymentGateway implements PaymentGateway {
                         : payment.getSourceType()
         );
 
-        JsonNode resp = post("/orders", body);
+        JsonNode resp = post("/orders", body,
+                "CASHFREE_ORDER_CREATE",
+                payment.getTenantId());
         String cfOrderId       = resp.path("cf_order_id").asText(null);
         String paymentSessionId = resp.path("payment_session_id").asText(null);
 
@@ -148,7 +159,9 @@ public class CashfreePaymentGateway implements PaymentGateway {
                 ? req.gatewayOrderId()
                 : "hra_" + payment.getId();
 
-        JsonNode order = get("/orders/" + orderId);
+        JsonNode order = get("/orders/" + orderId,
+                "CASHFREE_ORDER_VERIFY",
+                payment.getTenantId());
         String status = order.path("order_status").asText("");
 
         if (!"PAID".equalsIgnoreCase(status)) {
@@ -161,7 +174,9 @@ public class CashfreePaymentGateway implements PaymentGateway {
 
         // Grab the actual cf_payment_id for the audit trail — it's what
         // shows up on the tenant's bank statement / UPI ref.
-        JsonNode payments = get("/orders/" + orderId + "/payments");
+        JsonNode payments = get("/orders/" + orderId + "/payments",
+                "CASHFREE_PAYMENT_LOOKUP",
+                payment.getTenantId());
         String cfPaymentId = null;
         if (payments.isArray() && payments.size() > 0) {
             for (JsonNode p : payments) {
@@ -240,7 +255,8 @@ public class CashfreePaymentGateway implements PaymentGateway {
 
     /* ------------------------- helpers ------------------------- */
 
-    private JsonNode post(String path, Object body) {
+    private JsonNode post(String path, Object body, String vendorTag, String triggeredByUserId) {
+        long startMs = System.currentTimeMillis();
         try {
             String payload = json.writeValueAsString(body);
             HttpRequest req = baseRequest(path)
@@ -248,24 +264,31 @@ public class CashfreePaymentGateway implements PaymentGateway {
                     .header("Content-Type", "application/json")
                     .build();
             HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
-            return checkOk(resp, path);
+            return checkOk(resp, path, vendorTag, triggeredByUserId, startMs);
         } catch (PaymentGatewayException e) {
             throw e;
         } catch (Exception e) {
             log.warn("Cashfree POST {} failed", path, e);
+            recordUsage(vendorTag, "POST " + path, VendorApiCall.Status.OUTAGE,
+                    "TRANSPORT_ERROR", e.getMessage(),
+                    (int) (System.currentTimeMillis() - startMs), triggeredByUserId);
             throw new PaymentGatewayException("Cashfree POST " + path + " failed: " + e.getMessage());
         }
     }
 
-    private JsonNode get(String path) {
+    private JsonNode get(String path, String vendorTag, String triggeredByUserId) {
+        long startMs = System.currentTimeMillis();
         try {
             HttpRequest req = baseRequest(path).GET().build();
             HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
-            return checkOk(resp, path);
+            return checkOk(resp, path, vendorTag, triggeredByUserId, startMs);
         } catch (PaymentGatewayException e) {
             throw e;
         } catch (Exception e) {
             log.warn("Cashfree GET {} failed", path, e);
+            recordUsage(vendorTag, "GET " + path, VendorApiCall.Status.OUTAGE,
+                    "TRANSPORT_ERROR", e.getMessage(),
+                    (int) (System.currentTimeMillis() - startMs), triggeredByUserId);
             throw new PaymentGatewayException("Cashfree GET " + path + " failed: " + e.getMessage());
         }
     }
@@ -280,14 +303,36 @@ public class CashfreePaymentGateway implements PaymentGateway {
                 .header("Accept", "application/json");
     }
 
-    private JsonNode checkOk(HttpResponse<String> resp, String path) throws Exception {
+    private JsonNode checkOk(HttpResponse<String> resp, String path,
+                             String vendorTag, String triggeredByUserId, long startMs) throws Exception {
         int code = resp.statusCode();
+        int elapsed = (int) (System.currentTimeMillis() - startMs);
         if (code / 100 != 2) {
             log.warn("Cashfree {} returned HTTP {} body={}", path, code, resp.body());
+            VendorApiCall.Status status;
+            if (code == 401 || code == 403) status = VendorApiCall.Status.UNAUTHORIZED;
+            else if (code == 402 || code == 429) status = VendorApiCall.Status.BILLING_ALERT;
+            else if (code >= 500) status = VendorApiCall.Status.OUTAGE;
+            else status = VendorApiCall.Status.USER_ERROR;
+            recordUsage(vendorTag, resp.request().method() + " " + path, status,
+                    "HTTP_" + code, safeTruncate(resp.body(), 200),
+                    elapsed, triggeredByUserId);
             throw new PaymentGatewayException(
                     "Cashfree " + path + " → HTTP " + code + ": " + safeTruncate(resp.body(), 500));
         }
+        recordUsage(vendorTag, resp.request().method() + " " + path,
+                VendorApiCall.Status.SUCCESS, null, null, elapsed, triggeredByUserId);
         return json.readTree(resp.body());
+    }
+
+    /** Null-safe forward to the (optional) usage recorder. */
+    private void recordUsage(String vendorTag, String endpoint,
+                             VendorApiCall.Status status, String errorCode,
+                             String errorMessage, Integer responseTimeMs,
+                             String triggeredByUserId) {
+        if (usageRecorder == null) return;
+        usageRecorder.record(vendorTag, endpoint, status, errorCode,
+                errorMessage, responseTimeMs, triggeredByUserId);
     }
 
     private static String hmacSha256Base64(String data, String secret) throws Exception {
