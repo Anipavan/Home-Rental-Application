@@ -67,13 +67,18 @@ export const FEATURE_FLAGS = {
    * frontend and payment-service code stays intact behind this
    * flag — flipping to false restores the two-option UI.
    */
-  // TEMPORARILY ENABLED for end-to-end happy-path verification in test
-  // mode (rzp_test_* keys, no real money moves). Standard Razorpay
-  // sends money to the PLATFORM account — NOT the correct long-term
-  // architecture. Once verified, keep enabled while Razorpay Route
-  // integration is built out (owner linked accounts, split payments).
-  // If Route work stalls, flip back to `true` to revert to direct-UPI-only.
-  RAZORPAY_PAYMENTS_DISABLED: false as const,
+  // DISABLED again after test-mode happy-path validation confirmed the
+  // Razorpay integration itself works. The reason for keeping it off:
+  // Standard Razorpay's QR points to Razorpay's collection account
+  // (money → platform, not owner). Correct architecture is Razorpay
+  // Route (split-settlement to per-owner Linked Accounts). Route
+  // activation is in progress with Razorpay; backend code is being
+  // written now. Flip back to `false` only when:
+  //   1. Route is active on the Razorpay dashboard
+  //   2. Owner Linked Account onboarding UI is shipped
+  //   3. Backend order creation includes the `transfers[]` array
+  //   4. Money-to-owner split is verified in test mode end-to-end
+  RAZORPAY_PAYMENTS_DISABLED: true as const,
 } as const;
 
 /** True when the KYC feature is currently turned off platform-wide. */
