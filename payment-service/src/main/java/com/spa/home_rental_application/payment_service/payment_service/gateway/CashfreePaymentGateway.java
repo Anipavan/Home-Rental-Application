@@ -143,9 +143,30 @@ public class CashfreePaymentGateway implements PaymentGateway {
                     payment.getTotalAmount(), vendorId, vendorShare, platformFee);
         }
 
-        JsonNode resp = post("/orders", body,
-                "CASHFREE_ORDER_CREATE",
-                payment.getTenantId());
+        JsonNode resp;
+        try {
+            resp = post("/orders", body,
+                    "CASHFREE_ORDER_CREATE",
+                    payment.getTenantId());
+        } catch (PaymentGatewayException ex) {
+            // Cashfree rejects duplicate order_ids with 409 order_already_exists.
+            // This happens when the tenant clicks Pay again on the same
+            // Payment row (same UUID → same "hra_{id}" order_id) after a
+            // prior initiate succeeded but the checkout tab was closed /
+            // the redirect was CSP-blocked before payment completed.
+            // Fall back to GET /orders/{id} so the retry resumes the same
+            // Cashfree order instead of dead-ending on a 502. Any other
+            // gateway error re-throws unchanged.
+            if (ex.getMessage() != null && ex.getMessage().contains("order_already_exists")) {
+                log.info("Cashfree order {} already exists — resuming existing session on retry",
+                        orderId);
+                resp = get("/orders/" + orderId,
+                        "CASHFREE_ORDER_CREATE_RETRY",
+                        payment.getTenantId());
+            } else {
+                throw ex;
+            }
+        }
         String cfOrderId       = resp.path("cf_order_id").asText(null);
         String paymentSessionId = resp.path("payment_session_id").asText(null);
 
