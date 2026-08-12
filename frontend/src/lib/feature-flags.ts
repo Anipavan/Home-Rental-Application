@@ -61,7 +61,7 @@ export const FEATURE_FLAGS = {
    * them because Razorpay Route required a turnover threshold we
    * don't have yet, whereas Cashfree onboards at any scale.
    */
-  CASHFREE_SPLIT_CHECKOUT_ENABLED: false as const,
+  CASHFREE_SPLIT_CHECKOUT_ENABLED: true as const,
 } as const;
 
 /** True when the KYC feature is currently turned off platform-wide. */
