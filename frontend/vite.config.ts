@@ -66,8 +66,8 @@ function buildContentSecurityPolicy(mode: string): string {
     ? `'self' 'unsafe-inline' 'unsafe-eval' ${CASHFREE_SDK}`
     : `'self' ${CASHFREE_SDK}`;
   const connectSrc = isDev
-    ? `'self' ${apiOrigin} ws: wss: ${CASHFREE_API} ${CASHFREE_SANDBOX} ${NOMINATIM_API} ${connectSrcExtra}`.trim()
-    : `'self' ${apiOrigin} ${CASHFREE_API} ${CASHFREE_SANDBOX} ${NOMINATIM_API} ${connectSrcExtra}`.trim();
+    ? `'self' ${apiOrigin} ws: wss: ${CASHFREE_SDK} ${CASHFREE_API} ${CASHFREE_SANDBOX} ${NOMINATIM_API} ${connectSrcExtra}`.trim()
+    : `'self' ${apiOrigin} ${CASHFREE_SDK} ${CASHFREE_API} ${CASHFREE_SANDBOX} ${NOMINATIM_API} ${connectSrcExtra}`.trim();
 
   return [
     "default-src 'self'",
@@ -85,9 +85,14 @@ function buildContentSecurityPolicy(mode: string): string {
     // Lock anything trying to embed us in a frame; matches the
     // gateway's X-Frame-Options: DENY (defense in depth).
     "frame-ancestors 'none'",
-    // Cashfree Checkout redirects a form-post to their hosted page,
-    // so form-action must include their payment origins as well.
-    `form-action 'self' ${CASHFREE_PAYMENTS} ${CASHFREE_PAYMENTS_TEST} ${CASHFREE_SDK}`,
+    // Cashfree Checkout redirects a form-post to their hosted page.
+    // In sandbox mode the session-checkout URL lives under
+    // sandbox.cashfree.com/pg/view/sessions/checkout (NOT under the
+    // payments-test.cashfree.com host — that's the post-redirect
+    // payment UI, not the initial session mount). Prod-side redirects
+    // hit api.cashfree.com. Both must be here or the browser blocks
+    // the form POST with a CSP violation and the tab never leaves.
+    `form-action 'self' ${CASHFREE_PAYMENTS} ${CASHFREE_PAYMENTS_TEST} ${CASHFREE_SDK} ${CASHFREE_SANDBOX} ${CASHFREE_API}`,
     "base-uri 'self'",
     "object-src 'none'",
     "upgrade-insecure-requests",
