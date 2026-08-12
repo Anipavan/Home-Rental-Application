@@ -32,16 +32,20 @@ interface CashfreeInstance {
 }
 
 /**
- * The v3 CDN SDK (sdk.cashfree.com/js/v3/cashfree.js) exposes
- * {@code window.Cashfree} as the FACTORY FUNCTION itself — you call
- * {@code Cashfree({ mode })} and get back the instance whose
- * {@code checkout()} method opens the hosted page. It is NOT an object
- * with a {@code .load()} method (that shape belongs to the NPM package
- * {@code @cashfreepayments/cashfree-js}, which we don't use here).
- * Calling {@code sdk.load(...)} on the CDN global throws
- * "load is not a function".
+ * {@code window.Cashfree} may expose EITHER shape depending on the SDK
+ * variant that ends up loaded:
+ * <ul>
+ *   <li>CDN {@code /js/v3/cashfree.js} → {@code window.Cashfree} is a
+ *       factory function: {@code Cashfree({ mode }) → instance}.</li>
+ *   <li>NPM {@code @cashfreepayments/cashfree-js} bundled the same way
+ *       → the object exposes {@code Cashfree.load({ mode })}.</li>
+ * </ul>
+ * We type it as the union and probe at runtime so a Cashfree-side
+ * change to which shape the CDN ships doesn't break checkout.
  */
-type CashfreeSdk = (opts: { mode: "sandbox" | "production" }) => CashfreeInstance | Promise<CashfreeInstance>;
+type CashfreeSdk =
+  | ((opts: { mode: "sandbox" | "production" }) => CashfreeInstance | Promise<CashfreeInstance>)
+  | { load: (opts: { mode: "sandbox" | "production" }) => Promise<CashfreeInstance> };
 
 declare global {
   interface Window {
@@ -106,11 +110,13 @@ export async function openCashfreeCheckout(
   paymentSessionId: string,
   environment: "sandbox" | "production" = "sandbox",
 ): Promise<void> {
-  const Cashfree = await loadCashfreeSdk();
-  // Cashfree({mode}) may return the instance directly or a Promise —
-  // await handles both shapes uniformly. Do NOT call .load() on it,
-  // that method doesn't exist on the CDN global.
-  const cf = await Cashfree({ mode: environment });
+  const sdk = await loadCashfreeSdk();
+  // Probe whether window.Cashfree is the factory function (CDN shape)
+  // or a namespace with .load() (NPM-alike shape). Either way, await
+  // normalises the sync-vs-async return.
+  const cf: CashfreeInstance = await (typeof sdk === "function"
+    ? sdk({ mode: environment })
+    : sdk.load({ mode: environment }));
   const result = await cf.checkout({
     paymentSessionId,
     redirectTarget: "_self",
