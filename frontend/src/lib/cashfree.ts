@@ -31,9 +31,17 @@ interface CashfreeInstance {
   }) => Promise<{ error?: { message?: string }; redirect?: boolean; paymentDetails?: unknown }>;
 }
 
-interface CashfreeSdk {
-  load: (opts: { mode: "sandbox" | "production" }) => Promise<CashfreeInstance>;
-}
+/**
+ * The v3 CDN SDK (sdk.cashfree.com/js/v3/cashfree.js) exposes
+ * {@code window.Cashfree} as the FACTORY FUNCTION itself — you call
+ * {@code Cashfree({ mode })} and get back the instance whose
+ * {@code checkout()} method opens the hosted page. It is NOT an object
+ * with a {@code .load()} method (that shape belongs to the NPM package
+ * {@code @cashfreepayments/cashfree-js}, which we don't use here).
+ * Calling {@code sdk.load(...)} on the CDN global throws
+ * "load is not a function".
+ */
+type CashfreeSdk = (opts: { mode: "sandbox" | "production" }) => CashfreeInstance | Promise<CashfreeInstance>;
 
 declare global {
   interface Window {
@@ -98,8 +106,11 @@ export async function openCashfreeCheckout(
   paymentSessionId: string,
   environment: "sandbox" | "production" = "sandbox",
 ): Promise<void> {
-  const sdk = await loadCashfreeSdk();
-  const cf = await sdk.load({ mode: environment });
+  const Cashfree = await loadCashfreeSdk();
+  // Cashfree({mode}) may return the instance directly or a Promise —
+  // await handles both shapes uniformly. Do NOT call .load() on it,
+  // that method doesn't exist on the CDN global.
+  const cf = await Cashfree({ mode: environment });
   const result = await cf.checkout({
     paymentSessionId,
     redirectTarget: "_self",
