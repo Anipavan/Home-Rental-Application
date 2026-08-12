@@ -131,6 +131,28 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.BAD_REQUEST, ex.getMessage(), "ILLEGAL_ARGUMENT", req);
     }
 
+    /**
+     * ResponseStatusException carries its own HTTP status + reason (any
+     * code path can {@code throw new ResponseStatusException(FORBIDDEN,
+     * "Admin only")} to short-circuit with a specific status). Must be
+     * handled BEFORE the generic Exception catch-all — Spring's
+     * @ExceptionHandler matches by class hierarchy, so leaving this
+     * out meant a 403 would silently degrade to 500 INTERNAL_ERROR.
+     */
+    @ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)
+    public ResponseEntity<APIErrorResponse> handleResponseStatus(
+            org.springframework.web.server.ResponseStatusException ex,
+            HttpServletRequest req) {
+        HttpStatus status = HttpStatus.valueOf(ex.getStatusCode().value());
+        String reason = ex.getReason() == null ? status.getReasonPhrase() : ex.getReason();
+        // Log at WARN — an admin-gate rejection is expected traffic,
+        // not a system error, so INFO would be too quiet and ERROR
+        // would drown real problems.
+        log.warn("ResponseStatusException at {} → {} {}: {}",
+                req.getRequestURI(), status.value(), status.getReasonPhrase(), reason);
+        return build(status, reason, status.name(), req);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<APIErrorResponse> handleGeneric(Exception ex, HttpServletRequest req) {
         log.error("Unhandled exception at {}: {}", req.getRequestURI(), ex.toString(), ex);
