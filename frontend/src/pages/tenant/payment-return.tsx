@@ -50,12 +50,25 @@ export function PaymentReturnPage() {
     // verify calls safe to begin with.
     let cancelled = false;
 
+    // Cashfree doesn't post signature/order-id back on the redirect —
+    // it does everything server-side (webhook + GET /orders/{id}).
+    // Synthesize placeholder values so the existing verify flow can
+    // run: the Cashfree gateway.verify() derives the order id from
+    // paymentId ("hra_{id}") and ignores transactionId/signature.
+    // Placeholders satisfy the @NotBlank DTO validation.
+    const isCashfree = params.get("src") === "cashfree";
     const gatewayOrderId =
-      params.get("gatewayOrderId") ?? params.get("razorpay_order_id") ?? "";
+      params.get("gatewayOrderId") ??
+      params.get("razorpay_order_id") ??
+      (isCashfree ? `hra_${paymentId}` : "");
     const transactionId =
-      params.get("transactionId") ?? params.get("razorpay_payment_id") ?? "";
+      params.get("transactionId") ??
+      params.get("razorpay_payment_id") ??
+      (isCashfree ? "cashfree" : "");
     const signature =
-      params.get("signature") ?? params.get("razorpay_signature") ?? "";
+      params.get("signature") ??
+      params.get("razorpay_signature") ??
+      (isCashfree ? "cashfree" : "");
 
     // Razorpay forwards its own error context on failed payments — surface
     // it verbatim instead of the generic "didn't return verification details."
