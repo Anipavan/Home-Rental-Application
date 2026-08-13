@@ -6,6 +6,7 @@ import { useAuthStore } from "@/stores/auth-store";
 import { paymentsApi } from "@/lib/api/payments";
 import { societyApi } from "@/lib/api/society";
 import { bankAccountsApi } from "@/lib/api/bank-accounts";
+import { paymentGateway } from "@/lib/api/payment-gateway";
 import { extractErrorMessage } from "@/lib/api/client";
 import { toast } from "@/hooks/use-toast";
 import { useFlatLookup } from "@/hooks/use-flat-lookup";
@@ -586,11 +587,33 @@ function MaintenanceSectionWrapper({
   // render.
   const societyHasUpi = Boolean(configQ.data?.upiId);
 
+  // Cashfree payout gate: check whether the maintainer has an ACTIVE
+  // Cashfree vendor (bank + KYC verified). Without one, tenant money
+  // has nowhere to settle even if UPI is technically wired — the split
+  // flow will fail and the fallback direct-UPI may route to the
+  // maintainer's personal UPI (not the society bank), which is exactly
+  // what we're trying to prevent. Cache 30 s to avoid pounding
+  // payments-service on every card render.
+  const maintainerUserId = configQ.data?.maintainerUserId ?? null;
+  const payoutReadyQ = useQuery({
+    queryKey: ["society-maintainer-payout-ready", maintainerUserId],
+    queryFn: () => paymentGateway.isOwnerPayoutReady(maintainerUserId!),
+    enabled: !!maintainerUserId,
+    staleTime: 30_000,
+  });
+  const maintainerPayoutReady = payoutReadyQ.data === true;
+  // Ready to accept payment when EITHER Cashfree vendor is active OR
+  // the society has a UPI id wired up. Blocked only when both are
+  // missing — a fresh society with nothing configured.
+  const canAcceptPayment = maintainerPayoutReady || societyHasUpi;
+
   const extraDueItems = societyMonthGroups.map((g) => (
     <SocietyMonthDueCard
       key={g.key}
       group={g}
       buildingId={buildingId!}
+      canAcceptPayment={canAcceptPayment}
+      maintainerPayoutReady={maintainerPayoutReady}
       societyHasUpi={societyHasUpi}
     />
   ));
@@ -619,6 +642,8 @@ function MaintenanceSectionWrapper({
 function SocietyMonthDueCard({
   group,
   buildingId,
+  canAcceptPayment,
+  maintainerPayoutReady,
   societyHasUpi,
 }: {
   group: {
@@ -630,9 +655,15 @@ function SocietyMonthDueCard({
     overdue: boolean;
   };
   buildingId: string;
-  /** True when the maintainer has wired up a collection UPI ID for
-   *  this building. When false, the "Pay all" button is disabled so
-   *  the tenant can't land on a broken pay page with a blank QR. */
+  /** True when the maintainer has either an ACTIVE Cashfree vendor OR
+   *  a fallback UPI configured — i.e. the tenant's money has some path
+   *  to actually settle. When false, we hard-disable the Pay button. */
+  canAcceptPayment: boolean;
+  /** True when the maintainer's Cashfree vendor is ACTIVE (bank + KYC
+   *  verified). Purely informational — used to word the disabled-hint
+   *  precisely so the tenant knows why. */
+  maintainerPayoutReady: boolean;
+  /** True when the society has a fallback collection UPI ID wired. */
   societyHasUpi: boolean;
 }) {
   return (
@@ -672,18 +703,19 @@ function SocietyMonthDueCard({
               );
             })}
           </div>
-          {!societyHasUpi && (
+          {!canAcceptPayment && (
             <p className="text-xs text-destructive mt-2 flex items-start gap-1.5">
               <AlertCircle className="size-3.5 mt-px shrink-0" />
               <span>
-                Your society hasn't added a collection UPI ID yet — ask
-                your building's maintainer to add one before you can pay.
+                {!maintainerPayoutReady && !societyHasUpi
+                  ? "Your society maintainer hasn't finished payout setup (bank details / UPI) yet — ask them to complete it before you can pay."
+                  : "Your society hasn't added a collection UPI ID yet — ask your building's maintainer to add one before you can pay."}
               </span>
             </p>
           )}
         </div>
         <div className="flex justify-end">
-          {societyHasUpi ? (
+          {canAcceptPayment ? (
             <Button asChild variant="gradient" size="lg">
               <Link
                 to={`/app/society/pay-all/${buildingId}/${group.forMonth}`}
@@ -696,7 +728,7 @@ function SocietyMonthDueCard({
               variant="gradient"
               size="lg"
               disabled
-              title="Society hasn't added a collection UPI ID yet"
+              title="Maintainer's bank / UPI payout details aren't set up yet"
             >
               <Wallet /> Pay all · {formatINR(group.total)}
             </Button>

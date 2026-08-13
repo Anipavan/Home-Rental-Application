@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AlertTriangle, ArrowLeft, Loader2, Receipt, Smartphone } from "lucide-react";
 import { societyApi } from "@/lib/api/society";
+import { paymentGateway } from "@/lib/api/payment-gateway";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -96,6 +97,21 @@ export function SocietyPayAllPage() {
     queryKey: ["tenant-society"],
     queryFn: () => societyApi.myTenant(),
   });
+
+  // Cashfree payout gate: does the maintainer have an ACTIVE Cashfree
+  // vendor (bank + KYC verified)? If not, and the society also has no
+  // fallback UPI wired, we hard-disable Pay — otherwise tenant money
+  // has nowhere to actually settle.
+  const maintainerUserId = configQ.data?.maintainerUserId ?? null;
+  const payoutReadyQ = useQuery({
+    queryKey: ["society-maintainer-payout-ready", maintainerUserId],
+    queryFn: () => paymentGateway.isOwnerPayoutReady(maintainerUserId!),
+    enabled: !!maintainerUserId,
+    staleTime: 30_000,
+  });
+  const maintainerPayoutReady = payoutReadyQ.data === true;
+  const societyHasUpi = Boolean(configQ.data?.upiId);
+  const canAcceptPayment = maintainerPayoutReady || societyHasUpi;
 
   const billsQ = useQuery({
     queryKey: ["tenant-society-bills", buildingId, month],
@@ -203,6 +219,28 @@ export function SocietyPayAllPage() {
         />
       ) : (
         <>
+          {/* Maintainer-not-payout-ready banner. Surfaces above every
+            * other UI so the tenant knows why the Pay button is
+            * disabled BEFORE they scroll down to it. */}
+          {!canAcceptPayment && (
+            <Card className="mb-4 border-destructive/40 bg-destructive/5">
+              <CardContent className="p-4 flex items-start gap-3">
+                <AlertTriangle className="size-5 text-destructive shrink-0 mt-0.5" />
+                <div className="text-sm">
+                  <p className="font-semibold">
+                    Society payout details are missing
+                  </p>
+                  <p className="text-muted-foreground mt-0.5">
+                    Your maintainer hasn't finished setting up bank
+                    details / UPI for the society yet. Payments are
+                    disabled until they do — please ping them to
+                    complete payout setup so your money has somewhere
+                    to actually settle.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
           {/* Over-the-cap warning. Only surfaces on the Razorpay path
             * — the cap comes from Razorpay's test-bank simulator, not
             * the app itself. When Razorpay is disabled, this warning
@@ -281,7 +319,14 @@ export function SocietyPayAllPage() {
                   variant="gradient"
                   size="lg"
                   onClick={() => payAllMut.mutate()}
-                  disabled={payAllMut.isPending || !dueRows.length}
+                  disabled={
+                    payAllMut.isPending || !dueRows.length || !canAcceptPayment
+                  }
+                  title={
+                    !canAcceptPayment
+                      ? "Maintainer's bank / UPI payout details aren't set up yet"
+                      : undefined
+                  }
                 >
                   {payAllMut.isPending ? (
                     <>
@@ -290,7 +335,7 @@ export function SocietyPayAllPage() {
                   ) : !isCashfreeSplitCheckoutEnabled() ? (
                     `Pay ${formatINR(total)} via UPI`
                   ) : (
-                    `Pay all via Razorpay · ${formatINR(total)}`
+                    `Pay all · ${formatINR(total)}`
                   )}
                 </Button>
               </div>

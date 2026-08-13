@@ -243,12 +243,22 @@ export function MaintainerExpensesPage() {
 
 /**
  * Maps an expense-level category (UTILITY, SALARY, …) to the flat-row
- * charge category we use when fanning the split out across flats. Most
- * expenses fall into the "Additional Expenses" bucket; utility splits
- * land in Water bill; salaries roll up under Maintenance.
+ * charge category we use when fanning the split out across flats.
+ *
+ * <p>UTILITY previously mapped to WATER_BILL, which silently overwrote
+ * any per-flat metered water reading (already-PAID rows got reset to
+ * DUE with the utility amount, destroying paid history). Since a
+ * generic "utility" expense (electricity common-area, water pump,
+ * etc.) isn't the same as the per-flat metered water bill, route it
+ * to OTHER so it becomes a distinct additional-expense line the
+ * tenant pays separately.
+ *
+ * <p>SALARY still rolls up under MAINTENANCE — treating security /
+ * cleaning salaries as part of the monthly maintenance charge is a
+ * common convention in Indian societies.
  */
 const EXPENSE_TO_FLAT_CATEGORY: Record<ExpenseCategory, FlatChargeCategory> = {
-  UTILITY: "WATER_BILL",
+  UTILITY: "OTHER",
   SALARY: "MAINTENANCE",
   SUPPLIES: "COMMON_AREA_SHARE",
   REPAIR_COMMON: "COMMON_AREA_SHARE",

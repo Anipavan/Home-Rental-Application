@@ -11,6 +11,7 @@ import {
   Smartphone,
 } from "lucide-react";
 import { societyApi } from "@/lib/api/society";
+import { paymentGateway } from "@/lib/api/payment-gateway";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -70,6 +71,19 @@ export function SocietyPayPage() {
     queryKey: ["tenant-society"],
     queryFn: () => societyApi.myTenant(),
   });
+
+  // Cashfree payout gate — the maintainer needs either an ACTIVE
+  // Cashfree vendor OR a working direct-UPI. Without either, this
+  // page renders "society not set up for payments yet" instead of
+  // the pay button so tenants don't send money into a void.
+  const maintainerUserId = configQ.data?.maintainerUserId ?? null;
+  const payoutReadyQ = useQuery({
+    queryKey: ["society-maintainer-payout-ready", maintainerUserId],
+    queryFn: () => paymentGateway.isOwnerPayoutReady(maintainerUserId!),
+    enabled: !!maintainerUserId,
+    staleTime: 30_000,
+  });
+  const maintainerPayoutReady = payoutReadyQ.data === true;
 
   // The tenant's bills for the current month — find the row matching
   // collectionId. We accept a small inefficiency here (we re-fetch the
@@ -231,6 +245,7 @@ export function SocietyPayPage() {
           buildingId={buildingId}
           cfg={cfg}
           canPayUpiDirect={canPayUpi}
+          maintainerPayoutReady={maintainerPayoutReady}
           bankFlagged={bankFlagged}
           onCancel={() => navigate("/app/society")}
         />
@@ -259,6 +274,7 @@ function RazorpayLaunchSection({
   buildingId,
   cfg,
   canPayUpiDirect,
+  maintainerPayoutReady,
   bankFlagged,
   onCancel,
 }: {
@@ -266,6 +282,10 @@ function RazorpayLaunchSection({
   buildingId: string;
   cfg: SocietyConfig;
   canPayUpiDirect: boolean;
+  /** True when the maintainer's Cashfree vendor is ACTIVE (bank + KYC
+   *  verified). Combined with {@code canPayUpiDirect}: tenant can pay
+   *  when EITHER is true, blocked when neither is. */
+  maintainerPayoutReady: boolean;
   /** True when someone has flagged the society's UPI as broken.
    *  Suppresses the pay UI so tenants can't send money into a
    *  broken VPA — a warning banner replaces the QR + launchers. */
@@ -350,12 +370,12 @@ function RazorpayLaunchSection({
             title="This society's UPI is being verified"
             description="A previous tenant reported the UPI ID as not working. Payments are paused until the maintainer updates the collection account. Please reach out to your maintainer directly and pay later once they've fixed the details."
           />
-        ) : !canPayUpiDirect ? (
+        ) : !canPayUpiDirect && !maintainerPayoutReady ? (
           <EmptyState
             variant="info"
-            icon={Smartphone}
-            title="UPI not set up yet"
-            description="Your maintainer hasn't added a UPI ID for this society. Ask them to add one from their dashboard, then reload this page."
+            icon={AlertTriangle}
+            title="Society payout details not set up yet"
+            description="Your maintainer hasn't finished setting up bank details / UPI for the society yet. Payments are disabled until they complete payout setup — please ping them so your money has somewhere to actually settle."
           />
         ) : (
           <>

@@ -1291,6 +1291,35 @@ public class SocietyServiceImpl implements SocietyService {
                         .updatedAt(now)
                         .build());
 
+        // Preserve-PAID guard: if this row exists and is already PAID,
+        // refuse to change the amount or flip status back to DUE via
+        // the "auto-derive from ledger" branch. Otherwise a maintainer
+        // adding a NEW common expense that fans out to (flat, month,
+        // category) tuples already marked PAID would silently reset
+        // those rows to DUE with the fresh amount — destroying paid
+        // history and re-billing the tenant for money already
+        // collected. Corrections to a paid row must be explicit
+        // (edit-flow via the UI dialog with a new status), not a
+        // side-effect of the split-expense fanout.
+        boolean rowExisted = row.getId() != null;
+        boolean isPaid = row.getStatus() == CollectionStatus.PAID;
+        boolean amountChanging = req.amountDue() != null
+                && !req.amountDue().equals(row.getAmountDue());
+        boolean forcingDue = req.status() == CollectionStatus.DUE
+                || req.status() == CollectionStatus.OVERDUE;
+        if (rowExisted && isPaid && (amountChanging || forcingDue)) {
+            // IllegalArgumentException → 400 in this service's handler;
+            // IllegalStateException would map to 502 (downstream error),
+            // which is wrong for a user-facing business-rule conflict.
+            throw new IllegalArgumentException(
+                    "Charge for flat " + flat.getFlatNumber()
+                            + " · " + category + " · " + req.forMonth()
+                            + " is already PAID and cannot be modified via a "
+                            + "split-expense update. Add supplementary charges "
+                            + "under a different category (e.g. OTHER) or edit "
+                            + "the row directly with an explicit status change.");
+        }
+
         // Update fields. amountDue is required.
         row.setAmountDue(req.amountDue());
         // Category is part of the row key. On update we trust the
