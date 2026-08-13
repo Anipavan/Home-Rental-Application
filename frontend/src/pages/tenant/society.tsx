@@ -450,20 +450,65 @@ function YourMaintenanceTab({ config }: { config: SocietyConfig }) {
 }
 
 /**
- * Month multi-select for the "Your maintenance" tab. Same pattern
- * the Maintenance details tab uses under the hood — a dropdown
- * with a check next to selected months. Enforces at least one
- * selected so the page never renders a blank state.
+ * Two-level month picker: pick a year first (top tabs), then pick
+ * one or more months from that year's 12-cell grid. Multi-select is
+ * always on; enforces at least one selection so the page never
+ * renders a blank state.
+ *
+ * <p>Why the redesign: the previous "flat list of last N months"
+ * ordering mixed years together (Aug 2026 next to Dec 2025 next to
+ * Sep 2025) which was confusing, AND it iterated backwards from
+ * today only — future months of the current year (e.g. Sep 2026
+ * when the maintainer already has expenses for that month) never
+ * appeared. Year → months groups the picker semantically and
+ * naturally surfaces every month of the selected year, past or
+ * future. The {@code options} prop is no longer consumed — kept
+ * only for backward compatibility with existing call sites.
  */
 function MonthFilter({
   selected,
   onChange,
-  options,
 }: {
   selected: string[];
   onChange: (next: string[]) => void;
-  options: string[];
+  /** Ignored — retained so old call sites keep compiling. The picker
+   *  now builds its own year × month grid from {@code selected}. */
+  options?: string[];
 }) {
+  const now = new Date();
+  const nowYear = now.getFullYear();
+  const nowMonth = now.getMonth() + 1;
+  // Year tabs shown at the top of the dropdown. Always include the
+  // current + previous + next year. Also fold in any years that
+  // appear in the current selection so the picker never orphans a
+  // selected month (e.g. resident jumped to Jan 2024 in a bookmark).
+  const availableYears = new Set<number>([
+    nowYear - 1,
+    nowYear,
+    nowYear + 1,
+  ]);
+  for (const m of selected) {
+    const y = Number(m.split("-")[0]);
+    if (Number.isFinite(y)) availableYears.add(y);
+  }
+  const yearTabs = Array.from(availableYears).sort((a, b) => b - a); // newest first
+
+  // Start the picker on whichever year the first selected month
+  // lives in — matches user expectation ("open where I left off").
+  const initialYear = (() => {
+    const s = [...selected].sort((a, b) => b.localeCompare(a))[0];
+    const parsed = s ? Number(s.split("-")[0]) : NaN;
+    return Number.isFinite(parsed) ? parsed : nowYear;
+  })();
+  const [viewYear, setViewYear] = useState<number>(initialYear);
+
+  // 12 months of the currently-viewed year. Includes future months
+  // — a maintainer may pre-load Sep 2026 charges in August, and the
+  // tenant needs to see them ahead of time.
+  const monthsInYear: string[] = Array.from({ length: 12 }, (_, i) =>
+    `${viewYear}-${String(i + 1).padStart(2, "0")}`,
+  );
+
   function toggle(m: string) {
     if (selected.includes(m)) {
       if (selected.length === 1) return; // keep at least one
@@ -472,11 +517,13 @@ function MonthFilter({
       onChange([...selected, m]);
     }
   }
+
   const sorted = [...selected].sort((a, b) => b.localeCompare(a));
   const label =
     selected.length === 1
       ? fmtMonth(sorted[0]!)
       : `${selected.length} months`;
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -486,21 +533,36 @@ function MonthFilter({
           <ChevronDown className="size-3.5 opacity-60" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-56 max-h-80 overflow-y-auto p-1">
-        {/* Quick-action row — "All" fills the picker with every
-            month in the options list; "This month only" resets it
-            back to a single-month view. Sits above the per-month
-            list so residents scanning for it see it first. */}
+      <DropdownMenuContent className="w-72 p-1">
+        {/* Year tabs — one row of small buttons across the top.
+            Clicking a year just switches which months are shown
+            below; it does NOT clear the current selection so a
+            user can multi-select across years by tab-hopping. */}
+        <div className="flex gap-1 px-1 pb-1 border-b border-border/60 mb-1 overflow-x-auto">
+          {yearTabs.map((y) => (
+            <Button
+              key={y}
+              type="button"
+              variant={viewYear === y ? "default" : "ghost"}
+              size="sm"
+              className="text-xs h-7 px-2 shrink-0"
+              onClick={() => setViewYear(y)}
+            >
+              {y}
+            </Button>
+          ))}
+        </div>
+        {/* Quick actions scoped to the currently-viewed year. */}
         <div className="flex gap-1 px-1 pb-1 border-b border-border/60 mb-1">
           <Button
             type="button"
             variant="ghost"
             size="sm"
             className="flex-1 text-xs h-7"
-            onClick={() => onChange(options)}
-            disabled={selected.length === options.length}
+            onClick={() => onChange(monthsInYear)}
+            disabled={monthsInYear.every((m) => selected.includes(m))}
           >
-            All months
+            All {viewYear}
           </Button>
           <Button
             type="button"
@@ -508,30 +570,38 @@ function MonthFilter({
             size="sm"
             className="flex-1 text-xs h-7"
             onClick={() => onChange([currentMonth()])}
-            disabled={
-              selected.length === 1 && selected[0] === currentMonth()
-            }
+            disabled={selected.length === 1 && selected[0] === currentMonth()}
           >
             This month
           </Button>
         </div>
-        {options.map((m) => {
-          const isSelected = selected.includes(m);
-          return (
-            <button
-              key={m}
-              type="button"
-              onClick={() => toggle(m)}
-              className={cn(
-                "w-full flex items-center justify-between gap-2 px-2 py-1.5 text-sm rounded-md hover:bg-secondary/60",
-                isSelected && "font-semibold",
-              )}
-            >
-              <span>{fmtMonth(m)}</span>
-              {isSelected && <Check className="size-3.5 text-primary" />}
-            </button>
-          );
-        })}
+        {/* 3×4 month grid — feels more like a calendar and takes half
+            the vertical space of a scrollable list. */}
+        <div className="grid grid-cols-3 gap-1 p-1">
+          {monthsInYear.map((m) => {
+            const isSelected = selected.includes(m);
+            const isFuture =
+              viewYear > nowYear ||
+              (viewYear === nowYear && Number(m.split("-")[1]) > nowMonth);
+            return (
+              <button
+                key={m}
+                type="button"
+                onClick={() => toggle(m)}
+                className={cn(
+                  "flex items-center justify-center gap-1 px-2 py-1.5 text-xs rounded-md border transition-colors",
+                  isSelected
+                    ? "border-primary bg-primary/10 font-semibold text-primary"
+                    : "border-transparent hover:bg-secondary/60",
+                  isFuture && !isSelected && "text-muted-foreground",
+                )}
+              >
+                <span>{fmtMonth(m).split(" ")[0]}</span>
+                {isSelected && <Check className="size-3" />}
+              </button>
+            );
+          })}
+        </div>
       </DropdownMenuContent>
     </DropdownMenu>
   );

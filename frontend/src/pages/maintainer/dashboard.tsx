@@ -778,6 +778,15 @@ function FlatsTable({
                 {CATEGORY_LABELS[c]}
               </th>
             ))}
+            {/* Other Expenses — aggregates every non-metered common-
+              * expense the maintainer added this month (Utility,
+              * Supplies, Repair, Insurance, Tax, generic Other). Fans
+              * out from the "Common expenses" flow, kept separate from
+              * MAINTENANCE and WATER_BILL so paid metered charges
+              * aren't destroyed when a new common expense lands. */}
+            <th className="text-right px-3 py-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+              Other Expenses
+            </th>
             {/* Water-meter readings — only meaningful for WATER_BILL
               * rows but the columns sit next to the Water bill cell so
               * the reader can compute (curr - prev) at a glance. Empty
@@ -932,6 +941,43 @@ function FlatRow({
           </td>
         );
       })}
+
+      {/* Other Expenses — aggregate of every OTHER + COMMON_AREA_SHARE
+        * row for this flat this month. Common expenses added by the
+        * maintainer (Utility / Supplies / Repair etc.) fan out into
+        * these categories. Rendered as a single sum-and-status cell:
+        *   - "—" when nothing has been fanned out
+        *   - <amount> with a PAID/DUE badge otherwise (DUE wins if any
+        *     row is unpaid, so the maintainer sees they still need to
+        *     chase the tenant). */}
+      <td className="px-3 py-2 align-top text-right">
+        {(() => {
+          const otherRows = group.rows.filter(
+            (r) =>
+              (r.category === "OTHER" || r.category === "COMMON_AREA_SHARE") &&
+              r.status !== "NEW_FLAT" &&
+              r.status !== "WAIVED",
+          );
+          if (otherRows.length === 0) {
+            return <span className="text-xs text-muted-foreground">—</span>;
+          }
+          const sum = otherRows.reduce((s, r) => s + r.monthAmount, 0);
+          const anyDue = otherRows.some(
+            (r) => r.status === "DUE" || r.status === "OVERDUE",
+          );
+          return (
+            <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+              <span className="font-mono text-sm">{formatINR(sum)}</span>
+              <Badge
+                variant={anyDue ? "destructive" : "success"}
+                className="text-[10px]"
+              >
+                {anyDue ? "DUE" : "PAID"}
+              </Badge>
+            </div>
+          );
+        })()}
+      </td>
 
       {/* Previous Usage — readings live on the WATER_BILL row (if any).
         * Showing this column unconditionally even when there's no

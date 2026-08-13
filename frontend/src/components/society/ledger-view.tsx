@@ -455,15 +455,44 @@ export function SocietyLedgerView({
  *  Multi-select filter components
  * ──────────────────────────────────────────────────────────────── */
 
+/**
+ * Two-level month picker — year tabs on top, a 3×4 month grid below.
+ * See the twin implementation in {@code pages/tenant/society.tsx}
+ * for the full rationale; the shape is intentionally identical so
+ * residents get the same picker on both tabs. Multi-select is on;
+ * enforces at least one selected month.
+ */
 function MonthFilter({
   selected,
   onChange,
-  options,
 }: {
   selected: string[];
   onChange: (next: string[]) => void;
-  options: string[];
+  /** Ignored — kept for backward compatibility with call sites that
+   *  still pass a flat list of month options. */
+  options?: string[];
 }) {
+  const now = new Date();
+  const nowYear = now.getFullYear();
+  const nowMonth = now.getMonth() + 1;
+  const availableYears = new Set<number>([nowYear - 1, nowYear, nowYear + 1]);
+  for (const m of selected) {
+    const y = Number(m.split("-")[0]);
+    if (Number.isFinite(y)) availableYears.add(y);
+  }
+  const yearTabs = Array.from(availableYears).sort((a, b) => b - a);
+
+  const initialYear = (() => {
+    const s = [...selected].sort((a, b) => b.localeCompare(a))[0];
+    const parsed = s ? Number(s.split("-")[0]) : NaN;
+    return Number.isFinite(parsed) ? parsed : nowYear;
+  })();
+  const [viewYear, setViewYear] = useState<number>(initialYear);
+
+  const monthsInYear: string[] = Array.from({ length: 12 }, (_, i) =>
+    `${viewYear}-${String(i + 1).padStart(2, "0")}`,
+  );
+
   function toggle(m: string) {
     if (selected.includes(m)) {
       if (selected.length === 1) return;
@@ -472,10 +501,13 @@ function MonthFilter({
       onChange([...selected, m]);
     }
   }
+
+  const sorted = [...selected].sort((a, b) => b.localeCompare(a));
   const label =
     selected.length === 1
-      ? fmtMonth(selected[0]!)
+      ? fmtMonth(sorted[0]!)
       : `${selected.length} months`;
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -485,24 +517,68 @@ function MonthFilter({
           <ChevronDown className="size-3.5 opacity-60" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-56 max-h-80 overflow-y-auto p-1">
-        {options.map((m) => {
-          const isSelected = selected.includes(m);
-          return (
-            <button
-              key={m}
+      <DropdownMenuContent className="w-72 p-1">
+        <div className="flex gap-1 px-1 pb-1 border-b border-border/60 mb-1 overflow-x-auto">
+          {yearTabs.map((y) => (
+            <Button
+              key={y}
               type="button"
-              onClick={() => toggle(m)}
-              className={cn(
-                "w-full flex items-center justify-between gap-2 px-2 py-1.5 text-sm rounded-md hover:bg-secondary/60",
-                isSelected && "font-semibold",
-              )}
+              variant={viewYear === y ? "default" : "ghost"}
+              size="sm"
+              className="text-xs h-7 px-2 shrink-0"
+              onClick={() => setViewYear(y)}
             >
-              <span>{fmtMonth(m)}</span>
-              {isSelected && <Check className="size-3.5 text-primary" />}
-            </button>
-          );
-        })}
+              {y}
+            </Button>
+          ))}
+        </div>
+        <div className="flex gap-1 px-1 pb-1 border-b border-border/60 mb-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="flex-1 text-xs h-7"
+            onClick={() => onChange(monthsInYear)}
+            disabled={monthsInYear.every((m) => selected.includes(m))}
+          >
+            All {viewYear}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="flex-1 text-xs h-7"
+            onClick={() => onChange([currentMonth()])}
+            disabled={selected.length === 1 && selected[0] === currentMonth()}
+          >
+            This month
+          </Button>
+        </div>
+        <div className="grid grid-cols-3 gap-1 p-1">
+          {monthsInYear.map((m) => {
+            const isSelected = selected.includes(m);
+            const isFuture =
+              viewYear > nowYear ||
+              (viewYear === nowYear && Number(m.split("-")[1]) > nowMonth);
+            return (
+              <button
+                key={m}
+                type="button"
+                onClick={() => toggle(m)}
+                className={cn(
+                  "flex items-center justify-center gap-1 px-2 py-1.5 text-xs rounded-md border transition-colors",
+                  isSelected
+                    ? "border-primary bg-primary/10 font-semibold text-primary"
+                    : "border-transparent hover:bg-secondary/60",
+                  isFuture && !isSelected && "text-muted-foreground",
+                )}
+              >
+                <span>{fmtMonth(m).split(" ")[0]}</span>
+                {isSelected && <Check className="size-3" />}
+              </button>
+            );
+          })}
+        </div>
       </DropdownMenuContent>
     </DropdownMenu>
   );
