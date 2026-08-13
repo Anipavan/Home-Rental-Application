@@ -25,6 +25,7 @@ import {
   X,
 } from "lucide-react";
 import { societyApi } from "@/lib/api/society";
+import { paymentGateway } from "@/lib/api/payment-gateway";
 import { toast } from "@/hooks/use-toast";
 import { extractErrorMessage } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
@@ -203,6 +204,21 @@ function YourMaintenanceTab({ config }: { config: SocietyConfig }) {
     currentMonth(),
   ]);
 
+  // Cashfree payout gate — the maintainer needs either an ACTIVE
+  // Cashfree vendor (bank + KYC verified) OR a fallback collection
+  // UPI. When neither is set up, tenant money has nowhere to actually
+  // settle so we hard-disable every Pay button on this page + swap
+  // the "no UPI yet" banner for a clearer "no payout details yet"
+  // one.
+  const payoutReadyQ = useQuery({
+    queryKey: ["society-maintainer-payout-ready", config.maintainerUserId],
+    queryFn: () => paymentGateway.isOwnerPayoutReady(config.maintainerUserId),
+    enabled: !!config.maintainerUserId,
+    staleTime: 30_000,
+  });
+  const maintainerPayoutReady = payoutReadyQ.data === true;
+  const canAcceptPayment = maintainerPayoutReady || !!config.upiId;
+
   // Stable idempotency key for this page-render. Two clicks of the
   // Pay-all button send the SAME key, so payment-service returns
   // the existing paymentId instead of minting a second order. Reset
@@ -309,18 +325,19 @@ function YourMaintenanceTab({ config }: { config: SocietyConfig }) {
         )}
       </div>
 
-      {!config.upiId && (
-        <Card className="mb-4 border-warning/40 bg-warning/5">
+      {!canAcceptPayment && (
+        <Card className="mb-4 border-destructive/40 bg-destructive/5">
           <CardContent className="p-4 flex items-start gap-3">
-            <Wallet className="size-5 text-warning shrink-0 mt-0.5" />
+            <Wallet className="size-5 text-destructive shrink-0 mt-0.5" />
             <div className="text-sm">
-              <p className="font-semibold">Online payment not set up yet</p>
+              <p className="font-semibold">
+                Society payout details not set up yet
+              </p>
               <p className="text-muted-foreground mt-0.5">
-                The maintainer hasn't added the society's UPI ID to the
-                collection account. Once they do, your Pay button below
-                will generate a UPI QR you can scan from any app. Until
-                then, please pay them directly and ask them to mark the
-                charge as paid.
+                The maintainer hasn't finished setting up bank details /
+                UPI for the society yet. Pay buttons are disabled until
+                they do — please ping them to complete payout setup so
+                your money has somewhere to actually settle.
               </p>
             </div>
           </CardContent>
@@ -396,6 +413,7 @@ function YourMaintenanceTab({ config }: { config: SocietyConfig }) {
                     row={row}
                     config={config}
                     showMonth={showMonthColumn}
+                    canAcceptPayment={canAcceptPayment}
                   />
                 ))}
               </tbody>
@@ -426,7 +444,14 @@ function YourMaintenanceTab({ config }: { config: SocietyConfig }) {
                         size="sm"
                         onClick={() => payAllMut.mutate()}
                         disabled={
-                          payAllMut.isPending || dueCollectionIds.length === 0
+                          payAllMut.isPending ||
+                          dueCollectionIds.length === 0 ||
+                          !canAcceptPayment
+                        }
+                        title={
+                          !canAcceptPayment
+                            ? "Maintainer's bank / UPI payout details aren't set up yet"
+                            : undefined
                         }
                       >
                         {payAllMut.isPending ? (
@@ -617,16 +642,26 @@ function ChargeRow({
   row,
   config,
   showMonth = false,
+  canAcceptPayment = true,
 }: {
   row: FlatMaintenanceRow & { _month?: string };
   config: SocietyConfig;
   showMonth?: boolean;
+  /** False when the maintainer has no ACTIVE Cashfree vendor AND no
+   *  collection UPI wired. Hides the per-row Pay button so tenants
+   *  can't launch a payment that has nowhere to settle. Defaults to
+   *  true for the legacy callers that didn't pass this prop. */
+  canAcceptPayment?: boolean;
 }) {
   const label = row.category ? CHARGE_LABELS[row.category] : "Other";
   const tone = STATUS_TONES[row.status] ?? "bg-muted text-muted-foreground";
   const isPaid = row.status === "PAID";
-  const canPay =
-    (row.status === "DUE" || row.status === "OVERDUE") && row.collectionId;
+  // Row is a candidate for Pay when it's DUE/OVERDUE with a real
+  // collectionId. Whether the button is enabled or disabled then
+  // depends on whether the society has payout details.
+  const isPayable =
+    (row.status === "DUE" || row.status === "OVERDUE") && !!row.collectionId;
+  const canPay = isPayable && canAcceptPayment;
 
   return (
     <tr className="border-b border-border/60 last:border-b-0 hover:bg-secondary/20">
@@ -667,7 +702,7 @@ function ChargeRow({
         </span>
       </td>
       <td className="px-3 py-2 align-top text-right whitespace-nowrap">
-        {canPay && (
+        {canPay ? (
           <Button asChild variant="gradient" size="sm">
             <Link
               to={`/app/society/pay/${config.buildingId}/${row.collectionId}`}
@@ -675,7 +710,16 @@ function ChargeRow({
               Pay {formatINR(row.monthAmount)}
             </Link>
           </Button>
-        )}
+        ) : isPayable ? (
+          <Button
+            variant="gradient"
+            size="sm"
+            disabled
+            title="Maintainer's bank / UPI payout details aren't set up yet"
+          >
+            Pay {formatINR(row.monthAmount)}
+          </Button>
+        ) : null}
         {isPaid && (
           <CheckCircle2
             className="size-5 text-success inline-block"
