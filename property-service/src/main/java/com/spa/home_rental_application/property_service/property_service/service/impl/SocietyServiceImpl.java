@@ -1674,13 +1674,27 @@ public class SocietyServiceImpl implements SocietyService {
         // forwarded so a fast double-click on "Pay all" collides on
         // the same key and returns the existing paymentId instead of
         // creating two Razorpay orders.
+        //
+        // For SOCIETY_CHARGE, the "ownerId" slot on the Payment row is
+        // the PAYEE — the user whose Cashfree vendor should receive
+        // the split. For maintenance that's the building's maintainer
+        // (Building.maintainer_user_id / SocietyConfig.maintainer_user_id),
+        // NOT the landlord. Falls back to the landlord only when the
+        // building has no maintainer assigned yet (fresh building, or
+        // no society set up), which keeps direct-UPI working during
+        // the pre-society transition without routing maintenance money
+        // to the wrong Cashfree vendor.
+        String payeeUserId = b.getMaintainerUserId() != null
+                && !b.getMaintainerUserId().isBlank()
+                ? b.getMaintainerUserId()
+                : b.getOwnerId();
         PaymentClient.CreatePaymentRequest body = new PaymentClient.CreatePaymentRequest(
                 flat.getTenantId(),
                 // Flat entity's @Id column is just "id" — the "flatId"
                 // string lives on MaintenanceCollection / Payment as
                 // their FK to this row. Don't confuse the two.
                 flat.getId(),
-                b.getOwnerId(),
+                payeeUserId,
                 total,
                 LocalDate.now(),  // due "now" — the tenant is paying right now
                 // Tag this as a society charge so the tenant Payments
