@@ -121,6 +121,36 @@ public class SocietyConfig {
     @Column(name = "ifsc_code", length = 16)
     private String ifscCode;
 
+    /* ─── Cashfree Easy Split vendor KYC fields ───
+     * These are what payment-service needs to register the SOCIETY
+     * as an Easy Split vendor. Distinct from the maintainer user's
+     * personal PAN/phone/email — a society is legally its own payee
+     * (RWA / association / trustee account), so its KYC identity
+     * lives here on the society config, not on the maintainer's
+     * user profile. All nullable; the vendor stays PENDING_KYC
+     * until all four (pan + phone + email + businessType) are set
+     * alongside the bank fields above.
+     */
+
+    /** PAN of the society / RWA / account holder entity. Required by
+     *  Cashfree for vendor KYC. 10 chars per Indian PAN spec. */
+    @Column(name = "pan_number", length = 10)
+    private String panNumber;
+
+    /** Contact phone for Cashfree KYC + payout notifications. Stored
+     *  in E.164-friendly form (10-digit Indian or +91-prefixed). */
+    @Column(name = "contact_phone", length = 20)
+    private String contactPhone;
+
+    /** Contact email for Cashfree KYC + settlement statements. */
+    @Column(name = "contact_email", length = 200)
+    private String contactEmail;
+
+    /** Cashfree business_type value. Defaults to "Real Estate,
+     *  Housing, Rentals" for societies. */
+    @Column(name = "business_type", length = 64)
+    private String businessType;
+
     /* ─── Bank-config health flag (V16) ───
      * Set by {@code reportBankIssue()} when a tenant taps the "This UPI
      * isn't working" button on the direct-UPI pay page. Cleared

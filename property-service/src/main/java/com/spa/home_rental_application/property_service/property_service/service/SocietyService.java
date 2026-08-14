@@ -11,6 +11,7 @@ import com.spa.home_rental_application.property_service.property_service.DTO.Res
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.PromoteTenantResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyChargeLineItemResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyChargePaymentInitiatedResponse;
+import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyBankDetailsInternalResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyConfigResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyLedgerResponse;
 
@@ -37,6 +38,14 @@ public interface SocietyService {
     SocietyConfigResponse setupSociety(String buildingId, SetupSocietyRequest req);
 
     SocietyConfigResponse getConfig(String buildingId);
+
+    /**
+     * Internal-only: full bank + KYC dump for the SOCIETY, consumed
+     * by payment-service to register a Cashfree Easy Split vendor.
+     * NOT exposed to browser clients — the account_number field is
+     * returned unmasked.
+     */
+    SocietyBankDetailsInternalResponse getBankDetailsInternal(String buildingId);
 
     SocietyConfigResponse updateConfig(String buildingId, SetupSocietyRequest req);
 

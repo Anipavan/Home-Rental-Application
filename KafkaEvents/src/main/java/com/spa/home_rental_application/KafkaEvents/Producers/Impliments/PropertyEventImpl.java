@@ -4,6 +4,7 @@ import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyService
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyServiceEvents.FlatVacatedEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyServiceEvents.PropertyCreatedEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyServiceEvents.PropertyUpdatedEvent;
+import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyServiceEvents.SocietyBankAccountSavedEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyServiceEvents.TenantVacateScheduledEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.Events.PropertyServiceEvents;
 import com.spa.home_rental_application.KafkaEvents.config.KafkaTopicProperties;
@@ -61,5 +62,15 @@ public class PropertyEventImpl implements PropertyServiceEvents {
         log.debug("→ {} : tenant.vacate.scheduled flatId={} ownerId={} vacateDate={}",
                 topics.getPropertyTopic(), event.getFlatId(), event.getOwnerId(), event.getVacateDate());
         kafkaTemplate.send(topics.getPropertyTopic(), event.getFlatId(), event);
+    }
+
+    @Override
+    public void sendSocietyBankAccountSaved(SocietyBankAccountSavedEvent event) {
+        log.debug("→ {} : society.bank-account.saved buildingId={} last4={}",
+                topics.getPropertyTopic(), event.getBuildingId(), event.getAccountNumberLast4());
+        // Key on buildingId so all society-bank events for the same
+        // building land on the same partition — preserves ordering
+        // when the maintainer edits and re-edits rapidly.
+        kafkaTemplate.send(topics.getPropertyTopic(), event.getBuildingId(), event);
     }
 }

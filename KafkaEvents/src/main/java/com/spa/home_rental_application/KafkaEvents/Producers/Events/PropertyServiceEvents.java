@@ -4,6 +4,7 @@ import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyService
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyServiceEvents.FlatVacatedEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyServiceEvents.PropertyCreatedEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyServiceEvents.PropertyUpdatedEvent;
+import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyServiceEvents.SocietyBankAccountSavedEvent;
 import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyServiceEvents.TenantVacateScheduledEvent;
 
 public interface PropertyServiceEvents {
@@ -18,4 +19,13 @@ public interface PropertyServiceEvents {
      * this and fans an owner-facing alert across every channel.
      */
     void sendTenantVacateScheduled(TenantVacateScheduledEvent event);
+
+    /**
+     * Fired when a maintainer/owner saves or updates the SOCIETY's
+     * bank + KYC details. payment-service consumes this and registers
+     * (or PATCHes) the Cashfree Easy Split vendor keyed on the
+     * society so maintenance payments settle to the society's own
+     * account instead of the maintainer's personal one.
+     */
+    void sendSocietyBankAccountSaved(SocietyBankAccountSavedEvent event);
 }

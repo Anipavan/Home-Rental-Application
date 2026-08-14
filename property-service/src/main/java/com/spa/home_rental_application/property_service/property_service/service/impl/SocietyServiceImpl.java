@@ -12,6 +12,7 @@ import com.spa.home_rental_application.property_service.property_service.DTO.Res
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.PublicFlatBillResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyChargeLineItemResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyChargePaymentInitiatedResponse;
+import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyBankDetailsInternalResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyConfigResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyLedgerResponse;
 import com.spa.home_rental_application.property_service.property_service.Entities.Building;
@@ -24,6 +25,8 @@ import com.spa.home_rental_application.property_service.property_service.Mapper.
 import com.spa.home_rental_application.property_service.property_service.client.AuthClient;
 import com.spa.home_rental_application.property_service.property_service.client.PaymentClient;
 import com.spa.home_rental_application.property_service.property_service.client.UserClient;
+import com.spa.home_rental_application.KafkaEvents.Producers.DTO.PropertyServiceEvents.SocietyBankAccountSavedEvent;
+import com.spa.home_rental_application.KafkaEvents.Producers.Events.PropertyServiceEvents;
 import com.spa.home_rental_application.property_service.property_service.enums.CollectionStatus;
 import com.spa.home_rental_application.property_service.property_service.enums.ExpenseCategory;
 import com.spa.home_rental_application.property_service.property_service.enums.MaintenanceCategory;
@@ -98,6 +101,7 @@ public class SocietyServiceImpl implements SocietyService {
     private final UserClient userClient;
     private final AuthClient authClient;
     private final PaymentClient paymentClient;
+    private final PropertyServiceEvents propertyEvents;
 
     public SocietyServiceImpl(SocietyConfigRepository configRepo,
                               MaintenanceExpenseRepository expenseRepo,
@@ -110,7 +114,8 @@ public class SocietyServiceImpl implements SocietyService {
                               SocietyMapper mapper,
                               UserClient userClient,
                               AuthClient authClient,
-                              PaymentClient paymentClient) {
+                              PaymentClient paymentClient,
+                              PropertyServiceEvents propertyEvents) {
         this.configRepo = configRepo;
         this.expenseRepo = expenseRepo;
         this.collectionRepo = collectionRepo;
@@ -123,6 +128,41 @@ public class SocietyServiceImpl implements SocietyService {
         this.userClient = userClient;
         this.authClient = authClient;
         this.paymentClient = paymentClient;
+        this.propertyEvents = propertyEvents;
+    }
+
+    /**
+     * Fire the society.bank-account.saved Kafka event so payment-
+     * service can (re-)register a Cashfree Easy Split vendor keyed on
+     * this society. Called from setupSociety + updateConfig whenever
+     * ANY of the bank/KYC fields changed. Payload carries no secrets —
+     * the consumer Feigns back for full bank + KYC details when it
+     * actually needs them for the Cashfree call.
+     */
+    private void emitSocietyBankSavedIfWired(SocietyConfig cfg) {
+        try {
+            String last4 = null;
+            if (cfg.getAccountNumber() != null && cfg.getAccountNumber().length() >= 4) {
+                last4 = cfg.getAccountNumber()
+                        .substring(cfg.getAccountNumber().length() - 4);
+            }
+            String savedBy = CallerSecurity.getCurrentAuthUserId()
+                    .orElse(cfg.getMaintainerUserId());
+            propertyEvents.sendSocietyBankAccountSaved(
+                    SocietyBankAccountSavedEvent.builder()
+                            .eventType("society.bank-account.saved")
+                            .buildingId(cfg.getBuildingId())
+                            .savedByUserId(savedBy)
+                            .accountNumberLast4(last4)
+                            .payeeName(cfg.getPayeeName())
+                            .timestamp(java.time.Instant.now())
+                            .build());
+        } catch (Exception ex) {
+            // Kafka down shouldn't fail the user's save — the admin
+            // re-register endpoint gives us a manual recovery path.
+            log.warn("Failed to emit society.bank-account.saved for buildingId={}: {}",
+                    cfg.getBuildingId(), ex.toString());
+        }
     }
 
     // ── Config ────────────────────────────────────────────────────
@@ -168,6 +208,14 @@ public class SocietyServiceImpl implements SocietyService {
                 .accountNumber(blankToNull(req.accountNumber()))
                 .ifscCode(blankToNull(req.ifscCode() == null ? null
                         : req.ifscCode().toUpperCase()))
+                // Cashfree KYC fields — default businessType to the
+                // sandbox-safe value so a maintainer doesn't have to
+                // pick from the dropdown on first setup.
+                .panNumber(blankToNull(req.panNumber() == null ? null
+                        : req.panNumber().toUpperCase()))
+                .contactPhone(blankToNull(req.contactPhone()))
+                .contactEmail(blankToNull(req.contactEmail()))
+                .businessType(blankToNull(req.businessType()))
                 .createdAt(now)
                 .updatedAt(now)
                 .build();
@@ -175,6 +223,17 @@ public class SocietyServiceImpl implements SocietyService {
         log.info("Society setup buildingId={} maintainerUserId={} default={} upi={}",
                 buildingId, maintainerUserId, req.defaultPerFlatAmount(),
                 cfg.getUpiId() != null);
+        // On first setup, if the maintainer already supplied any of
+        // the bank/KYC fields (common when they set it all up in one
+        // pass), kick the Cashfree vendor registration flow.
+        boolean bankOrKycSet = cfg.getAccountNumber() != null
+                || cfg.getIfscCode() != null
+                || cfg.getPanNumber() != null
+                || cfg.getContactPhone() != null
+                || cfg.getContactEmail() != null;
+        if (bankOrKycSet) {
+            emitSocietyBankSavedIfWired(cfg);
+        }
         return mapper.toResponse(cfg);
     }
 
@@ -194,6 +253,33 @@ public class SocietyServiceImpl implements SocietyService {
         SocietyConfig cfg = requireConfig(buildingId);
         requireOwnerOrMaintainerOrTenantOrAdmin(buildingId, cfg);
         return mapper.toResponse(cfg);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public SocietyBankDetailsInternalResponse getBankDetailsInternal(String buildingId) {
+        // Called from payment-service's Feign client at Cashfree
+        // vendor-registration time. No CallerSecurity check — the
+        // endpoint sits behind the gateway's internal-auth secret
+        // and the account_number is returned unmasked, so it must
+        // never be reachable from the browser. See
+        // {@code SocietyController.getBankDetailsInternal} for the
+        // /internal/... path that keeps it off the public router.
+        SocietyConfig cfg = requireConfig(buildingId);
+        return new SocietyBankDetailsInternalResponse(
+                cfg.getBuildingId(),
+                cfg.getId(),
+                cfg.getMaintainerUserId(),
+                cfg.getSocietyDisplayName(),
+                cfg.getAccountNumber(),
+                cfg.getIfscCode(),
+                cfg.getPayeeName(),
+                cfg.getUpiId(),
+                cfg.getPanNumber(),
+                cfg.getContactPhone(),
+                cfg.getContactEmail(),
+                cfg.getBusinessType()
+        );
     }
 
     @Override
@@ -218,17 +304,24 @@ public class SocietyServiceImpl implements SocietyService {
             CallerSecurity.requireOwnerOrAdmin(b.getOwnerId());
             cfg.setMaintainerUserId(req.maintainerUserId().trim());
         }
-        // Bank / UPI — owner OR maintainer can update. Empty string
-        // → null (clear the field) so the maintainer can explicitly
-        // wipe a stale entry. ifsc_code normalised to upper-case to
-        // match the @Pattern validator on the request DTO.
-        // Track whether the maintainer touched any bank field this
-        // update — if they did, and the config was flagged as broken,
-        // treat the fresh save as acknowledgement + clear the flag.
+        // Bank / UPI / KYC — owner OR maintainer can update. Empty
+        // string → null (clear the field) so the maintainer can
+        // explicitly wipe a stale entry. ifsc_code + PAN normalised
+        // to upper-case to match the @Pattern validators.
+        // Track whether the maintainer touched any bank / KYC field
+        // this update — if they did, and the config was flagged as
+        // broken, treat the fresh save as acknowledgement + clear
+        // the flag; we also fire the society.bank-account.saved
+        // event so payment-service can re-run Cashfree vendor
+        // registration / update.
         boolean bankFieldEdited = req.upiId() != null
                 || req.payeeName() != null
                 || req.accountNumber() != null
-                || req.ifscCode() != null;
+                || req.ifscCode() != null
+                || req.panNumber() != null
+                || req.contactPhone() != null
+                || req.contactEmail() != null
+                || req.businessType() != null;
 
         if (req.upiId() != null) cfg.setUpiId(blankToNull(req.upiId()));
         if (req.payeeName() != null) cfg.setPayeeName(blankToNull(req.payeeName()));
@@ -236,6 +329,12 @@ public class SocietyServiceImpl implements SocietyService {
         if (req.ifscCode() != null) {
             cfg.setIfscCode(blankToNull(req.ifscCode().toUpperCase()));
         }
+        if (req.panNumber() != null) {
+            cfg.setPanNumber(blankToNull(req.panNumber().toUpperCase()));
+        }
+        if (req.contactPhone() != null) cfg.setContactPhone(blankToNull(req.contactPhone()));
+        if (req.contactEmail() != null) cfg.setContactEmail(blankToNull(req.contactEmail()));
+        if (req.businessType() != null) cfg.setBusinessType(blankToNull(req.businessType()));
         // Cross-field check on the POST-update state — the tenant's UPI
         // app shows payeeName next to the amount, so a blank one reads
         // as a scam and tanks payment completion. Enforce after applying
@@ -256,6 +355,14 @@ public class SocietyServiceImpl implements SocietyService {
 
         cfg.setUpdatedAt(LocalDateTime.now());
         cfg = configRepo.save(cfg);
+        // Fire the Kafka event whenever bank / KYC changed so
+        // payment-service's SocietyCashfreeVendorEventListener runs
+        // (re-)registration against Cashfree. Skip for pure-config
+        // edits (dueDay, displayName only) — no need to bother the
+        // gateway with those.
+        if (bankFieldEdited) {
+            emitSocietyBankSavedIfWired(cfg);
+        }
         return mapper.toResponse(cfg);
     }
 

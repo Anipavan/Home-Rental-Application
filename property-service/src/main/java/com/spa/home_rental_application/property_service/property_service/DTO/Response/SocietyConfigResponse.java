@@ -33,6 +33,18 @@ public record SocietyConfigResponse(
         String accountNumber,
         String ifscCode,
 
+        /* ─── Cashfree Easy Split KYC (nullable) ───
+         * Populated by the maintainer via the Society Page bank
+         * panel. Once every field here + bank fields above are set,
+         * payment-service registers a Cashfree vendor keyed on this
+         * society so tenant maintenance money settles to the
+         * society's own bank (not the maintainer's personal one).
+         */
+        String panNumber,
+        String contactPhone,
+        String contactEmail,
+        String businessType,
+
         /* ─── Bank-config health flag (V16) ───
          * Non-null timestamp = at least one tenant has reported the
          * society's UPI as broken via the "This UPI isn't working"

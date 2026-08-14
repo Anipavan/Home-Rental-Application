@@ -87,7 +87,20 @@ public class SchemaMigrationRunner {
             // warning banner; editing upi_id or payee_name in the bank
             // panel auto-clears both columns (see SocietyServiceImpl).
             new Migration("building_society_config", "bank_config_flagged_at",   "TIMESTAMP"),
-            new Migration("building_society_config", "bank_config_flag_reports", "NUMBER(10) DEFAULT 0")
+            new Migration("building_society_config", "bank_config_flag_reports", "NUMBER(10) DEFAULT 0"),
+
+            // V19 — Cashfree Easy Split vendor KYC fields for the
+            // society. These feed the Cashfree vendor registration
+            // (via payment-service consumer of the
+            // society.bank-account.saved event) so tenant maintenance
+            // money settles to the society's own account instead of
+            // the maintainer's personal bank. All nullable — vendor
+            // stays PENDING_KYC until PAN + phone + email + bank are
+            // all set.
+            new Migration("building_society_config", "pan_number",     "VARCHAR2(10)"),
+            new Migration("building_society_config", "contact_phone",  "VARCHAR2(20)"),
+            new Migration("building_society_config", "contact_email",  "VARCHAR2(200)"),
+            new Migration("building_society_config", "business_type",  "VARCHAR2(64)")
     );
 
     private final JdbcTemplate jdbc;

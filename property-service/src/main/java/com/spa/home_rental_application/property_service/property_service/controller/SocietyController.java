@@ -11,6 +11,7 @@ import com.spa.home_rental_application.property_service.property_service.DTO.Res
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.PromoteTenantResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyChargeLineItemResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyChargePaymentInitiatedResponse;
+import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyBankDetailsInternalResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyConfigResponse;
 import com.spa.home_rental_application.property_service.property_service.DTO.Response.SocietyLedgerResponse;
 import com.spa.home_rental_application.property_service.property_service.service.SocietyService;
@@ -74,6 +75,20 @@ public class SocietyController {
     @GetMapping("/{buildingId}")
     public ResponseEntity<SocietyConfigResponse> get(@PathVariable String buildingId) {
         return ResponseEntity.ok(service.getConfig(buildingId));
+    }
+
+    /**
+     * Internal-only: full bank + KYC dump for payment-service's
+     * Cashfree vendor registration flow. Returns the FULL account
+     * number unmasked — must never be reachable from the browser.
+     * The {@code /internal/} URL segment is on the gateway's internal-
+     * auth-required path list so external callers get a 401.
+     */
+    @Operation(summary = "INTERNAL: full bank + KYC dump for Cashfree vendor registration.")
+    @GetMapping("/{buildingId}/internal/bank-details")
+    public ResponseEntity<SocietyBankDetailsInternalResponse> getBankDetailsInternal(
+            @PathVariable String buildingId) {
+        return ResponseEntity.ok(service.getBankDetailsInternal(buildingId));
     }
 
     @Operation(summary = "Owner / maintainer: update config (display name, due day, default amount, or reassign maintainer).")
