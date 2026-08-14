@@ -120,7 +120,17 @@ export function OwnerDashboard() {
   const totalFlats =
     buildingsQ.data?.reduce((sum, b) => sum + (b.activeFlatsCount ?? b.buildingTotalFlats ?? 0), 0) ?? 0;
 
-  const payments = paymentsQ.data ?? [];
+  // Owner dashboard shows the RENT business only. Society / maintenance
+  // charges the same user may collect in their maintainer capacity live
+  // on the /maintainer/{buildingId}/flats surface. GET /payments/owner
+  // returns both because our Payment.ownerId slot doubles as the
+  // "payee-user" for a maintenance row (see the split-recipient fix in
+  // SocietyServiceImpl.initiateSocietyChargePayment) — filter here so
+  // KPIs, the monthly collection chart, top-tenants, aging buckets, and
+  // recent activity all reflect rent only and don't double-count.
+  const payments = (paymentsQ.data ?? []).filter(
+    (p) => p.sourceType !== "SOCIETY_CHARGE",
+  );
   const paidThisMonth = payments
     .filter((p) => {
       if (p.status !== "PAID" || !p.paymentDate) return false;
@@ -190,7 +200,10 @@ export function OwnerDashboard() {
 
   // Resolve flatId UUIDs to readable flat numbers for the Recent activity
   // strip + the maintenance queue. 60 s cache — single batched fetch.
-  const recentPayments = (paymentsQ.data ?? []).slice(0, 5);
+  // Reads the rent-only filtered `payments` (not raw paymentsQ.data)
+  // so recent-activity doesn't leak society charges into the rent
+  // dashboard's activity feed.
+  const recentPayments = payments.slice(0, 5);
   // Queue card pulls from BOTH kinds so a busy owner sees every
   // active ticket, not just physical maintenance.
   const openMaintTickets = allTickets

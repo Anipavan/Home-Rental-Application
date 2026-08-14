@@ -73,7 +73,13 @@ export function TenantsPage() {
   });
 
   const tenantedFlats = (flatsQ.data ?? []).filter((f) => f.tenantId);
-  const allPayments = paymentsQ.data ?? [];
+  // Rent-only view — society charges live on the maintainer surface.
+  // Same filter pattern as owner/dashboard and owner/payments; keeps
+  // per-tenant outstanding aggregation limited to rent so the sort
+  // order + the summary banner reflect rent dues only.
+  const allPayments = (paymentsQ.data ?? []).filter(
+    (p) => p.sourceType !== "SOCIETY_CHARGE",
+  );
 
   // Per-tenant outstanding rollup, used for both the page-wide
   // summary banner AND the sort order of the cards. Keying by

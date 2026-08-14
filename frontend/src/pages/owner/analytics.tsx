@@ -50,7 +50,14 @@ export function OwnerAnalyticsPage() {
   const occupied = flats.filter((f) => f.isOccupied).length;
   const vacant = flats.length - occupied;
 
-  const revenueByMonth = monthlyRevenue(paymentsQ.data ?? []);
+  // Rent-only analytics — society charges collected in the
+  // maintainer capacity live on the maintainer dashboard, not in
+  // rent revenue trends. Filter here so the monthly revenue line
+  // reflects rent only.
+  const rentPayments = (paymentsQ.data ?? []).filter(
+    (p) => p.sourceType !== "SOCIETY_CHARGE",
+  );
+  const revenueByMonth = monthlyRevenue(rentPayments);
 
   const occupancyData = [
     { name: "Occupied", value: occupied, fill: "hsl(244 75% 59%)" },

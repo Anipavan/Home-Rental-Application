@@ -107,7 +107,15 @@ export function TenantDetailPage() {
     enabled: !!viewerAuthUserId,
     staleTime: 15_000,
     refetchOnWindowFocus: true,
-    select: (all) => all.filter((p) => p.tenantId === authUserId),
+    // Rent-only view for the owner's tenant-detail page — filter
+    // society charges out alongside the per-tenant slice. Payment.
+    // ownerId doubles as the maintenance payee slot, so GET
+    // /payments/owner returns both; the owner's tenant-detail card
+    // should reflect rent history only.
+    select: (all) =>
+      all.filter(
+        (p) => p.tenantId === authUserId && p.sourceType !== "SOCIETY_CHARGE",
+      ),
   });
 
   const maintenanceQ = useQuery({

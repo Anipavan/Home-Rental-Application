@@ -176,7 +176,15 @@ export function OwnerPaymentsPage() {
       }),
   });
 
-  const list = q.data ?? [];
+  // /owner/payments is the RENT-collection view. GET /payments/owner
+  // now returns society charges too (Payment.ownerId doubles as the
+  // maintenance payee slot per SocietyServiceImpl.initiateSocietyCharge
+  // Payment), so filter them out here — maintenance dashboards live
+  // on /maintainer/{buildingId}/flats and shouldn't leak into the
+  // owner's rent totals or table.
+  const list = (q.data ?? []).filter(
+    (p) => p.sourceType !== "SOCIETY_CHARGE",
+  );
   const pending = list.filter((p) => p.status === "PENDING");
   const overdue = list.filter((p) => p.status === "OVERDUE");
   const paid = list.filter((p) => p.status === "PAID");
