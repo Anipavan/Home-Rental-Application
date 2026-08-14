@@ -81,13 +81,17 @@ public class CashfreeVendorServiceImpl implements CashfreeVendorService {
                         .attemptCount(0)
                         .build());
 
-        // Terminal states — don't touch. Admin uses reRegister() to
-        // force a retry from REJECTED / FAILED.
+        // ACTIVE / IN_BANK_VALIDATION path — this used to be a hard
+        // early-return, but that meant editing bank details in the
+        // profile UI silently diverged from the destination Cashfree
+        // was actually routing money to. Now: fetch the CURRENT bank,
+        // compare against what's stored locally, and if the tuple
+        // differs, PATCH the Cashfree vendor with the new bank and
+        // reset local status to IN_BANK_VALIDATION until Cashfree's
+        // penny-drop re-verifies. Unchanged banks still short-circuit.
         if (row.getStatus() == CashfreeVendorStatus.ACTIVE
                 || row.getStatus() == CashfreeVendorStatus.IN_BANK_VALIDATION) {
-            log.debug("Vendor for userId={} already at status={}, skipping",
-                    userId, row.getStatus());
-            return Optional.of(repo.save(row));
+            return syncBankIfChanged(userId, row);
         }
         if (row.getAttemptCount() != null && row.getAttemptCount() >= MAX_ATTEMPTS
                 && row.getStatus() == CashfreeVendorStatus.FAILED) {
@@ -222,6 +226,100 @@ public class CashfreeVendorServiceImpl implements CashfreeVendorService {
                 CashfreeVendorStatus.REJECTED,
                 CashfreeVendorStatus.FAILED
         ));
+    }
+
+    /**
+     * Reconcile a live Cashfree vendor with the user's current bank.
+     * If the bank hasn't changed since the last successful
+     * registration we no-op (the debounced Kafka event storm on
+     * every user-service save would otherwise hammer Cashfree). If it
+     * has changed we call {@code updateVendor} which PATCHes the
+     * vendor and re-triggers penny-drop, dropping local status to
+     * {@code IN_BANK_VALIDATION} until it settles.
+     */
+    private Optional<CashfreeVendor> syncBankIfChanged(String userId, CashfreeVendor row) {
+        UserClient.BankAccountInternal bank = safeFetchBank(userId);
+        if (bank == null
+                || bank.accountNumber() == null || bank.accountNumber().isBlank()
+                || bank.ifscCode() == null || bank.ifscCode().isBlank()) {
+            // Bank details vanished (user cleared them?) — leave the
+            // Cashfree vendor as-is so existing payouts keep working.
+            // A real "vendor should stop accepting money" flow needs
+            // an explicit admin action, not an implicit inference.
+            log.debug("Vendor userId={} is {} but no bank on file to compare; leaving unchanged",
+                    userId, row.getStatus());
+            return Optional.of(repo.save(row));
+        }
+        String newLast4 = bank.accountNumber().length() >= 4
+                ? bank.accountNumber().substring(bank.accountNumber().length() - 4)
+                : bank.accountNumber();
+        boolean same = java.util.Objects.equals(newLast4, row.getBankAccountLast4())
+                && java.util.Objects.equals(bank.ifscCode(), row.getBankIfsc())
+                && java.util.Objects.equals(bank.accountHolderName(), row.getBankAccountHolder());
+        if (same) {
+            log.debug("Vendor userId={} bank unchanged (last4={} ifsc={}), no-op",
+                    userId, newLast4, bank.ifscCode());
+            return Optional.of(repo.save(row));
+        }
+
+        log.info("Vendor userId={} bank changed (old last4={} ifsc={} → new last4={} ifsc={}), issuing PATCH",
+                userId, row.getBankAccountLast4(), row.getBankIfsc(), newLast4, bank.ifscCode());
+
+        if (!"cashfree".equalsIgnoreCase(activeGateway)
+                || !(paymentGateway instanceof CashfreePaymentGateway cashfree)) {
+            // Mock-mode: just mirror the new bank locally, skip API.
+            row.setBankAccountHolder(bank.accountHolderName());
+            row.setBankIfsc(bank.ifscCode());
+            row.setBankAccountLast4(newLast4);
+            log.info("Vendor userId={} bank mirrored locally (gateway=mock, skipping Cashfree PATCH)", userId);
+            return Optional.of(repo.save(row));
+        }
+
+        // Real gateway path — fetch KYC too so we can send the same
+        // shape the create path used (email / phone / name recomputed
+        // in case those also drifted). PAN can't change on Cashfree's
+        // side once ACTIVE; passing whatever's stored is a no-op there.
+        KycClient.KycInternal kyc = safeFetchKyc(userId);
+        String panHolder = kyc == null ? null : kyc.panHolderName();
+        String panNumber = kyc == null ? null : kyc.panNumber();
+        String email = safeUserEmail(userId, panHolder);
+        String phone = "9999999999";
+
+        try {
+            var result = cashfree.updateVendor(
+                    new CashfreePaymentGateway.CashfreeVendorRegistrationRequest(
+                            row.getCashfreeVendorId(),
+                            firstNonBlank(panHolder, bank.accountHolderName(), userId),
+                            email,
+                            phone,
+                            panNumber,
+                            bank.accountNumber(),
+                            bank.accountHolderName(),
+                            bank.ifscCode(),
+                            null
+                    )
+            );
+            row.setBankAccountHolder(bank.accountHolderName());
+            row.setBankIfsc(bank.ifscCode());
+            row.setBankAccountLast4(newLast4);
+            // Reflect Cashfree's returned status (typically flips to
+            // IN_BANK_VALIDATION until the new penny-drop clears);
+            // fall back to IN_BANK_VALIDATION if the response is thin.
+            CashfreeVendorStatus newStatus = mapCashfreeStatus(result.status());
+            if (newStatus == CashfreeVendorStatus.REGISTERING) {
+                newStatus = CashfreeVendorStatus.IN_BANK_VALIDATION;
+            }
+            row.setStatus(newStatus);
+            row.setFailureReason(null);
+            row.setLastAttemptedAt(Instant.now());
+        } catch (Exception ex) {
+            log.warn("Cashfree updateVendor failed for userId={}", userId, ex);
+            // Keep the ACTIVE status — the old bank still works, so
+            // payments don't hard-fail. Surface the failure via the
+            // failureReason column so admins can spot the divergence.
+            row.setFailureReason(safeTruncate("Bank update failed: " + ex.getMessage(), 1900));
+        }
+        return Optional.of(repo.save(row));
     }
 
     /* ---------- helpers ---------- */

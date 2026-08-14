@@ -285,6 +285,51 @@ public class CashfreePaymentGateway implements PaymentGateway {
         return new CashfreeVendorRegistrationResult(returnedVendorId, status);
     }
 
+    /**
+     * Update an existing Cashfree Easy Split vendor's bank details
+     * (and optionally name / email / phone). Wraps
+     * {@code PATCH /easy-split/vendors/{vendor_id}}.
+     *
+     * <p>Called by {@code CashfreeVendorServiceImpl} when a Kafka
+     * event reports the user's bank has changed AFTER the vendor is
+     * already ACTIVE. Without this, editing bank details in the
+     * profile UI silently diverges from the destination Cashfree
+     * routes money to — a real payout-integrity bug the moment we
+     * hit production.
+     *
+     * <p>Cashfree re-runs their penny-drop against the new bank, so
+     * the vendor transitions back to {@code IN_BANK_VALIDATION}
+     * before it re-activates. Caller stores that transitional state
+     * so the tenant pay page correctly falls back to direct-UPI in
+     * the meantime.
+     */
+    public CashfreeVendorRegistrationResult updateVendor(CashfreeVendorRegistrationRequest req) {
+        if (!props.credentialsConfigured()) {
+            throw new PaymentGatewayException("Cashfree credentials not configured");
+        }
+        // Cashfree's PATCH accepts a subset — bank is the field we
+        // actually care about, plus contact fields in case the user
+        // also updated those. Vendor id, KYC, and status are
+        // immutable via this endpoint.
+        java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
+        if (req.name() != null && !req.name().isBlank())   body.put("name",  req.name());
+        if (req.email() != null && !req.email().isBlank()) body.put("email", req.email());
+        if (req.phone() != null && !req.phone().isBlank()) body.put("phone", req.phone());
+        body.put("bank", Map.of(
+                "account_number",  req.bankAccountNumber(),
+                "account_holder",  req.bankAccountHolder(),
+                "ifsc",            req.bankIfsc()
+        ));
+        body.put("verify_account", true);
+
+        JsonNode resp = patch("/easy-split/vendors/" + req.vendorId(), body,
+                "CASHFREE_VENDOR_UPDATE", req.vendorId());
+        String returnedVendorId = resp.path("vendor_id").asText(req.vendorId());
+        String status = resp.path("status").asText("IN_BANK_VALIDATION");
+        log.info("Cashfree vendor updated vendorId={} newStatus={}", returnedVendorId, status);
+        return new CashfreeVendorRegistrationResult(returnedVendorId, status);
+    }
+
     /** Inbound to {@link #registerVendor}. Kept in this file to avoid DTO sprawl. */
     public record CashfreeVendorRegistrationRequest(
             String vendorId,
@@ -386,6 +431,30 @@ public class CashfreePaymentGateway implements PaymentGateway {
                     "TRANSPORT_ERROR", e.getMessage(),
                     (int) (System.currentTimeMillis() - startMs), triggeredByUserId);
             throw new PaymentGatewayException("Cashfree POST " + path + " failed: " + e.getMessage());
+        }
+    }
+
+    private JsonNode patch(String path, Object body, String vendorTag, String triggeredByUserId) {
+        long startMs = System.currentTimeMillis();
+        try {
+            String payload = json.writeValueAsString(body);
+            // Java's HttpClient doesn't have a first-class .PATCH()
+            // builder — go via .method("PATCH", ...) which is the
+            // documented workaround since JDK 11.
+            HttpRequest req = baseRequest(path)
+                    .method("PATCH", HttpRequest.BodyPublishers.ofString(payload, StandardCharsets.UTF_8))
+                    .header("Content-Type", "application/json")
+                    .build();
+            HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
+            return checkOk(resp, path, vendorTag, triggeredByUserId, startMs);
+        } catch (PaymentGatewayException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("Cashfree PATCH {} failed", path, e);
+            recordUsage(vendorTag, "PATCH " + path, VendorApiCall.Status.OUTAGE,
+                    "TRANSPORT_ERROR", e.getMessage(),
+                    (int) (System.currentTimeMillis() - startMs), triggeredByUserId);
+            throw new PaymentGatewayException("Cashfree PATCH " + path + " failed: " + e.getMessage());
         }
     }
 

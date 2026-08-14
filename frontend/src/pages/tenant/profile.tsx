@@ -475,17 +475,18 @@ export function ProfilePage() {
           "where do I put my account details" without scrolling through
           the personal-info form. Self-contained: manages its own
           query / mutations / edit toggle.
-          <p>Hidden for ADMIN AND MAINTAINER sessions. ADMINs don't
-          handle payments. MAINTAINERs collect into the SOCIETY's
-          common bank account (configured separately on the Society
-          page), not their personal one — surfacing the personal
-          bank-account section here when in maintainer mode would
-          confuse the operator into thinking the two are linked.
-          The component still mounts at the tenant/owner profile
-          routes for those roles, so a multi-role user (tenant +
-          maintainer) just needs to log in via tenant credentials
-          to see their bank details. */}
-      {authUserId && role !== "ADMIN" && role !== "MAINTAINER" && (
+          <p>Hidden for ADMIN sessions only. Every payee-role (OWNER,
+          TENANT-with-refunds, and MAINTAINER) needs to enter their
+          personal bank details here because those details ARE what
+          feed the Cashfree Easy Split vendor registration — that's
+          where money actually settles. The SocietyConfig bank fields
+          on the /owner/buildings/.../society page are display-only
+          (they populate the direct-UPI QR fallback, not the Cashfree
+          vendor). Before this fix the MAINTAINER role was excluded
+          here, which meant a pure-maintainer user had no UI to
+          enter bank details and their vendor stayed PENDING_BANK
+          forever. */}
+      {authUserId && role !== "ADMIN" && (
         <div className="mt-6">
           <BankAccountSection authUserId={authUserId} />
         </div>
