@@ -292,6 +292,17 @@ function toState(res: VpaValidationResponse): VpaState {
   if (res.valid && res.customerName) {
     return { kind: "valid", customerName: res.customerName };
   }
+  // Cashfree (and any other gateway that hasn't wired VPA verification)
+  // returns valid=false with this exact reason. That's not a failure of
+  // the user's VPA — it's a capability gap on the gateway side. Treat
+  // it like the "Cashfree Checkout not enabled" fallback path above:
+  // format already passed, so accept the value as usable (Save button
+  // unblocks) and let the tenant's own UPI app resolve the name at
+  // pay time.
+  const reason = (res.failureReason ?? "").toLowerCase();
+  if (!res.valid && reason.includes("not supported")) {
+    return { kind: "valid", customerName: "" };
+  }
   return {
     kind: "invalid",
     reason: res.failureReason ?? "We couldn't verify this UPI ID.",
