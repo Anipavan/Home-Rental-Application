@@ -1778,11 +1778,17 @@ public class SocietyServiceImpl implements SocietyService {
         // a fresh Payment row → multiple "Due now" entries cluttering
         // the Maintenance tab forever.
         //
-        // Reuse criteria: all rows in this request point to the SAME
-        // prior paymentId AND that payment is still PENDING. If any
-        // row points to a different paymentId, or the prior one's
-        // already PAID/FAILED, we let it fall through and create a
-        // new Payment cleanly.
+        // Reuse criteria (tightened): all rows in this request share the
+        // SAME prior paymentId AND that payment is still PENDING AND
+        // its totalAmount matches this request's computed total. The
+        // total-match guard is critical — without it, a user who first
+        // clicked "Pay all ₹10,04,000" (stamping every row with
+        // paymentId X) and then clicked "Pay ₹2,000" on a single row
+        // would get back paymentId X with its ₹10,04,000 total shown
+        // on the pay page — wildly wrong amount. Mismatch = collection
+        // set has changed (subset / superset), so mint fresh. The
+        // orphan PENDING payment on Cashfree's side will expire after
+        // ~15 min; a proper cancel path is a follow-up.
         Set<String> priorPaymentIds = new HashSet<>();
         for (MaintenanceCollection row : rows) {
             if (row.getPaymentId() != null) priorPaymentIds.add(row.getPaymentId());
@@ -1793,12 +1799,15 @@ public class SocietyServiceImpl implements SocietyService {
                 PaymentClient.SocietyChargePaymentResponse existing =
                         paymentClient.getPayment(candidateId);
                 if (existing != null && "PENDING".equals(existing.status())) {
-                    log.info("Reusing existing PENDING payment {} for society charges (idempotency)",
-                            candidateId);
-                    return new SocietyChargePaymentInitiatedResponse(
-                            existing.id(),
-                            existing.totalAmount() != null ? existing.totalAmount() : total,
-                            rows.size());
+                    BigDecimal oldTotal = existing.totalAmount();
+                    if (oldTotal != null && oldTotal.compareTo(total) == 0) {
+                        log.info("Reusing existing PENDING payment {} for society charges (idempotency, total matches {})",
+                                candidateId, total);
+                        return new SocietyChargePaymentInitiatedResponse(
+                                existing.id(), oldTotal, rows.size());
+                    }
+                    log.info("Old paymentId {} total {} != current request total {}; minting fresh Payment (previous PENDING will orphan)",
+                            candidateId, oldTotal, total);
                 }
             } catch (Exception ex) {
                 // Best-effort — fall through to creating a new Payment.
