@@ -117,15 +117,63 @@ export async function openCashfreeCheckout(
   const cf: CashfreeInstance = await (typeof sdk === "function"
     ? sdk({ mode: environment })
     : sdk.load({ mode: environment }));
-  const result = await cf.checkout({
-    paymentSessionId,
-    redirectTarget: "_self",
-  });
-  // The redirect flow doesn't resolve with an error under normal
-  // circumstances (the browser navigates away). If we DO get an error
-  // back it means the SDK couldn't even start the redirect — surface
-  // it so the caller can toast + fall back.
-  if (result?.error) {
-    throw new Error(result.error.message ?? "Cashfree Checkout failed to open");
+
+  // Mobile-safety timeout: on some mobile Chrome sessions the SDK's
+  // checkout() call hangs silently — the tenant sees a blank page
+  // with a chrome-mobile "failed to load" sad-icon and no way to
+  // recover. Race the SDK's redirect against a 4-second timeout; if
+  // the SDK hasn't navigated the tab away by then, force-navigate to
+  // Cashfree's hosted-checkout URL directly. Same destination the
+  // SDK would have taken us — just without the SDK's mobile-specific
+  // choreography (hidden iframe / overlay) that seems to be what's
+  // failing on some devices.
+  const directCheckoutUrl = buildDirectCheckoutUrl(paymentSessionId, environment);
+  const timeoutId = window.setTimeout(() => {
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[cashfree] SDK checkout didn't navigate within 4s — falling back to direct URL",
+    );
+    window.location.href = directCheckoutUrl;
+  }, 4000);
+
+  try {
+    const result = await cf.checkout({
+      paymentSessionId,
+      redirectTarget: "_self",
+    });
+    // The redirect flow doesn't resolve with an error under normal
+    // circumstances (the browser navigates away). If we DO get an
+    // error back it means the SDK couldn't even start the redirect —
+    // clear the fallback timer and surface it so the caller can
+    // toast + fall back.
+    if (result?.error) {
+      window.clearTimeout(timeoutId);
+      throw new Error(result.error.message ?? "Cashfree Checkout failed to open");
+    }
+    // Normal happy path: the browser is already navigating. Timer
+    // will fire the direct fallback if we're still here in 4s
+    // (only happens on the mobile-hang failure mode).
+  } catch (err) {
+    window.clearTimeout(timeoutId);
+    throw err;
   }
+}
+
+/**
+ * Cashfree's hosted-checkout page URL for a given payment_session_id.
+ * Used as a mobile fallback when the SDK's own redirect stalls. Same
+ * page tenants normally reach via the SDK — same UPI / card / net-
+ * banking picker.
+ */
+function buildDirectCheckoutUrl(
+  paymentSessionId: string,
+  environment: "sandbox" | "production",
+): string {
+  const host =
+    environment === "production"
+      ? "https://payments.cashfree.com"
+      : "https://payments-test.cashfree.com";
+  // Cashfree's documented direct-launch shape for a payment session.
+  // Works on desktop AND mobile without any SDK dependency.
+  return `${host}/pgview/checkout/${encodeURIComponent(paymentSessionId)}`;
 }

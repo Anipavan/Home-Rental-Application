@@ -390,8 +390,21 @@ public class PaymentServiceImpl implements PaymentService {
         // UPDATE-style re-load makes the transition atomic at the
         // application layer (Oracle SERIALIZABLE-equivalent under the
         // default isolation).
+        //
+        // PROCESSING is allowed to re-initiate: the tenant may have
+        // hit Back on Cashfree's page or the tab was closed mid-
+        // checkout, leaving the row in PROCESSING with no way for the
+        // tenant to resume without hitting a 500. The
+        // CashfreePaymentGateway.initiate path already handles the
+        // Cashfree-side 409 order_already_exists by GET-ing the
+        // existing order and reusing its payment_session_id (fix
+        // 01025b7), so a re-initiate from PROCESSING is safe — it
+        // resumes the same Cashfree order rather than double-charging.
         PaymentStatus current = p.getStatus();
-        if (current != null && current != PaymentStatus.PENDING && current != PaymentStatus.OVERDUE) {
+        if (current != null
+                && current != PaymentStatus.PENDING
+                && current != PaymentStatus.OVERDUE
+                && current != PaymentStatus.PROCESSING) {
             throw new IllegalStateException(
                     "Payment " + p.getId() + " cannot be initiated from status " + current
                             + ". Refresh the page — another tab may already be processing it.");
