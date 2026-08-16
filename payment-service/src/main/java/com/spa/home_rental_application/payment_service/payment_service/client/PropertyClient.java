@@ -62,6 +62,16 @@ public interface PropertyClient {
             @PathVariable("paymentId") String paymentId);
 
     /**
+     * Internal-only bank + KYC dump for the society, consumed at
+     * Cashfree Easy Split vendor registration time. Returns the FULL
+     * account number (unmasked) so payment-service can send it to
+     * Cashfree's create-vendor API. Behind the gateway's internal-auth
+     * secret — never reachable from the browser.
+     */
+    @GetMapping("/society/{buildingId}/internal/bank-details")
+    SocietyBankDetails getSocietyBankDetails(@PathVariable("buildingId") String buildingId);
+
+    /**
      * Subset of property-service {@code BuildingResponseDTO} — only the
      * fields the payment-service consumes. Extra fields on the wire
      * are silently dropped by Jackson, keeping the contract loose.
@@ -102,4 +112,32 @@ public interface PropertyClient {
             String forMonth,
             BigDecimal amountDue
     ) {}
+
+    /**
+     * Local mirror of property-service's
+     * {@code SocietyBankDetailsInternalResponse} — full unmasked bank
+     * + KYC dump for the society, used at Cashfree vendor registration
+     * time. Fields must match exactly for Jackson roundtripping.
+     */
+    record SocietyBankDetails(
+            String buildingId,
+            String societyConfigId,
+            String maintainerUserId,
+            String societyDisplayName,
+            String accountNumber,
+            String ifscCode,
+            String accountHolder,
+            String upiId,
+            String panNumber,
+            String contactPhone,
+            String contactEmail,
+            String businessType
+    ) {
+        public static SocietyBankDetails empty() {
+            return new SocietyBankDetails(
+                    null, null, null, null,
+                    null, null, null, null,
+                    null, null, null, null);
+        }
+    }
 }

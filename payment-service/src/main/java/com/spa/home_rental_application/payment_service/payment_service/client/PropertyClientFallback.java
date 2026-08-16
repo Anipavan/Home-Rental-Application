@@ -49,4 +49,14 @@ public class PropertyClientFallback implements PropertyClient {
         log.warn("property-service unavailable — getSocietyChargesByPayment({}) falling back to empty", paymentId);
         return Collections.emptyList();
     }
+
+    @Override
+    public PropertyClient.SocietyBankDetails getSocietyBankDetails(String buildingId) {
+        // Empty struct is safe — the vendor-registration path checks
+        // for null/blank on every field before calling Cashfree, so
+        // an empty payload just leaves the society vendor in
+        // PENDING_BANK until property-service recovers.
+        log.warn("property-service unavailable — getSocietyBankDetails({}) falling back to empty", buildingId);
+        return SocietyBankDetails.empty();
+    }
 }

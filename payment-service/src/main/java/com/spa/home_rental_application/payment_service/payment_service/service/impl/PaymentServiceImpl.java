@@ -88,6 +88,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final AuditEventPublisher audit;
     private final com.spa.home_rental_application.payment_service.payment_service.service.CommissionService commissionService;
     private final com.spa.home_rental_application.payment_service.payment_service.service.CashfreeVendorService vendorService;
+    private final com.spa.home_rental_application.payment_service.payment_service.service.SocietyCashfreeVendorService societyVendorService;
 
     public PaymentServiceImpl(PaymentRepository paymentRepo,
                               InvoiceRepository invoiceRepo,
@@ -101,7 +102,8 @@ public class PaymentServiceImpl implements PaymentService {
                               UserClient userClient,
                               AuditEventPublisher audit,
                               com.spa.home_rental_application.payment_service.payment_service.service.CommissionService commissionService,
-                              com.spa.home_rental_application.payment_service.payment_service.service.CashfreeVendorService vendorService) {
+                              com.spa.home_rental_application.payment_service.payment_service.service.CashfreeVendorService vendorService,
+                              com.spa.home_rental_application.payment_service.payment_service.service.SocietyCashfreeVendorService societyVendorService) {
         this.paymentRepo = paymentRepo;
         this.invoiceRepo = invoiceRepo;
         this.receiptRepo = receiptRepo;
@@ -115,6 +117,7 @@ public class PaymentServiceImpl implements PaymentService {
         this.audit = audit;
         this.commissionService = commissionService;
         this.vendorService = vendorService;
+        this.societyVendorService = societyVendorService;
     }
 
     /* ---------------- Lifecycle ---------------- */
@@ -420,19 +423,54 @@ public class PaymentServiceImpl implements PaymentService {
         p.setCardLast4(dto.cardLast4());
         p.setStatus(PaymentStatus.PROCESSING);
 
-        // Cashfree Easy Split integration: compute the platform's cut
-        // from the CommissionService and stamp the owner's vendor id +
-        // fee amount on the Payment row BEFORE calling the gateway.
-        // CashfreePaymentGateway.initiate reads these to build its
-        // order_splits[] array; other gateways (Mock) ignore them.
+        // Cashfree Easy Split integration — two flows, distinguished
+        // by sourceType:
         //
-        // If the owner isn't payout-ready (no ACTIVE Cashfree vendor),
-        // leave the split fields blank — CashfreePaymentGateway then
-        // creates a plain, non-split order. The Phase 6 frontend will
-        // pre-check vendor readiness and route those tenants back to
-        // direct-UPI instead of even calling /initiate, but leaving
-        // the backend permissive keeps the fallback safe.
-        if (p.getOwnerId() != null && !p.getOwnerId().isBlank()) {
+        //   RENT (default): split into (owner_share, platform_fee).
+        //   Owner share settles to the owner's PERSONAL Cashfree vendor
+        //   (registered from their profile bank_accounts); platform fee
+        //   stays with the merchant account. Fee % comes from
+        //   CommissionService (admin-configurable).
+        //
+        //   SOCIETY_CHARGE: no platform fee — 100% settles to the
+        //   SOCIETY's own Cashfree vendor (registered from the Society
+        //   Page bank + KYC panel, distinct from the maintainer user's
+        //   personal vendor). Platform monetises maintenance via the
+        //   one-time Maintainer activation fee at building registration,
+        //   NOT via per-payment commission.
+        //
+        // In either flow, if the target vendor isn't payout-ready the
+        // split fields stay blank and CashfreePaymentGateway creates a
+        // plain non-split order. Frontend gates on payout-ready
+        // upstream so tenants don't reach this path when they can't
+        // actually settle.
+        boolean isSocietyCharge = "SOCIETY_CHARGE".equalsIgnoreCase(p.getSourceType());
+        if (isSocietyCharge) {
+            // Resolve the building for this Payment via the flat, then
+            // look up the society vendor. Skip if either lookup blanks.
+            String buildingId = null;
+            if (p.getFlatId() != null && !p.getFlatId().isBlank()) {
+                try {
+                    PropertyClient.FlatSummary flat = propertyClient.getFlatById(p.getFlatId());
+                    if (flat != null) buildingId = flat.buildingId();
+                } catch (Exception ex) {
+                    log.warn("Could not resolve buildingId for society payment {} (flatId={}): {}",
+                            p.getId(), p.getFlatId(), ex.toString());
+                }
+            }
+            if (buildingId != null) {
+                societyVendorService.getForBuilding(buildingId).ifPresent(sv -> {
+                    if (sv.getStatus() != null && sv.getStatus().isPayoutReady()) {
+                        // Zero platform fee — vendor_share = total_amount
+                        // in CashfreePaymentGateway.initiate.
+                        p.setPlatformFee(BigDecimal.ZERO);
+                        p.setOwnerVendorId(sv.getCashfreeVendorId());
+                        log.info("Society split configured paymentId={} societyVendor={} platformFee=0 (100% to society)",
+                                p.getId(), sv.getCashfreeVendorId());
+                    }
+                });
+            }
+        } else if (p.getOwnerId() != null && !p.getOwnerId().isBlank()) {
             vendorService.getForUser(p.getOwnerId()).ifPresent(vendor -> {
                 if (vendor.getStatus() != null && vendor.getStatus().isPayoutReady()) {
                     BigDecimal fee = commissionService.computePlatformFee(
