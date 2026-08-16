@@ -189,6 +189,10 @@ function EditBankDialog({
     payeeName: config.payeeName ?? "",
     accountNumber: config.accountNumber ?? "",
     ifscCode: config.ifscCode ?? "",
+    panNumber: config.panNumber ?? "",
+    contactPhone: config.contactPhone ?? "",
+    contactEmail: config.contactEmail ?? "",
+    businessType: config.businessType ?? "Real Estate, Housing, Rentals",
   });
 
   const saveMut = useMutation({
@@ -201,9 +205,12 @@ function EditBankDialog({
         upiId: form.upiId,
         payeeName: form.payeeName,
         accountNumber: form.accountNumber,
-        // IFSC uppercased to match the backend @Pattern validator;
-        // empty string is fine (treated as clear-the-field).
+        // IFSC + PAN uppercased to match backend @Pattern validators.
         ifscCode: form.ifscCode.toUpperCase(),
+        panNumber: form.panNumber.toUpperCase(),
+        contactPhone: form.contactPhone,
+        contactEmail: form.contactEmail,
+        businessType: form.businessType,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["society", buildingId] });
@@ -237,7 +244,31 @@ function EditBankDialog({
   const payeeRequired = upiTrim !== "";
   const payeeMissing = payeeRequired && form.payeeName.trim() === "";
 
-  const canSave = ifscOk && upiOk && !payeeMissing && !saveMut.isPending;
+  // Cashfree KYC validators mirror the SetupSocietyRequest @Patterns.
+  // Empty = OK (field cleared / not yet set — vendor stays PENDING).
+  const panTrim = form.panNumber.trim().toUpperCase();
+  const panOk = panTrim === "" || /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(panTrim);
+  const phoneTrim = form.contactPhone.trim();
+  const phoneOk = phoneTrim === "" || /^(?:\+?91)?[6-9][0-9]{9}$/.test(phoneTrim);
+  const emailTrim = form.contactEmail.trim();
+  const emailOk = emailTrim === "" || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(emailTrim);
+
+  // How ready is the society for Cashfree Easy Split routing? Purely
+  // an informational preview — the actual vendor status arrives via
+  // GET /payments/vendors/society/{buildingId}/payout-ready after
+  // save propagates through Kafka.
+  const cashfreeReady =
+    !!form.accountNumber.trim() &&
+    ifscOk && form.ifscCode.trim() !== "" &&
+    !!form.payeeName.trim() &&
+    panOk && panTrim !== "" &&
+    phoneOk && phoneTrim !== "" &&
+    emailOk && emailTrim !== "";
+
+  const canSave =
+    ifscOk && upiOk && !payeeMissing &&
+    panOk && phoneOk && emailOk &&
+    !saveMut.isPending;
 
   return (
     <Dialog
@@ -250,6 +281,10 @@ function EditBankDialog({
             payeeName: config.payeeName ?? "",
             accountNumber: config.accountNumber ?? "",
             ifscCode: config.ifscCode ?? "",
+            panNumber: config.panNumber ?? "",
+            contactPhone: config.contactPhone ?? "",
+            contactEmail: config.contactEmail ?? "",
+            businessType: config.businessType ?? "Real Estate, Housing, Rentals",
           });
         }
       }}
@@ -315,7 +350,7 @@ function EditBankDialog({
             <div>
               <Label>Account number</Label>
               <Input
-                placeholder="optional"
+                placeholder="e.g. 1234567890"
                 value={form.accountNumber}
                 onChange={(e) =>
                   setForm({ ...form, accountNumber: e.target.value })
@@ -337,6 +372,78 @@ function EditBankDialog({
                 </p>
               )}
             </div>
+          </div>
+
+          {/* Cashfree Easy Split KYC — required alongside the bank
+              fields above so tenant maintenance money can settle to
+              this society account via the split gateway. Leaving any
+              blank keeps the vendor in PENDING_KYC / PENDING_BANK
+              and the tenant Pay flow falls back to the direct-UPI
+              QR (which routes to whatever upiId is set above). */}
+          <div className="pt-2 border-t border-border/60">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+              Cashfree KYC · required for online payments
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>PAN</Label>
+                <Input
+                  placeholder="ABCDE1234F"
+                  value={form.panNumber}
+                  onChange={(e) =>
+                    setForm({ ...form, panNumber: e.target.value })
+                  }
+                  aria-invalid={!panOk}
+                  maxLength={10}
+                />
+                {!panOk && (
+                  <p className="text-[10px] text-destructive mt-0.5">
+                    Format: 5 letters, 4 digits, 1 letter
+                  </p>
+                )}
+              </div>
+              <div>
+                <Label>Contact phone</Label>
+                <Input
+                  placeholder="9876543210"
+                  value={form.contactPhone}
+                  onChange={(e) =>
+                    setForm({ ...form, contactPhone: e.target.value })
+                  }
+                  aria-invalid={!phoneOk}
+                  inputMode="tel"
+                />
+                {!phoneOk && (
+                  <p className="text-[10px] text-destructive mt-0.5">
+                    10-digit Indian mobile (optional +91)
+                  </p>
+                )}
+              </div>
+              <div className="col-span-2">
+                <Label>Contact email</Label>
+                <Input
+                  placeholder="society@example.com"
+                  value={form.contactEmail}
+                  onChange={(e) =>
+                    setForm({ ...form, contactEmail: e.target.value })
+                  }
+                  aria-invalid={!emailOk}
+                  type="email"
+                />
+                {!emailOk && (
+                  <p className="text-[10px] text-destructive mt-0.5">
+                    Enter a valid email
+                  </p>
+                )}
+              </div>
+            </div>
+            <p
+              className={`text-[10px] mt-2 ${cashfreeReady ? "text-success" : "text-muted-foreground"}`}
+            >
+              {cashfreeReady
+                ? "✓ Cashfree KYC fields complete — vendor will register on save."
+                : "Complete every field (bank + PAN + phone + email) so tenant maintenance money settles to this account via Cashfree."}
+            </p>
           </div>
         </div>
 

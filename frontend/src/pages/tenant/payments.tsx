@@ -587,18 +587,16 @@ function MaintenanceSectionWrapper({
   // render.
   const societyHasUpi = Boolean(configQ.data?.upiId);
 
-  // Cashfree payout gate: check whether the maintainer has an ACTIVE
-  // Cashfree vendor (bank + KYC verified). Without one, tenant money
-  // has nowhere to settle even if UPI is technically wired — the split
-  // flow will fail and the fallback direct-UPI may route to the
-  // maintainer's personal UPI (not the society bank), which is exactly
-  // what we're trying to prevent. Cache 30 s to avoid pounding
+  // Cashfree payout gate: check whether the SOCIETY has an ACTIVE
+  // Cashfree vendor (society's own bank + KYC verified via the
+  // Society Page). Distinct from the maintainer user's personal
+  // vendor — the society vendor is what tenant maintenance money
+  // actually settles into. Cache 30 s to avoid pounding
   // payments-service on every card render.
-  const maintainerUserId = configQ.data?.maintainerUserId ?? null;
   const payoutReadyQ = useQuery({
-    queryKey: ["society-maintainer-payout-ready", maintainerUserId],
-    queryFn: () => paymentGateway.isOwnerPayoutReady(maintainerUserId!),
-    enabled: !!maintainerUserId,
+    queryKey: ["society-vendor-payout-ready", buildingId],
+    queryFn: () => paymentGateway.isSocietyPayoutReady(buildingId!),
+    enabled: !!buildingId,
     staleTime: 30_000,
   });
   const maintainerPayoutReady = payoutReadyQ.data === true;

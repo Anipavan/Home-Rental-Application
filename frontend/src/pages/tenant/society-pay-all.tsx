@@ -98,15 +98,15 @@ export function SocietyPayAllPage() {
     queryFn: () => societyApi.myTenant(),
   });
 
-  // Cashfree payout gate: does the maintainer have an ACTIVE Cashfree
-  // vendor (bank + KYC verified)? If not, and the society also has no
-  // fallback UPI wired, we hard-disable Pay — otherwise tenant money
-  // has nowhere to actually settle.
-  const maintainerUserId = configQ.data?.maintainerUserId ?? null;
+  // Cashfree payout gate: does the SOCIETY have an ACTIVE Cashfree
+  // vendor (society's own bank + KYC verified via the Society Page)?
+  // If not, and the society also has no fallback UPI wired, we
+  // hard-disable Pay — otherwise tenant money has nowhere to
+  // actually settle.
   const payoutReadyQ = useQuery({
-    queryKey: ["society-maintainer-payout-ready", maintainerUserId],
-    queryFn: () => paymentGateway.isOwnerPayoutReady(maintainerUserId!),
-    enabled: !!maintainerUserId,
+    queryKey: ["society-vendor-payout-ready", buildingId],
+    queryFn: () => paymentGateway.isSocietyPayoutReady(buildingId!),
+    enabled: !!buildingId,
     staleTime: 30_000,
   });
   const maintainerPayoutReady = payoutReadyQ.data === true;

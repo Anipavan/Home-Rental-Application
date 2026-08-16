@@ -204,16 +204,16 @@ function YourMaintenanceTab({ config }: { config: SocietyConfig }) {
     currentMonth(),
   ]);
 
-  // Cashfree payout gate — the maintainer needs either an ACTIVE
-  // Cashfree vendor (bank + KYC verified) OR a fallback collection
-  // UPI. When neither is set up, tenant money has nowhere to actually
-  // settle so we hard-disable every Pay button on this page + swap
-  // the "no UPI yet" banner for a clearer "no payout details yet"
-  // one.
+  // Cashfree payout gate — the SOCIETY needs either an ACTIVE
+  // Cashfree vendor (society's own bank + KYC verified via the
+  // Society Page) OR a fallback collection UPI. When neither is set
+  // up, tenant money has nowhere to actually settle so we hard-
+  // disable every Pay button on this page + swap the "no UPI yet"
+  // banner for a clearer "no payout details yet" one.
   const payoutReadyQ = useQuery({
-    queryKey: ["society-maintainer-payout-ready", config.maintainerUserId],
-    queryFn: () => paymentGateway.isOwnerPayoutReady(config.maintainerUserId),
-    enabled: !!config.maintainerUserId,
+    queryKey: ["society-vendor-payout-ready", config.buildingId],
+    queryFn: () => paymentGateway.isSocietyPayoutReady(config.buildingId),
+    enabled: !!config.buildingId,
     staleTime: 30_000,
   });
   const maintainerPayoutReady = payoutReadyQ.data === true;

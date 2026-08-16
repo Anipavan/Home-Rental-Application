@@ -1185,6 +1185,14 @@ export interface SocietyConfig {
   payeeName: string | null;
   accountNumber: string | null;
   ifscCode: string | null;
+  /* Cashfree Easy Split vendor KYC — all nullable. When these are
+   * set alongside accountNumber+ifscCode+payeeName, payment-service
+   * registers a Cashfree vendor keyed on the society so tenant
+   * maintenance money settles to the society's own bank. */
+  panNumber: string | null;
+  contactPhone: string | null;
+  contactEmail: string | null;
+  businessType: string | null;
   /** V16 — non-null ISO timestamp when a tenant reported the society's
    *  UPI as broken via the "This UPI isn't working" button on the
    *  direct-UPI pay page. Auto-cleared when the maintainer next saves
@@ -1208,6 +1216,12 @@ export interface SetupSocietyRequest {
   payeeName?: string;
   accountNumber?: string;
   ifscCode?: string;
+  /* Cashfree Easy Split vendor KYC. Set alongside the bank fields
+   * so payment-service can register a society vendor. */
+  panNumber?: string;
+  contactPhone?: string;
+  contactEmail?: string;
+  businessType?: string;
 }
 
 export interface MaintenanceExpense {

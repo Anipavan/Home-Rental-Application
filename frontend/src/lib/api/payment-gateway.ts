@@ -69,4 +69,22 @@ export const paymentGateway = {
       .get<{ ready: boolean }>(`/payments/vendors/${ownerId}/payout-ready`)
       .then((r) => r.data?.ready === true)
       .catch(() => false),
+
+  /**
+   * Sibling of {@link isOwnerPayoutReady} for the SOCIETY-scoped
+   * Cashfree vendor. Used by the tenant maintenance flow to decide
+   * whether Pay buttons are enabled — checks whether the society
+   * (keyed on buildingId) has an ACTIVE Cashfree vendor registered
+   * from its own bank + KYC fields (distinct from the maintainer
+   * user's personal vendor used for rent).
+   *
+   * <p>Same network-optimistic contract: any error → treated as
+   * "not ready", so a payment-service outage keeps tenants on the
+   * always-working direct-UPI QR path rather than blocking payment.
+   */
+  isSocietyPayoutReady: (buildingId: string) =>
+    api
+      .get<{ ready: boolean }>(`/payments/vendors/society/${buildingId}/payout-ready`)
+      .then((r) => r.data?.ready === true)
+      .catch(() => false),
 };
