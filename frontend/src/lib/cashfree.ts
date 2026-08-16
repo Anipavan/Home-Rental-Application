@@ -193,9 +193,12 @@ function submitCheckoutForm(
   form.method = "POST";
   form.style.display = "none";
 
+  // Cashfree's form endpoint takes the session id in snake_case
+  // (matches their JSON API contract). Sending it as camelCase
+  // returns "payment_session_id is not present or is invalid".
   const input = document.createElement("input");
   input.type = "hidden";
-  input.name = "paymentSessionId";
+  input.name = "payment_session_id";
   input.value = paymentSessionId;
   form.appendChild(input);
 
