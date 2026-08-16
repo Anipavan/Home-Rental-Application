@@ -121,20 +121,21 @@ export async function openCashfreeCheckout(
   // Mobile-safety timeout: on some mobile Chrome sessions the SDK's
   // checkout() call hangs silently — the tenant sees a blank page
   // with a chrome-mobile "failed to load" sad-icon and no way to
-  // recover. Race the SDK's redirect against a 4-second timeout; if
-  // the SDK hasn't navigated the tab away by then, force-navigate to
-  // Cashfree's hosted-checkout URL directly. Same destination the
-  // SDK would have taken us — just without the SDK's mobile-specific
-  // choreography (hidden iframe / overlay) that seems to be what's
-  // failing on some devices.
-  const directCheckoutUrl = buildDirectCheckoutUrl(paymentSessionId, environment);
+  // recover. Race the SDK's redirect against a 3-second timeout; if
+  // the SDK hasn't navigated the tab away by then, submit a hidden
+  // form-POST to Cashfree's hosted-checkout URL. This mirrors what
+  // the SDK does internally — Cashfree's endpoint requires POST, not
+  // GET (previous window.location.href fallback 404'd with
+  // "endpoint or method is not valid") — but bypasses the SDK's
+  // mobile-specific choreography (hidden iframe / overlay) that
+  // seems to be what's failing on some devices.
   const timeoutId = window.setTimeout(() => {
     // eslint-disable-next-line no-console
     console.warn(
-      "[cashfree] SDK checkout didn't navigate within 4s — falling back to direct URL",
+      "[cashfree] SDK checkout didn't navigate within 3s — falling back to form-POST",
     );
-    window.location.href = directCheckoutUrl;
-  }, 4000);
+    submitCheckoutForm(paymentSessionId, environment);
+  }, 3000);
 
   try {
     const result = await cf.checkout({
@@ -143,41 +144,61 @@ export async function openCashfreeCheckout(
     });
     // The redirect flow doesn't resolve with an error under normal
     // circumstances (the browser navigates away). If we DO get an
-    // error back it means the SDK couldn't even start the redirect —
-    // clear the fallback timer and surface it so the caller can
-    // toast + fall back.
+    // error back it means the SDK couldn't even start the redirect.
+    // Take over with our own form-POST — same destination, no SDK.
     if (result?.error) {
       window.clearTimeout(timeoutId);
-      throw new Error(result.error.message ?? "Cashfree Checkout failed to open");
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[cashfree] SDK checkout returned error, falling back to form-POST:",
+        result.error.message,
+      );
+      submitCheckoutForm(paymentSessionId, environment);
+      return;
     }
     // Normal happy path: the browser is already navigating. Timer
-    // will fire the direct fallback if we're still here in 4s
+    // will fire the form-POST fallback if we're still here in 3s
     // (only happens on the mobile-hang failure mode).
   } catch (err) {
     window.clearTimeout(timeoutId);
-    throw err;
+    // Same story — the SDK threw before starting the redirect. Try
+    // our own form-POST before surfacing the error.
+    // eslint-disable-next-line no-console
+    console.warn("[cashfree] SDK checkout threw, falling back to form-POST:", err);
+    submitCheckoutForm(paymentSessionId, environment);
   }
 }
 
 /**
- * Cashfree's hosted-checkout page URL for a given payment_session_id.
- * Used as a mobile fallback when the SDK's own redirect stalls. Same
- * page tenants normally reach via the SDK — same UPI / card / net-
- * banking picker.
+ * Submit a hidden form-POST to Cashfree's hosted-checkout endpoint.
+ * Mirrors what the SDK does internally — the endpoint requires POST
+ * with {@code paymentSessionId} as a form field — but bypasses the
+ * SDK's mobile-Chrome-hanging redirect flow.
  *
  * <p>Path shape confirmed from the CSP form-action logs (commit
- * 9468b7a) — the SDK's own POST target is
- * {@code /pg/view/sessions/checkout/{sessionId}} on both sandbox and
- * production. Host differs: {@code sandbox.cashfree.com} vs
- * {@code api.cashfree.com}.
+ * 9468b7a) and Cashfree's own error response on GET: the correct URL
+ * is {@code /pg/view/sessions/checkout} on sandbox.cashfree.com or
+ * api.cashfree.com depending on environment.
  */
-function buildDirectCheckoutUrl(
+function submitCheckoutForm(
   paymentSessionId: string,
   environment: "sandbox" | "production",
-): string {
+): void {
   const host =
     environment === "production"
       ? "https://api.cashfree.com"
       : "https://sandbox.cashfree.com";
-  return `${host}/pg/view/sessions/checkout/${encodeURIComponent(paymentSessionId)}`;
+  const form = document.createElement("form");
+  form.action = `${host}/pg/view/sessions/checkout`;
+  form.method = "POST";
+  form.style.display = "none";
+
+  const input = document.createElement("input");
+  input.type = "hidden";
+  input.name = "paymentSessionId";
+  input.value = paymentSessionId;
+  form.appendChild(input);
+
+  document.body.appendChild(form);
+  form.submit();
 }
