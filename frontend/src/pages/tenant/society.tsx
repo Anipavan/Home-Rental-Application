@@ -705,7 +705,11 @@ function ChargeRow({
         {canPay ? (
           <Button asChild variant="gradient" size="sm">
             <Link
-              to={`/app/society/pay/${config.buildingId}/${row.collectionId}`}
+              to={
+                `/app/society/pay/${config.buildingId}/${row.collectionId}` +
+                (row._month ? `?month=${row._month}` : "") +
+                (row.forMonth && !row._month ? `?month=${row.forMonth}` : "")
+              }
             >
               Pay {formatINR(row.monthAmount)}
             </Link>

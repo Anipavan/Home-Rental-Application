@@ -376,7 +376,10 @@ export function SocietyPayAllPage() {
                     </p>
                     <Button asChild variant="gradient" size="sm">
                       <Link
-                        to={`/app/society/pay/${buildingId}/${row.collectionId}`}
+                        to={
+                          `/app/society/pay/${buildingId}/${row.collectionId}` +
+                          (row.forMonth ? `?month=${row.forMonth}` : "")
+                        }
                       >
                         Pay
                       </Link>

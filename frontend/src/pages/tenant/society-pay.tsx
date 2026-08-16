@@ -1,5 +1,5 @@
 ﻿import { useMemo, useRef } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -85,15 +85,24 @@ export function SocietyPayPage() {
   });
   const maintainerPayoutReady = payoutReadyQ.data === true;
 
-  // The tenant's bills for the current month — find the row matching
+  // The tenant's bills for the target month — find the row matching
   // collectionId. We accept a small inefficiency here (we re-fetch the
   // whole month list rather than expose a single-row GET) because the
   // list is small and React Query has the response cached from the
   // /app/society page that linked here.
-  const month = (() => {
+  //
+  // The parent society page now passes ?month=<YYYY-MM> on the Pay
+  // link so we know exactly which month to fetch — matters when the
+  // tenant clicks Pay on a FUTURE month (e.g. Oct 2026 while today
+  // is Aug 2026). If the query param is absent (older bookmark) we
+  // fall back to the current month + last 6 months window.
+  const [searchParams] = useSearchParams();
+  const monthParam = searchParams.get("month");
+  const monthToday = (() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   })();
+  const month = monthParam ?? monthToday;
 
   const billsQ = useQuery({
     queryKey: ["tenant-society-bills", buildingId, month],
@@ -102,9 +111,11 @@ export function SocietyPayPage() {
     staleTime: 15_000,
   });
 
-  // Walk a few months back if the row isn't in the current month —
-  // covers the case where the tenant clicks Pay on a row from a
-  // past month they were viewing.
+  // Walk a few months back as a safety net if the row isn't in the
+  // targeted month — covers the older-bookmark case AND the case
+  // where the maintainer moved a row between months. Skipped when
+  // we've been passed an explicit ?month= param that matches (the
+  // billsQ above already covers that).
   const monthsQ = useQuery({
     queryKey: ["tenant-society-bills-recent", buildingId],
     queryFn: async () => {
