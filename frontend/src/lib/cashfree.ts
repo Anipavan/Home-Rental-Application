@@ -164,6 +164,12 @@ export async function openCashfreeCheckout(
  * Used as a mobile fallback when the SDK's own redirect stalls. Same
  * page tenants normally reach via the SDK — same UPI / card / net-
  * banking picker.
+ *
+ * <p>Path shape confirmed from the CSP form-action logs (commit
+ * 9468b7a) — the SDK's own POST target is
+ * {@code /pg/view/sessions/checkout/{sessionId}} on both sandbox and
+ * production. Host differs: {@code sandbox.cashfree.com} vs
+ * {@code api.cashfree.com}.
  */
 function buildDirectCheckoutUrl(
   paymentSessionId: string,
@@ -171,9 +177,7 @@ function buildDirectCheckoutUrl(
 ): string {
   const host =
     environment === "production"
-      ? "https://payments.cashfree.com"
-      : "https://payments-test.cashfree.com";
-  // Cashfree's documented direct-launch shape for a payment session.
-  // Works on desktop AND mobile without any SDK dependency.
-  return `${host}/pgview/checkout/${encodeURIComponent(paymentSessionId)}`;
+      ? "https://api.cashfree.com"
+      : "https://sandbox.cashfree.com";
+  return `${host}/pg/view/sessions/checkout/${encodeURIComponent(paymentSessionId)}`;
 }
